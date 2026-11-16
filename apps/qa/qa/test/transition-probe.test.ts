@@ -15,7 +15,7 @@ import { platformDir, svelteNativeCli } from "../lib/paths.ts";
  * The transition checks of the native checks lab run on the host against the real pieces: the QA app's class table, the HTML lowering, Svelte's own transitions, the renderer, the Fabric host
  * (`fabric/host.ts`), the host's animation layer (`fabric/transitions.ts`, `fabric/animation.ts`) and the lab's runner (`transition-lab.ts`) on the lab's own screen (`TransitionsScreen.svelte`). What is a stand-in
  * is the platform: React Native's modules, a fake Fabric binding (a layout of the committed tree, with Reanimated's registry over the props of every commit, as its commit hook does) and Reanimated, in a
- * form that is not the package's recorder (`tests/reanimated-stubs.ts`, which the test moves by hand) but a UI thread of its own: a shared value animated `withTiming` is a function of a clock, the mappers
+ * form that is not the package's recorder (`tests/support/reanimated-stubs.ts`, which the test moves by hand) but a UI thread of its own: a shared value animated `withTiming` is a function of a clock, the mappers
  * run each frame, the animation's callback is called when its time is up, and the JavaScript thread's timers run only when the test lets the clock go on, so a JavaScript thread that is busy (the lab's
  * own busy-wait on the clock) stands still while the UI side goes on. Time is virtual: a 300 ms block costs a few hundred reads of the clock.
  *
@@ -127,7 +127,7 @@ type Timing = { m: { _value: number; timing: Timing | null }; from: number; to: 
 type Ui = { now: number; active: Set<Timing> };
 
 /**
- * `react-native-reanimated` for the bundle: the package's recorder (`tests/reanimated-stubs.ts`: mappers, the props registry, view descriptors) with `makeMutable` and `withTiming` made a UI thread's.
+ * `react-native-reanimated` for the bundle: the package's recorder (`tests/support/reanimated-stubs.ts`: mappers, the props registry, view descriptors) with `makeMutable` and `withTiming` made a UI thread's.
  * A shared value that is animated is read as a function of the clock (`globalThis.__ui.now`) from any thread, as Reanimated's is; the test's frame ends the animations whose time is up (the callback) and runs
  * the mappers. A write of a number takes the animation off, as a write does.
  */
@@ -152,7 +152,7 @@ const reanimated = `
 	export const startMapper = (worklet, inputs) => { const id = A.mappers.length + 1; A.mappers.push({ id, worklet, inputs, stopped: false }); return id; };
 	export const stopMapper = (id) => { A.mappers.find((m) => m.id === id).stopped = true; };`;
 
-// The platform's modules as the package's own harness stubs them for the host (`tests/html-harness.ts`).
+// The platform's modules as the package's own harness stubs them for the host (`tests/support/html-harness.ts`).
 const platform = (recorder: Record<string, string>): Record<string, string> => ({
 	...recorder,
 	"react-native-reanimated": reanimated,
@@ -180,8 +180,8 @@ async function load(table: unknown, mutations: readonly Mutation[]): Promise<Bun
 	const [{ componentOptions, lowersHtml }, { lowerPrimitives }, harness, { reanimatedStubs }] = await Promise.all([
 		import(pathToFileURL(join(library, "src/compile-options.ts")).href) as Promise<{ componentOptions(path: string): Record<string, unknown>; lowersHtml(path: string): boolean }>,
 		import(pathToFileURL(join(library, "src/lower.ts")).href) as Promise<{ lowerPrimitives(source: string, options: { filename: string; html: boolean; warn: (message: string) => void }): string }>,
-		import(pathToFileURL(join(library, "tests/html-harness.ts")).href) as Promise<Harness>,
-		import(pathToFileURL(join(library, "tests/reanimated-stubs.ts")).href) as Promise<{ reanimatedStubs: Record<string, string> }>,
+		import(pathToFileURL(join(library, "tests/support/html-harness.ts")).href) as Promise<Harness>,
+		import(pathToFileURL(join(library, "tests/support/reanimated-stubs.ts")).href) as Promise<{ reanimatedStubs: Record<string, string> }>,
 	]);
 	const stubs = platform(reanimatedStubs);
 	const components = ["TextInput", "Switch", "Modal"];
@@ -212,7 +212,7 @@ async function load(table: unknown, mutations: readonly Mutation[]): Promise<Bun
 				});
 				builder.onResolve({ filter: /^(react-native|expo-modules-core|@alfayez\/svelte-native$)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
 				builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
-				builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: join(library, "tests/view-configs-stub.ts") }));
+				builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: join(library, "tests/support/view-configs-stub.ts") }));
 				builder.onResolve({ filter: /^@alfayez\/svelte-native\/classes-table$/ }, (args) => ({ path: args.path, namespace: "classes-table" }));
 				builder.onLoad({ filter: /.*/, namespace: "classes-table" }, () => ({ contents: `export default ${JSON.stringify(table)};`, loader: "js" }));
 				builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));

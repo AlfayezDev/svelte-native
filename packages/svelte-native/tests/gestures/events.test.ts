@@ -1,13 +1,13 @@
 import { test, expect, spyOn } from "bun:test";
-import { loadOracle } from "./oracle.ts";
-import { load, settle, world, anim, byId, callsOf } from "./harness.ts";
+import { gestureOracle } from "./support/oracle.ts";
+import { load, settle, world, anim, byId, callsOf } from "./support/harness.ts";
 
 /**
  * Event routing. A gesture on the JS thread receives its events on `RCTDeviceEventEmitter`; one on the UI thread has them run by
  * Reanimated in a worklet. Both are checked against react-native-gesture-handler's own `onGestureHandlerEvent` (bundled as the
  * oracle): the same event sequence must call the same callbacks with the same arguments in the same order.
  */
-const oracle = await loadOracle();
+const oracle = gestureOracle();
 type Entry = [name: string, ...args: unknown[]];
 const clone = (value: unknown): unknown => JSON.parse(JSON.stringify(value) ?? "null");
 /** The handler tag is a counter of its own module instance: both sides log it as "T". */
@@ -46,11 +46,11 @@ function logged(Gesture: { Pan(): unknown }, log: Entry[], thread: "js" | "ui"):
 /** What RNGH's own receiver does with a sequence for a gesture registered the way its detector registers it. */
 function expected(events: (tag: number) => object[]): Entry[] {
   const log: Entry[] = [];
-  const pan = logged(oracle.GestureObjects as never, log, "js");
+  const pan = logged(oracle().GestureObjects as never, log, "js");
   pan.initialize();
-  oracle.registerHandler(pan.handlerTag, pan);
-  for (const event of events(pan.handlerTag)) oracle.onGestureHandlerEvent(event);
-  oracle.unregisterHandler(pan.handlerTag);
+  oracle().registerHandler(pan.handlerTag, pan);
+  for (const event of events(pan.handlerTag)) oracle().onGestureHandlerEvent(event);
+  oracle().unregisterHandler(pan.handlerTag);
   return scrub(log, pan.handlerTag);
 }
 

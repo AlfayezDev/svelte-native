@@ -1,6 +1,6 @@
 /**
  * CSS media queries, evaluated for a device: the parser and the evaluator behind `window.matchMedia` (`match-media.ts`). Pure: a query and the device's state in, a boolean out; it reads
- * nothing from React Native, so the table of queries in `tests/media-query.test.ts` runs against plain objects.
+ * nothing from React Native, so the table of queries in `tests/web-apis/media-query.test.ts` runs against plain objects.
  *
  * What is understood is Media Queries 4's grammar: a comma-separated list (`or`), `not`, `only`, a media type (`all` and `screen` are true; `print` and every other type is false), `and`, `or` and
  * `not` between conditions, nested parentheses, and a feature as `(name)`, `(name: value)`, `(min-name: value)` or in the range syntax (`(width >= 600px)`, `(400px <= width < 700px)`).

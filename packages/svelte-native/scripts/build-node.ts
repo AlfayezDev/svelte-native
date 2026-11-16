@@ -5,8 +5,8 @@
  * The package ships TypeScript, which is right for the code Metro and Vite compile (the React Native runtime) and wrong for the code a Node process
  * loads: Node refuses to strip types from a file under `node_modules` (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), and the tools that load a
  * plugin or a config (Metro, `@expo/config`, Vite) hand the file to Node. So the entries below are bundled to plain JavaScript: each is one file
- * with its relative imports inlined and every package left as an import (the app installs them). `tests/dist.test.ts` fails when `dist/node/` is
- * not what this script writes for the sources, and `tests/node-modules.test.ts` loads the built files from a `node_modules`.
+ * with its relative imports inlined and every package left as an import (the app installs them). `tests/package/dist.test.ts` fails when `dist/node/` is
+ * not what this script writes for the sources, and `tests/package/node-modules.test.ts` loads the built files from a `node_modules`.
  *
  * Deterministic: the same sources and the same esbuild give the same bytes (no timestamps, no absolute paths, sorted files).
  */
@@ -108,7 +108,7 @@ export function filesUnder(directory: string): string[] {
 if (import.meta.main) {
   const names = await writeNode();
   for (const name of names) console.log(`dist/node/${name}  ${readFileSync(join(outputDirectory, name)).length} bytes`);
-  // The type declarations (`dist/types/`) are the other half of the build: `pnpm build` writes both, and `tests/types.test.ts` checks them. Loaded here so that
+  // The type declarations (`dist/types/`) are the other half of the build: `pnpm build` writes both, and `tests/package/types.test.ts` checks them. Loaded here so that
   // a test that imports this file for `writeNode` does not load TypeScript and svelte2tsx.
   const { writeTypes } = await import("./build-types.ts");
   const declarations = await writeTypes();

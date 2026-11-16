@@ -5,7 +5,7 @@
  * HTML elements are lowered to host tags in the app's own files, and the host decides at run time what they draw: which text is one line, which view lays out items, what text style a text inherits. The
  * checks read the tree the host drew from and what it made of it: a node's props through `mergeHostProps` (what the host builds the native props from), its snapshot (`getSnapshot().children`), and
  * `hostState` (the view the host made for it and the props it gave that view: the style with what it inherited and its default style in it, `viewName`, and `flex` for a marked view). `hostState` is the
- * host's own record, and its fields are the ones the host's own tests read (`tests/html-elements.test.ts` reads the same through a fake Fabric); a change of them fails these checks, which is what they are for.
+ * host's own record, and its fields are the ones the host's own tests read (`tests/components/html-elements.test.ts` reads the same through a fake Fabric); a change of them fails these checks, which is what they are for.
  */
 import { flattenStyle, isColor, type Outcome, type Style } from "./class-checks.ts";
 

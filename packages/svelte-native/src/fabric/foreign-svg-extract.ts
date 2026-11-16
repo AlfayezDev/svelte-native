@@ -3,7 +3,7 @@
  * `extractText.tsx` (the fonts, and the children that become `TSpan`s), `extractGradient.ts` (the `Stop` children),
  * `extractFilter.ts` (the `FeMergeNode` children) and `xml.tsx`'s parser live in modules that import React. What is here is
  * theirs, line for line, with the children replaced by what the Svelte components collect (the host turns text children into
- * `content` and spans, `Stop` and `FeMergeNode` register with their parent). `tests/svg.test.ts` runs the library's own functions
+ * `content` and spans, `Stop` and `FeMergeNode` register with their parent). `tests/foreign/svg/extract.test.ts` runs the library's own functions
  * on the same inputs and compares.
  */
 import { extractBrush, extractLengthList, extractOpacity, extractTransform, pickNotNil, units } from "./svg-library.js";

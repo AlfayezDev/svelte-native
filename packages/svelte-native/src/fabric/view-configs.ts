@@ -4,7 +4,7 @@
  * React Native encodes props for Fabric from a view config's `validAttributes` (which keys are native props and how a
  * value is converted) through `ReactNativeAttributePayload`. Loading that module and the native components that register
  * the configs costs about 50 ms of boot, so the host's own view names carry the tables below, equal to what React Native
- * 0.86 registers on Android and iOS (`tests/view-configs.test.ts` compares them with React Native's own modules). A name
+ * 0.86 registers on Android and iOS (`tests/renderer/view-configs.test.ts` compares them with React Native's own modules). A name
  * outside the tables, from a third-party native component, takes React Native's registry and payload code, required on
  * first use.
  *
@@ -229,7 +229,7 @@ export type Kind = {
 /**
  * Third-party native components the engine mounts through React Native's own mounting (SPEC.md, "Foreign views"). `plain`
  * and `colors` are the props the library's codegen spec declares (its generated view config validates exactly those, plus a
- * view's own), `events` the events its native emitter sends (`tests/foreign.test.ts` compares both with the specs). The
+ * view's own), `events` the events its native emitter sends (`tests/upstream/foreign-view-configs.test.ts` compares both with the specs). The
  * event handler props (`onPress`) are not attributes, as in the generated configs: handlers stay in JavaScript. The exception is
  * a `legacy` kind on iOS, whose view manager only emits an event it was given a handler prop for (`Kind.legacy`).
  */

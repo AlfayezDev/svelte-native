@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Host checks of the logic behind the SvelteFetch module: the HTTP client wiring, redirects, the body buffer and its backpressure, aborts, Blob segments, object
-# URLs, file fetches, UTF-8, against the repository's test server (tests/fetch/server.ts, started here on a free port) and the Encoding standard's own results
+# URLs, file fetches, UTF-8, against the repository's test server (tests/web-apis/fetch/support/server.ts, started here on a free port) and the Encoding standard's own results
 # (vectors.ts, which the runtime's TextDecoder and TextEncoder make). No device, no Android SDK. Needs kotlinc, java, bun and node, and the OkHttp and Okio jars
 # React Native 0.86 builds against: found in the Gradle cache, or named by OKHTTP_JAR and OKIO_JAR. Usage: src/test/fetch.sh (or src/test/run.sh for all the host checks)
 set -euo pipefail
@@ -31,7 +31,7 @@ kotlinc -nowarn -cp "$okhttp:$okio" \
 bun "$here/vectors.ts" > "$work/vectors.txt"
 
 port="$(node -e 'const s=require("net").createServer().listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})')"
-node "$package/tests/fetch/server.ts" --port "$port" > "$work/server.log" 2>&1 &
+node "$package/tests/web-apis/fetch/support/server.ts" --port "$port" > "$work/server.log" 2>&1 &
 server=$!
 
 run() { java "$@" -cp "$work/fetch-check.jar:$okhttp:$okio" expo.modules.sveltecore.FetchCheckKt "http://127.0.0.1:$port" "$work/vectors.txt" "$work/scratch"; }

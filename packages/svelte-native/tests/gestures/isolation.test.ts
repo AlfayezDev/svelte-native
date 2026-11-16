@@ -1,22 +1,29 @@
 import { test, expect } from "bun:test";
 import { build, type Metafile } from "esbuild";
 import { resolve } from "node:path";
-import { hostPlugin, load, settle, anim } from "./harness.ts";
+import { packageRoot } from "../support/paths.ts";
+import { hostPlugin, load, settle, anim } from "./support/harness.ts";
 
 /**
  * The cost of the gesture host when it is not used, and what it is allowed to import when it is.
  * Metro includes every `require` target in the bundle and evaluates it on first use, so what decides the boot cost is the set of
  * modules a bundle's entry reaches through ES `import` statements (evaluated at start) against `require` calls (evaluated when reached).
  */
-const root = resolve(import.meta.dirname, "../..");
+const root = packageRoot;
 const src = (path: string) => resolve(root, "src", path);
 
-async function graph(entry: string): Promise<Metafile> {
-  const result = await build({
-    entryPoints: [entry], bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false, metafile: true, logLevel: "silent",
-    define: { __DEV__: "true" }, plugins: [hostPlugin({ openStubs: true })],
-  });
-  return result.metafile;
+/** The import graph of an entry, built once per run: three tests read the gestures entry's. */
+const graphs = new Map<string, Promise<Metafile>>();
+function graph(entry: string): Promise<Metafile> {
+  let built = graphs.get(entry);
+  if (!built) {
+    built = build({
+      entryPoints: [entry], bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false, metafile: true, logLevel: "silent",
+      define: { __DEV__: "true" }, plugins: [hostPlugin({ openStubs: true })],
+    }).then((result) => result.metafile);
+    graphs.set(entry, built);
+  }
+  return built;
 }
 const relative = (path: string) => path.replace(/.*\/packages\/svelte-native\//, "").replace(/.*\/node_modules\/react-native-gesture-handler\/src\//, "rngh/");
 

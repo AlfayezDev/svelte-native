@@ -331,7 +331,7 @@ export function applyAppDelegate(contents: string): string {
  * `EXPO_USE_COMMUNITY_AUTOLINKING=1` the community CLI's command runs as it is. Idempotent.
  */
 export function applyHeadlessSettings(contents: string, extra: readonly string[] = []): string {
-  const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\((?:svelteNativeConfigCommand \+ )?expoAutolinking\.rnConfigCommand \+ svelteNativeExcludeArgs\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)");
+  const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\((?:svelteNativeConfigCommand \+ )?expoAutolinking\.rnConfigCommand \+ svelteNativeExcludeArgs(?:, svelteNativeAppRoot\.asFile, svelteNativeLockFiles)?\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)");
   const anchor = /^extensions\.configure\(com\.facebook\.react\.ReactSettingsExtension\)/m.exec(stripped);
   if (!anchor || !stripped.includes("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)")) throw new Error("Svelte native could not find the autolinking block in settings.gradle");
   const list = [...new Set([...headlessExcludedPackages, ...extra])].map((name) => `"${name}"`).join(", ");
@@ -342,10 +342,14 @@ export function applyHeadlessSettings(contents: string, extra: readonly string[]
     "expoAutolinking.exclude = svelteNativeExclude",
     `def svelteNativeCli = new File(providers.exec { workingDir(rootDir); commandLine("node", "--print", "require.resolve('${libraryPackage}/package.json')") }.standardOutput.asText.get().trim()).getParentFile().toPath().resolve("dist/node/cli.js").toString()`,
     'def svelteNativeConfigCommand = ["node", svelteNativeCli, "android-autolinking"]',
+    // React Native keeps the command's output until a lockfile of the app changes: React Native's own list, and the CLI, so that a new version of the
+    // library (a workspace or file: dependency changes no lockfile) runs the command again.
+    'def svelteNativeAppRoot = settings.layout.rootDirectory.dir("../")',
+    'def svelteNativeLockFiles = svelteNativeAppRoot.files("yarn.lock", "package-lock.json", "package.json", "react-native.config.js", svelteNativeCli)',
     gradleEnd,
     "",
   ].join("\n");
-  return `${stripped.slice(0, anchor.index)}${block}${stripped.slice(anchor.index)}`.replace("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)", "autolinkLibrariesFromCommand(svelteNativeConfigCommand + expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs)");
+  return `${stripped.slice(0, anchor.index)}${block}${stripped.slice(anchor.index)}`.replace("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)", "autolinkLibrariesFromCommand(svelteNativeConfigCommand + expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs, svelteNativeAppRoot.asFile, svelteNativeLockFiles)");
 }
 
 const podfileBegin = "  # Svelte native: autolinking excludes (generated, do not edit)";

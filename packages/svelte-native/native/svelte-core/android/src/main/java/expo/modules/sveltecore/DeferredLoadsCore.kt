@@ -15,38 +15,40 @@ internal interface DeferredEnvironment {
 /**
  * The rules of the deferred native libraries; [DeferredLibraries] gives them the platform. See there for why.
  *
- * [register] adds a library to load later. [firstMount] schedules the load on a thread of its own [DELAY_MS] later; [awaitAll] loads, on the
- * calling thread, every library that is still pending and waits for the ones another thread is loading, so that it returns once all of them
- * are in. A library loads once, whoever asks first. One that cannot load is logged when it fails, and [awaitAll] throws its error, every time
- * it is called: the code that needs the library fails there, with the cause, as it failed at the start when the library loaded then.
+ * [register] adds a library to load later. [firstMount] schedules the load on a thread of its own [DELAY_MS] later; [awaitAll] returns once every
+ * registered library is in, loading the pending ones on the calling thread. A library loads once, whoever asks first, and one at a time: each
+ * library's `JNI_OnLoad` adds its hybrid objects to Nitro's registry, a map with no lock of its own, so two loads must never overlap (the
+ * linker's lock covers `dlopen`, not `JNI_OnLoad`). One that cannot load is logged when it fails, and [awaitAll] throws its error every time it
+ * is called: the code that needs the library fails there, with the cause, as it failed at the start when the library loaded then.
  */
 internal class DeferredLoadsCore(private val env: DeferredEnvironment) {
-  private val lock = ReentrantLock()
-  private val settled = lock.newCondition()
+  /** Held for the whole of a load, and while a library is taken from [pending]: when a thread holds it and finds nothing pending, nothing is loading. */
+  private val loads = ReentrantLock()
   private val pending = LinkedHashSet<String>()
-  private val loading = HashSet<String>()
   private val loaded = HashSet<String>()
   private val failures = LinkedHashMap<String, Throwable>()
-  private var scheduled = false
+  /** Read on every mount transaction (the main thread), so the calls after the first do not take [loads], which a load holds. */
+  @Volatile private var scheduled = false
+  private val scheduling = Any()
 
-  fun register(name: String) = lock.withLock {
-    if (name !in loaded && name !in loading) pending.add(name)
+  fun register(name: String) = loads.withLock {
+    if (name !in loaded) pending.add(name)
   }
 
   /** The first screen is being mounted: what is pending loads [DELAY_MS] later, after the first frames, on a thread of its own. Once. */
   fun firstMount() {
-    lock.withLock {
+    if (scheduled) return
+    synchronized(scheduling) {
       if (scheduled) return
       scheduled = true
     }
     env.postToMain(DELAY_MS) { env.startThread(THREAD) { loadPending() } }
   }
 
-  /** Every registered library is loaded when this returns: the pending ones on this thread, the ones in progress elsewhere waited for. */
+  /** Every registered library is loaded when this returns: the pending ones on this thread, after a load in progress on another one. */
   fun awaitAll() {
     loadPending()
-    lock.withLock {
-      while (loading.isNotEmpty()) settled.await()
+    loads.withLock {
       val failure = failures.entries.firstOrNull() ?: return
       throw UnsatisfiedLinkError("Svelte native: the native library ${failure.key} could not be loaded: ${failure.value.message}").apply { initCause(failure.value) }
     }
@@ -54,19 +56,16 @@ internal class DeferredLoadsCore(private val env: DeferredEnvironment) {
 
   private fun loadPending() {
     while (true) {
-      val name = lock.withLock { pending.firstOrNull()?.also { pending.remove(it); loading.add(it) } } ?: return
-      var failure: Throwable? = null
-      try {
-        env.load(name)
-      } catch (error: Throwable) {
-        failure = error
-        env.warn("Svelte native: could not load the native library $name", error)
-      }
-      lock.withLock {
-        loading.remove(name)
+      loads.withLock {
+        val name = pending.firstOrNull() ?: return
+        pending.remove(name)
+        try {
+          env.load(name)
+        } catch (error: Throwable) {
+          failures[name] = error
+          env.warn("Svelte native: could not load the native library $name", error)
+        }
         loaded.add(name)
-        if (failure != null) failures[name] = failure
-        settled.signalAll()
       }
     }
   }

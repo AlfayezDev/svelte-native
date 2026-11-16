@@ -14,7 +14,7 @@ import { platformDir, svelteNativeCli } from "../lib/paths.ts";
 /**
  * The HTML checks of the native checks lab run on the host against the real pieces: the QA app's class table, the HTML lowering, the renderer, the Fabric host (`fabric/host.ts`, which draws the text, lays out
  * the items, inherits the text style and hears the presses) and the lab's runner (`html-lab.ts`) on the lab's own screen (`HtmlScreen.svelte`). Only the platform is a stand-in: React Native's modules and a fake
- * Fabric binding (the package's own harness, `tests/html-harness.ts`, whose `fake` the host builds into). What this holds is that each check reads the thing its name says: it passes on the real host and fails on
+ * Fabric binding (the package's own harness, `tests/support/html-harness.ts`, whose `fake` the host builds into). What this holds is that each check reads the thing its name says: it passes on the real host and fails on
  * the host with that one thing broken, by a change to the library's source as the bundle reads it.
  */
 const library = resolve(platformDir, "../../packages/svelte-native");
@@ -47,7 +47,7 @@ type Bundle = {
 	tick(): Promise<void>;
 };
 
-// The platform's modules as the package's own harness stubs them for the host (`tests/html-harness.ts`).
+// The platform's modules as the package's own harness stubs them for the host (`tests/support/html-harness.ts`).
 const platform = (reanimated: Record<string, string>): Record<string, string> => ({
 	...reanimated,
 	"react-native/Libraries/ReactNative/ReactFabricPublicInstance/ReactNativeAttributePayload": "export const create = (props) => ({ ...props }); export const diff = (prev, next) => { const out = {}; let changed = false; for (const k of new Set([...Object.keys(prev), ...Object.keys(next)])) { if (prev[k] !== next[k]) { out[k] = k in next ? next[k] : null; changed = true; } } return changed ? out : null; };",
@@ -73,8 +73,8 @@ async function load(table: unknown, mutations: readonly Mutation[] = []): Promis
 	const [{ componentOptions, lowersHtml }, { lowerPrimitives }, harness, { reanimatedStubs }] = await Promise.all([
 		import(pathToFileURL(join(library, "src/compile-options.ts")).href) as Promise<{ componentOptions(path: string): Record<string, unknown>; lowersHtml(path: string): boolean }>,
 		import(pathToFileURL(join(library, "src/lower.ts")).href) as Promise<{ lowerPrimitives(source: string, options: { filename: string; html: boolean; warn: (message: string) => void }): string }>,
-		import(pathToFileURL(join(library, "tests/html-harness.ts")).href) as Promise<Harness>,
-		import(pathToFileURL(join(library, "tests/reanimated-stubs.ts")).href) as Promise<{ reanimatedStubs: Record<string, string> }>,
+		import(pathToFileURL(join(library, "tests/support/html-harness.ts")).href) as Promise<Harness>,
+		import(pathToFileURL(join(library, "tests/support/reanimated-stubs.ts")).href) as Promise<{ reanimatedStubs: Record<string, string> }>,
 	]);
 	const stubs = platform(reanimatedStubs);
 	const components = ["TextInput", "Switch", "Modal"];
@@ -105,7 +105,7 @@ async function load(table: unknown, mutations: readonly Mutation[] = []): Promis
 				});
 				builder.onResolve({ filter: /^(react-native|expo-modules-core|@alfayez\/svelte-native$)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
 				builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
-				builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: join(library, "tests/view-configs-stub.ts") }));
+				builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: join(library, "tests/support/view-configs-stub.ts") }));
 				builder.onResolve({ filter: /^@alfayez\/svelte-native\/classes-table$/ }, (args) => ({ path: args.path, namespace: "classes-table" }));
 				builder.onLoad({ filter: /.*/, namespace: "classes-table" }, () => ({ contents: `export default ${JSON.stringify(table)};`, loader: "js" }));
 				builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));

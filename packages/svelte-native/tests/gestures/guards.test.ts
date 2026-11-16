@@ -1,10 +1,10 @@
 import { test, expect, spyOn } from "bun:test";
-import { load, settle, callsOf, anim, world } from "./harness.ts";
+import { load, settle, callsOf, anim, world } from "./support/harness.ts";
 
 /**
  * The development guards: a UI-thread callback that captured a Svelte signal, a gesture whose callbacks are some worklets and some
  * not, a callback Reanimated cannot send to the UI thread. Closures here are written the way the worklets plugin writes them
- * (`toolchain.test.ts` runs the real plugin over real fixtures); `__DEV__` is false in the last test.
+ * (`tests/compiler/gesture-worklets.test.ts` runs the real plugin over real fixtures); `__DEV__` is false in the last test.
  */
 type App = { set(items: { id: string; gesture?: unknown }[]): void };
 const signal = () => ({ f: 4, v: 0, reactions: null, equals: () => true, rv: 0, wv: 1 });

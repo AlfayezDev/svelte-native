@@ -3,7 +3,7 @@ import { sourceDirectory, sourceFile } from "./package-root.ts";
 /**
  * The files whose text is part of Metro's cache key for what the transformer makes (`getCacheKey` in `transformer.ts`): the transformer itself, and, when it runs from the sources,
  * the Node-side modules it imports (`lower.ts` and what the lowering of HTML imports: `lower-html.ts`, `html-tags.ts` and the converter of `css/` that converts a `style="..."` string;
- * `remote/transform.ts`; `compile-options.ts`; `svelte-compiler.ts`, which decides what Svelte's compiler accepts). Built (`dist/node/transformer.cjs`), the one file holds them all. `tests/cache-key.test.ts` follows the imports of `lower.ts` and fails
+ * `remote/transform.ts`; `compile-options.ts`; `svelte-compiler.ts`, which decides what Svelte's compiler accepts). Built (`dist/node/transformer.cjs`), the one file holds them all. `tests/compiler/cache-key.test.ts` follows the imports of `lower.ts` and fails
  * for a module that is not here.
  */
 export function cacheKeyFiles(transformer: string, directory: string): string[] {

@@ -150,10 +150,10 @@ let inputs: string[] = [];
 
 beforeAll(async () => {
   // The library loads Reanimated when a screen first animates, and its bundle always names it: the library's own stand-ins for it.
-  const { reanimatedStubs } = (await import(join(libraryTests, "reanimated-stubs.ts"))) as { reanimatedStubs: Record<string, string> };
+  const { reanimatedStubs } = (await import(join(libraryTests, "support/reanimated-stubs.ts"))) as { reanimatedStubs: Record<string, string> };
   Object.assign(stubs, reanimatedStubs);
   // The main entry exports the SVG components: the library's host modules for them import react-native-svg's extraction code, which these bundles stub.
-  const { svgLibraryStubs } = (await import(join(libraryTests, "svg-library-stubs.ts"))) as { svgLibraryStubs: Record<string, string> };
+  const { svgLibraryStubs } = (await import(join(libraryTests, "support/svg-library-stubs.ts"))) as { svgLibraryStubs: Record<string, string> };
   Object.assign(stubs, svgLibraryStubs);
   // The library's stand-in knows `withTiming` only; the animation and gestures screens also spring and repeat, which the stand-in treats like a timing: the animation is recorded, not played.
   stubs["react-native-reanimated"] += "\nexport const withSpring = (to, config, callback) => withTiming(to, config, callback); export const withRepeat = (animation) => animation;";
@@ -193,7 +193,7 @@ beforeAll(async () => {
       setup(builder) {
         builder.onResolve({ filter: /^(react-native|expo-modules-core|expo-constants)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
-        builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: join(libraryTests, "view-configs-stub.ts") }));
+        builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: join(libraryTests, "support/view-configs-stub.ts") }));
         builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));
         builder.onResolve({ filter: /^@alfayez\/svelte-native\/routes$/ }, () => ({ path: join(directory, ".svelte-native/routes.test.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: join(library, "src/environment.ts") }));

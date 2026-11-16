@@ -2,7 +2,7 @@ import type { Reader } from "./resolve.ts";
 
 /**
  * What the library's patches leave in the packages they patch, read from the installed files: the shape the package's tests pin
- * (`tests/foreign-libraries.test.ts`, `tests/expo-lazy-modules.test.ts`, `tests/rngh-patch.test.ts`, `tests/worklets-frame-loop.test.ts`)
+ * (`tests/upstream/foreign-native-events.test.ts`, `tests/upstream/expo-modules-core-patch.test.ts`, `tests/upstream/react-native-gesture-handler-patch.test.ts`, `tests/upstream/worklets-frame-loop.test.ts`)
  * and `svelte-native doctor` reports on in an app. Each function takes a `Reader` over one package's directory and returns the problems
  * it finds, so an empty list means the patch is in; none of them reads anything but the files they name.
  */
@@ -92,7 +92,7 @@ export function lottieProblems(read: Reader): string[] {
 
 // ---- react-native-gesture-handler: the manager the iOS screens ask to register the root recognizer ----
 
-/** The declarations the patch adds to the manager, as whole source lines (`tests/rngh-patch.test.ts` looks for the same lines in the patch file). */
+/** The declarations the patch adds to the manager, as whole source lines (`tests/upstream/react-native-gesture-handler-patch.test.ts` looks for the same lines in the patch file). */
 export const rnghAdditions: Record<string, readonly string[]> = {
   "apple/RNGestureHandlerManager.h": ["+ (nullable RNGestureHandlerManager *)currentManager;", "- (void)registerRootViewGestureRecognizerIfAttachedBelow:(nonnull RNGHUIView *)view;"],
   "apple/RNGestureHandlerManager.mm": ["+ (nullable RNGestureHandlerManager *)currentManager\n{", "- (void)registerRootViewGestureRecognizerIfAttachedBelow:(nonnull RNGHUIView *)view\n{"],

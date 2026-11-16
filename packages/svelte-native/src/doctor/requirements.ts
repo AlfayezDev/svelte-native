@@ -1,7 +1,7 @@
 /**
  * The tools the doctor asks for. Node has two ranges, because the repository and an app are different things:
  *
- * - `node.repository` is the repository's `engines.node` (and `devEngines`) in the root package.json, which `tests/doctor-repository.test.ts` keeps in step. Its scripts and tests
+ * - `node.repository` is the repository's `engines.node` (and `devEngines`) in the root package.json, which `tests/cli/doctor-repository.test.ts` keeps in step. Its scripts and tests
  *   run TypeScript through Node's type stripping. The doctor applies it to the apps that are members of the repository's workspace (`apps/qa`, `apps/example`).
  * - `node.app` is the Node an app outside the repository installs and builds under. The library's Node-side code ships as JavaScript (`dist/node/`), so an app needs no type
  *   stripping; what limits the range is the tooling a fresh install takes. React Native 0.86.3 allows `^20.19.4 || ^22.13.0 || ^24.3.0 || >=25`, but it asks for

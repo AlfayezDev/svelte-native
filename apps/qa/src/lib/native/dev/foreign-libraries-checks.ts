@@ -676,7 +676,7 @@ const hostFlushes = (): number => (globalThis as { __svelteFabric?: { stats(): {
  * the load had reached JavaScript before the hold, or the host had not committed the prop (`flushes`), the attempt does not count and is made again with the other page.
  *
  * `tick()` is `await Promise.resolve(); flushSync()` only while Svelte's async mode is off; the web build enables it (`vite.config.ts`, `kit.compilerOptions`), the native bundle does not (the Metro
- * transformer compiles with `customRenderer` only), and `packages/svelte-native/tests/svelte-async-mode.test.ts` fails if that changes, or if `tick()` stops being those two steps.
+ * transformer compiles with `customRenderer` only), and `packages/svelte-native/tests/compiler/svelte-async-mode.test.ts` fails if that changes, or if `tick()` stops being those two steps.
  */
 async function loadsWhileBusy(c: Ctx): Promise<void> {
   const name = "events: onLoadComplete arrives although the JS thread was busy while the document loaded";
@@ -827,7 +827,7 @@ async function rive(c: Ctx): Promise<void> {
   // Two animations of the Truck artboard played in turn are two onPlay with their own names on the UI thread, and both must reach JavaScript while it is held (the file is Rive's `vehicles.riv`:
   // the artboard "Truck" has the animations idle, curves and bounce and the state machine bumpy; looping keeps both playing, so no onStop follows between; a retry stops them first). Rive needs no
   // patch: its events go through `getJSModule(RCTEventEmitter)`, React Native's `InteropEventEmitter`, which is made with the application context, so its events have surface id -1 and
-  // `Event.dispatchModern` sends them as non-coalescable (`tests/foreign-libraries.test.ts` pins each link of that in the installed React Native). This check is the guard on a device that it stays
+  // `Event.dispatchModern` sends them as non-coalescable (`tests/upstream/foreign-native-events.test.ts` pins each link of that in the installed React Native). This check is the guard on a device that it stays
   // so: it fails if a React Native upgrade or a Rive release makes the events coalescable (an `Event` class of Rive's own, say, without `canCoalesce() false`). The commands reach the view after the task, which `runRace` waits for.
   await forcedRace(c, "events: two animations played in turn raise both onPlay although the JS thread was busy",
     "Android's guard only: Rive's events reach JavaScript through React Native's interop emitter, whose surface id -1 makes them non-coalescable, and there is nothing to lose on iOS, where RiveReactNativeView is a legacy view manager whose events React Native's interop layer sends with `dispatchEvent`, which the queue never replaces",

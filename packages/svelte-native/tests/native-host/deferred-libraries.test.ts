@@ -44,8 +44,8 @@ test.skipIf(!tools)("a library that cannot load is logged once and every ask thr
   expect(by["background-failure"]).toBe(`post 1000 | thread svelte-deferred-load | load a | ${warned} | ${failed}`);
 });
 
-test.skipIf(!tools)("an ask during a background load loads what is pending and waits for the load in progress", () => {
-  expect(answers()["while-loading"]).toBe("post 1000 | thread svelte-deferred-load | load a | load b | a finishes | ready");
+test.skipIf(!tools)("an ask during a background load waits for it, and returns once the rest is loaded: two loads never overlap", () => {
+  expect(answers()["while-loading"]).toBe("post 1000 | thread svelte-deferred-load | load a | a finishes | load b | ready");
 });
 
 test("the packages autolinking links: one registers its library and loads nothing, the gate loads every registered library before Nitro's module is made", () => {

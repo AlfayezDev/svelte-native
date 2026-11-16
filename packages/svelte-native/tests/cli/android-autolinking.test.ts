@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { type AutolinkingConfig, deferNitroLibraries, deferredNitroPackages, nitroPackage, relinkedPackage } from "../../src/autolinking.ts";
 
@@ -123,4 +124,48 @@ describe("the command", () => {
     const missing = run();
     expect(missing.exitCode).toBe(2);
   });
+});
+
+describe("the installed packages are what the rewrite assumes (a version bump that changes one fails here)", () => {
+  /** A package's directory, from the package's own node_modules or a parent's (the repository installs them hoisted). */
+  function packageDirectory(name: string): string | undefined {
+    for (let directory = resolve(import.meta.dirname, "../.."); ; directory = resolve(directory, "..")) {
+      const candidate = resolve(directory, "node_modules", name);
+      if (existsSync(resolve(candidate, "package.json"))) return candidate;
+      if (resolve(directory, "..") === directory) return undefined;
+    }
+  }
+  const read = (name: string, path: string) => readFileSync(resolve(packageDirectory(name)!, path), "utf8");
+  const installed = ["react-native-mmkv", "react-native-quick-crypto", "react-native-nitro-modules"].every((name) => packageDirectory(name) !== undefined);
+
+  test.skipIf(!installed)("MMKV's and quick-crypto's packages make no module and only load their library, under the name the stand-in loads", () => {
+    const mmkv = read("react-native-mmkv", "android/src/main/java/com/margelo/nitro/mmkv/NitroMmkvPackage.java");
+    expect(mmkv).toContain("static {\n    NitroMmkvOnLoad.initializeNative();\n  }");
+    expect(read("react-native-mmkv", "nitrogen/generated/android/kotlin/com/margelo/nitro/mmkv/NitroMmkvOnLoad.kt")).toContain(`System.loadLibrary("${deferredNitroPackages["react-native-mmkv"]!.library}")`);
+    const crypto = read("react-native-quick-crypto", "android/src/main/java/com/margelo/nitro/quickcrypto/QuickCryptoPackage.java");
+    expect(crypto).toContain(`private static final String TAG = "${deferredNitroPackages["react-native-quick-crypto"]!.library}";`);
+    expect(crypto).toContain("System.loadLibrary(TAG);");
+    for (const source of [mmkv, crypto]) {
+      expect(source).toMatch(/public NativeModule getModule\(String name, ReactApplicationContext reactContext\) \{\s*return null;\s*\}/);
+      expect(source).toMatch(/return \(\) -> \{\s*return new HashMap<>\(\);\s*\};/);
+      // Nothing else: no view managers, no other override.
+      expect(source.match(/@Override/g)).toHaveLength(2);
+    }
+  });
+
+  test.skipIf(!installed)("Nitro's package is one TurboModule, NitroModules, made by getModule, and nothing else", () => {
+    const nitro = read("react-native-nitro-modules", "android/src/main/java/com/margelo/nitro/NitroModulesPackage.kt");
+    expect(nitro).toContain("class NitroModulesPackage : BaseReactPackage()");
+    expect(nitro.match(/override fun (\w+)/g)).toEqual(["override fun getModule", "override fun getReactModuleInfoProvider"]);
+    expect(read("react-native-nitro-modules", "android/src/main/java/com/margelo/nitro/NitroModules.kt")).toContain('const val NAME = "NitroModules"');
+    // JavaScript reaches Nitro through that TurboModule only.
+    expect(read("react-native-nitro-modules", "src/turbomodule/NativeNitroModules.ts")).toContain("TurboModuleRegistry.getEnforcing<Spec>('NitroModules')");
+  });
+});
+
+test.skipIf(!Bun.which("node"))("the shipped CLI (dist/node/cli.js, what settings.gradle runs) relinks too", () => {
+  const cli = resolve(import.meta.dirname, "../../dist/node/cli.js");
+  const result = Bun.spawnSync([Bun.which("node")!, cli, "android-autolinking", Bun.which("node")!, "-e", `process.stdout.write(JSON.stringify(${JSON.stringify(config())}))`]);
+  expect(result.exitCode).toBe(0);
+  expect(androidOf(JSON.parse(result.stdout.toString()) as AutolinkingConfig, "react-native-quick-crypto").packageInstance).toBe('new DeferredNitroPackage("QuickCrypto")');
 });

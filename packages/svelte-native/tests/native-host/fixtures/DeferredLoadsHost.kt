@@ -91,7 +91,8 @@ internal fun run(name: String): List<String> {
       core.register("a"); core.firstMount(); p.fire(); awaitAll(core, p)
       return p.events
     }
-    // The ask comes while the background thread is in the middle of a load: the asking thread loads what is still pending, then waits for that load.
+    // The ask comes while the background thread is in the middle of a load: the asking thread waits for it (two loads never overlap: each one's
+    // JNI_OnLoad writes Nitro's registry), and then the rest is loaded, by one thread or the other, before the ask returns.
     "while-loading" -> {
       val started = CountDownLatch(1)
       val finish = CountDownLatch(1)
@@ -100,7 +101,7 @@ internal fun run(name: String): List<String> {
       core.register("a"); core.register("b"); core.firstMount(); p.fire()
       started.await(5, TimeUnit.SECONDS)
       val asker = Thread { awaitAll(core, p) }.apply { start() }
-      // The asker has loaded b and is waiting for a: it has not said "ready".
+      // The asker waits for a: it has neither loaded b nor said "ready".
       Thread.sleep(200)
       p.events.add("a finishes")
       finish.countDown()

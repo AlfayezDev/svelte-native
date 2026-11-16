@@ -269,7 +269,9 @@ describe("headless Android config", () => {
   });
   test("settings.gradle: React Native's config command runs through the library's android-autolinking, found from the app; the community CLI's does not", () => {
     const once = applyHeadlessSettings(settings);
-    expect(once).toContain("ex.autolinkLibrariesFromCommand(svelteNativeConfigCommand + expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs)");
+    expect(once).toContain("ex.autolinkLibrariesFromCommand(svelteNativeConfigCommand + expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs, svelteNativeAppRoot.asFile, svelteNativeLockFiles)");
+    // React Native's lockfiles (its default for the command's cache) and the CLI: a new library version runs the command again.
+    expect(once).toContain('svelteNativeAppRoot.files("yarn.lock", "package-lock.json", "package.json", "react-native.config.js", svelteNativeCli)');
     expect(once).toContain(`commandLine("node", "--print", "require.resolve('@alfayez/svelte-native/package.json')")`);
     expect(once).toContain('.resolve("dist/node/cli.js")');
     expect(once).toContain('def svelteNativeConfigCommand = ["node", svelteNativeCli, "android-autolinking"]');
@@ -295,6 +297,9 @@ expoAutolinking.exclude = svelteNativeExclude
 // Svelte native: end of headless autolinking excludes
 ${settings.trimStart().replace("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)", "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs)")}`;
     expect(applyHeadlessSettings(older)).toBe(applyHeadlessSettings(settings));
+    // And the one this branch's first version wrote (the command through android-autolinking, React Native's default cache).
+    const first = applyHeadlessSettings(settings).replace(", svelteNativeAppRoot.asFile, svelteNativeLockFiles)", ")");
+    expect(applyHeadlessSettings(first)).toBe(applyHeadlessSettings(settings));
   });
   test("settings.gradle: extra packages join the headless ones in both lists, and go again with the option", () => {
     const extra = ["react-native-mmkv", "@sentry/react-native", "expo-haptics"];

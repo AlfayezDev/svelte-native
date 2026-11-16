@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -12,8 +13,8 @@ describe("build configuration", () => {
 		const env = { ...process.env };
 		delete env.UPDATES_CHANNEL;
 		if (channel !== undefined) env.UPDATES_CHANNEL = channel;
-		const evaluated = Bun.spawnSync([process.execPath, "-e", `import(${JSON.stringify(pathToFileURL(join(app, "app.config.ts")).href)}).then((module) => console.log(JSON.stringify(module.default)))`], { env });
-		return JSON.parse(evaluated.stdout.toString()) as { runtimeVersion: unknown; updates: Record<string, unknown> };
+		const evaluated = spawnSync(process.execPath, ["-e", `import(${JSON.stringify(pathToFileURL(join(app, "app.config.ts")).href)}).then((module) => console.log(JSON.stringify(module.default)))`], { env, encoding: "utf8" });
+		return JSON.parse(evaluated.stdout) as { runtimeVersion: unknown; updates: Record<string, unknown> };
 	};
 	test("app.config points at the project's EAS Update URL with an app-version runtime policy", () => {
 		const config = load("production");

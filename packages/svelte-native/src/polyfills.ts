@@ -69,7 +69,7 @@ for (const name of ["fetch", "Headers", "Request", "Response", "Blob", "File", "
 }
 
 // `crypto` (react-native-quick-crypto), `localStorage` (MMKV) and `sessionStorage` (memory), each made when it is first read: the boot loads neither library, starts neither Nitro module
-// and creates no file. A platform or a library that has defined one of the names already keeps it.
+// and creates no file (on Android their native libraries load after the start too, `DeferredLibraries.kt`). A platform or a library that has defined one of the names already keeps it.
 defineLazyGlobal(globalThis, "crypto", loadCrypto);
 defineLazyGlobal(globalThis, "localStorage", loadLocalStorage);
 defineLazyGlobal(globalThis, "sessionStorage", () => createStorage(memoryBackend()));

@@ -29,6 +29,14 @@ if (command === "doctor") {
   const { runDoctor } = await import("./doctor/index.ts");
   process.exit(runDoctor(root, args));
 }
+if (command === "android-autolinking") {
+  // Not a command for people: settings.gradle runs it around React Native's autolinking config command (`autolinking.ts`). Before the sync: it needs no routes.
+  const { runAndroidAutolinking } = await import("./autolinking.ts");
+  const status = runAndroidAutolinking(args);
+  // A pipe takes the JSON in pieces: exit once all of it is written.
+  await new Promise<void>((flushed) => process.stdout.write("", () => flushed()));
+  process.exit(status);
+}
 if (command === "css") {
   // What the Metro integration runs in a process of its own (`buildClassesSync`), and a way to see what a CSS file compiles to. Before the sync: it needs no routes.
   const { buildClasses } = await import("./css/build.ts");

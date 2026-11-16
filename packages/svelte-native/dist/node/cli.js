@@ -2062,6 +2062,77 @@ dependencies, the patches applied to the installed packages, and the app's Metro
   }
 });
 
+// src/autolinking.ts
+var autolinking_exports = {};
+__export(autolinking_exports, {
+  deferNitroLibraries: () => deferNitroLibraries,
+  deferredNitroPackages: () => deferredNitroPackages,
+  nitroPackage: () => nitroPackage,
+  relinkedPackage: () => relinkedPackage,
+  runAndroidAutolinking: () => runAndroidAutolinking
+});
+import { spawnSync as spawnSync3 } from "node:child_process";
+function relinkedPackage(name) {
+  const deferred = deferredNitroPackages[name];
+  if (deferred) return { packageImportPath: `import ${core}.DeferredNitroPackage;`, packageInstance: `new DeferredNitroPackage("${deferred.library}")` };
+  if (name === nitroPackage.name) return { packageImportPath: `import ${core}.NitroGate;`, packageInstance: "new NitroGate(new com.margelo.nitro.NitroModulesPackage())" };
+  return void 0;
+}
+function deferNitroLibraries(config) {
+  const dependencies = config.dependencies ?? {};
+  if (!linkedAsDefault(dependencies[nitroPackage.name]?.platforms?.android, nitroPackage)) return config;
+  const deferred = Object.keys(deferredNitroPackages).filter((name) => linkedAsDefault(dependencies[name]?.platforms?.android, deferredNitroPackages[name]));
+  if (deferred.length === 0) return config;
+  const relinked = { ...dependencies };
+  for (const name of [...deferred, nitroPackage.name]) {
+    const dependency = dependencies[name];
+    relinked[name] = { ...dependency, platforms: { ...dependency.platforms, android: { ...dependency.platforms.android, ...relinkedPackage(name) } } };
+  }
+  return { ...config, dependencies: relinked };
+}
+function runAndroidAutolinking(command2) {
+  const [program, ...args2] = command2;
+  if (!program) {
+    console.error("svelte-native android-autolinking: no command (settings.gradle gives it React Native's config command)");
+    return 2;
+  }
+  const result = spawnSync3(program, args2, { encoding: "utf8", stdio: ["inherit", "pipe", "inherit"], maxBuffer: 256 * 1024 * 1024 });
+  if (result.error) {
+    console.error(`svelte-native android-autolinking: could not run ${program}: ${result.error.message}`);
+    return 1;
+  }
+  if (result.status !== 0) {
+    process.stdout.write(result.stdout);
+    return result.status ?? 1;
+  }
+  let config;
+  try {
+    config = JSON.parse(result.stdout);
+  } catch {
+    process.stdout.write(result.stdout);
+    return 0;
+  }
+  if (config === null || typeof config !== "object" || Array.isArray(config)) {
+    process.stdout.write(result.stdout);
+    return 0;
+  }
+  process.stdout.write(JSON.stringify(deferNitroLibraries(config)));
+  return 0;
+}
+var core, deferredNitroPackages, nitroPackage, linkedAsDefault;
+var init_autolinking = __esm({
+  "src/autolinking.ts"() {
+    "use strict";
+    core = "expo.modules.sveltecore";
+    deferredNitroPackages = {
+      "react-native-mmkv": { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()", library: "NitroMmkv" },
+      "react-native-quick-crypto": { packageImportPath: "import com.margelo.nitro.quickcrypto.QuickCryptoPackage;", packageInstance: "new QuickCryptoPackage()", library: "QuickCrypto" }
+    };
+    nitroPackage = { name: "react-native-nitro-modules", packageImportPath: "import com.margelo.nitro.NitroModulesPackage;", packageInstance: "new NitroModulesPackage()" };
+    linkedAsDefault = (android, linked) => android != null && android.packageImportPath === linked.packageImportPath && android.packageInstance === linked.packageInstance;
+  }
+});
+
 // src/css/parse.ts
 function readChunk(css, from) {
   let text2 = "";
@@ -3819,7 +3890,7 @@ __export(build_exports, {
   unsupportedReasons: () => unsupportedReasons,
   watchClasses: () => watchClasses
 });
-import { spawnSync as spawnSync3 } from "node:child_process";
+import { spawnSync as spawnSync4 } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync as existsSync8, mkdirSync as mkdirSync3, readdirSync as readdirSync6, readFileSync as readFileSync7, statSync as statSync2, watch as watch3, writeFileSync as writeFileSync3 } from "node:fs";
 import { createRequire as createRequire3 } from "node:module";
@@ -4041,7 +4112,7 @@ function buildClassesSync(options) {
   const inputs = existsSync8(entry) ? inputsOf(candidates, entry, previous?.result.stylesheets ?? []) : "";
   if (previous !== void 0 && previous.inputs === inputs && existsSync8(file)) return { ...previous.result, changed: false };
   const cli = process.versions.bun !== void 0 && import.meta.filename.endsWith(".ts") ? sourceFile("cli.ts") : join9(packageRoot, "dist/node/cli.js");
-  const run = spawnSync3(process.execPath, [cli, "css", options.css, "--variant", options.variant, "--json"], { cwd: root2, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+  const run = spawnSync4(process.execPath, [cli, "css", options.css, "--variant", options.variant, "--json"], { cwd: root2, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
   if (run.error) throw new Error(`svelte-native: could not run the CSS build (${run.error.message})`, { cause: run.error });
   if (run.status !== 0) throw new Error(run.stderr.trim() || `svelte-native: the CSS build exited with ${run.status}`);
   const result = JSON.parse(run.stdout);
@@ -4162,6 +4233,12 @@ if (command === "init") {
 if (command === "doctor") {
   const { runDoctor: runDoctor2 } = await Promise.resolve().then(() => (init_doctor(), doctor_exports));
   process.exit(runDoctor2(root, args));
+}
+if (command === "android-autolinking") {
+  const { runAndroidAutolinking: runAndroidAutolinking2 } = await Promise.resolve().then(() => (init_autolinking(), autolinking_exports));
+  const status = runAndroidAutolinking2(args);
+  await new Promise((flushed) => process.stdout.write("", () => flushed()));
+  process.exit(status);
 }
 if (command === "css") {
   const { buildClasses: buildClasses2 } = await Promise.resolve().then(() => (init_build2(), build_exports));

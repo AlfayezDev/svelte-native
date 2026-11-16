@@ -267,6 +267,35 @@ describe("headless Android config", () => {
     expect(once).toContain("rnConfigCommand + svelteNativeExcludeArgs");
     expect(applyHeadlessSettings(once)).toBe(once);
   });
+  test("settings.gradle: React Native's config command runs through the library's android-autolinking, found from the app; the community CLI's does not", () => {
+    const once = applyHeadlessSettings(settings);
+    expect(once).toContain("ex.autolinkLibrariesFromCommand(svelteNativeConfigCommand + expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs)");
+    expect(once).toContain(`commandLine("node", "--print", "require.resolve('@alfayez/svelte-native/package.json')")`);
+    expect(once).toContain('.resolve("dist/node/cli.js")');
+    expect(once).toContain('def svelteNativeConfigCommand = ["node", svelteNativeCli, "android-autolinking"]');
+    // The definitions come before the block that uses them.
+    expect(once.indexOf("def svelteNativeConfigCommand")).toBeLessThan(once.indexOf("extensions.configure(com.facebook.react.ReactSettingsExtension)"));
+    const community = `extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
+  if (System.getenv('EXPO_USE_COMMUNITY_AUTOLINKING') == '1') {
+    ex.autolinkLibrariesFromCommand()
+  } else {
+    ex.autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)
+  }
+}
+`;
+    expect(applyHeadlessSettings(community)).toContain("    ex.autolinkLibrariesFromCommand()\n");
+  });
+  test("settings.gradle: the block an older version wrote (no android-autolinking) is replaced by the new one", () => {
+    // What 0.4.0-rc.8 wrote: the block before the extension, and the command with the excludes only.
+    const older = `
+// Svelte native: headless autolinking excludes (generated, do not edit)
+def svelteNativeExclude = ["react-native-screens"]
+def svelteNativeExcludeArgs = svelteNativeExclude.collectMany { ["--exclude", it] }
+expoAutolinking.exclude = svelteNativeExclude
+// Svelte native: end of headless autolinking excludes
+${settings.trimStart().replace("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)", "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs)")}`;
+    expect(applyHeadlessSettings(older)).toBe(applyHeadlessSettings(settings));
+  });
   test("settings.gradle: extra packages join the headless ones in both lists, and go again with the option", () => {
     const extra = ["react-native-mmkv", "@sentry/react-native", "expo-haptics"];
     const once = applyHeadlessSettings(settings, extra);

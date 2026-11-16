@@ -113,6 +113,8 @@ const delegateImport = "internal import SvelteCore // Svelte native: navigation 
 const delegateImportLine = /^internal import \w+ \/\/ Svelte native: navigation state restoration \(generated, do not edit\)\n/m;
 const gradleBegin = "// Svelte native: headless autolinking excludes (generated, do not edit)";
 const gradleEnd = "// Svelte native: end of headless autolinking excludes";
+/** The package `settings.gradle` resolves to find the library's CLI (`android-autolinking`). */
+const libraryPackage = "@alfayez/svelte-native";
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 function recyclingOverrides(option: boolean | ViewRecycling | undefined): string[] {
@@ -323,9 +325,13 @@ export function applyAppDelegate(contents: string): string {
   return `${stripped.slice(0, importEnd)}\n${delegateImport}${stripped.slice(importEnd, propertyEnd)}\n${block}${stripped.slice(propertyEnd)}`;
 }
 
-/** `settings.gradle`: excludes packages from Expo and React Native autolinking, the headless ones and `extra`. Idempotent. */
+/**
+ * `settings.gradle`: excludes packages from Expo and React Native autolinking, the headless ones and `extra`, and runs React Native's config command
+ * through the library's `android-autolinking` (`autolinking.ts`: the Nitro modules' native libraries load after the start). With
+ * `EXPO_USE_COMMUNITY_AUTOLINKING=1` the community CLI's command runs as it is. Idempotent.
+ */
 export function applyHeadlessSettings(contents: string, extra: readonly string[] = []): string {
-  const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\(expoAutolinking\.rnConfigCommand \+ svelteNativeExcludeArgs\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)");
+  const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\((?:svelteNativeConfigCommand \+ )?expoAutolinking\.rnConfigCommand \+ svelteNativeExcludeArgs\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)");
   const anchor = /^extensions\.configure\(com\.facebook\.react\.ReactSettingsExtension\)/m.exec(stripped);
   if (!anchor || !stripped.includes("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)")) throw new Error("Svelte native could not find the autolinking block in settings.gradle");
   const list = [...new Set([...headlessExcludedPackages, ...extra])].map((name) => `"${name}"`).join(", ");
@@ -334,10 +340,12 @@ export function applyHeadlessSettings(contents: string, extra: readonly string[]
     `def svelteNativeExclude = [${list}]`,
     'def svelteNativeExcludeArgs = svelteNativeExclude.collectMany { ["--exclude", it] }',
     "expoAutolinking.exclude = svelteNativeExclude",
+    `def svelteNativeCli = new File(providers.exec { workingDir(rootDir); commandLine("node", "--print", "require.resolve('${libraryPackage}/package.json')") }.standardOutput.asText.get().trim()).getParentFile().toPath().resolve("dist/node/cli.js").toString()`,
+    'def svelteNativeConfigCommand = ["node", svelteNativeCli, "android-autolinking"]',
     gradleEnd,
     "",
   ].join("\n");
-  return `${stripped.slice(0, anchor.index)}${block}${stripped.slice(anchor.index)}`.replace("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)", "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs)");
+  return `${stripped.slice(0, anchor.index)}${block}${stripped.slice(anchor.index)}`.replace("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)", "autolinkLibrariesFromCommand(svelteNativeConfigCommand + expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs)");
 }
 
 const podfileBegin = "  # Svelte native: autolinking excludes (generated, do not edit)";

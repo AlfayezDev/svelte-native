@@ -9,7 +9,7 @@ The root of `tests/` holds directories, `tsconfig.json` (the type check of the h
 | Directory | What it checks |
 |---|---|
 | `renderer/` | The renderer and the Fabric host on the fake binding: nodes, payloads against React Native's, refs, view configs, surfaces and hot updates, `fork()`, the app registry |
-| `components/` | The components and the HTML elements the lowering turns into them: accessibility, HTML elements and their flow, lists, insets, the keyboard, text whitespace; the HTML differential test (`html-differential.own-process.ts`) |
+| `components/` | The components and the HTML elements the lowering turns into them: accessibility, HTML elements and their flow, lists, insets, the keyboard, text whitespace; the HTML differential test (`html-differential.test.ts`) |
 | `animation/` | The animation layer (Reanimated's fakes), layout animations, transitions and keyframes |
 | `gestures/` | The gesture host against react-native-gesture-handler's own call sequences (golden vectors), lifecycle, guards, responders, HTML presses |
 | `foreign/` | The foreign components (maps, video, image, blur, gradients, Lottie, PDF, Rive, shadow, text, capture, ...), and `foreign/svg/`: the SVG components against react-native-svg's own classes |
@@ -29,7 +29,7 @@ The root of `tests/` holds directories, `tsconfig.json` (the type check of the h
 
 In `packages/svelte-native`:
 
-- `pnpm test` runs everything: `bun test --timeout 60000`, then `bun test --timeout 60000 ./tests/components/html-differential.own-process.ts`. The differential test is a Bun process of its own because every seed compiles and imports a page, which gets slower with every file that ran before it in a shared process; the name keeps it out of `bun test`'s discovery. The timeout matters: Bun kills the child processes of the test process (fixture servers, esbuild) when a test times out.
+- `pnpm test` runs everything: `bun test --timeout 60000`. The timeout matters: Bun kills the child processes of the test process (fixture servers, esbuild) when a test times out.
 - A directory or a file: `bun test --timeout 60000 tests/renderer`, `bun test --timeout 60000 tests/navigation/screens-ios.test.ts`; `-t "<name>"` picks tests by name.
 - Async mode: `SVELTE_NATIVE_TEST_ASYNC=1|microtask|frames bun test` compiles every component with Svelte's async mode (`support/async-mode-setup.ts`, preloaded by `bunfig.toml`, says what each value does); any other value is the default run. Tests that cannot hold in that mode skip themselves with `test.skipIf(asyncRun)`.
 - The Kotlin and C++ checks need `kotlinc`, `java` and `g++` (and an Android SDK `android.jar` and the `org.json` jar for the updates store): `eval "$(bash apps/qa/qa/ci/host-tools.sh)"` puts the pinned ones in the shell. Without a tool those tests skip; with `CI=1` `native-host/native-tools.test.ts` fails instead.
@@ -44,8 +44,9 @@ In `packages/svelte-native`:
 | `host.ts` | The one fake Fabric host: `createHost()` gives the `nativeFabricUIManager` binding (Fabric's rules: a committed node takes no more children, a ScrollView holds one), the log of calls, the committed roots, the event handler, and `install()`, which returns what `restore()`s every global it set; `FakeNode`, `flatten`, `settle` |
 | `fake-host.ts` | `fakeHost(options)`: a host installed before each test of a file (or once, `scope: "file"`) and restored after it |
 | `globals.ts` | `snapshotGlobals()`: puts the global object back as it was found |
-| `preload.ts` | Restores what a test installed when it ends, and what is left when the file ends, so no file starts with what the one before it left |
-| `bundle.ts` | The one loader of host tests: a fixture and the library's sources bundled with esbuild against stand-ins for React Native, built once per (entry, platform, options) and evaluated afresh for each `load()`; `bundle`, `evaluate`, `baseStubs`, `appStubs`, `hostPlugin`, `src()` |
+| `preload.ts` | Restores what a test installed when it ends, and what is left when the run ends (Bun runs a preload's `afterAll` once for the process, not for each file), so no file starts with what the one before it left; clears the fake timers a test set (`timers.ts`) |
+| `timers.ts` | Clears the timers a test set while its fake timers were on when it ends: Bun keeps the ones that did not fire, and the bundle each one's callback closes over, for the life of the process |
+| `bundle.ts` | The one loader of host tests: a fixture and the library's sources bundled with esbuild against stand-ins for React Native, built once per (entry, platform, options) and run afresh for each `load()` as a function, not imported (Bun keeps an imported module for the life of the process, and every collection after a few hundred of them is slower); `bundle`, `evaluate`, `baseStubs`, `appStubs`, `hostPlugin`, `src()` |
 | `router.ts` | `loadRouter`, `loadRouterApp`: the bundles of the router tests, with React Native's router-facing modules stood in for by one table whose answers a test chooses through globals (`__navigationOS`, `__navigationInsets`, `__initialURL`, `__backHandlers`, ...) |
 | `app-surface.ts` | `appSurface()`: an app started through the app registry, for the surfaces' life, hot updates and restoring |
 | `layout-host.ts` | `attachLayout(host)`: the layout half of a fake host for the animation tests (`getBoundingClientRect`, the shadow node family, Reanimated's props registry laid over every commit) |
@@ -268,7 +269,7 @@ Old file (tests/) to new file; fixtures, probes and helpers moved with their tes
 - classes.test.ts: compiler/classes.test.ts
 - docs-links.test.ts: package/docs-links.test.ts
 - hmr.test.ts: renderer/surfaces.test.ts (the surfaces' life, `init`) and navigation/surface-restore.test.ts (what the navigation keeps)
-- html-differential.own-process.ts, html-elements.test.ts, html-flow.test.ts: components/ (the differential test keeps its own process; `package.json` runs it from there)
+- html-differential.test.ts, html-elements.test.ts, html-flow.test.ts: components/
 - html-press.test.ts, responder.test.ts, responder-native.test.ts: gestures/html-press.test.ts, gestures/host-responder.test.ts, gestures/responder-native.test.ts (`responder.test.ts` of gestures/ is group 1's)
 - insets.test.ts, keyboard-boot.test.ts: components/
 - layout-animation.test.ts: animation/layout-animation.test.ts

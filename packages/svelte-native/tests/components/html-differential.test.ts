@@ -10,10 +10,9 @@ import { random } from "../support/random.ts";
  * that is made again as another component, a run of text that is kept, a container whose layout changes, would each show as a difference. `bind:this` variables are checked too: each holds
  * the handle of the element that is there now, or nothing when it is gone.
  *
- * It runs in a Bun process of its own (`pnpm test` runs it after the other files; the name keeps it out of `bun test`'s discovery): each seed
- * compiles and imports a new page, and in the shared process of the whole suite that grows slower with every file before it (state that
- * piles up on the global object: under `--isolate` it is not slower). On the OVH host it took about 30 s alone, about 110 s for 130 seeds
- * after 47 other files and 99 seeds after 95, and passed in 44 s after the same 95 files under `--isolate`.
+ * Each seed bundles, compiles and mounts a new page, which makes it the test that feels what the files before it leave in the process. It used to run in a Bun process of its own,
+ * because it got slower with every file that ran before it: each bundle a test evaluated stayed in Bun's module registry, and every collection that followed took longer
+ * (`support/bundle.ts` runs a bundle as a function now, and `support/timers.ts` lets go of the timers that kept bundles alive).
  */
 
 const INLINE_CLASSES = ["", "text-lg", "text-white", "block", "inline", "hidden", "inline-flex", "flex", "gap-2", "inline-block", "contents"];

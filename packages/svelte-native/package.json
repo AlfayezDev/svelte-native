@@ -123,7 +123,7 @@
   ],
   "scripts": {
     "typecheck": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "bun test --timeout 60000 && bun test --timeout 60000 ./tests/components/html-differential.own-process.ts",
+    "test": "bun test --timeout 60000",
     "lint": "eslint .",
     "build": "node scripts/build-node.ts"
   },

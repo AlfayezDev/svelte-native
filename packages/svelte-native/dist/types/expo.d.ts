@@ -98,7 +98,11 @@ export declare function applyMainActivity(contents: string): string;
  * compile error to read, not a silent override. Idempotent (prebuild re-runs on the same file).
  */
 export declare function applyAppDelegate(contents: string): string;
-/** `settings.gradle`: excludes packages from Expo and React Native autolinking, the headless ones and `extra`. Idempotent. */
+/**
+ * `settings.gradle`: excludes packages from Expo and React Native autolinking, the headless ones and `extra`, and runs React Native's config command
+ * through the library's `android-autolinking` (`autolinking.ts`: the Nitro modules' native libraries load after the start). With
+ * `EXPO_USE_COMMUNITY_AUTOLINKING=1` the community CLI's command runs as it is. Idempotent.
+ */
 export declare function applyHeadlessSettings(contents: string, extra?: readonly string[]): string;
 /**
  * `Podfile`: the packages Expo's `use_expo_modules!` and the React Native config command (`expo-modules-autolinking

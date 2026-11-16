@@ -109,8 +109,14 @@ object BootBoost {
   /** The calling thread (the one that called [begin]) gets its own mask back; the threads it started keep the big mask until [release]. */
   @JvmStatic fun handOver() = core.handOver()
 
-  /** The first screen is mounted (or a timeout): threads get their masks back. Safe to call any number of times, from any thread. */
-  @JvmStatic fun release() = core.release()
+  /**
+   * The first screen is mounted: threads get their masks back, and the native libraries the start left out load a little later
+   * (`DeferredLibraries`). Safe to call any number of times, from any thread.
+   */
+  @JvmStatic fun release() {
+    core.release()
+    expo.modules.sveltecore.DeferredLibraries.firstMount()
+  }
 
   /** The name of this process: `Application.getProcessName` from API 28, `/proc/self/cmdline` before; null when neither can be read. */
   private fun processName(context: Context): String? {

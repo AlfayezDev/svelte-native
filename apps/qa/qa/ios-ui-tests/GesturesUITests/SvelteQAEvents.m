@@ -18,10 +18,15 @@
 + (BOOL)dragFrom:(CGPoint)from to:(CGPoint)to press:(NSTimeInterval)press duration:(NSTimeInterval)duration error:(NSError **)error {
   Class pathClass = NSClassFromString(@"XCPointerEventPath");
   Class recordClass = NSClassFromString(@"XCSynthesizedEventRecord");
-  if (pathClass == Nil || recordClass == Nil || ![pathClass instancesRespondToSelector:@selector(initForTouchAtPoint:offset:)] ||
-      ![recordClass instancesRespondToSelector:@selector(synthesizeWithError:)]) {
+  // Every selector is checked before the first is sent: an XCTest that lacks one fails the step with these words, not with an exception in the runner.
+  BOOL complete = pathClass != Nil && recordClass != Nil && [pathClass instancesRespondToSelector:@selector(initForTouchAtPoint:offset:)] &&
+                  [pathClass instancesRespondToSelector:@selector(moveToPoint:atOffset:)] && [pathClass instancesRespondToSelector:@selector(liftUpAtOffset:)] &&
+                  [recordClass instancesRespondToSelector:@selector(initWithName:interfaceOrientation:)] &&
+                  [recordClass instancesRespondToSelector:@selector(addPointerEventPath:)] && [recordClass instancesRespondToSelector:@selector(synthesizeWithError:)];
+  if (!complete) {
     if (error != NULL) {
-      *error = [NSError errorWithDomain:@"SvelteQAEvents" code:1 userInfo:@{NSLocalizedDescriptionKey : @"this XCTest has no XCPointerEventPath or XCSynthesizedEventRecord -synthesizeWithError:"}];
+      NSString *reason = @"this XCTest lacks XCPointerEventPath or XCSynthesizedEventRecord, or one of the selectors used here; `--edge-release eased` runs XCUITest's own drag";
+      *error = [NSError errorWithDomain:@"SvelteQAEvents" code:1 userInfo:@{NSLocalizedDescriptionKey : reason}];
     }
     return NO;
   }

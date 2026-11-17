@@ -1,10 +1,12 @@
 /**
- * What `localStorage` is on the device: an MMKV instance (react-native-mmkv 4, a Nitro module) with the id `svelte-native.local-storage`, which keeps its
+ * What `localStorage` is on the device: an MMKV instance (react-native-mmkv 4, a Nitro module, vendored: `vendor/react-native-mmkv`) with the id `svelte-native.local-storage`, which keeps its
  * data in the app's files for good. The library is required, and the instance created, when the global `localStorage` is first read (`loadLocalStorage`), so an app that never
  * touches `localStorage` neither loads MMKV nor creates a file for it. It is created then, and not at the first call that reads or writes an item, so that a binary
  * without the native module is found out by the read, which answers `undefined` (`defineLazyGlobal`): `typeof localStorage` is a feature probe that works.
  */
-import type { MMKV } from "react-native-mmkv";
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- a script of `declare module`s: it cannot be imported, only referenced
+/// <reference path="./vendor-types.d.ts" />
+import type { MMKV } from "#vendor/react-native-mmkv";
 import { mark } from "./boot-marks.ts";
 import { createStorage, type StorageBackend } from "./web-storage.ts";
 
@@ -21,7 +23,7 @@ let instance: MMKV | undefined;
 export function localStorageMMKV(): MMKV {
   if (instance === undefined) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- required on the first call
-    const { createMMKV } = require("react-native-mmkv") as typeof import("react-native-mmkv");
+    const { createMMKV } = require("#vendor/react-native-mmkv") as typeof import("#vendor/react-native-mmkv");
     instance = createMMKV({ id: LOCAL_STORAGE_ID });
     mark("mmkv");
   }

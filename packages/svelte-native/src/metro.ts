@@ -11,11 +11,17 @@ import { packageRoot, sourceFile } from "./package-root.ts";
 import { checkPushConfig, pushIsOn } from "./push/config.ts";
 import { remoteResolution } from "./remote/transform.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
+import { vendoredFileAs, vendoredImport, vendoredRoot } from "./vendored.ts";
 import { classesTableFile, labIncludedFor, routesTableFile, variantName } from "./variant.ts";
 
 const require = createRequire(import.meta.url);
 const nativeSvelte = dirname(require.resolve("svelte/package.json"));
 
+/**
+ * The libraries whose `react-native` import gets the lite shim: a module of a package that only needs the few names it takes from React Native (`TurboModuleRegistry`, `Platform`, ...)
+ * and not the whole index. The origin is a file below the package in `node_modules` (the pattern), or in the library's own `vendor/` under that package's name (`isLiteOrigin`):
+ * a vendored package gets the shim exactly when its name is in this list, as the installed one did.
+ */
 export const LITE_ORIGINS = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:hermes-intl|expo|expo-modules-core|expo-file-system|react-native-reanimated|react-native-worklets|react-native-is-edge-to-edge|expo-secure-store|expo-image-picker|expo-localization|expo-crypto|expo-constants|expo-font|expo-asset|expo-splash-screen|expo-status-bar|expo-system-ui|expo-keep-awake|expo-application|react-native-nitro-modules|react-native-mmkv|react-native-quick-crypto|react-native-quick-base64|react-native-svg)[\\/]/;
 
 /**
@@ -25,6 +31,13 @@ export const LITE_ORIGINS = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]nod
  */
 export const NODE_CRYPTO: ReadonlySet<string> = new Set(["crypto", "node:crypto"]);
 export const QUICK_CRYPTO = "react-native-quick-crypto";
+
+/** Whether a file is one `react-native` is shimmed for (`LITE_ORIGINS`): a package of `node_modules`, or one of the library's vendored packages standing in for it. */
+export function isLiteOrigin(path: string): boolean {
+  if (LITE_ORIGINS.test(path)) return true;
+  const vendored = vendoredFileAs(path);
+  return vendored !== undefined && LITE_ORIGINS.test(`/node_modules/${vendored}`);
+}
 
 export const INITIALIZE_CORE = /react-native[\\/]Libraries[\\/]Core[\\/]InitializeCore\.js$/;
 
@@ -299,13 +312,17 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
       const nativeContext = { ...context, originModulePath: resolve(nativeSvelte, "native-entry.js"), unstable_conditionNames: ["browser", "require"] };
       return context.resolveRequest(nativeContext, moduleName, platform);
     }
-    if (moduleName === "react-native" && LITE_ORIGINS.test(context.originModulePath)) {
+    if (moduleName === "react-native" && isLiteOrigin(context.originModulePath)) {
       return { type: "sourceFile", filePath: sourceFile("fabric/react-native-lite.ts") };
     }
     if (moduleName === "esm-env") {
       return { type: "sourceFile", filePath: sourceFile("environment.ts") };
     }
-    const result = resolveRequest ? resolveRequest(context, moduleName, platform) : context.resolveRequest(context, moduleName, platform);
+    // The packages the library carries (`vendored.ts`) are the app's for every importer: the app, a library that depends on them (react-native-quick-crypto asks for the Nitro runtime), the
+    // copy itself. Their names, and the paths below them, resolve to `vendor/<name>/` of the library, where the library's own imports (`#vendor/<name>`) already are: one copy, one module.
+    const vendoredName = vendoredImport(moduleName);
+    const target = vendoredName ? join(vendoredRoot(vendoredName.vendored.name), vendoredName.subpath) : moduleName;
+    const result = resolveRequest ? resolveRequest(context, target, platform) : context.resolveRequest(context, target, platform);
     if (result.type === "sourceFile") {
       const stubbedFile = stubForFile(result.filePath);
       if (stubbedFile !== null) return { type: "sourceFile", filePath: stubbedFile };

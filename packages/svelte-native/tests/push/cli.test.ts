@@ -281,6 +281,7 @@ describe("doctor --server: variables that do not load", () => {
       [JSON.stringify({ project_id: "p", private_key: RSA_PEM }), "has no `client_email`"],
       [JSON.stringify({ client_email: "e", private_key: RSA_PEM }), "has no `project_id`"],
       [JSON.stringify(serviceAccount({ token_uri: 5 })), "has a `token_uri` that is not a string"],
+      [JSON.stringify(serviceAccount({ token_uri: "ftp://example.test/token" })), "has a `token_uri` that is not an http or https URL"],
     ] as const) {
       const { failures, google, text } = await run({ FCM_SERVICE_ACCOUNT: value });
       expect(failures[0]?.message, problem).toContain(`FCM_SERVICE_ACCOUNT (the variable's text) ${problem}`);
@@ -395,7 +396,7 @@ const bodyOf = (seen: Seen | undefined): Record<string, unknown> => JSON.parse(s
 describe("push send: a message to FCM", () => {
   test("a notification with a link and data reaches FCM as the sender maps it, and the result is the message id (exit 0)", async () => {
     const { google, env } = await providers();
-    const result = await send(["send", "--token", FCM_TOKEN, "--title", "Order ready", "--body", "Pickup at gate 3", "--url", "/orders/42", "--data", "order=42", "--data", "note=a=b", "--collapse-key", "orders", "--priority", "high", "--ttl", "60", "--channel", "orders", "--sound", "none"], env);
+    const result = await send(["send", "--token", FCM_TOKEN, "--title", "Order ready", "--body", "Pickup at gate 3", "--url", "/orders/42", "--data", "order=42", "--data", "note=a=b", "--data", "toString=1", "--data", "valueOf=2", "--collapse-key", "orders", "--priority", "high", "--ttl", "60", "--channel", "orders", "--sound", "none"], env);
     expect(result).toEqual({ status: 0, out: "sent to fcm (io.example.app): 0:1700000000%31bd1c96\n", err: "" });
     expect(google.fcm).toHaveLength(1);
     expect(google.fcm[0]?.path).toBe("/v1/projects/test-project/messages:send");
@@ -403,7 +404,8 @@ describe("push send: a message to FCM", () => {
     expect(bodyOf(google.fcm[0])).toEqual({
       message: {
         token: "fcm-registration-token",
-        data: { order: "42", note: "a=b", url: "/orders/42" },
+        // Keys named like members of Object.prototype are keys like any other.
+        data: { order: "42", note: "a=b", toString: "1", valueOf: "2", url: "/orders/42" },
         android: { collapse_key: "orders", priority: "HIGH", ttl: "60s", notification: { title: "Order ready", body: "Pickup at gate 3", channel_id: "orders" } },
       },
     });

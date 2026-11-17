@@ -16,10 +16,18 @@ function retryAfterOf(value) {
   return Number.isNaN(date) ? void 0 : Math.max(0, date - Date.now());
 }
 function describeNetworkError(error) {
-  if (!(error instanceof Error)) return String(error);
+  if (!(error instanceof Error)) return withoutSecrets(String(error));
   const cause = error.cause instanceof Error ? error.cause.message : void 0;
-  return cause === void 0 || cause === error.message ? error.message : `${error.message} (${cause})`;
+  return withoutSecrets(cause === void 0 || cause === error.message ? error.message : `${error.message} (${cause})`);
 }
+function hostOf(url) {
+  try {
+    return new URL(url).host || "the endpoint";
+  } catch {
+    return "the endpoint";
+  }
+}
+var withoutSecrets = (text) => text.replace(/\b([a-z][a-z\d+.-]*:\/\/)[^\s"'<>]+/gi, (url, scheme) => `${scheme}${hostOf(url)}`);
 function parseJson(text) {
   if (text === "") return void 0;
   try {
@@ -104,7 +112,7 @@ function apnsRequest(token, message) {
   if (priority !== void 0) headers["apns-priority"] = priority;
   if (message.ttl !== void 0) headers["apns-expiration"] = String(message.ttl === 0 ? 0 : Math.floor(Date.now() / 1e3) + message.ttl);
   if (message.collapseKey !== void 0) headers["apns-collapse-id"] = headerText(message.collapseKey, "`collapseKey`");
-  if (message.data !== void 0 && "aps" in message.data) throw new TypeError("`data.aps` is APNs's own key and cannot carry data: name the key something else.");
+  if (message.data !== void 0 && Object.hasOwn(message.data, "aps")) throw new TypeError("`data.aps` is APNs's own key and cannot carry data: name the key something else.");
   const aps = {};
   if (silent) {
     aps["content-available"] = 1;
@@ -120,6 +128,7 @@ function apnsFailure(status, reason, retryAfter) {
   if (reason === "BadDeviceToken" || reason === "DeviceTokenNotForTopic") return failure("invalid-token", detail, status);
   if (status === 410 && (reason === "Unregistered" || reason === "ExpiredToken")) return failure("gone", detail, status);
   if (status === 401 || status === 403) return failure("auth", detail, status);
+  if (reason === "IdleTimeout") return failure("unavailable", detail, status, retryAfter);
   if (status === 429) return failure("rate-limited", detail, status, retryAfter);
   if (status >= 500) return failure("unavailable", detail, status, retryAfter);
   if (status === 400 || status === 413) return failure("invalid-message", detail, status);
@@ -345,7 +354,7 @@ function fcmFailure(status, body, text, retryAfter) {
     case "UNREGISTERED":
       return failure("gone", detail, status);
     case "SENDER_ID_MISMATCH":
-      return failure("invalid-token", detail, status);
+      return failure("auth", `${detail}: the token belongs to another Firebase project than the service account's; check the server's credentials before suspecting the token`, status);
     case "INVALID_ARGUMENT":
       return failure(aboutToken ? "invalid-token" : "invalid-message", detail, status);
     case "QUOTA_EXCEEDED":
@@ -432,7 +441,7 @@ var FcmSender = class {
       });
       text = await response.text();
     } catch (error) {
-      return failure("unavailable", `The token request to ${tokenUrl} failed: ${describeNetworkError(error)}`);
+      return failure("unavailable", `The token request to ${hostOf(tokenUrl)} failed: ${describeNetworkError(error)}`);
     }
     const body = parseJson(text);
     if (!response.ok) {
@@ -451,6 +460,7 @@ var FcmSender = class {
 
 // src/push/server.ts
 var DEFAULT_TIMEOUT = 3e4;
+var MAX_TIMEOUT = 2147483647;
 var show = (value) => inspect(value, { depth: 0 });
 function checkText(name, value) {
   if (value !== void 0 && typeof value !== "string") throw new TypeError(`${name} must be a string, not ${show(value)}.`);
@@ -484,7 +494,7 @@ function checkMessage(message) {
     for (const [key, value] of Object.entries(message.data)) {
       if (typeof value !== "string") throw new TypeError(`\`data.${key}\` must be a string (both providers carry strings only), not ${show(value)}.`);
     }
-    if (message.url !== void 0 && "url" in message.data) throw new TypeError("`url` is carried as the data key `url`: pass the link as `url`, not also in `data`.");
+    if (message.url !== void 0 && Object.hasOwn(message.data, "url")) throw new TypeError("`url` is carried as the data key `url`: pass the link as `url`, not also in `data`.");
   }
   if (message.silent) {
     for (const name of ["title", "body", "badge", "sound", "channel"]) {
@@ -496,7 +506,7 @@ function checkMessage(message) {
 }
 function createPush(options = {}) {
   const timeout = options.timeout ?? DEFAULT_TIMEOUT;
-  if (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0) throw new TypeError(`\`timeout\` must be a number of milliseconds above 0, not ${show(timeout)}.`);
+  if (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0 || timeout > MAX_TIMEOUT) throw new TypeError(`\`timeout\` must be a number of milliseconds above 0 and at most ${MAX_TIMEOUT}, not ${show(timeout)}.`);
   const fcm = createFcm(options.fcm, timeout);
   const apns = createApns(options.apns, timeout);
   let closed = false;

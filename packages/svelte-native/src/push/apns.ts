@@ -62,7 +62,7 @@ export function apnsRequest(token: PushToken, message: PushSend): { headers: Out
   if (message.ttl !== undefined) headers["apns-expiration"] = String(message.ttl === 0 ? 0 : Math.floor(Date.now() / 1000) + message.ttl);
   if (message.collapseKey !== undefined) headers["apns-collapse-id"] = headerText(message.collapseKey, "`collapseKey`");
 
-  if (message.data !== undefined && "aps" in message.data) throw new TypeError("`data.aps` is APNs's own key and cannot carry data: name the key something else.");
+  if (message.data !== undefined && Object.hasOwn(message.data, "aps")) throw new TypeError("`data.aps` is APNs's own key and cannot carry data: name the key something else.");
   const aps: Record<string, unknown> = {};
   if (silent) {
     aps["content-available"] = 1;
@@ -84,6 +84,8 @@ export function apnsFailure(status: number, reason: string | undefined, retryAft
   if (reason === "BadDeviceToken" || reason === "DeviceTokenNotForTopic") return failure("invalid-token", detail, status);
   if (status === 410 && (reason === "Unregistered" || reason === "ExpiredToken")) return failure("gone", detail, status);
   if (status === 401 || status === 403) return failure("auth", detail, status);
+  // The connection was idle too long and APNs closed it: a new connection takes the same request.
+  if (reason === "IdleTimeout") return failure("unavailable", detail, status, retryAfter);
   if (status === 429) return failure("rate-limited", detail, status, retryAfter);
   if (status >= 500) return failure("unavailable", detail, status, retryAfter);
   if (status === 400 || status === 413) return failure("invalid-message", detail, status);

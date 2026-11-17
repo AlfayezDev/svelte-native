@@ -308,10 +308,12 @@ describe("FCM: the access token", () => {
 
   test("a token endpoint that cannot be reached is `unavailable`", async () => {
     const google = await startGoogle();
-    const push = make({ fcm: fcmOptions(google, { tokenUrl: `${await deadUrl()}/token` }) });
+    const dead = await deadUrl();
+    const push = make({ fcm: fcmOptions(google, { tokenUrl: `${dead}/token` }) });
     const result = await push.send(android, note);
     expect(result).toMatchObject({ ok: false, reason: "unavailable" });
-    expect((result as Failure).detail).toContain("/token");
+    // The endpoint by its host: the rest of a URL may hold a password or a key.
+    expect((result as Failure).detail).toStartWith(`The token request to ${new URL(dead).host} failed: `);
     expect(google.fcm).toHaveLength(0);
   });
 
@@ -398,7 +400,8 @@ describe("FCM: every answer", () => {
     ["INVALID_ARGUMENT about the registration token (its field)", { status: 400, json: error(400, "INVALID_ARGUMENT", "Request contains an invalid argument.", "INVALID_ARGUMENT", [badToken]) }, { reason: "invalid-token", status: 400, detail: "Request contains an invalid argument." }],
     ["INVALID_ARGUMENT about the registration token (its message)", { status: 400, json: error(400, "INVALID_ARGUMENT", "The registration token is not a valid FCM registration token", "INVALID_ARGUMENT") }, { reason: "invalid-token", status: 400, detail: "The registration token is not a valid FCM registration token" }],
     ["a 400 with no FCM error", { status: 400, json: error(400, "INVALID_ARGUMENT", "Invalid JSON payload received.") }, { reason: "invalid-message", status: 400, detail: "Invalid JSON payload received." }],
-    ["SENDER_ID_MISMATCH (403)", { status: 403, json: error(403, "PERMISSION_DENIED", "SenderId mismatch", "SENDER_ID_MISMATCH") }, { reason: "invalid-token", status: 403, detail: "SenderId mismatch" }],
+    // Every token answers it when the server has another project's credentials: `auth`, which no app deletes tokens on.
+    ["SENDER_ID_MISMATCH (403) is the server's credentials, not the token", { status: 403, json: error(403, "PERMISSION_DENIED", "SenderId mismatch", "SENDER_ID_MISMATCH") }, { reason: "auth", status: 403, detail: "SenderId mismatch: the token belongs to another Firebase project than the service account's; check the server's credentials before suspecting the token" }],
     ["QUOTA_EXCEEDED (429) with a Retry-After", { status: 429, headers: { "retry-after": "30" }, json: error(429, "RESOURCE_EXHAUSTED", "Quota exceeded for quota metric 'Send requests'", "QUOTA_EXCEEDED") }, { reason: "rate-limited", status: 429, retryAfter: 30_000, detail: "Quota exceeded for quota metric 'Send requests'" }],
     ["a 429 with no body and no Retry-After", { status: 429 }, { reason: "rate-limited", status: 429, detail: "HTTP 429" }],
     ["UNAVAILABLE (503) with a Retry-After", { status: 503, headers: { "retry-after": "5" }, json: error(503, "UNAVAILABLE", "The service is currently unavailable.", "UNAVAILABLE") }, { reason: "unavailable", status: 503, retryAfter: 5000, detail: "The service is currently unavailable." }],
@@ -441,6 +444,18 @@ describe("FCM: every answer", () => {
     expect(result).toMatchObject({ ok: false, reason: "unavailable" });
     expect((result as Failure).status).toBeUndefined();
     expect((result as Failure).detail).not.toBe("");
+  });
+
+  test("a URL in a network error is cut to its host: a password or a key in the query never reaches `detail`", async () => {
+    const google = await startGoogle();
+    const withPassword = await make({ fcm: fcmOptions(google, { tokenUrl: "https://user:hunter2@127.0.0.1:1/token?key=SECRETQUERY" }) }).send(android, note);
+    expect(withPassword).toMatchObject({ ok: false, reason: "unavailable" });
+    expect((withPassword as Failure).detail).not.toMatch(/hunter2|SECRETQUERY|user:/);
+    expect((withPassword as Failure).detail).toContain("127.0.0.1:1");
+    const dead = await deadUrl();
+    const withQuery = await make({ fcm: fcmOptions(google, { baseUrl: `${dead}/?key=SECRETQUERY` }) }).send(android, note);
+    expect(withQuery).toMatchObject({ ok: false, reason: "unavailable" });
+    expect((withQuery as Failure).detail).not.toContain("SECRETQUERY");
   });
 
   test("a server that does not answer is `unavailable` after the timeout", async () => {
@@ -641,6 +656,7 @@ describe("APNs: every answer", () => {
     ["403 InvalidProviderToken", { status: 403, json: { reason: "InvalidProviderToken" } }, { reason: "auth", status: 403, detail: "InvalidProviderToken" }],
     ["403 ExpiredProviderToken, that cannot be replaced yet", { status: 403, json: { reason: "ExpiredProviderToken" } }, { reason: "auth", status: 403, detail: "ExpiredProviderToken" }],
     ["403 TopicDisallowed", { status: 403, json: { reason: "TopicDisallowed" } }, { reason: "auth", status: 403, detail: "TopicDisallowed" }],
+    ["400 IdleTimeout: APNs closed an idle connection, and a new one takes the same request", { status: 400, json: { reason: "IdleTimeout" } }, { reason: "unavailable", status: 400, detail: "IdleTimeout" }],
     ["429 TooManyRequests, with a Retry-After", { status: 429, headers: { "retry-after": "20" }, json: { reason: "TooManyRequests" } }, { reason: "rate-limited", status: 429, retryAfter: 20_000, detail: "TooManyRequests" }],
     ["429 TooManyProviderTokenUpdates", { status: 429, json: { reason: "TooManyProviderTokenUpdates" } }, { reason: "rate-limited", status: 429, detail: "TooManyProviderTokenUpdates" }],
     ["500 InternalServerError", { status: 500, json: { reason: "InternalServerError" } }, { reason: "unavailable", status: 500, detail: "InternalServerError" }],
@@ -891,6 +907,8 @@ describe("what is a programming error", () => {
     expect(() => createPush({ apns: { keyId: "ABC123DEFG", teamId: "TEAM123456" } })).toThrow(/`apns.key` is needed/);
     expect(() => createPush({ apns: { ...apns, sandboxUrl: "nope" } })).toThrow(/`apns.sandboxUrl`/);
     expect(() => createPush({ apns: { ...apns, productionUrl: "file:///x" } })).toThrow(/`apns.productionUrl`/);
-    for (const timeout of [0, -1, Number.NaN, Infinity]) expect(() => createPush({ timeout })).toThrow(/`timeout`/);
+    // Above 2^31 - 1 a timer of Node's fires at once, and every send would answer `unavailable`.
+    for (const timeout of [0, -1, Number.NaN, Infinity, 2_147_483_648, 3e9]) expect(() => createPush({ timeout })).toThrow(/`timeout`/);
+    expect(() => createPush({ timeout: 2_147_483_647 })).not.toThrow();
   });
 });

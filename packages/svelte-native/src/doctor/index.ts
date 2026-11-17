@@ -12,8 +12,8 @@ const USAGE = `Usage: svelte-native doctor [--json]
        svelte-native doctor --server [--app <bundle id>] [--json]
 
 Checks, from the app's directory, that the setup the library needs is complete: Node and pnpm, the custom-renderer Svelte, the peer
-dependencies, the patches applied to the installed packages, and the app's Metro and Expo configs; and, when the app has push (the
-@alfayez/svelte-native-push package), its push setup: the package, the Google services file, the iOS entitlement and background mode. One
+dependencies, the patches applied to the installed packages, and the app's Metro and Expo configs; and, when the app has push
+(capabilities.push), its push setup: the Google services file, the iOS entitlement and background mode, and a prebuild as new as the config. One
 line per check; the exit status is 1 when a required check fails.
 
   --json          print the checks as JSON instead of text

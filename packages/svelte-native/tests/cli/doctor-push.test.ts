@@ -4,13 +4,12 @@ import { join } from "node:path";
 import { CapabilityConfigError, pushSettings, withCapabilities } from "../../src/capabilities.ts";
 import { runChecks, type Check } from "../../src/doctor/checks.ts";
 import { formatReport, runDoctor } from "../../src/doctor/index.ts";
-import { plistStrings, plistString } from "../../src/doctor/push.ts";
-import { otherPushLibraries, pushPackage } from "../../src/push/config.ts";
-import { libraryVersion } from "../support/versions.ts";
+import { ANDROID_PUSH_FLAG, IOS_PUSH_FLAG, plistStrings, plistString } from "../../src/doctor/push.ts";
+import { otherPushLibraries } from "../../src/push/config.ts";
 import { library, makeFakeApp, nativePeers, repository } from "./support/doctor-fixture.ts";
 
-// The push section of `svelte-native doctor` (src/doctor/push.ts) against fake apps: what it says of the push package, the Google services file, and the iOS files the last prebuild
-// wrote, from reading files alone. The `--server` half, which makes requests, is in tests/push/cli.test.ts.
+// The push section of `svelte-native doctor` (src/doctor/push.ts) against fake apps: what it says of `capabilities.push`, the Google services file, and the native files the last
+// prebuild wrote, from reading files alone. Push is part of the library: there is no package to check. The `--server` half, which makes requests, is in tests/push/cli.test.ts.
 
 const apps: string[] = [];
 afterAll(() => { for (const app of apps) rmSync(app, { recursive: true, force: true }); });
@@ -25,21 +24,16 @@ const appJson = (push: unknown, extra: Record<string, unknown> = {}, androidPack
   JSON.stringify({ expo: { name: "fake", ...(androidPackage ? { android: { package: androidPackage } } : {}), plugins: [[library.name, push === undefined ? {} : { capabilities: { push } }]], ...extra } });
 
 type PushApp = {
-  /** The version of the installed push package; `null`: not installed. Default the library's. */
-  version?: string | null;
-  /** The app's package.json lists the push package. Default true. */
-  declared?: boolean;
   /** Other packages the app depends on, and the ones that are installed. */
   dependencies?: string[];
   installed?: string[];
   files?: Record<string, string | null>;
 };
 
-/** The doctor's checks for a fake app with the push package, as `options` says, and `files` over the defaults: an `app.json` with push on and a Google services file for `io.e.a`. */
+/** The doctor's checks for a fake app, as `options` says, and `files` over the defaults: an `app.json` with push on and a Google services file for `io.e.a`. */
 function run(options: PushApp = {}): { root: string; checks: Check[]; push: Check[] } {
-  const version = options.version === undefined ? libraryVersion : options.version;
-  const dependencies = { [library.name]: "*", ...Object.fromEntries(nativePeers.map((name) => [name, "*"])), ...(options.declared === false ? {} : { [pushPackage]: "*" }), ...Object.fromEntries((options.dependencies ?? []).map((name) => [name, "*"])) };
-  const stubs = Object.fromEntries([...(version === null ? [] : [[pushPackage, version]]), ...(options.installed ?? []).map((name) => [name, "1.0.0"])].map(([name, installed]) => [`node_modules/${name}/package.json`, JSON.stringify({ name, version: installed })]));
+  const dependencies = { [library.name]: "*", ...Object.fromEntries(nativePeers.map((name) => [name, "*"])), ...Object.fromEntries((options.dependencies ?? []).map((name) => [name, "*"])) };
+  const stubs = Object.fromEntries((options.installed ?? []).map((name) => [`node_modules/${name}/package.json`, JSON.stringify({ name, version: "1.0.0" })]));
   const root = makeFakeApp({
     files: { "package.json": JSON.stringify({ name: "fake-app", version: "1.0.0", dependencies }), "app.json": appJson(fullPush), "google-services.json": googleServices("io.e.a"), ...stubs, ...options.files },
   });
@@ -55,19 +49,25 @@ const entitlements = (environment?: string) =>
   `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n  <dict>${environment ? `\n    <key>aps-environment</key>\n    <string>${environment}</string>` : ""}\n  </dict>\n</plist>\n`;
 const infoPlist = (modes?: string[]) =>
   `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n  <dict>\n    <key>CFBundleName</key>\n    <string>App</string>${modes ? `\n    <key>UIBackgroundModes</key>\n    <array>${modes.map((mode) => `\n      <string>${mode}</string>`).join("")}\n    </array>` : ""}\n  </dict>\n</plist>\n`;
-/** The iOS project a prebuild writes: `ios/App.xcodeproj`, the entitlements and the Info.plist of the app (`null`: without the entitlement, or without background modes). */
-const ios = ({ environment = "production", modes = ["remote-notification"] }: { environment?: string | null; modes?: string[] | null } = {}): Record<string, string> => ({
+/**
+ * The iOS project a prebuild writes: `ios/App.xcodeproj`, the entitlements and the Info.plist of the app (`null`: without the entitlement, or without background modes), with the
+ * flag that turns push on (`flag: false`: a prebuild that did not).
+ */
+const ios = ({ environment = "production", modes = ["remote-notification"], flag = true }: { environment?: string | null; modes?: string[] | null; flag?: boolean } = {}): Record<string, string> => ({
   "ios/App.xcodeproj/project.pbxproj": "",
   "ios/App/App.entitlements": entitlements(environment ?? undefined),
-  "ios/App/Info.plist": infoPlist(modes ?? undefined),
+  "ios/App/Info.plist": infoPlist(modes ?? undefined).replace("<dict>", flag ? `<dict>\n    <key>${IOS_PUSH_FLAG}</key>\n    <true/>` : "<dict>"),
+});
+/** The Android manifest a prebuild writes, with the flag that turns push on or without it. */
+const androidManifest = (flag: boolean): Record<string, string> => ({
+  "android/app/src/main/AndroidManifest.xml": `<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n  <application>${flag ? `\n    <meta-data android:name="${ANDROID_PUSH_FLAG}" android:value="true"/>` : ""}\n  </application>\n</manifest>\n`,
 });
 
 describe("an app with push that is set up", () => {
   const { push } = run();
 
-  test("passes its checks: the package, no other push library, the capability, the Google services file and its client; the iOS files wait for a prebuild", () => {
+  test("passes its checks: no other push library, the capability, the Google services file and its client; the iOS files wait for a prebuild", () => {
     expect(push.map((check) => [check.status, check.message])).toEqual([
-      ["pass", `${pushPackage} ${libraryVersion} is a dependency of the app and matches ${library.name} ${libraryVersion}`],
       ["pass", "no other push library (expo-notifications, @react-native-firebase/messaging) is installed"],
       ["pass", "app.json turns capabilities.push on (android, ios)"],
       ["pass", "google-services.json is JSON and holds no server secret (Firebase project demo)"],
@@ -79,87 +79,69 @@ describe("an app with push that is set up", () => {
   test("is its own group, printed under `push`, and the other groups are as they were", () => {
     const text = formatReport(run().checks);
     expect(text).toContain("\npush\n");
-    expect(text).toMatch(/\npush\n {2}pass {2}@alfayez\/svelte-native-push /);
+    expect(text).toMatch(/\npush\n {2}pass {2}no other push library /);
   });
 
-  test("with the iOS project of the last prebuild, the entitlement and the background mode pass too", () => {
-    const { push: withIos } = run({ files: ios() });
-    expect(statuses(withIos)).toEqual(Array(7).fill("pass"));
-    expect(withIos.at(-2)?.message).toBe("ios/App/App.entitlements has aps-environment production");
-    expect(withIos.at(-1)?.message).toBe("ios/App/Info.plist lists remote-notification in UIBackgroundModes");
+  test("with the native projects of the last prebuild, the entitlement, the background mode and the prebuild's flags pass too", () => {
+    const { push: prebuilt } = run({ files: { ...ios(), ...androidManifest(true) } });
+    expect(statuses(prebuilt)).toEqual(Array(8).fill("pass"));
+    expect(prebuilt.slice(-4).map((check) => check.message)).toEqual([
+      "ios/App/App.entitlements has aps-environment production",
+      "ios/App/Info.plist lists remote-notification in UIBackgroundModes",
+      `the last prebuild turned push on for android: android/app/src/main/AndroidManifest.xml (${ANDROID_PUSH_FLAG})`,
+      `the last prebuild turned push on for ios: ios/…/Info.plist (${IOS_PUSH_FLAG})`,
+    ]);
   });
 });
 
 describe("an app with no push", () => {
-  test("has no push line at all", () => {
-    const { checks } = run({ version: null, declared: false, files: { "app.json": appJson(undefined), "google-services.json": null } });
-    expect(checks.filter((check) => check.group === "push")).toEqual([]);
-    // The app of the other doctor tests, which has never heard of push.
+  test("has no push line at all: no capabilities.push, the plugin by name alone, push: false, or an app that never heard of push", () => {
+    for (const config of [appJson(undefined), JSON.stringify({ expo: { plugins: [library.name] } }), appJson(false)]) {
+      const { checks } = run({ files: { "app.json": config, "google-services.json": null } });
+      expect(checks.filter((check) => check.group === "push")).toEqual([]);
+    }
     const plain = runChecks({ appRoot: makeFakeApp(), packageRoot: join(repository, "packages/svelte-native"), ...tools });
     expect(plain.some((check) => check.group === "push")).toBe(false);
   });
 
-  test("but one whose app.json turns the capability on is an app with push, and says its package is missing", () => {
-    const { push } = run({ version: null, declared: false });
-    expect(find(push, `${pushPackage} is not installed`)).toMatchObject({ status: "fail" });
+  test("a second push library is that library's business when push is off", () => {
+    const { checks } = run({ installed: ["expo-notifications"], files: { "app.json": appJson(false) } });
+    expect(checks.filter((check) => check.group === "push")).toEqual([]);
   });
 });
 
-describe("the push package", () => {
-  test("not installed, though it is a dependency: install", () => {
-    const { push } = run({ version: null });
-    expect(push[0]).toMatchObject({ status: "fail", message: `${pushPackage} is a dependency of the app but is not installed`, fix: "pnpm install" });
-  });
-
-  test("not installed and not a dependency: the fix is the same tag as the library", () => {
-    const { push } = run({ version: null, declared: false });
-    expect(push[0]?.status).toBe("fail");
-    expect(push[0]?.fix).toContain(`#v${libraryVersion}&path:packages/svelte-native-push`);
-  });
-
-  test("another version than the library's is a failure that says to install the same tag", () => {
-    const { push } = run({ version: "0.0.1" });
-    expect(push[0]).toMatchObject({ status: "fail", message: expect.stringContaining(`${pushPackage} 0.0.1 does not match ${library.name} ${libraryVersion}`) });
-    expect(push[0]?.fix).toContain("install the same tag");
-    expect(push[0]?.fix).toContain(`#v${libraryVersion}`);
-  });
-
-  test("installed but not a dependency of the app: autolinking would not link it", () => {
-    const { push } = run({ declared: false });
-    expect(push[0]?.status).toBe("fail");
-    expect(push[0]?.message).toContain("is installed but is not a dependency of the app");
-    expect(push[0]?.message).toContain("autolinking links only the app's own dependencies");
-  });
-
+describe("one push library", () => {
   for (const other of otherPushLibraries) {
-    test(`${other} beside it is a failure: an app has one push library`, () => {
+    test(`${other} with capabilities.push on is a failure: an app has one push library`, () => {
       const installed = run({ installed: [other] }).push;
-      expect(find(installed, `${other} is installed beside ${pushPackage}`)).toMatchObject({ status: "fail", fix: expect.stringContaining(`pnpm remove ${other}`) });
+      expect(find(installed, `${other} is installed and capabilities.push is on`)).toMatchObject({ status: "fail", fix: expect.stringContaining(`pnpm remove ${other}`) });
       expect(find(installed, "one push library")?.message).toContain("FirebaseMessagingService");
       expect(find(installed, "no other push library")).toBeUndefined();
       // Declared and not installed yet (a pnpm install is due) is as much a second library.
-      expect(find(run({ dependencies: [other] }).push, `${other} is installed beside`)?.status).toBe("fail");
+      expect(find(run({ dependencies: [other] }).push, `${other} is installed and capabilities.push is on`)?.status).toBe("fail");
     });
   }
 });
 
-describe("the capability", () => {
-  test("an app.json whose plugin has no capabilities.push, with the push package installed, is a failure the prebuild would make too", () => {
-    const { push } = run({ files: { "app.json": appJson(undefined) } });
-    expect(find(push, "does not turn capabilities.push on")).toMatchObject({ status: "fail" });
-    // A capability that is off has no platform to check.
-    expect(push.filter((check) => /google-services|aps-environment/.test(check.message))).toEqual([]);
-  });
-
-  test("a plugin listed by name alone, and `push: false`, are off", () => {
-    for (const config of [JSON.stringify({ expo: { plugins: [library.name] } }), appJson(false)]) {
-      expect(find(run({ files: { "app.json": config } }).push, "does not turn capabilities.push on")?.status).toBe("fail");
+describe("the prebuild", () => {
+  test("a platform the config names, whose native project the last prebuild wrote without push, is a prebuild older than the config", () => {
+    const { push } = run({ files: { ...ios({ flag: false }), ...androidManifest(false) } });
+    for (const platform of ["android", "ios"]) {
+      expect(find(push, `capabilities.push names ${platform}, and the last prebuild did not turn push on there`)).toMatchObject({ status: "fail", fix: `npx expo prebuild --platform ${platform}, then build the app again` });
     }
   });
 
-  test("with an app.config.ts the doctor cannot say it is off: it says what it could not find, not that the capability is missing", () => {
-    const { push } = run({ files: { "app.json": JSON.stringify({ expo: { name: "fake" } }), "app.config.ts": "export default ({ config }) => config;\n", "google-services.json": null } });
-    expect(find(push, "does not turn capabilities.push on")).toBeUndefined();
+  test("a platform the config leaves out, or a native project not written yet, has nothing to say", () => {
+    const androidOnly = run({ files: { "app.json": appJson({ android: { googleServicesFile: "./google-services.json" } }), ...ios({ flag: false }), ...androidManifest(true) } }).push;
+    expect(find(androidOnly, "prebuild turned push on for android")?.status).toBe("pass");
+    expect(find(androidOnly, "for ios")).toBeUndefined();
+    expect(find(run().push, "the last prebuild")).toBeUndefined();
+  });
+
+  test("with an app.config.ts, the config is code: no section without a prebuild that turned push on, and with one the doctor checks what it can", () => {
+    const code = { "app.json": JSON.stringify({ expo: { name: "fake" } }), "app.config.ts": "export default ({ config }) => config;\n", "google-services.json": null };
+    expect(run({ files: code }).push).toEqual([]);
+    const { push } = run({ files: { ...code, ...androidManifest(true) } });
     expect(find(push, "could not find the Google services file")).toMatchObject({ status: "unknown" });
     expect(find(push, "app.config.ts is code that the doctor does not run")).toBeDefined();
   });
@@ -235,10 +217,9 @@ describe("the capability's value: the doctor refuses what the plugin refuses, wi
   test("a capability that is off is not refused by either: false, null and leaving it out", () => {
     for (const push of [false, null, undefined]) {
       const { root, push: checks } = run({ files: { "app.json": appJson(push) } });
-      expect(refusal(checks)).toBeUndefined();
-      // With the package installed the plugin refuses the capability that is off, and the doctor says that, not that the value is malformed.
-      expect(pluginsAnswer(root, push)?.message).toContain("is installed, but the push capability is off");
-      expect(find(checks, "does not turn capabilities.push on")?.status).toBe("fail");
+      expect(pluginsAnswer(root, push)).toBeUndefined();
+      // Push is off: the doctor has no push section to say anything in.
+      expect(checks).toEqual([]);
     }
   });
 
@@ -340,12 +321,13 @@ describe("the Google services file", () => {
   });
 
   test("an app.config.ts and no file at all: it could not tell, and says how to let it", () => {
-    const { push } = run({ files: { "app.json": null, "app.config.ts": "export default {};\n", "google-services.json": null } });
+    // A config that is code says nothing the doctor can read; the prebuild that turned push on is what says the app has push.
+    const { push } = run({ files: { "app.json": null, "app.config.ts": "export default {};\n", "google-services.json": null, ...androidManifest(true) } });
     const unknown = find(push, "could not find the Google services file");
     expect(unknown).toMatchObject({ status: "unknown" });
     expect(unknown?.fix).toContain("keep google-services.json in the app's directory");
     // With the file in the app's directory it checks it, whoever builds the config.
-    const found = run({ files: { "app.json": null, "app.config.ts": "export default {};\n" } }).push;
+    const found = run({ files: { "app.json": null, "app.config.ts": "export default {};\n", ...androidManifest(true) } }).push;
     expect(find(found, "google-services.json is JSON")?.status).toBe("pass");
     expect(find(found, "could not tell the app's Android package")?.status).toBe("unknown");
   });

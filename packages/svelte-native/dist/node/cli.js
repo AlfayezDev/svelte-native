@@ -1840,11 +1840,10 @@ function checkPushConfig(push) {
     throw error;
   }
 }
-var pushPackage, otherPushLibraries, apsEnvironmentEntitlement, remoteNotificationMode, pemKey, serviceAccountJson, privateKeyName, pushSecretMessage, Refusal, refuse, pushIsOn;
+var otherPushLibraries, apsEnvironmentEntitlement, remoteNotificationMode, pemKey, serviceAccountJson, privateKeyName, pushSecretMessage, Refusal, refuse, pushIsOn;
 var init_config = __esm({
   "src/push/config.ts"() {
     "use strict";
-    pushPackage = "@alfayez/svelte-native-push";
     otherPushLibraries = ["expo-notifications", "@react-native-firebase/messaging"];
     apsEnvironmentEntitlement = "aps-environment";
     remoteNotificationMode = "remote-notification";
@@ -1879,41 +1878,17 @@ function readConfig(context, library2) {
   const android = record2(json.expo.android);
   return { config: { file: json.file, push, value: capabilities.push, androidPackage: text(android.package), googleServicesFile: text(android.googleServicesFile), conclusive: code === void 0 }, code };
 }
-function packageChecks(context, library2, dependencies) {
-  const installed = findPackage(pushPackage, context.appRoot);
-  const declared = pushPackage in dependencies;
-  if (!installed) {
-    return [{
-      group,
-      status: "fail",
-      message: declared ? `${pushPackage} is a dependency of the app but is not installed` : `${pushPackage} is not installed: push has no native module without it`,
-      fix: declared ? "pnpm install" : installFix(library2.version)
-    }];
-  }
-  if (installed.version !== library2.version) {
-    return [{ group, status: "fail", message: `${pushPackage} ${installed.version} does not match ${library2.name} ${library2.version}: the two are released together and the native module follows the JavaScript's contract`, fix: installFix(library2.version) }];
-  }
-  if (!declared) {
-    return [{
-      group,
-      status: "fail",
-      message: `${pushPackage} is installed but is not a dependency of the app (${join7(context.appRoot, "package.json")}): React Native's autolinking links only the app's own dependencies, so the build would not have its native module`,
-      fix: installFix(library2.version)
-    }];
-  }
-  return [{ group, status: "pass", message: `${pushPackage} ${installed.version} is a dependency of the app and matches ${library2.name} ${library2.version}` }];
-}
 function otherLibraries(context, dependencies) {
   const found = otherPushLibraries.filter((name) => name in dependencies || findPackage(name, context.appRoot) !== void 0);
   if (found.length === 0) return [{ group, status: "pass", message: `no other push library (${otherPushLibraries.join(", ")}) is installed` }];
   return found.map((name) => ({
     group,
     status: "fail",
-    message: `${name} is installed beside ${pushPackage}: an app has one push library (Android delivers a message to one FirebaseMessagingService, iOS has one notification center delegate), and the config plugin refuses the build`,
-    fix: `pnpm remove ${name} (or take push out of the app: turn capabilities.push off and remove ${pushPackage})`
+    message: `${name} is installed and capabilities.push is on: an app has one push library (Android delivers a message to one FirebaseMessagingService, iOS has one notification center delegate), and the config plugin refuses the build`,
+    fix: `pnpm remove ${name}, or turn capabilities.push off and use ${name} for push (the guide's "Push notifications" page sets up each)`
   }));
 }
-function capabilityCheck(config, library2) {
+function capabilityCheck(config) {
   if (!config) return [];
   if (config.push) {
     const secret = findPushSecret(config.value, "capabilities.push");
@@ -1932,19 +1907,13 @@ function capabilityCheck(config, library2) {
         group,
         status: config.conclusive ? "fail" : "unknown",
         message: `${config.file} turns capabilities.push on, and the config plugin refuses it${code}: ${checked.problem}`,
-        fix: `change capabilities.push in ${config.file} as the message says (PUSH.md, "The config"), or turn it off with \`push: false\` and remove ${pushPackage}`
+        fix: `change capabilities.push in ${config.file} as the message says (PUSH.md, "The config"), or turn it off with \`push: false\``
       }];
     }
     const platforms = ["android", "ios"].filter((name) => config.push?.[name] !== void 0);
     return [{ group, status: "pass", message: `${config.file} turns capabilities.push on (${platforms.join(", ")})` }];
   }
-  if (!config.conclusive) return [];
-  return [{
-    group,
-    status: "fail",
-    message: `${config.file} does not turn capabilities.push on in the ${library2} plugin: the push package is installed, and the prebuild refuses a build that has the package with the capability off`,
-    fix: `plugins: [["${library2}", { capabilities: { push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } } } }]] in ${config.file}, or remove the push package`
-  }];
+  return [];
 }
 function gradleApplicationId(reader) {
   for (const file of ["android/app/build.gradle", "android/app/build.gradle.kts"]) {
@@ -2066,30 +2035,52 @@ function iosChecks(config, reader) {
   }
   return checks;
 }
+function prebuiltPush(reader) {
+  const manifest = reader.read("android/app/src/main/AndroidManifest.xml");
+  const directory = reader.list("ios").length === 0 ? void 0 : iosAppDirectory(reader);
+  const infoPlist = directory === void 0 ? void 0 : reader.read(`ios/${directory}/Info.plist`);
+  return {
+    android: manifest === void 0 ? void 0 : new RegExp(`android:name="${ANDROID_PUSH_FLAG.replaceAll(".", "\\.")}"\\s+android:value="true"`).test(manifest),
+    ios: infoPlist === void 0 ? void 0 : new RegExp(`<key>${IOS_PUSH_FLAG}</key>\\s*<true/>`).test(infoPlist)
+  };
+}
+function prebuildChecks(config, prebuilt) {
+  if (!config?.push) return [];
+  const checks = [];
+  for (const platform of ["android", "ios"]) {
+    if (config.push[platform] === void 0 || prebuilt[platform] === void 0) continue;
+    const where = platform === "android" ? `android/app/src/main/AndroidManifest.xml (${ANDROID_PUSH_FLAG})` : `ios/…/Info.plist (${IOS_PUSH_FLAG})`;
+    checks.push(prebuilt[platform] ? { group, status: "pass", message: `the last prebuild turned push on for ${platform}: ${where}` } : { group, status: "fail", message: `capabilities.push names ${platform}, and the last prebuild did not turn push on there (no ${where}): the prebuild is older than the config`, fix: `npx expo prebuild --platform ${platform}, then build the app again` });
+  }
+  return checks;
+}
 function pushChecks(context, library2, appPackage) {
   const dependencies = { ...record2(appPackage.dependencies), ...record2(appPackage.devDependencies), ...record2(appPackage.optionalDependencies) };
   const { config, code } = readConfig(context, library2.name);
-  if (!(pushPackage in dependencies) && !findPackage(pushPackage, context.appRoot) && !config?.push) return [];
   const reader = readerFor(context.appRoot);
+  const prebuilt = prebuiltPush(reader);
+  const inPlay = config?.push !== void 0 || config?.conclusive !== true && (prebuilt.android === true || prebuilt.ios === true);
+  if (!inPlay) return [];
   return [
-    ...packageChecks(context, library2, dependencies),
     ...otherLibraries(context, dependencies),
-    ...capabilityCheck(config, library2.name),
+    ...capabilityCheck(config),
     ...androidChecks(context, config, code, reader),
-    ...iosChecks(config, reader)
+    ...iosChecks(config, reader),
+    ...prebuildChecks(config, prebuilt)
   ];
 }
-var group, record2, text, installFix, FIREBASE_FIX;
+var ANDROID_PUSH_FLAG, IOS_PUSH_FLAG, group, record2, text, FIREBASE_FIX;
 var init_push = __esm({
   "src/doctor/push.ts"() {
     "use strict";
     init_config();
     init_integration();
     init_resolve();
+    ANDROID_PUSH_FLAG = "expo.modules.sveltepush.enabled";
+    IOS_PUSH_FLAG = "SveltePushEnabled";
     group = "push";
     record2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
     text = (value) => typeof value === "string" && value !== "" ? value : void 0;
-    installFix = (version) => `install the same tag as the library: pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v${version}&path:packages/svelte-native-push", then npx expo prebuild`;
     FIREBASE_FIX = "download google-services.json from the Firebase console (Project settings, your Android app) and save it in the app's directory, then name it in capabilities.push.android.googleServicesFile";
   }
 });
@@ -3154,8 +3145,8 @@ var init_doctor = __esm({
        svelte-native doctor --server [--app <bundle id>] [--json]
 
 Checks, from the app's directory, that the setup the library needs is complete: Node and pnpm, the custom-renderer Svelte, the peer
-dependencies, the patches applied to the installed packages, and the app's Metro and Expo configs; and, when the app has push (the
-@alfayez/svelte-native-push package), its push setup: the package, the Google services file, the iOS entitlement and background mode. One
+dependencies, the patches applied to the installed packages, and the app's Metro and Expo configs; and, when the app has push
+(capabilities.push), its push setup: the Google services file, the iOS entitlement and background mode, and a prebuild as new as the config. One
 line per check; the exit status is 1 when a required check fails.
 
   --json          print the checks as JSON instead of text

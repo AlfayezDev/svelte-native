@@ -1,5 +1,5 @@
 /**
- * The device's side of push (PUSH.md): `push.svelte.ts` makes one `PushClient` over the native module `SveltePush` (`@alfayez/svelte-native-push`) and exposes it as `push`.
+ * The device's side of push (PUSH.md): `push.svelte.ts` makes one `PushClient` over the native module `SveltePush` (the library's own, `native/svelte-core`) and exposes it as `push`.
  * Everything that is not reactive state is here, so that it runs against a stand-in of the module (`tests/push/client.test.ts`).
  *
  * - **Subscribing.** `subscribe({ save })` asks for the permission when the system still asks, registers with FCM or APNs, and calls `save(token)` when the token is new:

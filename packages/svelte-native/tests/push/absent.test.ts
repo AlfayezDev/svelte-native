@@ -1,4 +1,4 @@
-// `push` in an app without @alfayez/svelte-native-push (`src/push/absent.ts`, which the library's Metro config bundles in the client's place): it answers as the client does
+// `push` in an app whose config has push off (`src/push/absent.ts`, which the library's Metro config bundles in the client's place): it answers as the client does
 // in a build without the native module.
 import { expect, spyOn, test } from "bun:test";
 import { MISSING_PUSH as clientMessage } from "../../src/push/client.ts";

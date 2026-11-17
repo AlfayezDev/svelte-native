@@ -79,6 +79,12 @@ export declare function stubSource(name: string, variant: string): string;
 /** Whether [moduleName] is [name] or a path inside it. */
 export declare const isInPackage: (moduleName: string, name: string) => boolean;
 export declare function libraryChanged(projectRoot: string, library?: string): boolean;
-/** Whether the app has `@alfayez/svelte-native-push`: resolved from the app's directory, as Expo's autolinking finds it. */
-export declare function hasPushPackage(projectRoot: string): boolean;
+/**
+ * The platforms `capabilities.push` names in the app's config, read as Expo reads it (`getConfig` from `expo/config`, which runs `app.config.*` and does not apply plugins). `undefined`
+ * when the config cannot be read or its push settings are malformed (the prebuild refuses those): then the client is bundled, and the native module's `enabled` decides on the device.
+ */
+export declare function pushPlatforms(projectRoot: string): {
+    android: boolean;
+    ios: boolean;
+} | undefined;
 export declare function withSvelteNative(config: ConfigT, options?: SvelteNativeMetroOptions): ConfigT;

@@ -4,7 +4,7 @@
  *
  * The module starts the client when it loads: `load.ts` loads it at start in a build that has the native module, or when the app's hooks file exports `push`, so a tapped
  * notification opens its link and a launch without a screen (a background message) reaches the hooks whatever the app imports; an app that imports `push` starts it there. In a build
- * without `@alfayez/svelte-native-push` it says so once, and `push.permission` reads `"denied"`.
+ * without push (the module's `enabled` is false) it says so once, and `push.permission` reads `"denied"`.
  */
 import { untrack } from "svelte";
 import { appHooks, initSettling } from "../app-hooks.ts";

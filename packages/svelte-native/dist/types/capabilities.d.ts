@@ -120,6 +120,11 @@ export type PushSettings = {
  */
 export declare function pushSettings(push: unknown, appPackage: string | undefined, projectRoot: string): PushSettings;
 /**
+ * `AppDelegate.swift` without what `applyPushAppDelegate` wrote (the wrapper of the template's call, and the import of the module that holds it): the template's own text again. A file that has
+ * none of it is returned as it is, so this is the whole of what an app that turned push off needs, and the first half of `applyPushAppDelegate`.
+ */
+export declare function removePushAppDelegate(contents: string): string;
+/**
  * `AppDelegate.swift` (iOS) for an app with push: rule 2 of PUSH.md, a push that wakes the app mounts no screen. Expo's template starts React Native's surface in
  * `application(_:didFinishLaunchingWithOptions:)`, which mounts the first screen, and iOS also runs that method when it launches the app in the background for a silent push,
  * where nobody can see the screen. The template's `factory.startReactNative(...)` call is wrapped in `SveltePushBackgroundLaunch.start` (`@alfayez/svelte-native-push`),
@@ -157,3 +162,5 @@ export declare function removePushStrings(strings: AndroidConfig.Resources.Resou
 export declare function applyPushStrings(strings: AndroidConfig.Resources.ResourceXML, channel: NonNullable<PushSettings["android"]>["channel"]): AndroidConfig.Resources.ResourceXML;
 /** Copies the notification icon into the Android project's `res/drawable`, under the fixed name the manifest names. */
 export declare function copyPushIcon(source: string, platformProjectRoot: string): Promise<void>;
+/** Deletes the icon an earlier prebuild copied (its name is ours), for an app whose config has none now. */
+export declare function removePushIcon(platformProjectRoot: string): Promise<void>;

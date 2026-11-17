@@ -1,9 +1,11 @@
 "use strict";
 var __importMetaUrl = require("node:url").pathToFileURL(__filename).href;
 "use strict";
+var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -17,6 +19,14 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // src/expo.ts
@@ -385,7 +395,7 @@ var import_node_fs3 = require("node:fs");
 var import_promises = require("node:fs/promises");
 var import_node_module2 = require("node:module");
 var import_node_path4 = require("node:path");
-var import_config_plugins = require("expo/config-plugins.js");
+var import_config_plugins = __toESM(require("expo/config-plugins.js"), 1);
 
 // src/push/config.ts
 var pushPackage = "@alfayez/svelte-native-push";
@@ -490,6 +500,7 @@ function checkPushConfig(push) {
 var pushIsOn = (push) => push !== void 0 && push !== null && push !== false;
 
 // src/capabilities.ts
+var { AndroidConfig: expoAndroid } = import_config_plugins.default;
 var CapabilityConfigError = class extends Error {
   name = "CapabilityConfigError";
 };
@@ -746,7 +757,7 @@ function androidStringText(text) {
 }
 var channelStringNames = [pushResources.channelId, pushResources.channelName, pushResources.channelDescription];
 function removePushStrings(strings) {
-  for (const name of channelStringNames) import_config_plugins.AndroidConfig.Strings.removeStringItem(name, strings);
+  for (const name of channelStringNames) expoAndroid.Strings.removeStringItem(name, strings);
   return strings;
 }
 function applyPushStrings(strings, channel) {
@@ -757,7 +768,7 @@ function applyPushStrings(strings, channel) {
     const attributes = { name, translatable: "false", formatted: "false" };
     return [{ $: attributes, _: androidStringText(text) }];
   });
-  return import_config_plugins.AndroidConfig.Strings.setStringItem(items, strings);
+  return expoAndroid.Strings.setStringItem(items, strings);
 }
 async function copyPushIcon(source, platformProjectRoot) {
   const directory = (0, import_node_path4.join)(platformProjectRoot, "app/src/main/res/drawable");
@@ -777,9 +788,9 @@ function withPushAndroid(config, android, projectRoot) {
     config = { ...config, android: { ...config.android, googleServicesFile: android.googleServicesFile } };
   }
   config = (0, import_config_plugins.withAndroidManifest)(config, (config2) => {
-    if (android) applyPushManifest(import_config_plugins.AndroidConfig.Manifest.getMainApplicationOrThrow(config2.modResults), android);
+    if (android) applyPushManifest(expoAndroid.Manifest.getMainApplicationOrThrow(config2.modResults), android);
     else {
-      const application = import_config_plugins.AndroidConfig.Manifest.getMainApplication(config2.modResults);
+      const application = expoAndroid.Manifest.getMainApplication(config2.modResults);
       if (application) removePushManifest(application);
     }
     return config2;
@@ -789,7 +800,7 @@ function withPushAndroid(config, android, projectRoot) {
     return config2;
   });
   config = (0, import_config_plugins.withAndroidColors)(config, (config2) => {
-    config2.modResults = import_config_plugins.AndroidConfig.Colors.assignColorValue(config2.modResults, { name: pushResources.color, value: android?.color });
+    config2.modResults = expoAndroid.Colors.assignColorValue(config2.modResults, { name: pushResources.color, value: android?.color });
     return config2;
   });
   const icon = android?.icon;

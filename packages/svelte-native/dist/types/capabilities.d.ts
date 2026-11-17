@@ -1,5 +1,5 @@
 import type { ExpoConfig } from "expo/config";
-import { AndroidConfig } from "expo/config-plugins.js";
+import type { AndroidConfig } from "expo/config-plugins.js";
 import { findPushSecret, pushPackage } from "./push/config.js";
 export { findPushSecret, pushPackage };
 /** Why the app uses the location: the text iOS shows when it asks (`NSLocationWhenInUseUsageDescription`), or that and the reason for the background too. */

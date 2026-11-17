@@ -59,8 +59,13 @@ for (const platform of ["android", "ios"] as const) {
       // polyfills load Expo's WinterCG runtime. Without it the app started blank (9 Nov 2026, the first run of this app on an emulator).
       expect(modules.some((module) => /node_modules\/expo\/src\/winter\/runtime\.native\.ts$/.test(module))).toBe(true);
       // `crypto` and `localStorage` are react-native-quick-crypto and react-native-mmkv, with the Nitro runtime they share: required when first used, so Metro bundles them. Their import of `react-native`
-      // is the library's lite shim (`LITE_ORIGINS`): the index that lists every component of React Native (and the 238 modules it brings) is not in the bundle.
-      for (const name of ["react-native-quick-crypto", "react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64"]) expect([name, modules.some((module) => module.includes(`node_modules/${name}/`))]).toEqual([name, true]);
+      // is the library's lite shim (`LITE_ORIGINS`): the index that lists every component of React Native (and the 238 modules it brings) is not in the bundle. MMKV and the Nitro runtime are the
+      // library's own copies (`vendor/`, VENDORING.md), whoever imports them, and the app has no original of either.
+      for (const name of ["react-native-quick-crypto", "react-native-quick-base64"]) expect([name, modules.some((module) => module.includes(`node_modules/${name}/`))]).toEqual([name, true]);
+      for (const name of ["react-native-mmkv", "react-native-nitro-modules"]) {
+        expect([name, modules.some((module) => module.includes(`packages/svelte-native/vendor/${name}/`))]).toEqual([name, true]);
+        expect([name, modules.filter((module) => module.includes(`node_modules/${name}/`))]).toEqual([name, []]);
+      }
       expect(modules.some((module) => /node_modules\/react-native\/index\.js$/.test(module))).toBe(false);
     }, 300_000);
   });

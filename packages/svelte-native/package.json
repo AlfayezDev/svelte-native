@@ -90,6 +90,11 @@
       "types": "./dist/types/remote/index.d.ts",
       "default": "./src/remote/index.ts"
     },
+    "./push/server": {
+      "svelte-native-source": "./src/push/server.ts",
+      "types": "./dist/types/push/server.d.ts",
+      "default": "./dist/node/push-server.js"
+    },
     "./remote/runtime": "./src/remote/runtime.ts",
     "./remote/globals": "./src/remote/globals.ts",
     "./package.json": "./package.json",

@@ -15,6 +15,7 @@
     "src/router.svelte.ts",
     "src/remote/index.ts",
     "src/updates/index.ts",
+    "src/push/server.ts",
     "src/metro.ts",
     "src/vite.ts",
     "src/lower.ts",

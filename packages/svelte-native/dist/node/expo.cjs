@@ -393,7 +393,6 @@ async function syncNative(root, options = {}) {
 // src/capabilities.ts
 var import_node_fs3 = require("node:fs");
 var import_promises = require("node:fs/promises");
-var import_node_module2 = require("node:module");
 var import_node_path4 = require("node:path");
 var import_config_plugins = __toESM(require("expo/config-plugins.js"), 1);
 
@@ -503,21 +502,26 @@ var { AndroidConfig: expoAndroid } = import_config_plugins.default;
 var CapabilityConfigError = class extends Error {
   name = "CapabilityConfigError";
 };
-function locationPluginProps(location) {
-  const { whenInUse, background, motion } = typeof location === "string" ? { whenInUse: location, background: void 0, motion: void 0 } : location;
+var locationMetaData = {
+  enabled: "expo.modules.sveltelocation.enabled"
+};
+var locationInfoPlistFlag = "SvelteLocationEnabled";
+var locationPodfileProperty = "svelteNative.location";
+var locationUsageKey = "NSLocationWhenInUseUsageDescription";
+var locationAndroidPermissions = ["android.permission.ACCESS_COARSE_LOCATION", "android.permission.ACCESS_FINE_LOCATION"];
+function locationSettings(location) {
+  const options = typeof location === "string" ? { whenInUse: location } : location;
+  if (typeof options !== "object" || options === null)
+    throw new CapabilityConfigError('capabilities.location needs the reason the app uses the location, as the user will read it: `capabilities: { location: "Shows the stores near you." }`');
+  for (const [key, what] of [["background", "Background location"], ["motion", "The motion activity"]])
+    if (key in options)
+      throw new CapabilityConfigError(
+        `capabilities.location.${key} is not an option any more: ${what} is not part of capabilities.location, which is \`navigator.geolocation\` while the app is in use. An app that needs it installs expo-location and lists its own plugin in \`plugins\` with its texts (\`["expo-location", { … }]\`); the two do not conflict, they are other modules with other events.`
+      );
+  const { whenInUse } = options;
   if (typeof whenInUse !== "string" || whenInUse.trim() === "")
     throw new CapabilityConfigError('capabilities.location needs the reason the app uses the location, as the user will read it: `capabilities: { location: "Shows the stores near you." }`');
-  for (const [key, text] of [["background", background], ["motion", motion]])
-    if (text !== void 0 && (typeof text !== "string" || text.trim() === ""))
-      throw new CapabilityConfigError(`capabilities.location.${key} needs the reason, as the user will read it`);
-  return {
-    locationWhenInUsePermission: whenInUse,
-    locationAlwaysAndWhenInUsePermission: background ?? false,
-    locationAlwaysPermission: background ?? false,
-    isIosBackgroundLocationEnabled: background !== void 0,
-    isAndroidBackgroundLocationEnabled: background !== void 0,
-    ...motion === void 0 ? {} : { motionUsagePermission: motion }
-  };
+  return { whenInUse };
 }
 function linkedDependencies(projectRoot) {
   let manifest = {};
@@ -530,51 +534,73 @@ function linkedDependencies(projectRoot) {
   const linked = new Set([...Object.keys(manifest.dependencies ?? {}), ...Object.keys(manifest.devDependencies ?? {})].filter((name) => !excluded.has(name)));
   return { linked, excluded };
 }
-function listsPlugin(config, name) {
-  return (config.plugins ?? []).some((entry) => (Array.isArray(entry) ? entry[0] : entry) === name);
-}
 function withCapabilities(config, capabilities, options = {}) {
   const projectRoot = options.projectRoot ?? config._internal?.projectRoot ?? process.cwd();
-  const load = options.load ?? ((request) => (0, import_node_module2.createRequire)((0, import_node_path4.join)(projectRoot, "package.json"))(request));
   const dependencies = linkedDependencies(projectRoot);
   const excluded = /* @__PURE__ */ new Set([...options.excluded ?? [], ...dependencies.excluded]);
   const linked = new Set([...dependencies.linked].filter((name) => !excluded.has(name)));
-  const context = { projectRoot, load, linked, excluded };
+  const context = { projectRoot, linked };
   return withPush(withLocation(config, capabilities?.location, context), capabilities?.push, context);
 }
+function locationIsOn(location) {
+  return location !== void 0 && location !== null && location !== false;
+}
+function hasLocationFlag(application) {
+  return (application["meta-data"] ?? []).some((item) => item.$["android:name"] === locationMetaData.enabled);
+}
+function removeLocationFlag(application) {
+  const items = application["meta-data"];
+  if (items !== void 0) application["meta-data"] = items.filter((item) => item.$["android:name"] !== locationMetaData.enabled);
+}
+var spellings = (permission) => [permission, permission.replace("android.permission.", "")];
+function removeLocationPermissions(manifest, appPermissions) {
+  const ours = locationAndroidPermissions.filter((permission) => !appPermissions?.some((name) => spellings(permission).includes(name)));
+  if (ours.length > 0) expoAndroid.Permissions.removePermissions(manifest, ours);
+}
+function withLocationOn(config, location) {
+  const { whenInUse } = locationSettings(location);
+  const existing = config.ios?.infoPlist?.[locationUsageKey];
+  if (existing !== void 0 && existing !== whenInUse)
+    throw new CapabilityConfigError(
+      `The app config sets ios.infoPlist.${locationUsageKey} ("${String(existing)}") and capabilities.location says "${whenInUse}": keep one. capabilities.location writes ${locationUsageKey}.`
+    );
+  config = { ...config, ios: { ...config.ios, infoPlist: { ...config.ios?.infoPlist, [locationUsageKey]: whenInUse, [locationInfoPlistFlag]: true } } };
+  config = (0, import_config_plugins.withPodfileProperties)(config, (config2) => {
+    config2.modResults[locationPodfileProperty] = "true";
+    return config2;
+  });
+  return (0, import_config_plugins.withAndroidManifest)(config, (config2) => {
+    setMetaData(expoAndroid.Manifest.getMainApplicationOrThrow(config2.modResults), locationMetaData.enabled, "value", "true");
+    expoAndroid.Permissions.ensurePermissions(config2.modResults, [...locationAndroidPermissions]);
+    return config2;
+  });
+}
+function withoutLocation(config, context) {
+  if ((0, import_node_fs3.existsSync)((0, import_node_path4.join)(context.projectRoot, "android"))) {
+    config = (0, import_config_plugins.withAndroidManifest)(config, (config2) => {
+      const application = expoAndroid.Manifest.getMainApplication(config2.modResults);
+      if (application) {
+        const wasOn = hasLocationFlag(application);
+        removeLocationFlag(application);
+        if (wasOn) removeLocationPermissions(config2.modResults, config2.android?.permissions);
+      }
+      return config2;
+    });
+  }
+  if ((0, import_node_fs3.existsSync)((0, import_node_path4.join)(context.projectRoot, "ios"))) {
+    config = (0, import_config_plugins.withInfoPlist)(config, (config2) => {
+      delete config2.modResults[locationInfoPlistFlag];
+      return config2;
+    });
+    config = (0, import_config_plugins.withPodfileProperties)(config, (config2) => {
+      delete config2.modResults[locationPodfileProperty];
+      return config2;
+    });
+  }
+  return config;
+}
 function withLocation(config, location, context) {
-  const on = location !== void 0 && location !== null && location !== false;
-  const excluded = context.excluded.has("expo-location");
-  const installed = context.linked.has("expo-location");
-  if (listsPlugin(config, "expo-location")) {
-    if (on)
-      throw new CapabilityConfigError("The app config sets capabilities.location and also lists expo-location's own plugin: keep one. capabilities.location gives expo-location its texts; its own plugin entry takes all of its options.");
-    return config;
-  }
-  if (!on) {
-    if (installed)
-      throw new CapabilityConfigError(
-        'expo-location is installed, but the location capability is off. Say why the app uses the location (the text iOS shows when it asks) in the @alfayez/svelte-native plugin: `plugins: [["@alfayez/svelte-native", { capabilities: { location: "Shows the stores near you." } }]]`, or uninstall expo-location.'
-      );
-    return config;
-  }
-  if (excluded)
-    throw new CapabilityConfigError("capabilities.location is on, but expo-location is left out of autolinking (`autolinkingExclude`, or `expo.autolinking.exclude` in package.json): take it out of that list, or turn the capability off.");
-  const props = locationPluginProps(location);
-  try {
-    context.load("expo-location/package.json");
-  } catch {
-    throw new CapabilityConfigError("capabilities.location needs expo-location, which is not installed: `npx expo install expo-location`, then prebuild again.");
-  }
-  let plugin;
-  try {
-    plugin = context.load("expo-location/app.plugin.js");
-  } catch (error) {
-    throw new CapabilityConfigError(`expo-location's config plugin (expo-location/app.plugin.js) failed to load: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  const apply = plugin.default ?? plugin;
-  if (typeof apply !== "function") throw new CapabilityConfigError("expo-location's config plugin (expo-location/app.plugin.js) is not a function: is the installed expo-location the one this Expo SDK uses?");
-  return apply(config, props);
+  return locationIsOn(location) ? withLocationOn(config, location) : withoutLocation(config, context);
 }
 var defaultPushChannel = { id: "default", name: "Notifications" };
 var pushMetaData = {

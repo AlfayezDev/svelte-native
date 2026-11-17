@@ -54,6 +54,7 @@ describe("expo-module.config.json links push's module and subscriber in svelte-c
       "expo.modules.sveltecore.SvelteFetchModule",
       "expo.modules.sveltecore.SvelteClipboardModule",
       "expo.modules.sveltepush.SveltePushModule",
+      "expo.modules.sveltelocation.SvelteLocationModule",
     ]);
     const file = "native/svelte-core/android/src/main/java/expo/modules/sveltepush/SveltePushModule.kt";
     expect(read(file)).toMatch(/^class SveltePushModule : Module\(\)/m);
@@ -64,7 +65,7 @@ describe("expo-module.config.json links push's module and subscriber in svelte-c
   test("iOS: SveltePushModule and SveltePushAppDelegateSubscriber are in the SvelteCore pod's lists, and their Swift is a folder of the pod", () => {
     expect(config.apple.swiftModuleName).toEqual(["SvelteCore"]);
     expect(config.apple.podspecPath).toEqual(["native/svelte-core/ios/SvelteCore.podspec"]);
-    expect(config.apple.modules).toEqual(["SvelteInsetsModule", "SvelteNavigationModule", "SvelteUpdatesModule", "SvelteBlurModule", "SvelteFetchModule", "SvelteClipboardModule", "SveltePushModule"]);
+    expect(config.apple.modules).toEqual(["SvelteInsetsModule", "SvelteNavigationModule", "SvelteUpdatesModule", "SvelteBlurModule", "SvelteFetchModule", "SvelteClipboardModule", "SveltePushModule", "SvelteLocationModule"]);
     expect(config.apple.appDelegateSubscribers).toEqual(["SvelteCaptureSubscriber", "SveltePushAppDelegateSubscriber"]);
     expect(read("native/svelte-core/ios/push/SveltePushModule.swift")).toContain("public final class SveltePushModule: Module");
     expect(read("native/svelte-core/ios/push/SveltePushModule.swift")).toContain('Name("SveltePush")');
@@ -219,7 +220,7 @@ describe("iOS: push is compiled only when it is on", () => {
     const podspec = readFileSync(join(root, "native/svelte-core/ios/SvelteCore.podspec"), "utf8");
     expect(podspec).toContain("Podfile.properties.json");
     expect(podspec).toContain("'svelteNative.push' => 'SVELTE_PUSH'");
-    expect(podspec).toContain("'SWIFT_ACTIVE_COMPILATION_CONDITIONS' => (['$(inherited)'] + svelte_conditions).join(' ')");
+    expect(podspec).toContain("'SWIFT_ACTIVE_COMPILATION_CONDITIONS' => (['$(inherited)'] + compile_conditions).join(' ')");
     expect(readFileSync(join(root, "native/svelte-core/test/ios/message.sh"), "utf8")).toContain("-D SVELTE_PUSH");
   });
 });

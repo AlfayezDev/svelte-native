@@ -1,5 +1,5 @@
 // `navigator.clipboard`, `ClipboardItem`, `share`, `canShare`, `vibrate`, `language` and `languages` on the device, against stand-ins for React Native's modules and the
-// library's SvelteClipboard native module. The stand-ins are one module of the bundle, which records what each was asked and is exported with `installNavigator`, so each test
+// library's SvelteClipboard and SvelteLocation native modules. The stand-ins are one module of the bundle, which records what each was asked and is exported with `installNavigator`, so each test
 // has a state of its own.
 import { describe, expect, test } from "bun:test";
 import { load, src } from "../support/bundle.ts";
@@ -25,7 +25,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/ReactNative/I18nManager": `import { native } from "navigator-test-state"; export default { getConstants: () => ({ isRTL: false, localeIdentifier: native.locale }) };`,
   "react-native/Libraries/AppState/AppState": `import { native } from "navigator-test-state"; export default { addEventListener: (type, listener) => { native.appState = listener; return { remove() {} }; } };`,
   "expo-modules-core": `import { native } from "navigator-test-state"; export const requireOptionalNativeModule = (name) => {
-    if (name === "ExpoLocation") return native.location ?? null;
+    if (name === "SvelteLocation") return native.location ?? null;
     return name !== "SvelteClipboard" || native.clipboard === null ? null : {
       read: async () => ({ ...native.clipboard }),
       write: async (text, html) => { native.writes.push([text, html]); native.clipboard = html === null ? { "text/plain": text } : { "text/plain": text, "text/html": html }; },
@@ -33,14 +33,15 @@ const stubs: Record<string, string> = {
   };`,
 };
 
-/** A stand-in for expo-location's native module: the permission granted, one position. */
-const locationModule = () => ({
-  getForegroundPermissionsAsync: async () => ({ status: "granted", granted: true, canAskAgain: true }),
-  requestForegroundPermissionsAsync: async () => ({ status: "granted", granted: true, canAskAgain: true }),
-  getCurrentPositionAsync: async () => ({ coords: { latitude: 24.71, longitude: 46.67, accuracy: 12 }, timestamp: 1_800_000_000_000 }),
-  getLastKnownPositionAsync: async () => null,
-  watchPositionImplAsync: async () => {},
-  removeWatchAsync: async () => {},
+/** A stand-in for the SvelteLocation native module: location on in the build (`enabled`, as the capability makes it), the permission granted, one position. */
+const locationModule = (enabled = true) => ({
+  enabled,
+  permission: async () => ({ status: "granted", granted: true, canAskAgain: true }),
+  requestPermission: async () => ({ status: "granted", granted: true, canAskAgain: true }),
+  currentPosition: async () => ({ coords: { latitude: 24.71, longitude: 46.67, accuracy: 12 }, timestamp: 1_800_000_000_000 }),
+  lastKnownPosition: async () => null,
+  startWatch: async () => {},
+  stopWatch: async () => {},
   addListener: () => ({ remove() {} }),
 });
 
@@ -230,7 +231,7 @@ describe("navigator.language and languages", () => {
 });
 
 describe("navigator.geolocation and navigator.permissions", () => {
-  test("in a build with the location capability: one Geolocation over expo-location's module, and the web's classes as globals", async () => {
+  test("in a build with the location capability: one Geolocation over the library's own module, and the web's classes as globals", async () => {
     const { scope, native } = await install({ location: locationModule() });
     const geolocation = scope.navigator.geolocation;
     expect(Object.prototype.toString.call(geolocation)).toBe("[object Geolocation]");
@@ -246,18 +247,22 @@ describe("navigator.geolocation and navigator.permissions", () => {
     expect(typeof native.appState).toBe("function");
   });
 
-  test("in a build without it: navigator.geolocation is undefined with one warning that says how to turn it on, and the permission reads denied", async () => {
-    const { warn } = console;
-    const warnings: unknown[] = [];
-    console.warn = (...args: unknown[]) => { warnings.push(args[0]); };
-    try {
-      const { scope } = await install({ location: null });
-      expect(scope.navigator.geolocation).toBeUndefined();
-      expect(scope.navigator.geolocation).toBeUndefined();
-      expect((await scope.navigator.permissions.query({ name: "geolocation" })).state).toBe("denied");
-      expect(typeof scope.GeolocationPositionError).toBe("function");
-    } finally { console.warn = warn; }
-    expect(warnings).toHaveLength(1);
-    expect(String(warnings[0])).toContain("the location capability is not part of this app's build: install expo-location, add `capabilities: { location:");
-  });
+  // The module is part of every app's native code; what the capability turns on is its `enabled` constant. A binary without the module at all reads the same.
+  for (const [what, location] of [["the module is not there", null], ["the module is there with `enabled` false: the capability is off", locationModule(false)]] as const) {
+    test(`in a build without the capability (${what}): navigator.geolocation is undefined with one warning that says how to turn it on, and the permission reads denied`, async () => {
+      const { warn } = console;
+      const warnings: unknown[] = [];
+      console.warn = (...args: unknown[]) => { warnings.push(args[0]); };
+      try {
+        const { scope } = await install({ location });
+        expect(scope.navigator.geolocation).toBeUndefined();
+        expect(scope.navigator.geolocation).toBeUndefined();
+        expect((await scope.navigator.permissions.query({ name: "geolocation" })).state).toBe("denied");
+        expect(typeof scope.GeolocationPositionError).toBe("function");
+      } finally { console.warn = warn; }
+      expect(warnings).toHaveLength(1);
+      expect(String(warnings[0])).toContain("the location capability is not part of this app's build: add `capabilities: { location:");
+      expect(String(warnings[0])).not.toContain("expo-location");
+    });
+  }
 });

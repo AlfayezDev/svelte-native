@@ -1,19 +1,19 @@
 /**
- * The capabilities an app turns on in the config plugin (`capabilities: { location, push }`): the web APIs that need a permission of the system, and with it a native
- * library and the app's own words or identifiers. A capability is off until the config says why the app uses it, and the plugin refuses the two half-made states of a capability whose
- * library is a package of its own (`location`; `push` has none, below), each of which an app would only find out about on a device or in review:
+ * The capabilities an app turns on in the config plugin (`capabilities: { location, push }`): the web APIs that need a permission of the system, and with it the app's own words or
+ * identifiers. A capability is off until the config says why the app uses it. Neither has a library to install: the native code of both is part of the library's one native module
+ * (svelte-core), which is in every app, so what makes an app one with a capability is what this plugin writes, and nothing else; an app without it has native code that does nothing, and
+ * none of what the capability needs (no Firebase for push, no permission for location). A prebuild that keeps the native projects (no `--clean`) keeps what the last one wrote, so where a
+ * capability is off the plugin takes away what is certainly its own.
  *
- * - on, without its library installed: the build would have no native module, and the API would read as `undefined`;
- * - its library installed, but off: Expo would apply the library's own plugin with its default text ("Allow $(PRODUCT_NAME) to …"), which says nothing of why,
- *   and App Review rejects that. A library that is linked is in the binary, and Apple and Google ask about the permissions it declares whether or not it is called.
+ * `location` is `navigator.geolocation` and `navigator.permissions` (`geolocation.ts`; SPEC.md, "Location"): the platform's own location service (Android's `LocationManager` with no Google library,
+ * iOS's `CLLocationManager`), in the module `SvelteLocation`. The plugin writes the iOS usage text (`NSLocationWhenInUseUsageDescription`, the app's reason as the user will read it) and the Info.plist
+ * flag `SvelteLocationEnabled`, and on Android the two location permissions and the meta-data flag `expo.modules.sveltelocation.enabled`, which the native code asks before it does anything.
+ * Foreground location only: background location and the motion activity are not part of it (an app that needs them installs expo-location and lists its own plugin; the two do not conflict, they
+ * are other modules with other events). Where it is off the plugin takes away the two flags, and the Android permissions when the flag shows an earlier prebuild added them and the app's own
+ * `android.permissions` does not list them; it leaves the iOS usage text, which it cannot tell from the app's own or another plugin's (an app that asks for the location with no usage text is
+ * stopped by iOS, and a text that nothing asks for does no harm).
  *
- * An app that lists the library's own plugin in `plugins` (with its texts) has configured it there, and one that leaves the library out of autolinking
- * (`autolinkingExclude`) does not link it: neither needs the capability.
- *
- * `location` is expo-location: `navigator.geolocation` and `navigator.permissions` use its native module (`geolocation.ts`).
- *
- * `push` is push notifications (PUSH.md): Firebase Messaging on Android, APNs on iOS. Its native code is part of the library's one native module (svelte-core), which is in every
- * app, so what makes an app one with push is what this plugin writes, and nothing else: on Android Firebase Messaging's dependency, the messaging service, the notification permission and
+ * `push` is push notifications (PUSH.md): Firebase Messaging on Android, APNs on iOS. Its native code is part of svelte-core too, so what makes an app one with push is what this plugin writes: on Android Firebase Messaging's dependency, the messaging service, the notification permission and
  * the flag `expo.modules.sveltepush.enabled` that the native code asks before it does anything; on iOS the `SveltePushEnabled` Info.plist flag, the entitlement and the background mode. An
  * app without them has no Firebase in its build, no service to take another library's messages, and native code that does nothing. The plugin does what the plugin of any push library does,
  * from the identifiers in the config, and refuses what would ship a secret or make a second push library of the app. A prebuild that keeps the native projects (no `--clean`) keeps what the
@@ -23,7 +23,6 @@
  */
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { copyFile, mkdir, rm } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import type { ExpoConfig } from "expo/config";
 // `.js` spelled out, as in `remote/plugin.ts`: Node's own module loader, which loads this file from its source in `tests/cli/remote-plugin.test.ts` ("loading"), resolves no `expo/config-plugins` without it.
@@ -38,23 +37,11 @@ const { AndroidConfig: expoAndroid } = configPlugins;
 // Defined in `push/config.ts` now, which the doctor loads without Expo; it stays importable from here.
 export { findPushSecret };
 
-/** Why the app uses the location: the text iOS shows when it asks (`NSLocationWhenInUseUsageDescription`), or that and the reason for the background too. */
-export type LocationCapability =
-  | string
-  | {
-      /** While the app is in use: `NSLocationWhenInUseUsageDescription`. */
-      whenInUse: string;
-      /**
-       * In the background as well (`NSLocationAlwaysAndWhenInUseUsageDescription`, iOS's `location` background mode, Android's `ACCESS_BACKGROUND_LOCATION` and
-       * its foreground service): for expo-location's own background APIs (`startLocationUpdatesAsync`, geofencing). `navigator.geolocation` needs only `whenInUse`.
-       */
-      background?: string;
-      /**
-       * Why the app uses the motion activity (`NSMotionUsageDescription`), for expo-location's `getMotionActivityAsync`. iOS links CoreMotion with expo-location, so
-       * the key is always written; without this text it is expo-location's default. `navigator.geolocation` never asks for it, so iOS never shows that one.
-       */
-      motion?: string;
-    };
+/**
+ * Why the app uses the location: the text iOS shows when it asks (`NSLocationWhenInUseUsageDescription`), as a string or as `{ whenInUse }`. Foreground location only: `navigator.geolocation` while the
+ * app is in use. (`background` and `motion`, which the capability once passed to expo-location's plugin, are refused: see `locationSettings`.)
+ */
+export type LocationCapability = string | { whenInUse: string };
 
 /**
  * The identifiers push needs in the build, per platform: a platform is served when it is named. Nothing in it may be a secret (the FCM service account, the
@@ -84,22 +71,41 @@ export class CapabilityConfigError extends Error {
   override name = "CapabilityConfigError";
 }
 
-/** The props of expo-location's config plugin a location capability makes: its texts, and nothing of the background unless it is asked for. */
-export function locationPluginProps(location: LocationCapability): Record<string, string | boolean> {
-  const { whenInUse, background, motion } = typeof location === "string" ? { whenInUse: location, background: undefined, motion: undefined } : location;
+/** The meta-data of the application element that turns the native code on, on Android: svelte-core's `LocationManifest` reads it (`LocationRules.META_ENABLED`; the host check `location.sh` compares). */
+export const locationMetaData = {
+  enabled: "expo.modules.sveltelocation.enabled",
+} as const;
+
+/** The Info.plist flag (a boolean) that turns the native code on, on iOS: svelte-core's `SvelteLocationFlag`. Written when `capabilities.location` is set, and taken away without. */
+export const locationInfoPlistFlag = "SvelteLocationEnabled";
+
+/** The Info.plist key of the text iOS shows when the app asks for the location while it is in use: the capability's text. */
+export const locationUsageKey = "NSLocationWhenInUseUsageDescription";
+
+/** The two permissions of Android's location: the precise one and the approximate one, which a user may grant alone (the module serves both). */
+export const locationAndroidPermissions = ["android.permission.ACCESS_COARSE_LOCATION", "android.permission.ACCESS_FINE_LOCATION"] as const;
+
+/** What `capabilities.location` says once it has been checked: the text the user reads when iOS asks. */
+export type LocationSettings = { whenInUse: string };
+
+/**
+ * Checks `capabilities.location` (already known not to be off) and returns what it says. The text is what the user reads when iOS asks, so an empty one is refused; `background` and `motion`, which an
+ * earlier version passed to expo-location's plugin, are refused with what to do instead. Throws a `CapabilityConfigError`.
+ */
+export function locationSettings(location: unknown): LocationSettings {
+  const options = typeof location === "string" ? { whenInUse: location } : (location as Record<string, unknown> | null);
+  if (typeof options !== "object" || options === null)
+    throw new CapabilityConfigError("capabilities.location needs the reason the app uses the location, as the user will read it: `capabilities: { location: \"Shows the stores near you.\" }`");
+  for (const [key, what] of [["background", "Background location"], ["motion", "The motion activity"]] as const)
+    if (key in options)
+      throw new CapabilityConfigError(
+        `capabilities.location.${key} is not an option any more: ${what} is not part of capabilities.location, which is \`navigator.geolocation\` while the app is in use. An app that needs it installs expo-location and lists its own plugin ` +
+          "in `plugins` with its texts (`[\"expo-location\", { … }]`); the two do not conflict, they are other modules with other events.",
+      );
+  const { whenInUse } = options;
   if (typeof whenInUse !== "string" || whenInUse.trim() === "")
     throw new CapabilityConfigError("capabilities.location needs the reason the app uses the location, as the user will read it: `capabilities: { location: \"Shows the stores near you.\" }`");
-  for (const [key, text] of [["background", background], ["motion", motion]] as const)
-    if (text !== undefined && (typeof text !== "string" || text.trim() === ""))
-      throw new CapabilityConfigError(`capabilities.location.${key} needs the reason, as the user will read it`);
-  return {
-    locationWhenInUsePermission: whenInUse,
-    locationAlwaysAndWhenInUsePermission: background ?? false,
-    locationAlwaysPermission: background ?? false,
-    isIosBackgroundLocationEnabled: background !== undefined,
-    isAndroidBackgroundLocationEnabled: background !== undefined,
-    ...(motion === undefined ? {} : { motionUsagePermission: motion }),
-  };
+  return { whenInUse };
 }
 
 type Manifest = {
@@ -125,84 +131,113 @@ function linkedDependencies(projectRoot: string): { linked: Set<string>; exclude
   return { linked, excluded };
 }
 
-/** Whether the config's `plugins` names the package's plugin, alone (`"expo-location"`) or with its props (`["expo-location", { … }]`). */
-function listsPlugin(config: { plugins?: unknown[] }, name: string): boolean {
-  return (config.plugins ?? []).some((entry) => (Array.isArray(entry) ? entry[0] : entry) === name);
-}
-
-type Plugin = (config: ExpoConfig, props: Record<string, string | boolean>) => ExpoConfig;
-
 type CapabilityOptions = {
   /** The app's directory. Default: the config's, else the working directory. */
   projectRoot?: string;
-  /** Finds a library's config plugin from the app (tests pass their own). */
-  load?: (request: string) => unknown;
-  /** The packages `autolinkingExclude` leaves out of the build: one of them is not linked, so it needs no capability. */
+  /** The packages `autolinkingExclude` leaves out of the build: one of them is not linked, so it is no other push library of the app's. */
   excluded?: readonly string[];
 };
 
-/** What every capability reads: where the app is, how to find a library's plugin, and what its build links. */
+/** What every capability reads: where the app is, and what its build links. */
 type Context = {
   projectRoot: string;
-  load: (request: string) => unknown;
   /** The app's dependencies that autolinking links: its `package.json`'s, less every package left out of autolinking. */
   linked: Set<string>;
-  /** The packages left out of autolinking, by `autolinkingExclude` and by the `package.json`, installed or not. */
-  excluded: Set<string>;
 };
 
 /**
- * Applies the capabilities to the config: each one on gets what its library needs (`location`: its library's plugin with the app's texts; `push`: the entries of
- * the platforms' projects). Throws a `CapabilityConfigError` for a capability without its library, for a library without its capability, and for a config that
- * cannot be built as it stands.
+ * Applies the capabilities to the config: each one on gets the entries its native code needs (`location`: the flags, the permissions and the usage text; `push`: the entries of the platforms'
+ * projects), and each one off takes away what an earlier prebuild wrote. Throws a `CapabilityConfigError` for a config that cannot be built as it stands.
  */
 export function withCapabilities(config: ExpoConfig, capabilities: Capabilities | undefined, options: CapabilityOptions = {}): ExpoConfig {
   const projectRoot = options.projectRoot ?? config._internal?.projectRoot ?? process.cwd();
-  const load = options.load ?? ((request: string) => createRequire(join(projectRoot, "package.json"))(request));
   const dependencies = linkedDependencies(projectRoot);
   const excluded = new Set([...(options.excluded ?? []), ...dependencies.excluded]);
   const linked = new Set([...dependencies.linked].filter((name) => !excluded.has(name)));
-  const context: Context = { projectRoot, load, linked, excluded };
+  const context: Context = { projectRoot, linked };
   return withPush(withLocation(config, capabilities?.location, context), capabilities?.push, context);
 }
 
+/** Whether `capabilities.location` is on: a text, or `{ whenInUse }`; `undefined`, `null` and `false` are off. */
+function locationIsOn(location: Capabilities["location"]): location is LocationCapability {
+  return location !== undefined && location !== null && location !== false;
+}
+
+/**
+ * Whether an earlier prebuild turned location on in this manifest: the module's `enabled` flag is there (its name is ours). It is how the plugin tells the permissions it added from the app's own,
+ * when location goes off (`removeLocationPermissions`).
+ */
+export function hasLocationFlag(application: AndroidConfig.Manifest.ManifestApplication): boolean {
+  return (application["meta-data"] ?? []).some((item) => item.$["android:name"] === locationMetaData.enabled);
+}
+
+/** The `enabled` flag out of the application element, and nothing else: its name is ours. */
+export function removeLocationFlag(application: AndroidConfig.Manifest.ManifestApplication): void {
+  const items = application["meta-data"];
+  if (items !== undefined) application["meta-data"] = items.filter((item) => item.$["android:name"] !== locationMetaData.enabled);
+}
+
+/** The names an app's `android.permissions` may spell a location permission with: Expo adds the `android.permission.` prefix to the short one. */
+const spellings = (permission: string) => [permission, permission.replace("android.permission.", "")];
+
+/**
+ * Takes the location permissions out of the manifest of an app that turned location off, when it can tell that they are the capability's: an earlier prebuild turned location on (`hasLocationFlag`,
+ * read by the caller before `removeLocationFlag` takes the flag away), and the app's own config does not ask for the permission itself (`android.permissions`; each of the two is judged alone).
+ * A permission that something else wanted anyway is asked for again by that something at the next prebuild; an app that wants one without the capability lists it in `android.permissions`.
+ */
+export function removeLocationPermissions(manifest: AndroidConfig.Manifest.AndroidManifest, appPermissions: readonly string[] | undefined): void {
+  const ours = locationAndroidPermissions.filter((permission) => !appPermissions?.some((name) => spellings(permission).includes(name)));
+  if (ours.length > 0) expoAndroid.Permissions.removePermissions(manifest, ours);
+}
+
+/**
+ * The capability on: the Android manifest gets the `enabled` flag and the two permissions (`ensurePermissions` adds each once, beside the app's own), and the config's own Info.plist keys get the usage
+ * text and the flag, where Expo's Info.plist mod writes them. The text may be the app's own `ios.infoPlist` entry when it says the same; another is two answers to one question.
+ */
+function withLocationOn(config: ExpoConfig, location: LocationCapability): ExpoConfig {
+  const { whenInUse } = locationSettings(location);
+  const existing = config.ios?.infoPlist?.[locationUsageKey];
+  if (existing !== undefined && existing !== whenInUse)
+    throw new CapabilityConfigError(
+      `The app config sets ios.infoPlist.${locationUsageKey} ("${String(existing)}") and capabilities.location says "${whenInUse}": keep one. capabilities.location writes ${locationUsageKey}.`,
+    );
+  config = { ...config, ios: { ...config.ios, infoPlist: { ...config.ios?.infoPlist, [locationUsageKey]: whenInUse, [locationInfoPlistFlag]: true } } };
+  return withAndroidManifest(config, (config) => {
+    setMetaData(expoAndroid.Manifest.getMainApplicationOrThrow(config.modResults), locationMetaData.enabled, "value", "true");
+    expoAndroid.Permissions.ensurePermissions(config.modResults, [...locationAndroidPermissions]);
+    return config;
+  });
+}
+
+/**
+ * The capability off: takes away what an earlier prebuild wrote, in each platform that has a native project (a project that does not exist has nothing of an earlier prebuild, and the config comes
+ * back as it was). The flags go; the Android permissions go when the flag shows the capability added them and the app does not ask for them itself (`removeLocationPermissions`); the iOS usage text
+ * stays, since nothing in the project says whose it is.
+ */
+function withoutLocation(config: ExpoConfig, context: Context): ExpoConfig {
+  if (existsSync(join(context.projectRoot, "android"))) {
+    config = withAndroidManifest(config, (config) => {
+      const application = expoAndroid.Manifest.getMainApplication(config.modResults);
+      if (application) {
+        // The flag is what says the capability was on, so it is read before it is taken away.
+        const wasOn = hasLocationFlag(application);
+        removeLocationFlag(application);
+        if (wasOn) removeLocationPermissions(config.modResults, config.android?.permissions);
+      }
+      return config;
+    });
+  }
+  if (existsSync(join(context.projectRoot, "ios"))) {
+    config = withInfoPlist(config, (config) => {
+      delete config.modResults[locationInfoPlistFlag];
+      return config;
+    });
+  }
+  return config;
+}
+
 function withLocation(config: ExpoConfig, location: Capabilities["location"], context: Context): ExpoConfig {
-  const on = location !== undefined && location !== null && location !== false;
-  const excluded = context.excluded.has("expo-location");
-  const installed = context.linked.has("expo-location");
-  // An app that lists expo-location's own plugin gave its texts there. Both would be two answers to one question, and only one would apply (Expo runs a
-  // library's plugin once): the second, silently ignored.
-  if (listsPlugin(config, "expo-location")) {
-    if (on)
-      throw new CapabilityConfigError("The app config sets capabilities.location and also lists expo-location's own plugin: keep one. capabilities.location gives expo-location its texts; its own plugin entry takes all of its options.");
-    return config;
-  }
-  if (!on) {
-    if (installed)
-      throw new CapabilityConfigError(
-        "expo-location is installed, but the location capability is off. Say why the app uses the location (the text iOS shows when it asks) in the @alfayez/svelte-native plugin: " +
-          "`plugins: [[\"@alfayez/svelte-native\", { capabilities: { location: \"Shows the stores near you.\" } }]]`, or uninstall expo-location.",
-      );
-    return config;
-  }
-  // Left out of autolinking, expo-location is not in the build, and its plugin would do nothing (`leaveOutOfAutoPlugins` has marked it applied).
-  if (excluded)
-    throw new CapabilityConfigError("capabilities.location is on, but expo-location is left out of autolinking (`autolinkingExclude`, or `expo.autolinking.exclude` in package.json): take it out of that list, or turn the capability off.");
-  const props = locationPluginProps(location as LocationCapability);
-  try {
-    context.load("expo-location/package.json");
-  } catch {
-    throw new CapabilityConfigError("capabilities.location needs expo-location, which is not installed: `npx expo install expo-location`, then prebuild again.");
-  }
-  let plugin: unknown;
-  try {
-    plugin = context.load("expo-location/app.plugin.js");
-  } catch (error) {
-    throw new CapabilityConfigError(`expo-location's config plugin (expo-location/app.plugin.js) failed to load: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  const apply = ((plugin as { default?: unknown }).default ?? plugin) as Plugin;
-  if (typeof apply !== "function") throw new CapabilityConfigError("expo-location's config plugin (expo-location/app.plugin.js) is not a function: is the installed expo-location the one this Expo SDK uses?");
-  return apply(config, props);
+  return locationIsOn(location) ? withLocationOn(config, location) : withoutLocation(config, context);
 }
 
 /** Where the notifications go when the app names no channel, and what the user reads in the app's notification settings. */

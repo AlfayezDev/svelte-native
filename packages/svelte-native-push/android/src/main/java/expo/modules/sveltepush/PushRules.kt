@@ -59,6 +59,13 @@ object PushRules {
     else -> Route.BACKGROUND
   }
 
+  /**
+   * The channel a notification this module shows goes to: the one the sender named when the device has it (`exists`), else the default. Firebase does the same for a
+   * notification it shows itself ("if the channel does not exist, the manifest's default"), so the two look alike; a name the app never made must not be posted to, as
+   * Android drops a notification for a channel that does not exist (from API 26).
+   */
+  fun channelFor(requested: String?, exists: (String) -> Boolean, default: String): String = requested?.takeIf { exists(it) } ?: default
+
   /** Whether `show` posts anything: not when the hook said `banner: false`, and not for a message that is data only. */
   fun shouldPost(message: PushMessage, presentation: Presentation): Boolean = presentation.banner && message.hasContent
 }

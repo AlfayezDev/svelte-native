@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { baseStubs, load as loadBundle, src } from "../support/bundle.ts";
+import { load as loadBundle, src } from "../support/bundle.ts";
 import { snapshotGlobals } from "../support/globals.ts";
+import { routerStubs } from "../support/router.ts";
 import { createStorage, memoryBackend } from "../../src/web-storage.ts";
 import { message, pushStubs, TOKEN, world, type PushWorld } from "./support/world.ts";
 import { resolve } from "node:path";
@@ -27,7 +28,7 @@ const loadLibrary = (): Promise<Loaded> => loadBundle<Loaded>({
     import Linking from "react-native/Libraries/Linking/Linking";
     import { flushSync } from "svelte";
     export { watch, push, registerHooks, Linking, platformLinking, flushSync };`,
-  stubs: { ...baseStubs(), ...pushStubs },
+  stubs: { ...routerStubs, ...pushStubs }, // the client reads the root router (`launchScope`), so the router's stand-ins are needed
   converters: false,
 });
 
@@ -37,7 +38,7 @@ const loadHooksOnly = (): Promise<Pick<Loaded, "registerHooks" | "Linking">> => 
     import { registerHooks } from ${JSON.stringify(src("app-hooks.ts"))};
     import Linking from "react-native/Libraries/Linking/Linking";
     export { registerHooks, Linking };`,
-  stubs: { ...baseStubs(), ...pushStubs },
+  stubs: { ...routerStubs, ...pushStubs }, // the client reads the root router (`launchScope`), so the router's stand-ins are needed
   converters: false,
 });
 

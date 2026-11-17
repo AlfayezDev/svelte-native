@@ -19,9 +19,14 @@ class TapLedger(private val store: TapStore, private val capacity: Int = 32) {
   // Read at the first tap, not at construction: nothing before a tap needs the file, and the process starts without it.
   private val ids: ArrayList<String> by lazy { ArrayList(store.load()) }
 
-  /** True the first time this id is asked about, and false after; a failure of the store is the caller's (the tap is delivered and the id forgotten at the next run). */
+  /**
+   * True the first time this id is asked about, and false after; a failure of the store is the caller's (the tap is delivered and the id forgotten at the next run).
+   * An id with a line break is never a first time: the store writes one id to a line, so such an id would write more than one (`PushMapping` does not make one a tap in
+   * the first place, and this keeps the file whole whoever asks).
+   */
   @Synchronized
   fun firstTime(id: String): Boolean {
+    if (id.contains('\n')) return false
     if (ids.contains(id)) return false
     ids.add(id)
     while (ids.size > capacity) ids.removeAt(0)
@@ -55,6 +60,22 @@ class PushTaps(private val events: PushEvents, private val ledger: TapLedger, pr
       launch = message
     }
     return true
+  }
+
+  /**
+   * The tap an intent's extras say was made, if there was one, through [tapped]. [extras] reads them as a map: an Android `Bundle` unparcels at the first key it is asked for,
+   * not when it is made, so a class this process cannot load (another app's Parcelable in an intent that launches an Activity of ours) throws from there, and this is where
+   * that is caught. It runs inside `Activity.onCreate`, so it must not throw whatever it finds: a tap that cannot be read is no tap, and the launch goes on. Returns whether
+   * a tap was delivered (false for an intent that is none, for a tap seen before, and for one that could not be read); [failed] hears what was caught.
+   */
+  fun readTap(extras: () -> Map<String, Any?>?, failed: (RuntimeException) -> Unit = {}): Boolean {
+    return try {
+      val message = extras()?.let { PushMapping.fromExtras(it) } ?: return false
+      tapped(message)
+    } catch (error: RuntimeException) {
+      failed(error)
+      false
+    }
   }
 
   /** The message whose tap launched the process, once: null after that, and when no tap did. From the first call on, taps are `opened` events. */

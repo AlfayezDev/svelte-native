@@ -12,13 +12,19 @@
  *   and this file feeds both without the router knowing: `getInitialURL()` is wrapped to answer the platform's link, or else the link of the notification whose tap launched
  *   the process; a tap with the app running is emitted as a `url` event, which every `addEventListener("url")` listener (the router's) hears. The `opened` hook runs first.
  *   A path of the app becomes a link `openURL` accepts by `linkOf`.
+ * - **Launches are the router's** (`launchScope`). A router reads the launch link once, when its `<Router>` mounts, and an Android Activity that is made again while the
+ *   JavaScript runtime lives (the system ended it, the user came back through a notification) starts a surface with a router of its own. So a read by a router this file has
+ *   not answered is a new launch: it asks the native module again and does not get the last launch's link back (a launch from the icon after the user left must not open
+ *   yesterday's notification), and a tap that comes while no router listens (the old surface is gone, the new one has not mounted) is kept for the next read, which is
+ *   what `Linking.getInitialURL()` does for an Intent that made the Activity.
  *
  * What it assumes of the native module, beyond PUSH.md's table (the native phases implement these):
  *
  * - The module holds its events until JavaScript has a listener for them, and this file listens to all four at start (`token`, `message`, `opened`, `background`).
  * - `takeLaunchMessage()` is called at the first read of `Linking.getInitialURL()` (the router mounting), not when this file starts: a process that began without a screen (a
  *   background message) shows its first screen later, and the tap that opened it is the launch message then. A tap is the launch message until `takeLaunchMessage()` has been
- *   called once, and an `opened` event after that.
+ *   called once, and an `opened` event after that. It is called again at the first read of each later router (above), and answers `null` when nothing launched that one: a tap
+ *   that came while no router listened is not the native module's to keep (it was an `opened` event), it is this file's.
  */
 import type { PushHooks, PushPresentation } from "./hooks.js";
 import type { PushMessage, PushToken } from "./types.js";
@@ -97,6 +103,11 @@ export type PushClientOptions = {
     /** Subscribes to the app returning to the foreground (`foreground.ts`). */
     onForeground: (listener: () => void) => void;
     linking: PushLinking;
+    /**
+     * What one launch belongs to: the app's root router (`push.svelte.ts` gives `rootRouter()`), or `undefined` while there is none. Reads and taps are told apart by it
+     * (see "Launches are the router's" above). Without it the client has one launch for its whole life, and every tap with the app running is emitted at once.
+     */
+    launchScope?: () => unknown;
 };
 /**
  * How long the `foreground` hook has to answer. The native side holds a message for a second; this is a little less, so that the answer (or the default) arrives before the native

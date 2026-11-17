@@ -21,7 +21,7 @@ const manifest = JSON.parse(read("package.json")) as {
 };
 const config = JSON.parse(read("expo-module.config.json")) as {
   platforms: string[];
-  android: { projects: { name: string; path: string; modules: string[] }[] };
+  android: { name: string; path?: string; projects?: unknown; modules: string[] };
   apple: { podspecPath: string[]; swiftModuleName: string[]; modules: string[]; appDelegateSubscribers: string[] };
 };
 
@@ -56,12 +56,14 @@ describe("the package", () => {
 describe("expo-module.config.json", () => {
   test("links one Gradle project with the module, and one pod with the module and the app delegate subscriber", () => {
     expect(config.platforms).toEqual(["android", "apple"]);
-    expect(config.android.projects).toEqual([{ name: "svelte-push", path: "android", modules: ["expo.modules.sveltepush.SveltePushModule"] }]);
+    // The module is on Expo's root project (`android/`, no `path`): Expo's autolinking always adds that project, so a `projects` entry for the same
+    // directory would be a second Gradle project over it, and the build fails on their shared outputs.
+    expect(config.android).toEqual({ name: "svelte-push", modules: ["expo.modules.sveltepush.SveltePushModule"] });
     expect(config.apple).toEqual({ podspecPath: ["ios/SveltePush.podspec"], swiftModuleName: ["SveltePush"], modules: ["SveltePushModule"], appDelegateSubscribers: ["SveltePushAppDelegateSubscriber"] });
   });
 
   test("names classes and files that exist, and the module is `SveltePush` on both platforms", () => {
-    const [project] = config.android.projects;
+    const project = { path: config.android.path ?? "android", modules: config.android.modules };
     expect(existsSync(join(root, project.path, "build.gradle"))).toBe(true);
     for (const module of project.modules) {
       const file = `${join(project.path, "src/main/java", ...module.split("."))}.kt`;

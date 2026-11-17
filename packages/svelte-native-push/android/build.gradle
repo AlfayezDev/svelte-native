@@ -1,0 +1,23 @@
+apply plugin: 'com.android.library'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'expo.modules.sveltepush'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.sveltepush"
+
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+
+  lintOptions { abortOnError false }
+}
+
+// The native code of push on Android (PUSH.md, "Android"): the module the JavaScript side calls, and the service Firebase delivers messages to. Firebase is a
+// dependency of this project and of no other, so an app that does not install the package has none of it in its build.
+dependencies {
+  // An exact version: a message is delivered by this library's service, and an app should get the one the library was exercised on. (Google's Maven, 11 Nov 2026.)
+  implementation 'com.google.firebase:firebase-messaging:26.0.2'
+}

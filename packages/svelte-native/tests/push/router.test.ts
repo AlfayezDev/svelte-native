@@ -43,6 +43,18 @@ describe("a cold start by a tap", () => {
     expect(pushWorld.calls.filter((call) => call === "take")).toHaveLength(1);
   });
 
+  test("opens it in an app whose hooks file has no push: the native module being there is what starts the client", async () => {
+    pushWorld.launch = message({ id: "launch", url: "/workspaces" });
+    const app = await mount();
+    await app.settled();
+    expect(pathsOf(app.router)).toEqual(["/workspaces"]);
+    expect(app.hardwareBack()).toBe(false);
+    // And a tap with the app running, the same way.
+    pushWorld.dispatch("opened", message({ id: "later", url: "/acme/home" }));
+    await app.settled();
+    expect(pathsOf(app.router)).toEqual(["/workspaces", "/acme"]);
+  });
+
   test("a full link of the app's own scheme opens the same way", async () => {
     pushWorld.launch = message({ url: "myapp://workspaces" });
     const app = await mount({ push: {} });

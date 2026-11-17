@@ -8,8 +8,8 @@
  *   stays up meanwhile). It runs in a launch without a screen too (a background task), since that launch evaluates the same entry.
  * - `handleError` and `transport` are the remote functions' (`remote/config.ts` watches them here, so an app that uses no remote function
  *   loads nothing of SvelteKit for them).
- * - `push` is the app's answer to push notifications (`push/hooks.ts`). An app that exports it has the push client loaded when the file registers (`push/load.ts` watches
- *   for it), so the hooks run in a launch without a screen (a background message) too; an app without it evaluates none of that.
+ * - `push` is the app's answer to push notifications (`push/hooks.ts`). The push client is loaded at start in a build that has the native module, and when the file registers
+ *   with `push` (`push/load.ts`), so the hooks run in a launch without a screen (a background message) too; an app with neither evaluates none of that.
  *
  * A hot update of the file registers its new exports; `init` does not run again, unless it failed (development shows the failure on the
  * screen, and the fix or the screen's Reload runs it again; an edit made while it is still in flight runs once it has failed). In a release

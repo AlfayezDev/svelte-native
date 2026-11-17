@@ -15,6 +15,8 @@ export type PushWorld = {
   calls: string[];
   /** `Linking.getInitialURL`'s answer. */
   initialURL: string | null;
+  /** The `getInitialURL` the stand-in for `Linking` was made with: what it still is when nothing wrapped it. */
+  originalGetInitialURL: (() => Promise<string | null>) | undefined;
   permission: PushPermission;
   /** While set, the module's `permission()` does not answer until it resolves. */
   holdPermission: Promise<void> | undefined;
@@ -29,7 +31,7 @@ export const message = (patch: Partial<PushMessage> = {}): PushMessage => ({ id:
 export function world(options: { module?: false } = {}): PushWorld {
   const listeners: { event: string; listener: (payload: unknown) => void }[] = [];
   const state: PushWorld = {
-    native: null, lookups: [], appState: [], calls: [], initialURL: null, permission: "prompt", holdPermission: undefined, launch: null, token: TOKEN,
+    native: null, lookups: [], appState: [], calls: [], initialURL: null, originalGetInitialURL: undefined, permission: "prompt", holdPermission: undefined, launch: null, token: TOKEN,
     dispatch: (event, payload) => { for (const { event: name, listener } of [...listeners]) if (name === event) listener(payload); },
   };
   state.native = options.module === false ? null : {
@@ -61,10 +63,12 @@ export const pushStubs: Record<string, string> = {
     };`,
   "react-native/Libraries/AppState/AppState": "export default { currentState: 'active', addEventListener: (type, handler) => { globalThis.__pushWorld.appState.push(handler); return { remove() {} }; } };",
   "react-native/Libraries/Linking/Linking": `const handlers = (globalThis.__linkHandlers ??= []);
+    const getInitialURL = () => Promise.resolve(globalThis.__pushWorld.initialURL);
+    globalThis.__pushWorld.originalGetInitialURL = getInitialURL;
     export default {
       addEventListener(name, handler) { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; },
       emit(name, payload) { for (const handler of [...handlers]) handler(payload); },
-      getInitialURL: () => Promise.resolve(globalThis.__pushWorld.initialURL),
+      getInitialURL,
       openURL: () => Promise.resolve(),
     };`,
 };

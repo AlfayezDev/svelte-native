@@ -4,6 +4,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
 import { LITE_ORIGINS, NODE_CRYPTO, QUICK_CRYPTO, withSvelteNative } from "../../../src/metro.ts";
+import { vendoredNames, vendoredRoot } from "../../../src/vendored.ts";
 import { packageRoot } from "../../support/paths.ts";
 import { type RealResolver, fakeConfig, resolveFrom as resolveWith } from "../../support/metro.ts";
 import { createProject } from "../../support/project.ts";
@@ -63,9 +64,9 @@ describe("the React Native shim of the packages `crypto` and `localStorage` are 
     expect(LITE_ORIGINS.test("/app/node_modules/react-native-mmkv-storage/index.js")).toBe(false);
   });
 
-  /** The names a package's sources import from `react-native` (types left out), from the installed copy. */
+  /** The names a package's sources import from `react-native` (types left out), from the installed copy, or the library's own for a vendored package (MMKV, the Nitro runtime). */
   function importedFromReactNative(name: string): string[] {
-    const directory = dirname(createRequire(import.meta.url).resolve(`${name}/package.json`));
+    const directory = vendoredNames.includes(name) ? vendoredRoot(name) : dirname(createRequire(import.meta.url).resolve(`${name}/package.json`));
     const names = new Set<string>();
     const walk = (folder: string) => {
       for (const entry of readdirSync(folder, { withFileTypes: true })) {

@@ -45,7 +45,7 @@ class FakeMMKV {
   clearAll() { this.data.clear(); }
   getAllKeys() { return [...this.data.keys()]; }
 }
-mock.module("react-native-mmkv", () => {
+mock.module("#vendor/react-native-mmkv", () => {
   if (missingMMKV) throw new Error("Nitro module \"MMKVFactory\" is not in this app");
   events.push("mmkv loaded");
   return {

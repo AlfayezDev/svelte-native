@@ -29,6 +29,7 @@ __export(metro_exports, {
   RENDERER_STUBS: () => RENDERER_STUBS,
   closeWatchers: () => closeWatchers,
   isInPackage: () => isInPackage,
+  isLiteOrigin: () => isLiteOrigin,
   libraryChanged: () => libraryChanged,
   pushPlatforms: () => pushPlatforms,
   stubCoreSource: () => stubCoreSource,
@@ -36,9 +37,9 @@ __export(metro_exports, {
   withSvelteNative: () => withSvelteNative
 });
 module.exports = __toCommonJS(metro_exports);
-var import_node_fs6 = require("node:fs");
+var import_node_fs7 = require("node:fs");
 var import_node_module5 = require("node:module");
-var import_node_path9 = require("node:path");
+var import_node_path10 = require("node:path");
 
 // src/build.ts
 var import_node_fs3 = require("node:fs");
@@ -109,16 +110,16 @@ function buildTree(files) {
     const found = /* @__PURE__ */ new Map();
     for (const source of everyDirectory) {
       if (!source.key.startsWith(`${tabs.key}/`)) continue;
-      const relative4 = source.directory.slice(tabs.directory.length);
+      const relative5 = source.directory.slice(tabs.directory.length);
       let groups = 0;
-      while (groups < relative4.length && isGroup(relative4[groups])) groups++;
-      if (groups === relative4.length) {
+      while (groups < relative5.length && isGroup(relative5[groups])) groups++;
+      if (groups === relative5.length) {
         const isPage = pages.get(source.key) === source;
         if (isPage || navigators.has(source.key)) throw new Error(`${source.path}: a ${isPage ? "page" : "navigator layout"} directly under a tabs layout has no pane to show in; move it into a pane directory`);
         continue;
       }
-      const key = relative4[groups];
-      const directory = tabs.directory.concat(relative4.slice(0, groups + 1));
+      const key = relative5[groups];
+      const directory = tabs.directory.concat(relative5.slice(0, groups + 1));
       const known = found.get(key);
       if (known && known.directory.join("/") !== directory.join("/")) throw new Error(`pane ${key} of ${tabs.key} is defined twice: ${known.directory.join("/")} and ${directory.join("/")}`);
       if (key.startsWith("[")) throw new Error(`${source.path}: a pane is a fixed directory, not a parameter`);
@@ -2718,12 +2719,62 @@ function assertCustomRenderer(what, from) {
   if (!inspection.ok) throw new Error(customRendererMessage(inspection, what));
 }
 
+// src/vendored.ts
+var import_node_fs6 = require("node:fs");
+var import_node_path9 = require("node:path");
+var vendoredPackages = [
+  {
+    name: "react-native-nitro-modules",
+    version: "0.35.10",
+    android: { packageImportPath: "import com.margelo.nitro.NitroModulesPackage;", packageInstance: "new NitroModulesPackage()" },
+    ios: { podspec: "NitroModules.podspec" }
+  },
+  {
+    name: "react-native-mmkv",
+    version: "4.3.1",
+    android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
+    ios: { podspec: "NitroMmkv.podspec" }
+  }
+];
+var vendoredNames = vendoredPackages.map((vendored) => vendored.name);
+var vendorDirectory = (root = packageRoot) => (0, import_node_path9.join)(root, "vendor");
+var vendoredRoot = (name, root = packageRoot) => (0, import_node_path9.join)(vendorDirectory(root), name);
+function vendoredImport(request) {
+  for (const vendored of vendoredPackages) {
+    if (request === vendored.name) return { vendored, subpath: "" };
+    if (request.startsWith(`${vendored.name}/`)) return { vendored, subpath: request.slice(vendored.name.length + 1) };
+  }
+  return void 0;
+}
+var real = (path) => {
+  try {
+    return (0, import_node_fs6.realpathSync)(path);
+  } catch {
+    return path;
+  }
+};
+function vendoredFileAs(path, root = packageRoot) {
+  for (const directory of /* @__PURE__ */ new Set([vendorDirectory(root), real(vendorDirectory(root))])) {
+    const inside = (0, import_node_path9.relative)(directory, path);
+    if (inside !== "" && !inside.startsWith("..") && !(0, import_node_path9.isAbsolute)(inside)) {
+      const name = vendoredPackages.find((vendored) => inside === vendored.name || inside.startsWith(`${vendored.name}${import_node_path9.sep}`))?.name;
+      if (name !== void 0) return inside.split(import_node_path9.sep).join("/");
+    }
+  }
+  return void 0;
+}
+
 // src/metro.ts
 var require4 = (0, import_node_module5.createRequire)(__importMetaUrl);
-var nativeSvelte = (0, import_node_path9.dirname)(require4.resolve("svelte/package.json"));
+var nativeSvelte = (0, import_node_path10.dirname)(require4.resolve("svelte/package.json"));
 var LITE_ORIGINS = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:hermes-intl|expo|expo-modules-core|expo-file-system|react-native-reanimated|react-native-worklets|react-native-is-edge-to-edge|expo-secure-store|expo-image-picker|expo-localization|expo-crypto|expo-constants|expo-font|expo-asset|expo-splash-screen|expo-status-bar|expo-system-ui|expo-keep-awake|expo-application|react-native-nitro-modules|react-native-mmkv|react-native-quick-crypto|react-native-quick-base64|react-native-svg)[\\/]/;
 var NODE_CRYPTO = /* @__PURE__ */ new Set(["crypto", "node:crypto"]);
 var QUICK_CRYPTO = "react-native-quick-crypto";
+function isLiteOrigin(path) {
+  if (LITE_ORIGINS.test(path)) return true;
+  const vendored = vendoredFileAs(path);
+  return vendored !== void 0 && LITE_ORIGINS.test(`/node_modules/${vendored}`);
+}
 var INITIALIZE_CORE = /react-native[\\/]Libraries[\\/]Core[\\/]InitializeCore\.js$/;
 var RENDERER_STUBS = {
   "react-native/Libraries/ReactNative/RendererProxy.js": "./fabric/renderer-stub.ts",
@@ -2759,23 +2810,23 @@ module.exports = require("./_core.js")(${JSON.stringify(name)}, ${JSON.stringify
 }
 var isInPackage = (moduleName, name) => moduleName === name || moduleName.startsWith(`${name}/`);
 var resetForLibrary;
-function libraryChanged(projectRoot, library = (0, import_node_fs6.realpathSync)(packageRoot)) {
-  const record = (0, import_node_path9.join)(projectRoot, ".svelte-native", "metro-library");
+function libraryChanged(projectRoot, library = (0, import_node_fs7.realpathSync)(packageRoot)) {
+  const record = (0, import_node_path10.join)(projectRoot, ".svelte-native", "metro-library");
   let previous;
   try {
-    previous = (0, import_node_fs6.readFileSync)(record, "utf8").trim();
+    previous = (0, import_node_fs7.readFileSync)(record, "utf8").trim();
   } catch {
     previous = void 0;
   }
   if (previous === library) return false;
-  (0, import_node_fs6.mkdirSync)((0, import_node_path9.dirname)(record), { recursive: true });
-  (0, import_node_fs6.writeFileSync)(record, `${library}
+  (0, import_node_fs7.mkdirSync)((0, import_node_path10.dirname)(record), { recursive: true });
+  (0, import_node_fs7.writeFileSync)(record, `${library}
 `);
   return true;
 }
 var realOr = (path) => {
   try {
-    return (0, import_node_fs6.realpathSync)(path);
+    return (0, import_node_fs7.realpathSync)(path);
   } catch {
     return path;
   }
@@ -2802,33 +2853,33 @@ function withSvelteNative(config, options = {}) {
   const resolveRequest = config.resolver.resolveRequest;
   const stubbed = options.stubbedPackages ?? [];
   const variant = options.variant ?? variantName();
-  const stubDirectory = (0, import_node_path9.join)(config.projectRoot, ".svelte-native", "stubs", variant.replace(/[^A-Za-z0-9_-]/g, "_"));
+  const stubDirectory = (0, import_node_path10.join)(config.projectRoot, ".svelte-native", "stubs", variant.replace(/[^A-Za-z0-9_-]/g, "_"));
   const write = (file, content) => {
     let current;
     try {
-      current = (0, import_node_fs6.readFileSync)(file, "utf8");
+      current = (0, import_node_fs7.readFileSync)(file, "utf8");
     } catch {
       current = void 0;
     }
-    if (current !== content) (0, import_node_fs6.writeFileSync)(file, content);
+    if (current !== content) (0, import_node_fs7.writeFileSync)(file, content);
   };
   const stubs = /* @__PURE__ */ new Map();
   if (stubbed.length > 0) {
-    (0, import_node_fs6.mkdirSync)(stubDirectory, { recursive: true });
-    write((0, import_node_path9.join)(stubDirectory, "_core.js"), stubCoreSource);
+    (0, import_node_fs7.mkdirSync)(stubDirectory, { recursive: true });
+    write((0, import_node_path10.join)(stubDirectory, "_core.js"), stubCoreSource);
   }
   for (const name of stubbed) {
-    const file = (0, import_node_path9.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
-    (0, import_node_fs6.mkdirSync)(stubDirectory, { recursive: true });
+    const file = (0, import_node_path10.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
+    (0, import_node_fs7.mkdirSync)(stubDirectory, { recursive: true });
     write(file, stubSource(name, variant));
     stubs.set(name, file);
   }
   const withoutExtension = (path) => path.replace(/\.[cm]?[jt]sx?$/, "");
   const nameOf = (path) => withoutExtension(path).slice(config.projectRoot.length + 1);
   const writeStub = (name) => {
-    const file = (0, import_node_path9.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
-    (0, import_node_fs6.mkdirSync)(stubDirectory, { recursive: true });
-    write((0, import_node_path9.join)(stubDirectory, "_core.js"), stubCoreSource);
+    const file = (0, import_node_path10.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
+    (0, import_node_fs7.mkdirSync)(stubDirectory, { recursive: true });
+    write((0, import_node_path10.join)(stubDirectory, "_core.js"), stubCoreSource);
     write(file, stubSource(name, variant));
     return file;
   };
@@ -2837,17 +2888,17 @@ function withSvelteNative(config, options = {}) {
   const directories = /* @__PURE__ */ new Map();
   for (const path of options.stubbedDirectories ?? []) {
     const directory = path.replace(/[\\/]+$/, "");
-    directories.set(directory + import_node_path9.sep, writeStub(`${nameOf(directory)}/`));
+    directories.set(directory + import_node_path10.sep, writeStub(`${nameOf(directory)}/`));
   }
   const lab = labIncludedFor(variant);
-  const entryFile = (0, import_node_path9.join)(config.projectRoot, ".svelte-native", "entry.ts");
-  const routesTable = (0, import_node_path9.join)(config.projectRoot, ".svelte-native", routesTableFile(variant));
-  if (options.syncRoutes ?? (0, import_node_fs6.existsSync)((0, import_node_path9.join)(config.projectRoot, "src/routes"))) {
+  const entryFile = (0, import_node_path10.join)(config.projectRoot, ".svelte-native", "entry.ts");
+  const routesTable = (0, import_node_path10.join)(config.projectRoot, ".svelte-native", routesTableFile(variant));
+  if (options.syncRoutes ?? (0, import_node_fs7.existsSync)((0, import_node_path10.join)(config.projectRoot, "src/routes"))) {
     const syncing = { variant, lab, entry: "keep" };
     syncRoutes(config.projectRoot, syncing);
     if (process.env.NODE_ENV === "development") watchers.add(watchRoutes(config.projectRoot, syncing));
   }
-  const classesTable = options.css === void 0 ? sourceFile("css/empty-table.ts") : (0, import_node_path9.join)(config.projectRoot, ".svelte-native", classesTableFile(variant));
+  const classesTable = options.css === void 0 ? sourceFile("css/empty-table.ts") : (0, import_node_path10.join)(config.projectRoot, ".svelte-native", classesTableFile(variant));
   if (options.css !== void 0) {
     const building = { root: config.projectRoot, css: options.css, variant };
     const built2 = buildClassesSync(building);
@@ -2855,14 +2906,14 @@ function withSvelteNative(config, options = {}) {
     reportUnsupported(built2.unsupported);
     if (process.env.NODE_ENV === "development") watchers.add(watchClasses(building, built2.stylesheets));
   }
-  const pushClient = (0, import_node_fs6.realpathSync)(sourceFile("push/push.svelte.ts"));
+  const pushClient = (0, import_node_fs7.realpathSync)(sourceFile("push/push.svelte.ts"));
   const pushOn = pushPlatforms(config.projectRoot);
   const pushAbsent = sourceFile("push/absent.ts");
   const pushOff = (platform) => pushOn !== void 0 && (platform === "ios" ? !pushOn.ios : platform === "android" ? !pushOn.android : !pushOn.android && !pushOn.ios);
   const stubFor = (moduleName, origin) => {
     const name = stubbed.find((candidate) => isInPackage(moduleName, candidate));
     if (name !== void 0) return stubs.get(name) ?? null;
-    if (files.size > 0 && (moduleName.startsWith("./") || moduleName.startsWith("../"))) return files.get(withoutExtension((0, import_node_path9.resolve)((0, import_node_path9.dirname)(origin), moduleName))) ?? null;
+    if (files.size > 0 && (moduleName.startsWith("./") || moduleName.startsWith("../"))) return files.get(withoutExtension((0, import_node_path10.resolve)((0, import_node_path10.dirname)(origin), moduleName))) ?? null;
     return null;
   };
   const stubForFile = (filePath) => {
@@ -2880,7 +2931,7 @@ function withSvelteNative(config, options = {}) {
     resolveRequest: (given, requested, platform) => {
       const aliased = NODE_CRYPTO.has(requested);
       const moduleName = aliased ? QUICK_CRYPTO : requested;
-      const context = aliased ? { ...given, originModulePath: (0, import_node_path9.join)(config.projectRoot, "package.json") } : given;
+      const context = aliased ? { ...given, originModulePath: (0, import_node_path10.join)(config.projectRoot, "package.json") } : given;
       if (moduleName === "@alfayez/svelte-native/routes" || moduleName === "./routes" && context.originModulePath === entryFile) return { type: "sourceFile", filePath: routesTable };
       if (moduleName === "@alfayez/svelte-native/classes-table") return { type: "sourceFile", filePath: classesTable };
       const stub = stubFor(moduleName, context.originModulePath);
@@ -2894,16 +2945,18 @@ function withSvelteNative(config, options = {}) {
       if (kit !== void 0) return { type: "sourceFile", filePath: kit };
       if (moduleName === "svelte/reactivity/window") return { type: "sourceFile", filePath: sourceFile("reactivity-window.ts") };
       if (moduleName === "svelte" || moduleName.startsWith("svelte/")) {
-        const nativeContext = { ...context, originModulePath: (0, import_node_path9.resolve)(nativeSvelte, "native-entry.js"), unstable_conditionNames: ["browser", "require"] };
+        const nativeContext = { ...context, originModulePath: (0, import_node_path10.resolve)(nativeSvelte, "native-entry.js"), unstable_conditionNames: ["browser", "require"] };
         return context.resolveRequest(nativeContext, moduleName, platform);
       }
-      if (moduleName === "react-native" && LITE_ORIGINS.test(context.originModulePath)) {
+      if (moduleName === "react-native" && isLiteOrigin(context.originModulePath)) {
         return { type: "sourceFile", filePath: sourceFile("fabric/react-native-lite.ts") };
       }
       if (moduleName === "esm-env") {
         return { type: "sourceFile", filePath: sourceFile("environment.ts") };
       }
-      const result = resolveRequest ? resolveRequest(context, moduleName, platform) : context.resolveRequest(context, moduleName, platform);
+      const vendoredName = vendoredImport(moduleName);
+      const target = vendoredName ? (0, import_node_path10.join)(vendoredRoot(vendoredName.vendored.name), vendoredName.subpath) : moduleName;
+      const result = resolveRequest ? resolveRequest(context, target, platform) : context.resolveRequest(context, target, platform);
       if (result.type === "sourceFile") {
         const stubbedFile = stubForFile(result.filePath);
         if (stubbedFile !== null) return { type: "sourceFile", filePath: stubbedFile };
@@ -2938,6 +2991,7 @@ function withSvelteNative(config, options = {}) {
   RENDERER_STUBS,
   closeWatchers,
   isInPackage,
+  isLiteOrigin,
   libraryChanged,
   pushPlatforms,
   stubCoreSource,

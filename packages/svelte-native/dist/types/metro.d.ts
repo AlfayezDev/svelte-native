@@ -1,4 +1,9 @@
 import type { MetroConfig as ConfigT } from "expo/metro-config";
+/**
+ * The libraries whose `react-native` import gets the lite shim: a module of a package that only needs the few names it takes from React Native (`TurboModuleRegistry`, `Platform`, ...)
+ * and not the whole index. The origin is a file below the package in `node_modules` (the pattern), or in the library's own `vendor/` under that package's name (`isLiteOrigin`):
+ * a vendored package gets the shim exactly when its name is in this list, as the installed one did.
+ */
 export declare const LITE_ORIGINS: RegExp;
 /**
  * The names under which Node's `crypto` is imported. A library written for Node (`jose`, an AWS or a Stripe client, ...) imports one of them; on the device they resolve to
@@ -7,6 +12,8 @@ export declare const LITE_ORIGINS: RegExp;
  */
 export declare const NODE_CRYPTO: ReadonlySet<string>;
 export declare const QUICK_CRYPTO = "react-native-quick-crypto";
+/** Whether a file is one `react-native` is shimmed for (`LITE_ORIGINS`): a package of `node_modules`, or one of the library's vendored packages standing in for it. */
+export declare function isLiteOrigin(path: string): boolean;
 export declare const INITIALIZE_CORE: RegExp;
 /**
  * React Native modules that reach the React renderer (118 KB, plus React and the public-instance/DOM classes), keyed by

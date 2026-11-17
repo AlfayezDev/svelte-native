@@ -163,7 +163,7 @@ describe("the web's `localStorage` entry", () => {
     const names = exportsOf(src("mmkv.ts"));
     expect([...names.values].sort()).toEqual(["createMMKV", "localStorageMMKV"]);
     expect([...names.types].sort()).toEqual(["Configuration", "MMKV", "Mode"]);
-    expect(readFileSync(src("mmkv.ts"), "utf8")).toContain('from "react-native-mmkv"');
+    expect(readFileSync(src("mmkv.ts"), "utf8")).toContain('from "#vendor/react-native-mmkv"');
     // The main entry and the primitives export nothing of it: an app that does not use MMKV directly does not load its types.
     expect(JSON.stringify(manifest.exports["."])).not.toContain("mmkv");
     for (const entry of [src("index.ts"), src("core.ts"), src("app.ts")]) expect(readFileSync(entry, "utf8")).not.toMatch(/mmkv|quick-crypto/);

@@ -182,6 +182,6 @@ test("crypto, localStorage and sessionStorage are accessors the polyfills define
   const graph = graphOfBundle();
   // The small modules that define the globals are in the graph; the libraries behind them are required on first use.
   for (const file of ["src/lazy-global.ts", "src/web-crypto.ts", "src/web-storage.ts", "src/local-storage.ts"]) expect(graph.has(join(root, file)), file).toBe(true);
-  const reached = [...graph.keys()].filter((path) => /\/node_modules\/(?:react-native-(?:quick-crypto|mmkv|nitro-modules|quick-base64)|@craftzdog\/react-native-buffer)\//.test(path));
+  const reached = [...graph.keys()].filter((path) => /\/(?:node_modules|vendor)\/(?:react-native-(?:quick-crypto|mmkv|nitro-modules|quick-base64)|@craftzdog\/react-native-buffer)\//.test(path));
   expect(reached.map((path) => `${path} is evaluated at load:\n  ${chain(graph, path)}`)).toEqual([]);
 });

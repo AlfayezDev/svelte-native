@@ -110,7 +110,8 @@ export function hostPlugin(options: HostPluginOptions = {}): Plugin {
   return {
     name: "svelte-native-test-host",
     setup(builder) {
-      builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
+      // The vendored packages (`#vendor/<name>`, `vendor/`) are react-native-* packages the library carries: stood in for like the installed ones were, so their React Native imports are not bundled.
+      builder.onResolve({ filter: /^(react-native|expo-modules-core|#vendor\/)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
       if (named.length) builder.onResolve({ filter: new RegExp(`^(${named.map(escapeRegExp).join("|")})$`) }, (args) => ({ path: args.path, namespace: "stub" }));
       builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: options.openStubs ? "module.exports = new Proxy({}, { get: () => () => {} });" : stubs[args.path] ?? "export {};", loader: "js", resolveDir: tests }));
       if (viewConfigs === "pass-through") builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: resolve(import.meta.dirname, "view-configs-stub.ts") }));

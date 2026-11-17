@@ -57,6 +57,22 @@ class PushTaps(private val events: PushEvents, private val ledger: TapLedger, pr
     return true
   }
 
+  /**
+   * The tap an intent's extras say was made, if there was one, through [tapped]. [extras] reads them as a map: an Android `Bundle` unparcels at the first key it is asked for,
+   * not when it is made, so a class this process cannot load (another app's Parcelable in an intent that launches an Activity of ours) throws from there, and this is where
+   * that is caught. It runs inside `Activity.onCreate`, so it must not throw whatever it finds: a tap that cannot be read is no tap, and the launch goes on. Returns whether
+   * a tap was delivered (false for an intent that is none, for a tap seen before, and for one that could not be read); [failed] hears what was caught.
+   */
+  fun readTap(extras: () -> Map<String, Any?>?, failed: (RuntimeException) -> Unit = {}): Boolean {
+    return try {
+      val message = extras()?.let { PushMapping.fromExtras(it) } ?: return false
+      tapped(message)
+    } catch (error: RuntimeException) {
+      failed(error)
+      false
+    }
+  }
+
   /** The message whose tap launched the process, once: null after that, and when no tap did. From the first call on, taps are `opened` events. */
   @Synchronized
   fun takeLaunch(): PushMessage? {

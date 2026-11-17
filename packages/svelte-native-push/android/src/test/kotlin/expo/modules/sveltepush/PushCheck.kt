@@ -354,6 +354,36 @@ private fun taps() {
   for (id in listOf("1", "2", "3", "4")) small.firstTime(id)
   expect("a ledger keeps the last few: the oldest is forgotten", small.firstTime("1"), true)
   expect("the newest are kept", small.firstTime("4"), false)
+
+  // Reading a tap out of an intent runs inside Activity.onCreate for every launch of the app, so it never throws. A Bundle unparcels at its first key, and a Parcelable of a
+  // class this process cannot load (another app's intent) throws BadParcelableException there; the host check stands in for it with a RuntimeException of its own.
+  class Unparcel(detail: String) : RuntimeException(detail)
+  val ours = PushMapping.toExtras(a)
+  val (reading, readingEvents, _) = rig()
+  val caught = ArrayList<RuntimeException>()
+  expect("extras that fail to unparcel are no tap", reading.readTap({ throw Unparcel("ClassNotFoundException when unmarshalling: com.other.App") }) { caught.add(it) }, false)
+  expect("and are reported, not thrown", caught.map { it.message }, listOf("ClassNotFoundException when unmarshalling: com.other.App"))
+  expect("a key that fails halfway is no tap either", reading.readTap({ ours.entries.associate { (key, value) -> if (key == PushMapping.EXTRA_URL) throw Unparcel("at $key") else key to value } }) { caught.add(it) }, false)
+  expect("nothing was delivered, and nothing is the launch message", listOf(readingEvents.sent.size, reading.takeLaunch()), listOf(0, null))
+  expect("a failure with nobody to tell is still not thrown", reading.readTap({ throw Unparcel("no listener") }), false)
+  expect("an intent with no extras is no tap", reading.readTap({ null }), false)
+  expect("extras of another kind are no tap", reading.readTap({ mapOf("android.intent.extra.REFERRER" to "x") }), false)
+  expect("a tap that was read well after the failures is delivered", reading.readTap({ ours }), true)
+  expect("as an event, the launch window being over", readingEvents.sent.toList(), listOf("opened" to a.toMap()))
+  expect("and read again, it is not", reading.readTap({ ours }), false)
+  val (launchRead, _, _) = rig()
+  expect("before JavaScript asked, a tap read from extras is the launch message", listOf(launchRead.readTap({ ours }), launchRead.takeLaunch()), listOf(true, a))
+
+  // A store that fails (a preferences file that cannot be read) does not stop the launch either.
+  val brokenStore = object : TapStore {
+    override fun load(): List<String> = throw Unparcel("the preferences file is unreadable")
+
+    override fun save(ids: List<String>) = Unit
+  }
+  val brokenTaps = PushTaps(PushEvents(), TapLedger(brokenStore))
+  val brokenCaught = ArrayList<RuntimeException>()
+  expect("a ledger that cannot be read is reported, and the launch goes on", brokenTaps.readTap({ ours }) { brokenCaught.add(it) }, false)
+  expect("with its reason", brokenCaught.map { it.message }, listOf("the preferences file is unreadable"))
 }
 
 private fun waits() {

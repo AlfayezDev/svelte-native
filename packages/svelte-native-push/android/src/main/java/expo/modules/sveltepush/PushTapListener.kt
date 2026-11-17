@@ -27,19 +27,23 @@ internal fun readLaunchTap(activity: Activity, savedInstanceState: Bundle?) {
 /**
  * Reads a tap from an intent: the one this module's own notification starts, or the one Firebase's notification starts when the system showed it with the app in the
  * background (`PushMapping.fromExtras` tells them apart, and an intent that is neither is not a tap). What a tap becomes (the launch message, or an `opened` event) and
- * the guard against reading the same tap twice are `PushTaps`'s.
+ * the guard against reading the same tap twice are `PushTaps`'s. Nothing that goes wrong in reading it may reach the Activity: this runs for every Activity launch of the
+ * app, from `onCreate`, and an intent that cannot be read (see [extrasOf]) is not a tap.
+ */
+internal fun readTap(intent: Intent) {
+  PushRuntime.tapsOrNull()?.readTap({ extrasOf(intent) }) {
+    Log.w(LOG_TAG, "an intent could not be read as a notification tap, so it is ignored: $it")
+  }
+}
+
+/**
+ * The extras of an intent as a map. `Intent.getExtras` copies the Bundle without reading it; the unparcelling happens at `keySet()` and `get()`, and a Parcelable of a class
+ * this process cannot load (an intent from another app) throws `BadParcelableException` there, which is why the caller catches around all of it.
  */
 @Suppress("DEPRECATION")
-internal fun readTap(intent: Intent) {
-  val extras = try {
-    intent.extras
-  } catch (error: RuntimeException) {
-    // Extras of a class this process cannot load (another app's intent) fail to unparcel; such an intent is not ours.
-    Log.w(LOG_TAG, "the extras of an intent could not be read, so it is not treated as a notification tap: $error")
-    null
-  } ?: return
-  val message = PushMapping.fromExtras(extras.keySet().associateWith { extras.get(it) }) ?: return
-  PushRuntime.tapsOrNull()?.tapped(message)
+private fun extrasOf(intent: Intent): Map<String, Any?>? {
+  val extras = intent.extras ?: return null
+  return extras.keySet().associateWith { extras.get(it) }
 }
 
 /**

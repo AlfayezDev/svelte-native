@@ -23,6 +23,11 @@ type Options = {
   storage?: Storage;
   /** A build without the native module. */
   module?: false;
+  /**
+   * Gives the client a `launchScope` that answers this (a router the test makes up; `undefined` is no router), changed by `setScope`. Not given: the client has none, and one launch
+   * for its whole life.
+   */
+  scoped?: unknown;
 };
 
 function fake(options: Options = {}) {
@@ -49,6 +54,7 @@ function fake(options: Options = {}) {
     },
   };
   const state: PushState = { permission: "prompt", token: null };
+  let scope: unknown = options.scoped;
   const storage = options.storage ?? createStorage(memoryBackend());
   const emitted: string[] = [];
   const platformURL = options.platformURL ?? null;
@@ -70,6 +76,7 @@ function fake(options: Options = {}) {
     storage: () => storage,
     onForeground: (listener) => { returnToForeground = listener; },
     linking,
+    ...("scoped" in options ? { launchScope: () => scope } : {}),
   });
   client.start();
   const dispatch = (event: string, payload: unknown) => { for (const { event: name, listener } of [...listeners.values()]) if (name === event) listener(payload); };
@@ -77,6 +84,9 @@ function fake(options: Options = {}) {
     client, native, state, calls, storage, emitted, linking, listeners, urlListeners,
     dispatch, arrive,
     setPermission: (value: PushPermission) => { permission = value; },
+    setScope: (value: unknown) => { scope = value; },
+    /** A launch message the native module hands over at the next `takeLaunchMessage`. */
+    setLaunch: (value: PushMessage | null) => { launch = value; },
     setToken: (value: PushToken) => { token = value; },
     setHooks: (value: PushHooks | undefined) => { hooks = value; },
     foreground: () => returnToForeground?.(),
@@ -903,6 +913,157 @@ describe("the tap that launched the app, through Linking.getInitialURL", () => {
     new PushClient({ native: null, state: { permission: "prompt", token: null }, hooks: () => undefined, storage: () => undefined, onForeground: () => {}, linking }).start();
     expect(linking.getInitialURL).toBe(original);
     expect(listened).toBe(0);
+  });
+});
+
+describe("a launch belongs to one router (Android: an Activity made again while the JavaScript runtime lives)", () => {
+  // What the router does: it adds its `url` listener and reads the launch link once, when its `<Router>` mounts. A surface that starts has a router of its own.
+  const first = { router: 1 };
+  const second = { router: 2 };
+  const third = { router: 3 };
+  const opening = message({ id: "opening", url: "/orders/42" });
+  const later = message({ id: "later", url: "/workspaces" });
+
+  test("a router that reads after another is a new launch: it asks the native module again, and does not get the last launch's link back", async () => {
+    const { linking, calls, setScope, setLaunch } = fake({ scoped: first, launch: opening });
+    expect(await linking.getInitialURL()).toBe("https://app.invalid/orders/42");
+    setScope(undefined); // the Activity was ended: no router
+    setScope(second); // and another started its surface, from the icon: no tap
+    expect(await linking.getInitialURL()).toBeNull();
+    expect(calls.filter((call) => call === "take")).toHaveLength(2);
+    setScope(third);
+    setLaunch(later);
+    expect(await linking.getInitialURL()).toBe("https://app.invalid/workspaces"); // a tap that the native module kept as the launch of the new Activity
+  });
+
+  test("the same router's reads are one launch: the native module is asked once and the hook runs once, whatever order they come in", async () => {
+    let ran = 0;
+    const { linking, calls } = fake({ scoped: first, launch: opening, hooks: { opened: () => { ran++; } } });
+    const together = await Promise.all([linking.getInitialURL(), linking.getInitialURL()]);
+    const after = await linking.getInitialURL();
+    expect([...together, after]).toEqual(Array(3).fill("https://app.invalid/orders/42"));
+    expect([ran, calls.filter((call) => call === "take").length]).toEqual([1, 1]);
+  });
+
+  test("a read that failed is asked again by the same router and still answers its launch", async () => {
+    let failing = true;
+    const { linking, calls } = fake({ scoped: first, launch: opening, platformURL: async () => { if (failing) throw new Error("the link service is down"); return null; } });
+    await expect(linking.getInitialURL()).rejects.toThrow("the link service is down");
+    failing = false;
+    expect(await linking.getInitialURL()).toBe("https://app.invalid/orders/42");
+    expect(calls.filter((call) => call === "take")).toHaveLength(1);
+  });
+
+  test("a tap while no router listens waits for the next one, and is its launch: the hook ran once, at the tap", async () => {
+    const ran: string[] = [];
+    const { linking, dispatch, emitted, calls, setScope } = fake({ scoped: first, hooks: { opened: (arrived) => { ran.push(arrived.id); } } });
+    expect(await linking.getInitialURL()).toBeNull(); // the first Activity's router has read
+    setScope(undefined); // the system ended the Activity; the runtime lives on
+    dispatch("opened", opening); // the notification was tapped: the Activity that starts is not there yet
+    await settle();
+    expect(emitted).toEqual([]); // nobody to hear it
+    expect(ran).toEqual(["opening"]);
+    setScope(second);
+    expect(await linking.getInitialURL()).toBe("https://app.invalid/orders/42");
+    expect(ran).toEqual(["opening"]); // not again
+    expect(await linking.getInitialURL()).toBe("https://app.invalid/orders/42"); // the router's own later reads answer the same
+    expect(calls.filter((call) => call === "take")).toHaveLength(1); // the held tap was the launch: the native module had nothing to add to it
+    // It was the launch of that one router: the next router does not get it.
+    setScope(third);
+    expect(await linking.getInitialURL()).toBeNull();
+    expect(calls.filter((call) => call === "take")).toHaveLength(2);
+  });
+
+  test("a tap while the router that exists has not mounted yet waits for its read too", async () => {
+    const { linking, dispatch, emitted, setScope } = fake({ scoped: first });
+    await linking.getInitialURL();
+    setScope(second); // the new surface made its router; its <Router> has not mounted
+    dispatch("opened", opening);
+    await settle();
+    expect(emitted).toEqual([]);
+    expect(await linking.getInitialURL()).toBe("https://app.invalid/orders/42");
+  });
+
+  test("a tap while a router listens is emitted at once, as ever, and is not held for the next", async () => {
+    const { linking, dispatch, emitted, setScope } = fake({ scoped: first });
+    await linking.getInitialURL();
+    dispatch("opened", opening);
+    await settle();
+    expect(emitted).toEqual(["https://app.invalid/orders/42"]);
+    setScope(second);
+    expect(await linking.getInitialURL()).toBeNull();
+  });
+
+  test("a tap whose hook is slow is judged when the hook is done: a router that mounted meanwhile hears it", async () => {
+    let release: (() => void) | undefined;
+    const { linking, dispatch, emitted, setScope } = fake({ scoped: first, hooks: { opened: () => new Promise<void>((resolve) => { release = resolve; }) } });
+    await linking.getInitialURL();
+    setScope(undefined);
+    dispatch("opened", opening); // nobody listens
+    await settle();
+    setScope(second);
+    expect(await linking.getInitialURL()).toBeNull(); // the router read while the hook was still running
+    release?.();
+    await settle();
+    expect(emitted).toEqual(["https://app.invalid/orders/42"]); // and it listens now, so it hears the tap as one with the app running
+  });
+
+  test("the last tap is where the user meant to go, and a hook that stops a tap holds nothing", async () => {
+    const { linking, dispatch, emitted, setScope } = fake({ scoped: first, hooks: { opened: (arrived) => arrived.id !== "stopped" } });
+    await linking.getInitialURL();
+    setScope(undefined);
+    dispatch("opened", opening);
+    await settle();
+    dispatch("opened", later);
+    await settle();
+    dispatch("opened", message({ id: "stopped", url: "/never" }));
+    await settle();
+    setScope(second);
+    expect(await linking.getInitialURL()).toBe("https://app.invalid/workspaces");
+    expect(emitted).toEqual([]);
+    setScope(undefined);
+    dispatch("opened", message({ id: "stopped", url: "/never" }));
+    await settle();
+    setScope(third);
+    expect(await linking.getInitialURL()).toBeNull();
+  });
+
+  test("the platform's own link wins over a tap that waited, as it wins over the notification that launched the process", async () => {
+    const { linking, dispatch, setScope } = fake({ scoped: first, platformURL: "myapp://settings" });
+    await linking.getInitialURL();
+    setScope(undefined);
+    dispatch("opened", opening);
+    await settle();
+    setScope(second);
+    expect(await linking.getInitialURL()).toBe("myapp://settings");
+  });
+
+  test("a link the platform delivered before the first read is that read's, and not the next router's", async () => {
+    const { linking, arrive, setScope } = fake({ scoped: first });
+    arrive("myapp://early");
+    expect(await linking.getInitialURL()).toBe("myapp://early");
+    setScope(second);
+    expect(await linking.getInitialURL()).toBeNull();
+  });
+
+  test("a read before the app has any router belongs to the first router that reads", async () => {
+    const { linking, calls, setScope } = fake({ scoped: undefined, launch: opening });
+    expect(await linking.getInitialURL()).toBe("https://app.invalid/orders/42"); // a library reading it early
+    setScope(first);
+    expect(await linking.getInitialURL()).toBe("https://app.invalid/orders/42");
+    expect(calls.filter((call) => call === "take")).toHaveLength(1);
+    setScope(second);
+    expect(await linking.getInitialURL()).toBeNull();
+  });
+
+  test("an app that never has a router hears every tap, and has one launch", async () => {
+    const { linking, dispatch, emitted, calls } = fake({ scoped: undefined, launch: opening });
+    expect(await linking.getInitialURL()).toBe("https://app.invalid/orders/42");
+    expect(await linking.getInitialURL()).toBe("https://app.invalid/orders/42");
+    dispatch("opened", later);
+    await settle();
+    expect(emitted).toEqual(["https://app.invalid/workspaces"]);
+    expect(calls.filter((call) => call === "take")).toHaveLength(1);
   });
 });
 

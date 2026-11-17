@@ -110,7 +110,7 @@ export declare const PERMISSION_KEY = "svelte-native.push.permission";
 /** The permission the system last reported to this app, read from the storage; `null` for an app that has never read it. */
 export declare function storedPermission(storage: Storage | undefined): PushPermission | null;
 /** Why `push` does nothing in a build: the native module is missing. */
-export declare const MISSING_PUSH = "[Svelte push] push is not part of this app's build: install @alfayez/svelte-native-push (npx expo install @alfayez/svelte-native-push), turn on `capabilities: { push: { \u2026 } }` in the @alfayez/svelte-native plugin of the app config, and rebuild the native app. Until then `push.permission` reads \"denied\" and `push.subscribe` resolves with null";
+export declare const MISSING_PUSH = "[Svelte push] push is not part of this app's build: install @alfayez/svelte-native-push from the same git tag as @alfayez/svelte-native (its README shows the command), turn on `capabilities: { push: { \u2026 } }` in the @alfayez/svelte-native plugin of the app config, and rebuild the native app. Until then `push.permission` reads \"denied\" and `push.subscribe` resolves with null";
 /**
  * The link the router opens for a notification's `url`. A full link (any scheme: `myapp://orders/42`, `https://example.com/orders/42`) is kept as it is. A path of the app
  * (`/orders/42?tab=1#top`) is not a link, and `openURL` refuses what `URL.parse` does not accept, so it becomes `https://app.invalid/orders/42?tab=1#top`: the router takes

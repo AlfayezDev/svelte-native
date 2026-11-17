@@ -6,13 +6,6 @@
  */
 
 /**
- * TRANSITIONAL: the name of the separate package that push's native code used to be, which no longer exists (it is part of svelte-core, and the plugin turns it on). Only the doctor
- * (`doctor/push.ts`) and the Metro config (`metro.ts`) still import it, and they are being changed to read the module's `enabled` constant and the app's config instead; delete this
- * constant with their last use. The config plugin does not use it.
- */
-export const pushPackage = "@alfayez/svelte-native-push";
-
-/**
  * The push libraries of other makers. Android delivers every message to one `FirebaseMessagingService` and iOS has one notification center delegate, so a second
  * library would take messages from the first, or the first would take them from it: an app has one push library.
  */

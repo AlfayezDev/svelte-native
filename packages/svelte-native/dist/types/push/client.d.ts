@@ -1,5 +1,5 @@
 /**
- * The device's side of push (PUSH.md): `push.svelte.ts` makes one `PushClient` over the native module `SveltePush` (`@alfayez/svelte-native-push`) and exposes it as `push`.
+ * The device's side of push (PUSH.md): `push.svelte.ts` makes one `PushClient` over the native module `SveltePush` (the library's own, `native/svelte-core`) and exposes it as `push`.
  * Everything that is not reactive state is here, so that it runs against a stand-in of the module (`tests/push/client.test.ts`).
  *
  * - **Subscribing.** `subscribe({ save })` asks for the permission when the system still asks, registers with FCM or APNs, and calls `save(token)` when the token is new:
@@ -53,6 +53,11 @@ export type NativePushEvents = {
 };
 /** What this file uses of the native module `SveltePush`: the contract of PUSH.md, the same on both platforms. */
 export type NativePushModule = {
+    /**
+     * Whether push is on in this build for this platform: the config plugin's `capabilities.push` named it, which adds what push needs to the native project. The module is part of
+     * the library's native code, so it is in every build; with this `false` the app has no push, and nothing else here is called.
+     */
+    readonly enabled?: boolean;
     /** The system's state, without asking. */
     permission(): Promise<PushPermission>;
     /** Asks (Android 13+: `POST_NOTIFICATIONS`; iOS: alert, sound and badge), and resolves with the state after the user's answer. */
@@ -149,5 +154,5 @@ export declare class PushClient {
     /** Calls `listener` with each message that arrives while the app is in the foreground, once the `foreground` hook has decided how it shows. Returns what stops it. */
     on(event: "message", listener: (message: PushMessage) => void): () => void;
 }
-/** The native module `SveltePush`, looked up the way the library finds its other optional ones (`geolocation.ts`): `null` in a build without `@alfayez/svelte-native-push`. */
+/** The native module `SveltePush` when push is on in this build (its `enabled`, which `capabilities.push` turns on), else `null`. The module itself is part of the library's native code. */
 export declare function loadNativePush(): NativePushModule | null;

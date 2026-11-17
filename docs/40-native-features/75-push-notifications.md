@@ -4,7 +4,7 @@ title: Push notifications
 
 A Svelte Native app can get push notifications three ways. They differ in who delivers a message, where the keys that can send to every user are kept, and how much you build around a send.
 
-| | [Standalone](#standalone-alfayezsvelte-nativepush) | [Firebase](#with-firebase-react-native-firebasemessaging) | [Expo](#with-expo-expo-notifications) |
+| | [Standalone](#standalone) | [Firebase](#with-react-native-firebase) | [Expo](#with-expo-notifications) |
 | --- | --- | --- | --- |
 | Library in the app | `@alfayez/svelte-native/push`, part of this library | `@react-native-firebase/messaging` | `expo-notifications` |
 | Your server sends with | `createPush` from this library | `firebase-admin` | `expo-server-sdk` |
@@ -22,11 +22,11 @@ An app has one push library. The three exclude each other: Android delivers to o
 - **Firebase** when the app uses Firebase already (Analytics, Crashlytics), or you want Firebase's topics and its console's campaigns.
 - **Expo** when you'd rather not handle the providers at all: Expo keeps the keys and talks to Apple and Google, and you send one kind of token from your server. It needs an EAS project.
 
-## Standalone: `@alfayez/svelte-native/push`
+## Standalone
 
-Push is part of `@alfayez/svelte-native`: there is nothing to install. You turn it on in the config, and your server sends straight to Firebase Cloud Messaging (FCM) on Android and the Apple Push Notification service (APNs) on iOS, with your own credentials. There is no relay in between. The library does the device's side: the permission, the token, receiving a message, showing it, a tap on it, and a message that arrives while the app is closed. For your server it has a sender that sends one message to one device and tells you what happened.
+`@alfayez/svelte-native/push`. Push is part of `@alfayez/svelte-native`: there is nothing to install. You turn it on in the config, and your server sends straight to Firebase Cloud Messaging (FCM) on Android and the Apple Push Notification service (APNs) on iOS, with your own credentials. There is no relay in between. The library does the device's side: the permission, the token, receiving a message, showing it, a tap on it, and a message that arrives while the app is closed. For your server it has a sender that sends one message to one device and tells you what happened.
 
-> **important** **You need a job queue.** The sender doesn't queue, retry or fan out, so these are yours to run: a queue that sends from a job and not from the user's request, retries with backoff for the answers that ask for one, a table of tokens that you clean up from the answers, and sending to many devices with a concurrency limit. Postgres (with a job table or pg-boss), Redis (BullMQ) or a cloud queue all work. [What your app owns](#what-your-app-owns) has the list and a worked recipe. If you don't want to run this, use [Expo's push service](#with-expo-expo-notifications), which does most of it for you.
+> **important** **You need a job queue.** The sender doesn't queue, retry or fan out, so these are yours to run: a queue that sends from a job and not from the user's request, retries with backoff for the answers that ask for one, a table of tokens that you clean up from the answers, and sending to many devices with a concurrency limit. Postgres (with a job table or pg-boss), Redis (BullMQ) or a cloud queue all work. [What your app owns](#what-your-app-owns) has the list and a worked recipe. If you don't want to run this, use [Expo's push service](#with-expo-notifications), which does most of it for you.
 
 Three rules shape it:
 
@@ -431,9 +431,9 @@ A silent push can start the app in the background. The plugin makes that launch 
 - iOS provisional and critical alerts.
 - Live Activities.
 
-## With Firebase: `@react-native-firebase/messaging`
+## With React Native Firebase
 
-React Native Firebase uses Firebase Cloud Messaging on both platforms. On iOS, FCM hands each message to APNs with the APNs key you upload to Firebase, so the device's token is an FCM token on both. Your server sends with Google's `firebase-admin`. Its functions are plain JavaScript, so they work in a Svelte Native app; the parts this library does for the standalone package (opening a tap's link, a background launch with no screen) are yours to write, and the code below does them.
+`@react-native-firebase/messaging`. React Native Firebase uses Firebase Cloud Messaging on both platforms. On iOS, FCM hands each message to APNs with the APNs key you upload to Firebase, so the device's token is an FCM token on both. Your server sends with Google's `firebase-admin`. Its functions are plain JavaScript, so they work in a Svelte Native app; the parts this library does for the standalone package (opening a tap's link, a background launch with no screen) are yours to write, and the code below does them.
 
 > **info** **Still send from a job.** `firebase-admin` doesn't queue either, so send from a job, not from the user's request, and keep the tokens in a table. Firebase lightens the rest: `sendEachForMulticast` sends one message to up to 500 tokens, and topics let Firebase do the fan-out. Delete a token when a send fails with `messaging/registration-token-not-registered`.
 
@@ -584,9 +584,9 @@ A data-only message (no `notification`) reaches `setBackgroundMessageHandler`; o
 - **Taps are your code.** A tap's `url` opens because `listen` calls `goto`; a layout that doesn't run it opens nothing.
 - **React hooks don't run.** React Native Firebase's API is functions, so it works; anything a guide shows as a React hook or component doesn't. See [Native libraries](native-libraries#functions-work-hooks-dont).
 
-## With Expo: `expo-notifications`
+## With Expo notifications
 
-Your server sends to Expo's push service with an Expo push token, and Expo delivers the message through FCM and APNs with the credentials you give it in your EAS project. You keep no Apple or Google key on your server: it holds an Expo access token. Expo batches requests and retries the providers for you.
+`expo-notifications`. Your server sends to Expo's push service with an Expo push token, and Expo delivers the message through FCM and APNs with the credentials you give it in your EAS project. You keep no Apple or Google key on your server: it holds an Expo access token. Expo batches requests and retries the providers for you.
 
 > **info** **Still send from a job, and check the receipts.** Expo answers a send with a ticket, and about 15 minutes later it has a receipt that says whether Apple or Google took the message. A receipt of `DeviceNotRegistered` means delete the token. So you run two jobs: one that sends, and a delayed one that reads the receipts.
 

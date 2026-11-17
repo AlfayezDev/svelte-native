@@ -13,7 +13,7 @@ import expoPlugin, { applyAppDelegate } from "../../src/expo.ts";
 import { createProject } from "../support/project.ts";
 import { expoTemplateAppBuildGradle, expoTemplateAppDelegate } from "./support/app-delegate.ts";
 import { findHostJars } from "../support/host-tools.ts";
-import { libraryVersion, peerRange } from "../support/versions.ts";
+import { peerRange } from "../support/versions.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /** An app whose package.json lists `dependencies`, in a directory that is removed when the test's block ends. */

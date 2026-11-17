@@ -8,6 +8,7 @@
     "android",
     "ios",
     "expo-module.config.json",
+    "react-native.config.js",
     "README.md",
     "LICENSE",
     "!android/build",

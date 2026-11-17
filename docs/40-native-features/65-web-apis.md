@@ -109,7 +109,7 @@ localStorageMMKV().set('onboarded', true);
 localStorage.getItem('onboarded'); // null: localStorage reads strings
 ```
 
-react-native-mmkv is a required dependency of the app, with react-native-nitro-modules.
+react-native-mmkv comes with the library, together with react-native-nitro-modules: do not add either to the app's dependencies (the prebuild stops if you do).
 
 ## navigator
 

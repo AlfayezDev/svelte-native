@@ -37,7 +37,7 @@ pnpm android
 2. If the library has a config plugin or needs permissions, add them to `app.json` as its documentation says.
 3. Prebuild and build again, because the app on your device doesn't contain the new native code yet. [Development builds](development-builds#when-to-run-expo-prebuild) says when a prebuild is needed.
 
-Libraries that have been loaded this way include `expo-notifications`, `expo-location`, `expo-secure-store`, `expo-web-browser`, `expo-file-system`, `@react-native-async-storage/async-storage` and `react-native-mmkv`.
+Libraries that have been loaded this way include `expo-notifications`, `expo-location`, `expo-secure-store`, `expo-web-browser`, `expo-file-system`, and `@react-native-async-storage/async-storage`. `react-native-mmkv` and `react-native-nitro-modules` are not on the list: the library carries both, and an app that installs either is refused.
 
 For push notifications, [Push notifications](push-notifications) compares the three ways and sets each one up: the library's own `@alfayez/svelte-native/push`, which your server sends to through Firebase and APNs directly; [React Native Firebase](push-notifications#with-react-native-firebase); and [`expo-notifications`](push-notifications#with-expo-notifications) with Expo's push service. An app uses one of them: the prebuild stops when `capabilities.push` is on beside one of the others.
 

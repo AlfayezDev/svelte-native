@@ -19,9 +19,14 @@ class TapLedger(private val store: TapStore, private val capacity: Int = 32) {
   // Read at the first tap, not at construction: nothing before a tap needs the file, and the process starts without it.
   private val ids: ArrayList<String> by lazy { ArrayList(store.load()) }
 
-  /** True the first time this id is asked about, and false after; a failure of the store is the caller's (the tap is delivered and the id forgotten at the next run). */
+  /**
+   * True the first time this id is asked about, and false after; a failure of the store is the caller's (the tap is delivered and the id forgotten at the next run).
+   * An id with a line break is never a first time: the store writes one id to a line, so such an id would write more than one (`PushMapping` does not make one a tap in
+   * the first place, and this keeps the file whole whoever asks).
+   */
   @Synchronized
   fun firstTime(id: String): Boolean {
+    if (id.contains('\n')) return false
     if (ids.contains(id)) return false
     ids.add(id)
     while (ids.size > capacity) ids.removeAt(0)

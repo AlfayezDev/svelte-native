@@ -32,12 +32,19 @@ object PushMapping {
   private fun blankToNull(value: String?): String? = value?.takeIf { it.isNotBlank() }
 
   /**
+   * A message id the tap ledger can keep: not blank, and with no line break. The ledger stores one id to a line (`TapStore`), so an id with a `\n` would write more than one
+   * (an intent anybody can send to the app's launch Activity can carry one in `svelte.push.id`, and could so write the ids of messages that are not sent yet, which would then
+   * never open). An id like that is no id.
+   */
+  private fun usableId(value: String?): String? = blankToNull(value)?.takeIf { !it.contains('\n') }
+
+  /**
    * A message Firebase delivered. `title` and `body` are the notification block's, when the message has one. The sender's `url` is split off the data, and the id is
    * FCM's, or a new one (`newId`) for a message that has none, so that a tap and `show` still have something to know it by.
    */
   fun fromRemote(messageId: String?, title: String?, body: String?, data: Map<String, String>, newId: () -> String): PushMessage {
     return PushMessage(
-      id = blankToNull(messageId) ?: newId(),
+      id = usableId(messageId) ?: newId(),
       title = blankToNull(title),
       body = blankToNull(body),
       url = blankToNull(data[URL_KEY]),
@@ -62,7 +69,7 @@ object PushMapping {
    * that are not strings are not the sender's: FCM's data is strings only, and the extras Android and the launchers add (a boolean here, a bundle there) are skipped.
    */
   fun fromExtras(extras: Map<String, Any?>): PushMessage? {
-    val own = blankToNull(extras[EXTRA_ID] as? String)
+    val own = usableId(extras[EXTRA_ID] as? String)
     if (own != null) {
       val data = LinkedHashMap<String, String>()
       for ((key, value) in extras) {
@@ -78,7 +85,7 @@ object PushMapping {
         provider = provider,
       )
     }
-    val fcm = blankToNull(extras[FCM_MESSAGE_ID] as? String) ?: return null
+    val fcm = usableId(extras[FCM_MESSAGE_ID] as? String) ?: return null
     val data = LinkedHashMap<String, String>()
     for ((key, value) in extras) {
       if (value !is String || key == URL_KEY || RESERVED_KEYS.contains(key) || RESERVED_PREFIXES.any { key.startsWith(it) }) continue

@@ -8,7 +8,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExpoConfig } from "expo/config";
 import { AndroidConfig, compileModsAsync, withPlugins, XML, type ExportedConfig } from "expo/config-plugins";
-import { CapabilityConfigError, type PushCapability, androidStringText, applyPushAppDelegate, applyPushManifest, applyPushStrings, copyPushIcon, defaultPushChannel, findPushSecret, locationPluginProps, pushMetaData, pushPackage, pushResources, pushSettings, withCapabilities } from "../../src/capabilities.ts";
+import { CapabilityConfigError, type PushCapability, androidStringText, applyPushAppDelegate, applyPushManifest, applyPushStrings, copyPushIcon, defaultPushChannel, findPushSecret, locationPluginProps, pushMetaData, pushPackage, pushResources, pushSettings, removePushAppDelegate, removePushIcon, removePushManifest, removePushStrings, withCapabilities } from "../../src/capabilities.ts";
 import expoPlugin, { applyAppDelegate } from "../../src/expo.ts";
 import { createProject } from "../support/project.ts";
 import { expoTemplateAppDelegate } from "./support/app-delegate.ts";
@@ -280,19 +280,23 @@ describe("capabilities.push", () => {
     expect(JSON.stringify(bare.colors)).not.toContain("svelte_push_color");
   });
 
-  test("Android: the icon is copied into res/drawable under its fixed name by a dangerous mod, and there is none without an icon", async () => {
+  test("Android: the icon is copied into res/drawable under its fixed name by a dangerous mod, and a config without one takes the earlier prebuild's copy away", async () => {
     using project = pushApp({ [pushPackage]: libraryVersion }, { "assets/notify.png": "the icon's bytes" });
     const target = mkdtempSync(join(tmpdir(), "svelte-native-push-icon-"));
+    const icon = join(target, "app/src/main/res/drawable/svelte_push_icon.png");
+    const runDangerous = async (config: ExportedConfig) => mods(config).android.dangerous({ ...config, modRequest: { projectRoot: project.root, platformProjectRoot: target, platform: "android", modName: "dangerous", introspect: false }, modResults: {} });
     try {
-      const config = withPush(project, fullPush);
-      await mods(config).android.dangerous({ ...config, modRequest: { projectRoot: project.root, platformProjectRoot: target, platform: "android", modName: "dangerous", introspect: false }, modResults: {} });
-      expect(readFileSync(join(target, "app/src/main/res/drawable/svelte_push_icon.png"), "utf8")).toBe("the icon's bytes");
+      await runDangerous(withPush(project, fullPush));
+      expect(readFileSync(icon, "utf8")).toBe("the icon's bytes");
       expect(pushResources.icon).toBe("svelte_push_icon");
       // A later prebuild copies over the file of the earlier one.
       project.write("assets/notify.png", "a new icon");
       await copyPushIcon(join(project.root, "assets/notify.png"), target);
-      expect(readFileSync(join(target, "app/src/main/res/drawable/svelte_push_icon.png"), "utf8")).toBe("a new icon");
-      expect(mods(withPush(project, { android: { googleServicesFile: "./google-services.json" } })).android.dangerous).toBeUndefined();
+      expect(readFileSync(icon, "utf8")).toBe("a new icon");
+      // A config that has no icon any more takes the copy away (the name is the capability's), and one that never had any finds nothing to take.
+      await runDangerous(withPush(project, { android: { googleServicesFile: "./google-services.json" } }));
+      expect(existsSync(icon)).toBe(false);
+      await removePushIcon(target);
     } finally {
       rmSync(target, { recursive: true, force: true });
     }
@@ -470,6 +474,131 @@ describe("capabilities.push: the channel's texts reach the native code exactly",
     applyPushStrings(strings, now.channel);
     expect((application["meta-data"] ?? []).length).toBe(4);
     expect((strings.resources.string ?? []).length).toBe(3);
+  });
+});
+
+describe("capabilities.push off: what an earlier prebuild wrote is taken away, and only that", () => {
+  const template = expoTemplateAppDelegate();
+  const ours: NonNullable<AndroidConfig.Manifest.ManifestApplication["meta-data"]> = [
+    { $: { "android:name": pushMetaData.icon, "android:resource": "@drawable/svelte_push_icon" } },
+    { $: { "android:name": pushMetaData.color, "android:resource": "@color/svelte_push_color" } },
+    { $: { "android:name": pushMetaData.firebaseChannel, "android:value": "@string/svelte_push_channel_id" } },
+    { $: { "android:name": pushMetaData.channelId, "android:value": "@string/svelte_push_channel_id" } },
+    { $: { "android:name": pushMetaData.channelName, "android:value": "@string/svelte_push_channel_name" } },
+    { $: { "android:name": pushMetaData.channelDescription, "android:value": "@string/svelte_push_channel_description" } },
+  ];
+  const own = [{ $: { "android:name": "com.example.key", "android:value": "1" } }];
+  /** The channel's three string resources, as an earlier prebuild left them. */
+  const channelStringsOf = (text: string) => [pushResources.channelId, pushResources.channelName, pushResources.channelDescription].map((name) => ({ $: { name, translatable: "false", formatted: "false" }, _: androidStringText(text) }));
+  /** An app that uninstalled the push package and turned the capability off, with the native projects of its last prebuild (`ios/`, `android/`). */
+  const uninstalled = (files: Record<string, string> = {}) => pushApp({}, { "ios/App/AppDelegate.swift": "", "android/app/build.gradle": "", ...files });
+  const off = (project: { root: string }, push: unknown = false, options: { excluded?: string[] } = {}) => withCapabilities(appConfig(project.root), { push: push as PushCapability }, { projectRoot: project.root, ...options });
+  const run = async (config: ExportedConfig, platform: "ios" | "android", mod: string, modResults: object) => {
+    const apply = mods(config)[platform]?.[mod] as ((config: object) => Promise<{ modResults: any }>) | undefined;
+    if (apply === undefined) throw new Error(`the config has no ${platform} ${mod} mod`);
+    return (await apply({ modRequest: { projectRoot: "", platformProjectRoot: "", platform, modName: mod, introspect: false }, modResults })).modResults;
+  };
+  const entries = (result: any) => result.manifest.application[0]["meta-data"];
+  const mainApplication = (items?: object[]) => ({ manifest: { application: [{ $: { "android:name": ".MainApplication" }, ...(items === undefined ? {} : { "meta-data": items }) }] } });
+
+  test("the AppDelegate loses the wrapper and its import, and is the template's again; the navigation patch beside it stays", async () => {
+    using project = uninstalled();
+    const config = off(project);
+    expect(removePushAppDelegate(applyPushAppDelegate(template))).toBe(template);
+    expect(removePushAppDelegate(template)).toBe(template);
+    const withNavigation = applyAppDelegate(applyPushAppDelegate(template));
+    expect(removePushAppDelegate(withNavigation)).toBe(applyAppDelegate(template));
+    expect((await run(config, "ios", "appDelegate", { language: "swift", path: "AppDelegate.swift", contents: withNavigation })).contents).toBe(applyAppDelegate(template));
+    expect((await run(config, "ios", "appDelegate", { language: "swift", path: "AppDelegate.swift", contents: template })).contents).toBe(template);
+    // A delegate in another language never had the wrapper, and an app that has one is not stopped for a capability it does not use.
+    expect((await run(config, "ios", "appDelegate", { language: "objc", path: "AppDelegate.mm", contents: "x" })).contents).toBe("x");
+  });
+
+  test("the entitlement and the background mode are not touched: nothing in the project says that the capability wrote them", () => {
+    using project = uninstalled();
+    const mine = appConfig(project.root, { ios: { bundleIdentifier: "io.e.a", entitlements: { "aps-environment": "production" }, infoPlist: { UIBackgroundModes: ["remote-notification", "fetch"] } } });
+    const config = withCapabilities(mine, { push: false }, { projectRoot: project.root });
+    expect(config.ios).toEqual(mine.ios);
+    expect(Object.keys(mods(config).ios ?? {})).toEqual(["appDelegate"]);
+  });
+
+  test("the manifest loses the entries of the capability, and keeps the app's own, Firebase's defaults among them when they name something else", async () => {
+    using project = uninstalled();
+    const config = off(project);
+    expect(entries(await run(config, "android", "manifest", mainApplication([...ours, ...own])))).toEqual(own);
+    const kept = [
+      ...own,
+      { $: { "android:name": pushMetaData.icon, "android:resource": "@mipmap/ic_notification" } },
+      { $: { "android:name": pushMetaData.color, "android:resource": "@color/brand" } },
+      { $: { "android:name": pushMetaData.firebaseChannel, "android:value": "alerts" } },
+    ];
+    expect(entries(await run(config, "android", "manifest", mainApplication(kept)))).toEqual(kept);
+    expect(entries(await run(config, "android", "manifest", mainApplication()))).toBeUndefined();
+    // The id as text, as an earlier version wrote Firebase's channel beside the module's own entry: ours too.
+    const literal = [{ $: { "android:name": pushMetaData.firebaseChannel, "android:value": "orders" } }, { $: { "android:name": pushMetaData.channelId, "android:value": "orders" } }];
+    expect(entries(await run(config, "android", "manifest", mainApplication(literal)))).toEqual([]);
+    // A manifest without the main application is left alone, and does not stop the prebuild.
+    expect((await run(config, "android", "manifest", { manifest: {} })).manifest).toEqual({});
+    const application: AndroidConfig.Manifest.ManifestApplication = { $: { "android:name": ".MainApplication" } };
+    removePushManifest(application);
+    expect(application["meta-data"]).toBeUndefined();
+  });
+
+  test("strings.xml and colors.xml lose the capability's names and keep the others; the icon's file goes", async () => {
+    using project = uninstalled();
+    const config = off(project);
+    const strings = await run(config, "android", "strings", { resources: { string: [{ $: { name: "app_name" }, _: "App" }, ...channelStringsOf("x")] } });
+    expect(stringResources(strings)).toEqual({ app_name: "App" });
+    const colors = await run(config, "android", "colors", { resources: { color: [{ $: { name: "colorPrimary" }, _: "#023c69" }, { $: { name: "svelte_push_color" }, _: "#fff" }] } });
+    expect(colors.resources.color).toEqual([{ $: { name: "colorPrimary" }, _: "#023c69" }]);
+    expect(removePushStrings({ resources: {} })).toEqual({ resources: {} });
+    const target = mkdtempSync(join(tmpdir(), "svelte-native-push-off-"));
+    try {
+      mkdirSync(join(target, "app/src/main/res/drawable"), { recursive: true });
+      writeFileSync(join(target, "app/src/main/res/drawable/svelte_push_icon.png"), "an icon");
+      writeFileSync(join(target, "app/src/main/res/drawable/other.png"), "the app's");
+      await mods(config).android.dangerous({ ...config, modRequest: { projectRoot: project.root, platformProjectRoot: target, platform: "android", modName: "dangerous", introspect: false }, modResults: {} });
+      expect([existsSync(join(target, "app/src/main/res/drawable/svelte_push_icon.png")), existsSync(join(target, "app/src/main/res/drawable/other.png"))]).toEqual([false, true]);
+    } finally {
+      rmSync(target, { recursive: true, force: true });
+    }
+  });
+
+  test("the Google services file and the Gradle plugin are not touched: the config's android.googleServicesFile stays whatever it was, and no Gradle mod is added", () => {
+    using project = uninstalled();
+    const mine = appConfig(project.root, { android: { package: "io.e.a", googleServicesFile: "./mine.json" } });
+    const config = withCapabilities(mine, { push: false }, { projectRoot: project.root });
+    expect(config.android).toEqual(mine.android);
+    expect(Object.keys(mods(config).android).filter((mod) => /gradle/i.test(mod))).toEqual([]);
+  });
+
+  test("an app that has no native project has nothing to take away: the config is returned as it is, and a project of one platform is cleaned for that platform alone", () => {
+    using project = pushApp({}, {});
+    const config = appConfig(project.root);
+    expect(withCapabilities(config, { push: false }, { projectRoot: project.root })).toBe(config);
+    expect(withCapabilities(config, undefined, { projectRoot: project.root })).toBe(config);
+    using iosOnly = pushApp({}, { "ios/App/AppDelegate.swift": "" });
+    expect(Object.keys(off(iosOnly).mods ?? {})).toEqual(["ios"]);
+    using androidOnly = pushApp({}, { "android/app/build.gradle": "" });
+    expect(Object.keys(off(androidOnly).mods ?? {})).toEqual(["android"]);
+    expect(Object.keys(mods(off(androidOnly)).android).sort()).toEqual(["colors", "dangerous", "manifest", "strings"]);
+  });
+
+  test("the library left out of autolinking is as good as uninstalled: its wrapper would stop the build too; installed, the refusal comes first", () => {
+    using project = pushApp({ [pushPackage]: libraryVersion }, { "ios/App/AppDelegate.swift": "" });
+    expect(Object.keys(off(project, false, { excluded: [pushPackage] }).mods ?? {})).toEqual(["ios"]);
+    expect(thrown(() => off(project)).message).toContain("is installed, but the push capability is off");
+  });
+
+  test("push on for one platform takes away what an earlier prebuild wrote for the other, and writes the one that is named", async () => {
+    using project = pushApp({ [pushPackage]: libraryVersion }, { "ios/App/AppDelegate.swift": "", "android/app/build.gradle": "" });
+    const androidOnly = withPush(project, { android: { googleServicesFile: "./google-services.json" } });
+    expect(Object.keys(mods(androidOnly).ios)).toEqual(["appDelegate"]);
+    expect((await run(androidOnly, "ios", "appDelegate", { language: "swift", path: "AppDelegate.swift", contents: applyPushAppDelegate(template) })).contents).toBe(template);
+    const iosOnly = withPush(project, { ios: { mode: "production" } });
+    expect(Object.keys(mods(iosOnly).android).sort()).toEqual(["colors", "dangerous", "manifest", "strings"]);
+    expect(entries(await run(iosOnly, "android", "manifest", mainApplication([...ours, ...own])))).toEqual(own);
+    expect((await run(iosOnly, "ios", "appDelegate", { language: "swift", path: "AppDelegate.swift", contents: template })).contents).toBe(applyPushAppDelegate(template));
   });
 });
 

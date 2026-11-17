@@ -13,10 +13,13 @@
  * `location` is expo-location: `navigator.geolocation` and `navigator.permissions` use its native module (`geolocation.ts`).
  *
  * `push` is `@alfayez/svelte-native-push` (PUSH.md): Firebase Messaging on Android, APNs on iOS. The library has no plugin of its own, so the capability does what
- * the plugin of any push library does, from the identifiers in the config, and refuses what would ship a secret or make a second push library of the app.
+ * the plugin of any push library does, from the identifiers in the config, and refuses what would ship a secret or make a second push library of the app. A prebuild that keeps the
+ * native projects (no `--clean`) keeps what the last one wrote, so where push is off (or a platform is not named) the plugin takes away what is certainly its own: the `AppDelegate`
+ * wrapper (which imports the library's module, and would stop the build once the library is uninstalled), the manifest's entries and the resources under its names. It leaves what it
+ * cannot tell from the app's own: the entitlement, the background mode, the Google services file and the Gradle plugin.
  */
-import { readFileSync, statSync } from "node:fs";
-import { copyFile, mkdir } from "node:fs/promises";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { copyFile, mkdir, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import type { ExpoConfig } from "expo/config";
@@ -315,6 +318,14 @@ const holdTail = new RegExp(`\\n${escapeText(holdClose)}\\n${escapeText(holdEnd)
 const holdImportLine = new RegExp(`^${escapeText(holdImport)}\\n`, "m");
 
 /**
+ * `AppDelegate.swift` without what `applyPushAppDelegate` wrote (the wrapper of the template's call, and the import of the module that holds it): the template's own text again. A file that has
+ * none of it is returned as it is, so this is the whole of what an app that turned push off needs, and the first half of `applyPushAppDelegate`.
+ */
+export function removePushAppDelegate(contents: string): string {
+  return contents.replace(holdHead, "").replace(holdTail, "").replace(holdImportLine, "");
+}
+
+/**
  * `AppDelegate.swift` (iOS) for an app with push: rule 2 of PUSH.md, a push that wakes the app mounts no screen. Expo's template starts React Native's surface in
  * `application(_:didFinishLaunchingWithOptions:)`, which mounts the first screen, and iOS also runs that method when it launches the app in the background for a silent push,
  * where nobody can see the screen. The template's `factory.startReactNative(...)` call is wrapped in `SveltePushBackgroundLaunch.start` (`@alfayez/svelte-native-push`),
@@ -324,7 +335,7 @@ const holdImportLine = new RegExp(`^${escapeText(holdImport)}\\n`, "m");
  * what an older version wrote. Throws when the template has no such call, since a build that lost this silently would mount a screen in the background.
  */
 export function applyPushAppDelegate(contents: string): string {
-  const stripped = contents.replace(holdHead, "").replace(holdTail, "").replace(holdImportLine, "");
+  const stripped = removePushAppDelegate(contents);
   const imports = [...stripped.matchAll(/^(?:(?:internal|public|package|private|fileprivate) |@_exported |@preconcurrency )*import [\w.]+[ \t]*$/gm)];
   const lastImport = imports.at(-1);
   const call = /^[ \t]*factory\.startReactNative\([^)]*\)[ \t]*$/m.exec(stripped);
@@ -479,38 +490,69 @@ export async function copyPushIcon(source: string, platformProjectRoot: string):
   await copyFile(source, join(directory, `${pushResources.icon}.png`));
 }
 
+/** Deletes the icon an earlier prebuild copied (its name is ours), for an app whose config has none now. */
+export async function removePushIcon(platformProjectRoot: string): Promise<void> {
+  await rm(join(platformProjectRoot, "app/src/main/res/drawable", `${pushResources.icon}.png`), { force: true });
+}
+
 /**
  * The Android side. Expo's own prebuild does the Firebase part when `android.googleServicesFile` is set (`AndroidConfig.GoogleServices`: it copies the file to
  * `android/app/google-services.json` and applies the `com.google.gms.google-services` Gradle plugin), so the capability sets that and writes the rest: the manifest's
- * entries, the channel's strings, the color and the icon file.
+ * entries, the channel's strings, the color and the icon file. Without `android` (the capability is off, or the config names no Android side) it writes nothing and takes away what an
+ * earlier prebuild wrote: all of it is under names that are ours. Not `android.googleServicesFile`, the copy of the file and the Gradle plugin: nothing in the project says whose they
+ * are, and with no Firebase library left they do no harm.
  */
-function withPushAndroid(config: ExpoConfig, android: NonNullable<PushSettings["android"]>, projectRoot: string): ExpoConfig {
-  const existing = config.android?.googleServicesFile;
-  if (existing !== undefined && resolve(projectRoot, existing) !== resolve(projectRoot, android.googleServicesFile))
-    throw new CapabilityConfigError(
-      `The app config sets android.googleServicesFile ("${existing}") and capabilities.push.android.googleServicesFile is "${android.googleServicesFile}": keep one. capabilities.push.android.googleServicesFile sets android.googleServicesFile.`,
-    );
-  config = { ...config, android: { ...config.android, googleServicesFile: android.googleServicesFile } };
+function withPushAndroid(config: ExpoConfig, android: NonNullable<PushSettings["android"]> | undefined, projectRoot: string): ExpoConfig {
+  if (android) {
+    const existing = config.android?.googleServicesFile;
+    if (existing !== undefined && resolve(projectRoot, existing) !== resolve(projectRoot, android.googleServicesFile))
+      throw new CapabilityConfigError(
+        `The app config sets android.googleServicesFile ("${existing}") and capabilities.push.android.googleServicesFile is "${android.googleServicesFile}": keep one. capabilities.push.android.googleServicesFile sets android.googleServicesFile.`,
+      );
+    config = { ...config, android: { ...config.android, googleServicesFile: android.googleServicesFile } };
+  }
   config = withAndroidManifest(config, (config) => {
-    applyPushManifest(AndroidConfig.Manifest.getMainApplicationOrThrow(config.modResults), android);
+    if (android) applyPushManifest(AndroidConfig.Manifest.getMainApplicationOrThrow(config.modResults), android);
+    else {
+      const application = AndroidConfig.Manifest.getMainApplication(config.modResults);
+      if (application) removePushManifest(application);
+    }
     return config;
   });
   config = withStringsXml(config, (config) => {
-    config.modResults = applyPushStrings(config.modResults, android.channel);
+    config.modResults = android ? applyPushStrings(config.modResults, android.channel) : removePushStrings(config.modResults);
     return config;
   });
-  const { color, icon } = android;
-  if (color !== undefined)
-    config = withAndroidColors(config, (config) => {
-      config.modResults = AndroidConfig.Colors.assignColorValue(config.modResults, { name: pushResources.color, value: color });
-      return config;
-    });
-  if (icon !== undefined)
-    config = withDangerousMod(config, ["android", async (config) => {
-      await copyPushIcon(resolve(config.modRequest.projectRoot, icon), config.modRequest.platformProjectRoot);
-      return config;
-    }]);
-  return config;
+  config = withAndroidColors(config, (config) => {
+    // Sets the color, or takes the one of an earlier prebuild away when the config has none.
+    config.modResults = AndroidConfig.Colors.assignColorValue(config.modResults, { name: pushResources.color, value: android?.color });
+    return config;
+  });
+  const icon = android?.icon;
+  return withDangerousMod(config, ["android", async (config) => {
+    if (icon === undefined) await removePushIcon(config.modRequest.platformProjectRoot);
+    else await copyPushIcon(resolve(config.modRequest.projectRoot, icon), config.modRequest.platformProjectRoot);
+    return config;
+  }]);
+}
+
+/**
+ * Takes the push wrapper out of `AppDelegate.swift` (`removePushAppDelegate`) of an app that has no push on iOS (the capability is off, or names no iOS side), when it has an iOS project at all:
+ * the wrapper imports the module of `@alfayez/svelte-native-push`, so an app that uninstalled the package and prebuilt without `--clean` would otherwise stop on "No such module 'SveltePush'".
+ * The entitlement and the background mode stay: they are in `Info.plist` and the entitlements file with nothing that says the capability wrote them, and the app's own config or another
+ * library's plugin may be the one that wants them.
+ */
+function withoutPushIos(config: ExpoConfig, context: Context): ExpoConfig {
+  if (!existsSync(join(context.projectRoot, "ios"))) return config;
+  return withAppDelegate(config, (config) => {
+    if (config.modResults.language === "swift") config.modResults.contents = removePushAppDelegate(config.modResults.contents);
+    return config;
+  });
+}
+
+/** What `withPushAndroid` takes away for an app that has no push on Android, when it has an Android project at all (a project that does not exist has nothing of an earlier prebuild). */
+function withoutPushAndroid(config: ExpoConfig, context: Context): ExpoConfig {
+  return existsSync(join(context.projectRoot, "android")) ? withPushAndroid(config, undefined, context.projectRoot) : config;
 }
 
 function withPush(config: ExpoConfig, push: Capabilities["push"], context: Context): ExpoConfig {
@@ -523,7 +565,8 @@ function withPush(config: ExpoConfig, push: Capabilities["push"], context: Conte
           'turn push on in the @alfayez/svelte-native plugin, `plugins: [["@alfayez/svelte-native", { capabilities: { push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } } } }]]`, ' +
           `or uninstall ${pushPackage}.`,
       );
-    return config;
+    // The refusal above tells an app to uninstall the package: the prebuild after that, which keeps the native projects, finds what the earlier one wrote and takes it away.
+    return withoutPushAndroid(withoutPushIos(config, context), context);
   }
   const secret = findPushSecret(push, "capabilities.push");
   if (secret) throw secretError(secret);
@@ -541,7 +584,6 @@ function withPush(config: ExpoConfig, push: Capabilities["push"], context: Conte
         `Uninstall ${other}, or turn the push capability off and uninstall ${pushPackage}.`,
     );
   const settings = pushSettings(push, config.android?.package, context.projectRoot);
-  if (settings.ios) config = withPushIos(config, settings.ios.mode);
-  if (settings.android) config = withPushAndroid(config, settings.android, context.projectRoot);
-  return config;
+  config = settings.ios ? withPushIos(config, settings.ios.mode) : withoutPushIos(config, context);
+  return settings.android ? withPushAndroid(config, settings.android, context.projectRoot) : withoutPushAndroid(config, context);
 }

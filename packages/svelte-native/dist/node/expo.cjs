@@ -647,8 +647,11 @@ var escapeText = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 var holdHead = new RegExp(`\\n${escapeText(holdBegin)}\\n[\\s\\S]*?${escapeText(holdOpen)}(?=\\n)`);
 var holdTail = new RegExp(`\\n${escapeText(holdClose)}\\n${escapeText(holdEnd)}(?=\\n)`);
 var holdImportLine = new RegExp(`^${escapeText(holdImport)}\\n`, "m");
+function removePushAppDelegate(contents) {
+  return contents.replace(holdHead, "").replace(holdTail, "").replace(holdImportLine, "");
+}
 function applyPushAppDelegate(contents) {
-  const stripped = contents.replace(holdHead, "").replace(holdTail, "").replace(holdImportLine, "");
+  const stripped = removePushAppDelegate(contents);
   const imports = [...stripped.matchAll(/^(?:(?:internal|public|package|private|fileprivate) |@_exported |@preconcurrency )*import [\w.]+[ \t]*$/gm)];
   const lastImport = imports.at(-1);
   const call = /^[ \t]*factory\.startReactNative\([^)]*\)[ \t]*$/m.exec(stripped);
@@ -761,33 +764,50 @@ async function copyPushIcon(source, platformProjectRoot) {
   await (0, import_promises.mkdir)(directory, { recursive: true });
   await (0, import_promises.copyFile)(source, (0, import_node_path4.join)(directory, `${pushResources.icon}.png`));
 }
+async function removePushIcon(platformProjectRoot) {
+  await (0, import_promises.rm)((0, import_node_path4.join)(platformProjectRoot, "app/src/main/res/drawable", `${pushResources.icon}.png`), { force: true });
+}
 function withPushAndroid(config, android, projectRoot) {
-  const existing = config.android?.googleServicesFile;
-  if (existing !== void 0 && (0, import_node_path4.resolve)(projectRoot, existing) !== (0, import_node_path4.resolve)(projectRoot, android.googleServicesFile))
-    throw new CapabilityConfigError(
-      `The app config sets android.googleServicesFile ("${existing}") and capabilities.push.android.googleServicesFile is "${android.googleServicesFile}": keep one. capabilities.push.android.googleServicesFile sets android.googleServicesFile.`
-    );
-  config = { ...config, android: { ...config.android, googleServicesFile: android.googleServicesFile } };
+  if (android) {
+    const existing = config.android?.googleServicesFile;
+    if (existing !== void 0 && (0, import_node_path4.resolve)(projectRoot, existing) !== (0, import_node_path4.resolve)(projectRoot, android.googleServicesFile))
+      throw new CapabilityConfigError(
+        `The app config sets android.googleServicesFile ("${existing}") and capabilities.push.android.googleServicesFile is "${android.googleServicesFile}": keep one. capabilities.push.android.googleServicesFile sets android.googleServicesFile.`
+      );
+    config = { ...config, android: { ...config.android, googleServicesFile: android.googleServicesFile } };
+  }
   config = (0, import_config_plugins.withAndroidManifest)(config, (config2) => {
-    applyPushManifest(import_config_plugins.AndroidConfig.Manifest.getMainApplicationOrThrow(config2.modResults), android);
+    if (android) applyPushManifest(import_config_plugins.AndroidConfig.Manifest.getMainApplicationOrThrow(config2.modResults), android);
+    else {
+      const application = import_config_plugins.AndroidConfig.Manifest.getMainApplication(config2.modResults);
+      if (application) removePushManifest(application);
+    }
     return config2;
   });
   config = (0, import_config_plugins.withStringsXml)(config, (config2) => {
-    config2.modResults = applyPushStrings(config2.modResults, android.channel);
+    config2.modResults = android ? applyPushStrings(config2.modResults, android.channel) : removePushStrings(config2.modResults);
     return config2;
   });
-  const { color, icon } = android;
-  if (color !== void 0)
-    config = (0, import_config_plugins.withAndroidColors)(config, (config2) => {
-      config2.modResults = import_config_plugins.AndroidConfig.Colors.assignColorValue(config2.modResults, { name: pushResources.color, value: color });
-      return config2;
-    });
-  if (icon !== void 0)
-    config = (0, import_config_plugins.withDangerousMod)(config, ["android", async (config2) => {
-      await copyPushIcon((0, import_node_path4.resolve)(config2.modRequest.projectRoot, icon), config2.modRequest.platformProjectRoot);
-      return config2;
-    }]);
-  return config;
+  config = (0, import_config_plugins.withAndroidColors)(config, (config2) => {
+    config2.modResults = import_config_plugins.AndroidConfig.Colors.assignColorValue(config2.modResults, { name: pushResources.color, value: android?.color });
+    return config2;
+  });
+  const icon = android?.icon;
+  return (0, import_config_plugins.withDangerousMod)(config, ["android", async (config2) => {
+    if (icon === void 0) await removePushIcon(config2.modRequest.platformProjectRoot);
+    else await copyPushIcon((0, import_node_path4.resolve)(config2.modRequest.projectRoot, icon), config2.modRequest.platformProjectRoot);
+    return config2;
+  }]);
+}
+function withoutPushIos(config, context) {
+  if (!(0, import_node_fs3.existsSync)((0, import_node_path4.join)(context.projectRoot, "ios"))) return config;
+  return (0, import_config_plugins.withAppDelegate)(config, (config2) => {
+    if (config2.modResults.language === "swift") config2.modResults.contents = removePushAppDelegate(config2.modResults.contents);
+    return config2;
+  });
+}
+function withoutPushAndroid(config, context) {
+  return (0, import_node_fs3.existsSync)((0, import_node_path4.join)(context.projectRoot, "android")) ? withPushAndroid(config, void 0, context.projectRoot) : config;
 }
 function withPush(config, push, context) {
   const on = pushIsOn(push);
@@ -797,7 +817,7 @@ function withPush(config, push, context) {
       throw new CapabilityConfigError(
         `${pushPackage} is installed, but the push capability is off. The package is in the build (Firebase Messaging, the notification permission, the iOS registration), and it cannot work without the app's Firebase file and entitlement: turn push on in the @alfayez/svelte-native plugin, \`plugins: [["@alfayez/svelte-native", { capabilities: { push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } } } }]]\`, or uninstall ${pushPackage}.`
       );
-    return config;
+    return withoutPushAndroid(withoutPushIos(config, context), context);
   }
   const secret = findPushSecret(push, "capabilities.push");
   if (secret) throw secretError(secret);
@@ -813,9 +833,8 @@ function withPush(config, push, context) {
       `capabilities.push is on, and ${other} is installed: an app has one push library (Android delivers a message to one FirebaseMessagingService, iOS has one notification center delegate). Uninstall ${other}, or turn the push capability off and uninstall ${pushPackage}.`
     );
   const settings = pushSettings(push, config.android?.package, context.projectRoot);
-  if (settings.ios) config = withPushIos(config, settings.ios.mode);
-  if (settings.android) config = withPushAndroid(config, settings.android, context.projectRoot);
-  return config;
+  config = settings.ios ? withPushIos(config, settings.ios.mode) : withoutPushIos(config, context);
+  return settings.android ? withPushAndroid(config, settings.android, context.projectRoot) : withoutPushAndroid(config, context);
 }
 
 // src/remote/plugin.ts

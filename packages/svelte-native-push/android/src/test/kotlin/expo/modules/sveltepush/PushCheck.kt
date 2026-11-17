@@ -87,6 +87,14 @@ private fun mapping() {
   // What JavaScript is given: members the sender did not give are left out, so JavaScript reads undefined.
   expect("toMap leaves out what is missing", bare.toMap(), mapOf("id" to "generated-1", "data" to emptyMap<String, String>(), "provider" to "fcm"))
   expect("toMap has every member that is there", full.toMap().keys.toList(), listOf("id", "title", "body", "url", "data", "provider"))
+  // The channel the sender named is the device's: it rides the message to the notifier, and is neither given to JavaScript nor carried by a PendingIntent.
+  val channeled = PushMapping.fromRemote("m3", "T", "B", mapOf("url" to "/x"), newId, channelId = "orders")
+  expect("a remote message keeps the channel its notification names", channeled.channelId, "orders")
+  expect("a message with no channel has none", full.channelId, null)
+  expect("a blank channel is none", PushMapping.fromRemote("m4", "T", "B", emptyMap(), newId, channelId = "  ").channelId, null)
+  expect("the channel is not given to JavaScript", channeled.toMap().keys.toList(), listOf("id", "title", "body", "url", "data", "provider"))
+  expect("nor carried by the PendingIntent's extras", PushMapping.toExtras(channeled).keys.any { it.contains("channel") }, false)
+  expect("the tap on it reads back as the message, without the channel", PushMapping.fromExtras(PushMapping.toExtras(channeled)), channeled.copy(channelId = null))
   expect("the token's shape", PushToken("t", "io.example.app").toMap(), mapOf("provider" to "fcm", "token" to "t", "app" to "io.example.app"))
 
   // Out and back through our own PendingIntent: nothing the sender names collides with it, whatever the data keys are.
@@ -131,6 +139,13 @@ private fun mapping() {
   expect("a blank Firebase id is not a tap", PushMapping.fromExtras(mapOf("google.message_id" to "")), null)
   expect("a Firebase id that is not a string is not a tap", PushMapping.fromExtras(mapOf("google.message_id" to 5)), null)
 
+  // An id the ledger could not keep (the store writes one id to a line) is no id: not ours, not Firebase's, and not the one a remote message arrives with.
+  expect("a Firebase id with a line break is not a tap", PushMapping.fromExtras(mapOf("google.message_id" to "0:1%a\nb", "url" to "/orders/42")), null)
+  expect("an id of ours with a line break is not a tap", PushMapping.fromExtras(mapOf(PushMapping.EXTRA_ID to "a\nb", PushMapping.EXTRA_URL to "/x")), null)
+  expect("an id of ours with a line break falls to Firebase's, as a blank one does", PushMapping.fromExtras(mapOf(PushMapping.EXTRA_ID to "a\nb", "google.message_id" to "0:1%ok"))?.id, "0:1%ok")
+  expect("an id with a carriage return only is kept whole", PushMapping.fromExtras(mapOf(PushMapping.EXTRA_ID to "a\rb"))?.id, "a\rb")
+  expect("a remote message whose id has a line break gets an id of its own, so that its tap is one", PushMapping.fromRemote("m\n1", "T", "B", emptyMap(), newId).id, "generated-3")
+
   expect("a presentation the hook gave", Presentation.from(mapOf("banner" to false, "sound" to true, "badge" to false)), Presentation(banner = false, sound = true, badge = false))
   expect("a presentation with members left out is shown", Presentation.from(mapOf("sound" to false)), Presentation(banner = true, sound = false, badge = true))
   expect("a presentation of the wrong type is shown", Presentation.from(mapOf("banner" to "no")), Presentation.DEFAULT)
@@ -159,6 +174,14 @@ private fun rules() {
   expect("an id and a name that look like numbers", PushRules.channel { numbers[it] }, ChannelSpec("2024", "7", null))
   val blanks = mapOf<String, Any?>(PushRules.META_CHANNEL_ID to " ", PushRules.META_CHANNEL_NAME to "", PushRules.META_CHANNEL_DESCRIPTION to "  ")
   expect("blank values are the defaults", PushRules.channel { blanks[it] }, ChannelSpec("default", "Notifications", null))
+
+  // The channel a notification this module shows goes to: the sender's when the device has it, else the default.
+  val made = setOf("default", "orders")
+  expect("a named channel the app has", PushRules.channelFor("orders", { it in made }, "default"), "orders")
+  expect("a named channel the app never made", PushRules.channelFor("promos", { it in made }, "default"), "default")
+  expect("no channel named", PushRules.channelFor(null, { it in made }, "default"), "default")
+  expect("the app's own default channel, named", PushRules.channelFor("default", { it in made }, "updates"), "default")
+  expect("the question is asked about the named channel only", ArrayList<String>().also { asked -> PushRules.channelFor("orders", { asked.add(it); true }, "default"); PushRules.channelFor(null, { asked.add(it); true }, "default") }, listOf("orders"))
 
   // Which way a message goes.
   expect("a data message in the foreground", PushRules.route(foreground = true, hasNotification = false), PushRules.Route.FOREGROUND)
@@ -354,6 +377,45 @@ private fun taps() {
   for (id in listOf("1", "2", "3", "4")) small.firstTime(id)
   expect("a ledger keeps the last few: the oldest is forgotten", small.firstTime("1"), true)
   expect("the newest are kept", small.firstTime("4"), false)
+
+  // An id with a line break would write more than one line of the ledger's one string: it is refused, and what is stored stays what it was.
+  val lined = MemoryStore()
+  val linedLedger = TapLedger(lined)
+  expect("an id with a line break is never a first time", listOf(linedLedger.firstTime("a\nb"), linedLedger.firstTime("a\nb")), listOf(false, false))
+  expect("and is not stored", listOf(lined.saves, lined.saved), listOf(0, emptyList<String>()))
+  expect("the next id is a first time, and is the only line", listOf(linedLedger.firstTime("m1"), lined.saved), listOf(true, listOf("m1")))
+  val seeded = TapLedger(MemoryStore(listOf("kept")))
+  expect("an id spelled as a line of the file is not a way to pre-seed it", listOf(seeded.firstTime("x\nfuture"), seeded.firstTime("future")), listOf(false, true))
+
+  // Reading a tap out of an intent runs inside Activity.onCreate for every launch of the app, so it never throws. A Bundle unparcels at its first key, and a Parcelable of a
+  // class this process cannot load (another app's intent) throws BadParcelableException there; the host check stands in for it with a RuntimeException of its own.
+  class Unparcel(detail: String) : RuntimeException(detail)
+  val ours = PushMapping.toExtras(a)
+  val (reading, readingEvents, _) = rig()
+  val caught = ArrayList<RuntimeException>()
+  expect("extras that fail to unparcel are no tap", reading.readTap({ throw Unparcel("ClassNotFoundException when unmarshalling: com.other.App") }) { caught.add(it) }, false)
+  expect("and are reported, not thrown", caught.map { it.message }, listOf("ClassNotFoundException when unmarshalling: com.other.App"))
+  expect("a key that fails halfway is no tap either", reading.readTap({ ours.entries.associate { (key, value) -> if (key == PushMapping.EXTRA_URL) throw Unparcel("at $key") else key to value } }) { caught.add(it) }, false)
+  expect("nothing was delivered, and nothing is the launch message", listOf(readingEvents.sent.size, reading.takeLaunch()), listOf(0, null))
+  expect("a failure with nobody to tell is still not thrown", reading.readTap({ throw Unparcel("no listener") }), false)
+  expect("an intent with no extras is no tap", reading.readTap({ null }), false)
+  expect("extras of another kind are no tap", reading.readTap({ mapOf("android.intent.extra.REFERRER" to "x") }), false)
+  expect("a tap that was read well after the failures is delivered", reading.readTap({ ours }), true)
+  expect("as an event, the launch window being over", readingEvents.sent.toList(), listOf("opened" to a.toMap()))
+  expect("and read again, it is not", reading.readTap({ ours }), false)
+  val (launchRead, _, _) = rig()
+  expect("before JavaScript asked, a tap read from extras is the launch message", listOf(launchRead.readTap({ ours }), launchRead.takeLaunch()), listOf(true, a))
+
+  // A store that fails (a preferences file that cannot be read) does not stop the launch either.
+  val brokenStore = object : TapStore {
+    override fun load(): List<String> = throw Unparcel("the preferences file is unreadable")
+
+    override fun save(ids: List<String>) = Unit
+  }
+  val brokenTaps = PushTaps(PushEvents(), TapLedger(brokenStore))
+  val brokenCaught = ArrayList<RuntimeException>()
+  expect("a ledger that cannot be read is reported, and the launch goes on", brokenTaps.readTap({ ours }) { brokenCaught.add(it) }, false)
+  expect("with its reason", brokenCaught.map { it.message }, listOf("the preferences file is unreadable"))
 }
 
 private fun waits() {

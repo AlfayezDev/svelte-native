@@ -6,9 +6,11 @@
  * notification opens its link and a launch without a screen (a background message) reaches the hooks whatever the app imports; an app that imports `push` starts it there. In a build
  * without `@alfayez/svelte-native-push` it says so once, and `push.permission` reads `"denied"`.
  */
+import { untrack } from "svelte";
 import { appHooks, initSettling } from "../app-hooks.ts";
 import { onForeground } from "../foreground.ts";
 import { Linking } from "../platform.ts";
+import { rootRouter } from "../router.svelte.ts";
 import { loadNativePush, PushClient, storedPermission, type PushPermission } from "./client.ts";
 import type { PushMessage, PushToken } from "./types.ts";
 
@@ -36,6 +38,9 @@ const client = new PushClient({
   storage,
   onForeground,
   linking: Linking,
+  // Each router reads the launch link once (`connectHost`), and an Activity that is made again while the runtime lives starts a surface with a router of its own. Read from the
+  // router's mount effect, so not tracked: a new root router must not make that effect run again.
+  launchScope: () => untrack(rootRouter),
 });
 client.start();
 

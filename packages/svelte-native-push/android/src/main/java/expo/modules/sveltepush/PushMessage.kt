@@ -16,9 +16,14 @@ data class PushMessage(
   val url: String? = null,
   val data: Map<String, String> = emptyMap(),
   val provider: String = PROVIDER_FCM,
+  /**
+   * The notification channel the sender named (`PushSend.channel`, FCM's `android.notification.channel_id`), for the notification this module shows itself. It is the
+   * device's business and not part of the message JavaScript is given, so [toMap] leaves it out and the extras of a `PendingIntent` do not carry it.
+   */
+  val channelId: String? = null,
 ) {
   /**
-   * What the Expo module hands to JavaScript. A member the sender did not give is left out, not sent as null, because `title`, `body` and `url` are optional members
+   * What the Expo module hands to JavaScript (`PushMessage` of `src/push/types.ts`: not [channelId]). A member the sender did not give is left out, not sent as null, because `title`, `body` and `url` are optional members
    * of the TypeScript type and JavaScript reads `undefined` for them.
    */
   fun toMap(): Map<String, Any?> {

@@ -1,13 +1,8 @@
 {
   "platforms": ["android", "apple"],
   "android": {
-    "projects": [
-      {
-        "name": "svelte-push",
-        "path": "android",
-        "modules": ["expo.modules.sveltepush.SveltePushModule"]
-      }
-    ]
+    "name": "svelte-push",
+    "modules": ["expo.modules.sveltepush.SveltePushModule"]
   },
   "apple": {
     "podspecPath": ["ios/SveltePush.podspec"],

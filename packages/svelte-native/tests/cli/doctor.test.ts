@@ -9,7 +9,9 @@ import { findPackage } from "../../src/doctor/resolve.ts";
 import { expoPluginFinding, metroFinding, withoutJsComments } from "../../src/doctor/integration.ts";
 import { patchFiles, patchKey, patchSpecs } from "../../src/doctor/patches.ts";
 import { compareVersions, parseVersion, satisfies } from "../../src/doctor/semver.ts";
+import { collisionMessage, vendoredPackages, vendoredRoot } from "../../src/vendored.ts";
 import { patchVersion, peerVersion } from "../support/versions.ts";
+import { createProject } from "../support/project.ts";
 import { library, makeFakeApp, nativePeers, repository, type FakeApp } from "./support/doctor-fixture.ts";
 
 // `svelte-native doctor` against fake apps: node_modules stubs with patched and unpatched copies of the files the patches change (support/doctor-fixture.ts),
@@ -135,15 +137,56 @@ describe("a patch that is not applied", () => {
   });
 });
 
+describe("the packages the library carries", () => {
+  const vendoredChecks = (checks: Check[]) => checks.filter((entry) => entry.group === "vendored packages");
+
+  test("an app that lists neither passes, one line each, naming the version that comes with the library", () => {
+    const { checks } = check();
+    expect(vendoredChecks(checks).map((entry) => entry.status)).toEqual(vendoredPackages.map(() => "pass"));
+    for (const { name, version } of vendoredPackages) expect(find(checks, `${name} ${version} comes with ${library.name} (vendor/${name}); the app does not list it`)?.status, name).toBe("pass");
+  });
+
+  test("neither is a peer to ask for: an app without them in node_modules passes, and the Nitro runtime a package manager installed on its own is not a finding", () => {
+    for (const name of vendoredPackages.map((vendored) => vendored.name)) expect([name, name in library.peerDependencies]).toEqual([name, false]);
+    const { checks } = check({ files: { "node_modules/react-native-nitro-modules/package.json": JSON.stringify({ name: "react-native-nitro-modules", version: "0.99.0" }) } });
+    expect(failed(checks)).toEqual([]);
+  });
+
+  test("an app that lists one fails, with the message of the config plugin and the command that removes it", () => {
+    for (const { name } of vendoredPackages) {
+      const { root, checks } = check({ files: { "package.json": manifestWith([...nativePeers, name]) } });
+      const failure = find(checks, `${name} is a dependency of the app`);
+      expect([name, failure?.status, failure?.group]).toEqual([name, "fail", "vendored packages"]);
+      expect(failure?.message).toBe(`${name} is a dependency of the app (${join(root, "package.json")}): ${collisionMessage([name], library.name)}`);
+      expect(failure?.fix).toBe(`pnpm remove ${name}, then npx expo prebuild`);
+      expect(failed(checks)).toHaveLength(1);
+    }
+    // In devDependencies too: the build links what the config command finds, wherever package.json lists it.
+    const { checks } = check({ files: { "package.json": JSON.stringify({ name: "fake-app", dependencies: Object.fromEntries([library.name, ...nativePeers].map((name) => [name, "*"])), devDependencies: { "react-native-mmkv": "4.3.1" } }) } });
+    expect(find(checks, "react-native-mmkv is a dependency of the app")?.status).toBe("fail");
+  });
+
+  test("a library installed without its vendor folder, or with another version of a copy, fails, naming it", () => {
+    using incomplete = createProject({ "package.json": JSON.stringify({ name: library.name, version: "0.0.0" }), "patches/.keep": "" }, "doctor-library-");
+    const { checks } = check({}, { packageRoot: incomplete.directory });
+    expect(vendoredChecks(checks).map((entry) => entry.status)).toEqual(vendoredPackages.map(() => "fail"));
+    expect(vendoredChecks(checks)[0]?.message).toContain(`has no copy of ${vendoredPackages[0]?.name}`);
+    expect(vendoredChecks(checks)[0]?.fix).toContain("install @alfayez/svelte-native again");
+    using changed = createProject({ "patches/.keep": "", ...Object.fromEntries(vendoredPackages.map(({ name }) => [`vendor/${name}/package.json`, JSON.stringify({ name, version: "0.0.1" })])) }, "doctor-library-");
+    const other = check({}, { packageRoot: changed.directory });
+    expect(vendoredChecks(other.checks).map((entry) => entry.message)).toEqual(vendoredPackages.map(({ name, version }) => `${vendoredRoot(name, changed.directory)} is ${name} 0.0.1, the library pins ${version}`));
+  });
+});
+
 describe("the required peers with a native module", () => {
   // React Native's autolinking links a native module only from the app's own dependencies, so the doctor asks for each of them there, and not only in node_modules.
   const installed = (name: string) => library.peerDependencies[name]?.replace(/^[~^]/, "");
 
-  test("the Nitro runtime and quick-base64 that quick-crypto and mmkv ask for are satisfied by the versions the library names", () => {
-    for (const name of ["react-native-quick-crypto", "react-native-mmkv"]) {
-      const peers = (findPackage(name, repository)?.json.peerDependencies ?? {}) as Record<string, string>;
-      for (const dependency of ["react-native-nitro-modules", "react-native-quick-base64"]) if (peers[dependency] !== undefined) expect(satisfies(library.peerDependencies[dependency] ?? "", peers[dependency]), `${name} asks for ${dependency} ${peers[dependency]}`).toBe(true);
-    }
+  test("the Nitro runtime and quick-base64 that quick-crypto asks for are satisfied by the vendored copy and by the version the library names", () => {
+    const peers = (findPackage("react-native-quick-crypto", repository)?.json.peerDependencies ?? {}) as Record<string, string>;
+    const nitro = vendoredPackages.find((vendored) => vendored.name === "react-native-nitro-modules")?.version ?? "";
+    expect(satisfies(nitro, peers["react-native-nitro-modules"] ?? ""), `quick-crypto asks for the Nitro runtime ${peers["react-native-nitro-modules"]}`).toBe(true);
+    expect(satisfies(library.peerDependencies["react-native-quick-base64"] ?? "", peers["react-native-quick-base64"] ?? ""), `quick-crypto asks for quick-base64 ${peers["react-native-quick-base64"]}`).toBe(true);
   });
 
   test("an app that has them as dependencies passes, each said to be linked by autolinking", () => {

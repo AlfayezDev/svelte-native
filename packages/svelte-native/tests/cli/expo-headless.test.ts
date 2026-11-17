@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createRunOncePlugin } from "expo/config-plugins";
-import { applyAppDelegate, applyHeadlessApplication, applyHeadlessSettings, applyMainActivity, applyPodfileAutolinkingExclude, leaveOutOfAutoPlugins, headlessExcludedPackages, headlessPackageSource, onDemandPackageSource } from "../../src/expo.ts";
+import { applyAppDelegate, applyHeadlessApplication, applyHeadlessSettings, applyMainActivity, applyPodfileAutolinkingExclude, applyPodfileVendoredLinking, leaveOutOfAutoPlugins, headlessExcludedPackages, headlessPackageSource, onDemandPackageSource } from "../../src/expo.ts";
 
 const application = `class MainApplication {
   override val reactHost: ReactHost by lazy {
@@ -324,6 +324,42 @@ ${settings.trimStart().replace("autolinkLibrariesFromCommand(expoAutolinking.rnC
     expect(applyPodfileAutolinkingExclude(once, names)).toBe(once);
     expect(applyPodfileAutolinkingExclude(once, [])).toBe(podfile);
     expect(applyPodfileAutolinkingExclude(podfile, [])).toBe(podfile);
+  });
+  test("Podfile: the config command goes through the library's ios-autolinking, which adds the vendored packages (the app lists none of them)", () => {
+    const once = applyPodfileVendoredLinking(podfile);
+    expect(once).toContain("# Svelte native: the packages the library carries are linked from its own directory (generated, do not edit)");
+    // The CLI is found from the app, as Expo's own lines find expo, and runs around the command that is already there.
+    expect(once).toContain("require.resolve('@alfayez/svelte-native/package.json')");
+    expect(once).toContain("File.join(File.dirname(`node --print");
+    expect(once).toContain("'dist/node/cli.js')");
+    expect(once).toContain("config_command = ['node', svelte_native_cli, 'ios-autolinking'] + config_command");
+    // Both branches of the template have set config_command by then, and the config is read from it after.
+    expect(once.indexOf("config_command = ['node', svelte_native_cli")).toBeGreaterThan(once.indexOf("  end\n"));
+    expect(once.indexOf("config_command = ['node', svelte_native_cli")).toBeLessThan(once.indexOf("config = use_native_modules!(config_command)"));
+    expect(once.endsWith("  # Svelte native: end of the library's own packages\n  config = use_native_modules!(config_command)\nend\n")).toBe(true);
+  });
+  test("Podfile: the vendored linking is idempotent, replaces itself, and goes with the excludes in either order", () => {
+    const once = applyPodfileVendoredLinking(podfile);
+    expect(applyPodfileVendoredLinking(once)).toBe(once);
+    // The block is replaced, not stacked, when an older one is there.
+    expect(applyPodfileVendoredLinking(once.replace("'ios-autolinking'", "'ios-autolinking-old'"))).toBe(once);
+    expect(once.match(/ios-autolinking/g)).toHaveLength(1);
+    const names = ["react-native-pdf", "@react-native-firebase/app"];
+    // What a prebuild does: the excludes, then the vendored linking; and again on the next prebuild, over what is there.
+    const prebuild = (contents: string) => applyPodfileVendoredLinking(applyPodfileAutolinkingExclude(contents, names));
+    const first = prebuild(podfile);
+    expect(prebuild(first)).toBe(first);
+    expect(first).toContain("config_command += svelte_native_exclude.flat_map");
+    // Both extend the command before the config is read, and a Podfile that had them in the other order is put in this one by the next prebuild.
+    expect(first.indexOf("config_command += svelte_native_exclude")).toBeLessThan(first.indexOf("config = use_native_modules!(config_command)"));
+    expect(first.indexOf("config_command = ['node', svelte_native_cli")).toBeLessThan(first.indexOf("config = use_native_modules!(config_command)"));
+    expect(prebuild(applyPodfileAutolinkingExclude(applyPodfileVendoredLinking(podfile), names))).toBe(first);
+    // A variant without excludes loses them and keeps the linking.
+    const without = applyPodfileVendoredLinking(applyPodfileAutolinkingExclude(first, []));
+    expect(without).toBe(once);
+  });
+  test("Podfile: without the line that reads the config the vendored linking fails with a message", () => {
+    expect(() => applyPodfileVendoredLinking("target 'App' do\nend\n")).toThrow("could not find use_native_modules!(config_command) in the Podfile");
   });
   test("Podfile: a template without the expected lines fails with a message", () => {
     expect(() => applyPodfileAutolinkingExclude("target 'App' do\nend\n", ["react-native-mmkv"])).toThrow("could not find use_expo_modules! and use_native_modules!(config_command) in the Podfile");

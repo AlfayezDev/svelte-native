@@ -39,6 +39,8 @@ __export(expo_exports, {
   applyHeadlessSettings: () => applyHeadlessSettings,
   applyMainActivity: () => applyMainActivity,
   applyPodfileAutolinkingExclude: () => applyPodfileAutolinkingExclude,
+  applyPodfileVendoredLinking: () => applyPodfileVendoredLinking,
+  assertNoVendoredOriginals: () => assertNoVendoredOriginals,
   baselineProfile: () => baselineProfile,
   default: () => expo_default,
   defaultAndroidFeatureFlags: () => defaultAndroidFeatureFlags,
@@ -50,7 +52,7 @@ __export(expo_exports, {
 });
 module.exports = __toCommonJS(expo_exports);
 var import_promises2 = require("node:fs/promises");
-var import_node_path5 = require("node:path");
+var import_node_path6 = require("node:path");
 var import_config_plugins3 = require("expo/config-plugins");
 
 // src/build.ts
@@ -113,16 +115,16 @@ function buildTree(files) {
     const found = /* @__PURE__ */ new Map();
     for (const source of everyDirectory) {
       if (!source.key.startsWith(`${tabs.key}/`)) continue;
-      const relative2 = source.directory.slice(tabs.directory.length);
+      const relative3 = source.directory.slice(tabs.directory.length);
       let groups = 0;
-      while (groups < relative2.length && isGroup(relative2[groups])) groups++;
-      if (groups === relative2.length) {
+      while (groups < relative3.length && isGroup(relative3[groups])) groups++;
+      if (groups === relative3.length) {
         const isPage = pages.get(source.key) === source;
         if (isPage || navigators.has(source.key)) throw new Error(`${source.path}: a ${isPage ? "page" : "navigator layout"} directly under a tabs layout has no pane to show in; move it into a pane directory`);
         continue;
       }
-      const key = relative2[groups];
-      const directory = tabs.directory.concat(relative2.slice(0, groups + 1));
+      const key = relative3[groups];
+      const directory = tabs.directory.concat(relative3.slice(0, groups + 1));
       const known = found.get(key);
       if (known && known.directory.join("/") !== directory.join("/")) throw new Error(`pane ${key} of ${tabs.key} is defined twice: ${known.directory.join("/")} and ${directory.join("/")}`);
       if (key.startsWith("[")) throw new Error(`${source.path}: a pane is a fixed directory, not a parameter`);
@@ -974,6 +976,47 @@ var withRemoteHost = (config, remote) => {
   });
 };
 
+// src/vendored.ts
+var import_node_fs4 = require("node:fs");
+var import_node_path5 = require("node:path");
+var vendoredPackages = [
+  {
+    name: "react-native-nitro-modules",
+    version: "0.35.10",
+    android: { packageImportPath: "import com.margelo.nitro.NitroModulesPackage;", packageInstance: "new NitroModulesPackage()" },
+    ios: { podspec: "NitroModules.podspec" }
+  },
+  {
+    name: "react-native-mmkv",
+    version: "4.3.1",
+    android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
+    ios: { podspec: "NitroMmkv.podspec" }
+  }
+];
+var vendoredNames = vendoredPackages.map((vendored) => vendored.name);
+var readJson = (file) => {
+  try {
+    const parsed = JSON.parse((0, import_node_fs4.readFileSync)(file, "utf8"));
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : void 0;
+  } catch {
+    return void 0;
+  }
+};
+function declaredVendored(appRoot) {
+  const manifest = readJson((0, import_node_path5.join)(appRoot, "package.json"));
+  if (!manifest) return [];
+  const declared = /* @__PURE__ */ new Set();
+  for (const group of ["dependencies", "devDependencies", "optionalDependencies"]) {
+    const entries = manifest[group];
+    if (typeof entries === "object" && entries !== null) for (const name of Object.keys(entries)) declared.add(name);
+  }
+  return vendoredNames.filter((name) => declared.has(name));
+}
+function collisionMessage(names, library = "@alfayez/svelte-native") {
+  const list = names.map((name) => `${name} ${vendoredPackages.find((vendored) => vendored.name === name)?.version ?? ""}`.trim());
+  return `${library} includes ${list.join(" and ")}; remove ${names.length === 1 ? "it" : "them"} from the app's dependencies (package.json), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it.`;
+}
+
 // src/expo.ts
 var headlessExcludedPackages = [
   "react-native-screens",
@@ -1237,6 +1280,21 @@ function applyPodfileAutolinkingExclude(contents, names) {
 ${stripped.slice(useAnchor.index, useEnd).replace("use_expo_modules!", "use_expo_modules!(exclude: svelte_native_exclude)")}${stripped.slice(useEnd, commandAnchor.index)}${command}
 ${stripped.slice(commandAnchor.index)}`;
 }
+var podfileLinkBegin = "  # Svelte native: the packages the library carries are linked from its own directory (generated, do not edit)";
+var podfileLinkEnd = "  # Svelte native: end of the library's own packages";
+function applyPodfileVendoredLinking(contents) {
+  const stripped = contents.replace(blockPattern(podfileLinkBegin, podfileLinkEnd), "");
+  const anchor = /^[ \t]*config = use_native_modules!\(config_command\)[ \t]*$/m.exec(stripped);
+  if (!anchor) throw new Error("Svelte native could not find use_native_modules!(config_command) in the Podfile");
+  const block = [
+    podfileLinkBegin,
+    `  svelte_native_cli = File.join(File.dirname(\`node --print "require.resolve('${libraryPackage}/package.json')"\`), 'dist/node/cli.js')`,
+    "  config_command = ['node', svelte_native_cli, 'ios-autolinking'] + config_command",
+    podfileLinkEnd
+  ].join("\n");
+  return `${stripped.slice(0, anchor.index)}${block}
+${stripped.slice(anchor.index)}`;
+}
 function headlessPackageSource(applicationId) {
   const dropped = headlessDroppedTurboModules.map((name) => `"${name}"`).join(", ");
   return `package ${applicationId}
@@ -1349,12 +1407,17 @@ function leaveOutOfAutoPlugins(config, names) {
   for (const name of names) history[name] ??= { name, version: "left out of autolinking" };
   return config;
 }
+function assertNoVendoredOriginals(projectRoot) {
+  const declared = declaredVendored(projectRoot);
+  if (declared.length > 0) throw new Error(collisionMessage(declared, libraryPackage));
+}
 var withSvelteNative = (config, options) => {
   config = leaveOutOfAutoPlugins(config, options?.autolinkingExclude ?? []);
   config = withCapabilities(config, options?.capabilities, { excluded: options?.autolinkingExclude });
   if (options?.remote) config = withRemoteHost(config, options.remote);
   for (const platform of ["android", "ios"]) {
     config = (0, import_config_plugins3.withDangerousMod)(config, [platform, async (config2) => {
+      assertNoVendoredOriginals(config2.modRequest.projectRoot);
       await syncNative(config2.modRequest.projectRoot, { variant: options?.variant });
       return config2;
     }]);
@@ -1362,11 +1425,11 @@ var withSvelteNative = (config, options) => {
   config = (0, import_config_plugins3.withDangerousMod)(config, ["android", async (config2) => {
     const applicationId = config2.android?.package;
     if (!applicationId) throw new Error("Svelte native needs android.package in the Expo config");
-    const directory = (0, import_node_path5.join)(config2.modRequest.platformProjectRoot, "app/src/main/java", ...applicationId.split("."));
-    const file = (0, import_node_path5.join)(directory, `${headlessPackageName}.kt`);
+    const directory = (0, import_node_path6.join)(config2.modRequest.platformProjectRoot, "app/src/main/java", ...applicationId.split("."));
+    const file = (0, import_node_path6.join)(directory, `${headlessPackageName}.kt`);
     await (0, import_promises2.mkdir)(directory, { recursive: true });
     await (0, import_promises2.writeFile)(file, headlessPackageSource(applicationId));
-    await (0, import_promises2.writeFile)((0, import_node_path5.join)(directory, `${onDemandPackageName}.kt`), onDemandPackageSource(applicationId));
+    await (0, import_promises2.writeFile)((0, import_node_path6.join)(directory, `${onDemandPackageName}.kt`), onDemandPackageSource(applicationId));
     return config2;
   }]);
   config = (0, import_config_plugins3.withAndroidManifest)(config, (config2) => {
@@ -1388,7 +1451,7 @@ var withSvelteNative = (config, options) => {
     return config2;
   });
   config = (0, import_config_plugins3.withPodfile)(config, (config2) => {
-    config2.modResults.contents = applyPodfileAutolinkingExclude(config2.modResults.contents, options?.autolinkingExclude ?? []);
+    config2.modResults.contents = applyPodfileVendoredLinking(applyPodfileAutolinkingExclude(config2.modResults.contents, options?.autolinkingExclude ?? []));
     return config2;
   });
   if (options?.androidProfileable) {
@@ -1400,9 +1463,9 @@ var withSvelteNative = (config, options) => {
     });
   }
   config = (0, import_config_plugins3.withDangerousMod)(config, ["android", async (config2) => {
-    const dir = (0, import_node_path5.join)(config2.modRequest.platformProjectRoot, "app", "src", "main");
+    const dir = (0, import_node_path6.join)(config2.modRequest.platformProjectRoot, "app", "src", "main");
     await (0, import_promises2.mkdir)(dir, { recursive: true });
-    await (0, import_promises2.writeFile)((0, import_node_path5.join)(dir, "baseline-prof.txt"), baselineProfile());
+    await (0, import_promises2.writeFile)((0, import_node_path6.join)(dir, "baseline-prof.txt"), baselineProfile());
     return config2;
   }]);
   config = (0, import_config_plugins3.withMainActivity)(config, (config2) => {
@@ -1452,6 +1515,8 @@ function baselineProfile() {
   applyHeadlessSettings,
   applyMainActivity,
   applyPodfileAutolinkingExclude,
+  applyPodfileVendoredLinking,
+  assertNoVendoredOriginals,
   baselineProfile,
   defaultAndroidFeatureFlags,
   headlessDroppedTurboModules,

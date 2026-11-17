@@ -1,0 +1,39 @@
+{
+  "react-native-nitro-modules": {
+    "root": "$PACKAGE",
+    "name": "react-native-nitro-modules",
+    "platforms": {
+      "android": {
+        "sourceDir": "$PACKAGE/android",
+        "packageImportPath": "import com.margelo.nitro.NitroModulesPackage;",
+        "packageInstance": "new NitroModulesPackage()",
+        "buildTypes": [],
+        "libraryName": "NitroModulesSpec",
+        "componentDescriptors": [],
+        "cmakeListsPath": "$PACKAGE/android/build/generated/source/codegen/jni/CMakeLists.txt",
+        "cxxModuleCMakeListsModuleName": null,
+        "cxxModuleCMakeListsPath": null,
+        "cxxModuleHeaderName": null,
+        "isPureCxxDependency": false
+      }
+    }
+  },
+  "react-native-mmkv": {
+    "root": "$PACKAGE",
+    "name": "react-native-mmkv",
+    "platforms": {
+      "android": {
+        "sourceDir": "$PACKAGE/android",
+        "packageImportPath": "import com.margelo.nitro.mmkv.NitroMmkvPackage;",
+        "packageInstance": "new NitroMmkvPackage()",
+        "buildTypes": [],
+        "componentDescriptors": [],
+        "cmakeListsPath": "$PACKAGE/android/build/generated/source/codegen/jni/CMakeLists.txt",
+        "cxxModuleCMakeListsModuleName": null,
+        "cxxModuleCMakeListsPath": null,
+        "cxxModuleHeaderName": null,
+        "isPureCxxDependency": false
+      }
+    }
+  }
+}

@@ -101,7 +101,8 @@ export declare function applyMainActivity(contents: string): string;
 export declare function applyAppDelegate(contents: string): string;
 /**
  * `settings.gradle`: excludes packages from Expo and React Native autolinking, the headless ones and `extra`, and runs React Native's config command
- * through the library's `android-autolinking` (`autolinking.ts`: the Nitro modules' native libraries load after the start). With
+ * through the library's `android-autolinking` (`autolinking.ts`: the packages the library carries are linked from its directory, and the Nitro modules' native libraries load
+ * after the start). With
  * `EXPO_USE_COMMUNITY_AUTOLINKING=1` the community CLI's command runs as it is. Idempotent.
  */
 export declare function applyHeadlessSettings(contents: string, extra?: readonly string[]): string;
@@ -111,6 +112,13 @@ export declare function applyHeadlessSettings(contents: string, extra?: readonly
  * reads `react-native.config.js` instead. Idempotent; an empty list restores the template.
  */
 export declare function applyPodfileAutolinkingExclude(contents: string, names: readonly string[]): string;
+/**
+ * `Podfile`: the config command that `use_native_modules!` runs goes through the library's `ios-autolinking` (`autolinking.ts`), which adds the packages the library carries
+ * (`vendored.ts`: the Nitro runtime and MMKV) to its output, with the podspecs of `vendor/` in the library's directory, so the app's package.json lists none of them. The block
+ * goes in front of the line that reads the config, after anything that already extended the command; stripped and written again on every prebuild, so an update of the
+ * library moves it. With `EXPO_USE_COMMUNITY_AUTOLINKING=1` the command underneath is the community CLI's, and its output gets the same entries.
+ */
+export declare function applyPodfileVendoredLinking(contents: string): string;
 /** Kotlin source for the package that replaces `MainReactPackage` in headless builds. */
 export declare function headlessPackageSource(applicationId: string): string;
 /** Kotlin source of the wrapper that makes a package's view managers on demand (`androidOnDemandViewManagers`). */
@@ -126,6 +134,11 @@ export declare function onDemandPackageSource(applicationId: string): string;
 export declare function leaveOutOfAutoPlugins<Config extends {
     _internal?: Record<string, unknown>;
 }>(config: Config, names: readonly string[]): Config;
+/**
+ * The prebuild stops for an app that installs a package the library carries (`vendored.ts`): the library links its copy, and the app's own would be linked beside it, two
+ * native modules of one name. The same refusal as `svelte-native doctor`'s and `ios-autolinking`'s.
+ */
+export declare function assertNoVendoredOriginals(projectRoot: string): void;
 declare const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined>;
 export default withSvelteNative;
 /** Baseline profile rules (the Android Gradle plugin's text format): every method of the engine and the updates module, hot + startup + post-startup. */

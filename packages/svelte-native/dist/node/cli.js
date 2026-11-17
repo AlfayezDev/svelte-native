@@ -84,16 +84,16 @@ function buildTree(files) {
     const found = /* @__PURE__ */ new Map();
     for (const source of everyDirectory) {
       if (!source.key.startsWith(`${tabs.key}/`)) continue;
-      const relative4 = source.directory.slice(tabs.directory.length);
+      const relative5 = source.directory.slice(tabs.directory.length);
       let groups = 0;
-      while (groups < relative4.length && isGroup(relative4[groups])) groups++;
-      if (groups === relative4.length) {
+      while (groups < relative5.length && isGroup(relative5[groups])) groups++;
+      if (groups === relative5.length) {
         const isPage = pages.get(source.key) === source;
         if (isPage || navigators.has(source.key)) throw new Error(`${source.path}: a ${isPage ? "page" : "navigator layout"} directly under a tabs layout has no pane to show in; move it into a pane directory`);
         continue;
       }
-      const key = relative4[groups];
-      const directory = tabs.directory.concat(relative4.slice(0, groups + 1));
+      const key = relative5[groups];
+      const directory = tabs.directory.concat(relative5.slice(0, groups + 1));
       const known = found.get(key);
       if (known && known.directory.join("/") !== directory.join("/")) throw new Error(`pane ${key} of ${tabs.key} is defined twice: ${known.directory.join("/")} and ${directory.join("/")}`);
       if (key.startsWith("[")) throw new Error(`${source.path}: a pane is a fixed directory, not a parameter`);
@@ -1393,8 +1393,6 @@ var init_init_app = __esm({
       react: "19.2.7",
       "react-native": "0.86.3",
       "react-native-gesture-handler": "2.32.0",
-      "react-native-mmkv": "4.3.1",
-      "react-native-nitro-modules": "0.35.10",
       "react-native-quick-base64": "2.2.2",
       "react-native-quick-crypto": "1.1.3",
       "react-native-reanimated": "4.5.1",
@@ -2104,9 +2102,133 @@ var init_requirements = __esm({
   }
 });
 
+// src/vendored.ts
+import { readFileSync as readFileSync6, realpathSync as realpathSync2 } from "node:fs";
+import { isAbsolute, join as join8, relative as relative3, sep as sep4 } from "node:path";
+function gradleLibraryName(buildGradle) {
+  try {
+    return /^\s*libraryName\s*=\s*"([^"]+)"/m.exec(readFileSync6(buildGradle, "utf8"))?.[1];
+  } catch {
+    return void 0;
+  }
+}
+function vendoredDependency(vendored2, platform, root2 = packageRoot) {
+  const directory = vendoredRoot(vendored2.name, root2);
+  const manifest = readJson2(join8(directory, "package.json")) ?? {};
+  if (platform === "android") {
+    const android = vendored2.android;
+    if (!android) return void 0;
+    const sourceDir = join8(directory, "android");
+    const codegen = manifest.codegenConfig;
+    const codegenName = typeof codegen === "object" && codegen !== null && typeof codegen.name === "string" ? codegen.name : void 0;
+    const libraryName = codegenName ?? gradleLibraryName(join8(sourceDir, "build.gradle"));
+    const cxx = android.cxxModule;
+    return {
+      root: directory,
+      name: vendored2.name,
+      platforms: {
+        android: {
+          sourceDir,
+          packageImportPath: android.packageImportPath,
+          packageInstance: android.packageInstance,
+          buildTypes: [],
+          ...libraryName === void 0 ? {} : { libraryName },
+          componentDescriptors: [...android.componentDescriptors ?? []],
+          cmakeListsPath: join8(directory, android.cmakeListsPath ?? "android/build/generated/source/codegen/jni/CMakeLists.txt"),
+          cxxModuleCMakeListsModuleName: cxx?.cmakeListsModuleName ?? null,
+          cxxModuleCMakeListsPath: cxx ? join8(directory, cxx.cmakeListsPath) : null,
+          cxxModuleHeaderName: cxx?.headerName ?? null,
+          isPureCxxDependency: false
+        }
+      }
+    };
+  }
+  if (!vendored2.ios) return void 0;
+  return {
+    root: directory,
+    name: vendored2.name,
+    platforms: { ios: { podspecPath: join8(directory, vendored2.ios.podspec), version: typeof manifest.version === "string" ? manifest.version : vendored2.version, configurations: [], scriptPhases: [] } }
+  };
+}
+function declaredVendored(appRoot) {
+  const manifest = readJson2(join8(appRoot, "package.json"));
+  if (!manifest) return [];
+  const declared = /* @__PURE__ */ new Set();
+  for (const group3 of ["dependencies", "devDependencies", "optionalDependencies"]) {
+    const entries = manifest[group3];
+    if (typeof entries === "object" && entries !== null) for (const name of Object.keys(entries)) declared.add(name);
+  }
+  return vendoredNames.filter((name) => declared.has(name));
+}
+function collisionMessage(names, library2 = "@alfayez/svelte-native") {
+  const list = names.map((name) => `${name} ${vendoredPackages.find((vendored2) => vendored2.name === name)?.version ?? ""}`.trim());
+  return `${library2} includes ${list.join(" and ")}; remove ${names.length === 1 ? "it" : "them"} from the app's dependencies (package.json), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it.`;
+}
+function linkVendored(config, platform, root2 = packageRoot) {
+  const entries = vendoredPackages.flatMap((vendored2) => {
+    const dependency = vendoredDependency(vendored2, platform, root2);
+    return dependency ? [[vendored2.name, dependency]] : [];
+  });
+  const dependencies = config.dependencies ?? {};
+  const others = entries.filter(([name, own2]) => dependencies[name] !== void 0 && real(dependencies[name].root ?? "") !== real(own2.root)).map(([name]) => name);
+  if (others.length > 0 && typeof config.root === "string") {
+    const declared = declaredVendored(config.root).filter((name) => others.includes(name));
+    if (declared.length > 0) throw new VendoredCollision(declared);
+  }
+  const linked = Object.entries({ ...dependencies, ...Object.fromEntries(entries) }).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+  return { ...config, dependencies: Object.fromEntries(linked) };
+}
+var vendoredPackages, vendoredNames, vendorDirectory, vendoredRoot, real, readJson2, VendoredCollision;
+var init_vendored = __esm({
+  "src/vendored.ts"() {
+    "use strict";
+    init_package_root();
+    vendoredPackages = [
+      {
+        name: "react-native-nitro-modules",
+        version: "0.35.10",
+        android: { packageImportPath: "import com.margelo.nitro.NitroModulesPackage;", packageInstance: "new NitroModulesPackage()" },
+        ios: { podspec: "NitroModules.podspec" }
+      },
+      {
+        name: "react-native-mmkv",
+        version: "4.3.1",
+        android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
+        ios: { podspec: "NitroMmkv.podspec" }
+      }
+    ];
+    vendoredNames = vendoredPackages.map((vendored2) => vendored2.name);
+    vendorDirectory = (root2 = packageRoot) => join8(root2, "vendor");
+    vendoredRoot = (name, root2 = packageRoot) => join8(vendorDirectory(root2), name);
+    real = (path) => {
+      try {
+        return realpathSync2(path);
+      } catch {
+        return path;
+      }
+    };
+    readJson2 = (file) => {
+      try {
+        const parsed = JSON.parse(readFileSync6(file, "utf8"));
+        return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : void 0;
+      } catch {
+        return void 0;
+      }
+    };
+    VendoredCollision = class extends Error {
+      names;
+      constructor(names) {
+        super(collisionMessage(names));
+        this.name = "VendoredCollision";
+        this.names = names;
+      }
+    };
+  }
+});
+
 // src/doctor/checks.ts
-import { existsSync as existsSync6, readFileSync as readFileSync6 } from "node:fs";
-import { join as join8 } from "node:path";
+import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
+import { join as join9 } from "node:path";
 function environment(context) {
   const checks = [];
   const scope = context.repository ? "repository" : "app";
@@ -2129,7 +2251,7 @@ function environment(context) {
 }
 function library(context, name, version, appPackage) {
   const dependencies = { ...record3(appPackage.dependencies), ...record3(appPackage.devDependencies), ...record3(appPackage.optionalDependencies) };
-  return name in dependencies ? { group: "build integration", status: "pass", message: `${name} ${version} is a dependency of the app` } : { group: "build integration", status: "fail", message: `${name} is not a dependency of the app (${join8(context.appRoot, "package.json")})`, fix: `add it to the app's dependencies (README: "Install in an app"), or run \`pnpm exec svelte-native init\`` };
+  return name in dependencies ? { group: "build integration", status: "pass", message: `${name} ${version} is a dependency of the app` } : { group: "build integration", status: "fail", message: `${name} is not a dependency of the app (${join9(context.appRoot, "package.json")})`, fix: `add it to the app's dependencies (README: "Install in an app"), or run \`pnpm exec svelte-native init\`` };
 }
 function svelte(context, peers) {
   const installed = findPackage("svelte", context.appRoot);
@@ -2137,10 +2259,10 @@ function svelte(context, peers) {
   if (!installed) return { group: "svelte", status: "fail", message: "svelte is not installed", fix };
   const entry = record3(installed.json.exports)["./renderer"];
   const target = text2(entry) ?? text2(record3(entry).default);
-  const exported = target !== void 0 && existsSync6(join8(installed.directory, target));
+  const exported = target !== void 0 && existsSync6(join9(installed.directory, target));
   const compiler = ["src/compiler/validate-options.js", "compiler/index.js"].some((file) => {
     try {
-      return readFileSync6(join8(installed.directory, file), "utf8").includes("customRenderer");
+      return readFileSync7(join9(installed.directory, file), "utf8").includes("customRenderer");
     } catch {
       return false;
     }
@@ -2182,7 +2304,7 @@ function peerDependencies(context, peers, optional) {
 function expoRuntime(context) {
   const expo = findPackage("expo", context.appRoot);
   if (!expo) return [];
-  const missing = EXPO_RUNTIME_FILES.filter((file) => !existsSync6(join8(expo.directory, file)));
+  const missing = EXPO_RUNTIME_FILES.filter((file) => !existsSync6(join9(expo.directory, file)));
   if (missing.length === 0) return [{ group: "peer dependencies", status: "pass", message: `expo ${expo.version} has src/winter, the runtime (URL, fetch, TextDecoder) that the library's polyfills import` }];
   return [{
     group: "peer dependencies",
@@ -2200,7 +2322,28 @@ function autolinkedPeers(context, peers, appPackage) {
     if (name in dependencies) {
       checks.push({ group: "peer dependencies", status: "pass", message: `${name} is a dependency of the app: React Native's autolinking links its native module` });
     } else if (findPackage(name, context.appRoot)) {
-      checks.push({ group: "peer dependencies", status: "fail", message: `${name} is installed but is not a dependency of the app (${join8(context.appRoot, "package.json")}): React Native's autolinking links only the app's own dependencies, so the build would not have its native module`, fix: `pnpm add ${name}@${range}, then npx expo prebuild` });
+      checks.push({ group: "peer dependencies", status: "fail", message: `${name} is installed but is not a dependency of the app (${join9(context.appRoot, "package.json")}): React Native's autolinking links only the app's own dependencies, so the build would not have its native module`, fix: `pnpm add ${name}@${range}, then npx expo prebuild` });
+    }
+  }
+  return checks;
+}
+function vendored(context, libraryName) {
+  const declared = new Set(declaredVendored(context.appRoot));
+  const checks = [];
+  for (const { name, version } of vendoredPackages) {
+    const directory = vendoredRoot(name, context.packageRoot);
+    const copy = readJson(join9(directory, "package.json"));
+    if (copy === void 0 || copy.version !== version) {
+      checks.push({
+        group: "vendored packages",
+        status: "fail",
+        message: copy === void 0 ? `${libraryName} has no copy of ${name} (${directory}): the installed library is incomplete` : `${directory} is ${name} ${String(copy.version)}, the library pins ${version}`,
+        fix: `install ${libraryName} again (a package manager that dropped the library's vendor/ folder, or a stale cache, leaves it incomplete)`
+      });
+    } else if (declared.has(name)) {
+      checks.push({ group: "vendored packages", status: "fail", message: `${name} is a dependency of the app (${join9(context.appRoot, "package.json")}): ${collisionMessage([name], libraryName)}`, fix: `pnpm remove ${name}, then npx expo prebuild` });
+    } else {
+      checks.push({ group: "vendored packages", status: "pass", message: `${name} ${version} comes with ${libraryName} (vendor/${name}); the app does not list it` });
     }
   }
   return checks;
@@ -2208,7 +2351,7 @@ function autolinkedPeers(context, peers, appPackage) {
 function patches(context, libraryName, optional) {
   const declared = declaredPatches(context.appRoot);
   const checks = [];
-  for (const patch of patchFiles(join8(context.packageRoot, "patches"))) {
+  for (const patch of patchFiles(join9(context.packageRoot, "patches"))) {
     const key = patchKey(patch);
     const spec = patchSpecs.find((candidate) => candidate.package === patch.package);
     if (!spec) continue;
@@ -2224,7 +2367,7 @@ function patches(context, libraryName, optional) {
       continue;
     }
     const reader = readerFor(installed.directory);
-    const patchText = readFileSync6(patch.path, "utf8");
+    const patchText = readFileSync7(patch.path, "utf8");
     const changed = spec.inspect(reader, patchText);
     const differing = changed.length === 0 ? missingFromPackage(patchText, reader) : [];
     if (changed.length === 0 && differing.length === 0) {
@@ -2263,9 +2406,9 @@ function integration(context, name) {
   return [metro(metroFinding(context.appRoot)), plugin2(expoPluginFinding(context.appRoot, name))];
 }
 function runChecks(context) {
-  const own2 = readJson(join8(context.packageRoot, "package.json")) ?? {};
+  const own2 = readJson(join9(context.packageRoot, "package.json")) ?? {};
   const name = text2(own2.name) ?? "@alfayez/svelte-native";
-  const appPackage = readJson(join8(context.appRoot, "package.json"));
+  const appPackage = readJson(join9(context.appRoot, "package.json"));
   if (!appPackage) {
     return [{ group: "environment", status: "fail", message: `${context.appRoot} has no package.json: this is not an app directory`, fix: "run svelte-native doctor from the app's directory" }];
   }
@@ -2276,6 +2419,7 @@ function runChecks(context) {
     svelte(context, peers),
     ...peerDependencies(context, peers, optional),
     ...autolinkedPeers(context, peers, appPackage),
+    ...vendored(context, name),
     ...expoRuntime(context),
     ...patches(context, name, optional),
     library(context, name, text2(own2.version) ?? "?", appPackage),
@@ -2295,10 +2439,11 @@ var init_checks = __esm({
     init_requirements();
     init_resolve();
     init_semver();
+    init_vendored();
     record3 = (value) => typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
     text2 = (value) => typeof value === "string" ? value : void 0;
     EXPO_RUNTIME_FILES = ["src/winter/index.ts", "src/winter/runtime.native.ts"];
-    AUTOLINKED_PEERS = ["hermes-intl", "react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64", "react-native-quick-crypto"];
+    AUTOLINKED_PEERS = ["hermes-intl", "react-native-quick-base64", "react-native-quick-crypto"];
   }
 });
 
@@ -2605,14 +2750,14 @@ var init_apns = __esm({
 });
 
 // src/push/credentials.ts
-import { readFileSync as readFileSync7 } from "node:fs";
+import { readFileSync as readFileSync8 } from "node:fs";
 import { resolve as resolve7 } from "node:path";
 function textOrFile(env, name, cwd, isText, kind) {
   const value = valueSet(env, name) ?? "";
   if (isText(value)) return { text: value, source: { file: false } };
   const path = resolve7(cwd, value.trim());
   try {
-    return { text: readFileSync7(path, "utf8"), source: { file: true, path } };
+    return { text: readFileSync8(path, "utf8"), source: { file: true, path } };
   } catch (error) {
     const code = error.code;
     return { problem: `is neither ${kind} nor the path of a file that can be read (${code === "ENOENT" ? `no such file, from ${cwd}` : code ?? "unreadable"}): set it to ${kind} itself, or to the path of its file` };
@@ -3035,8 +3180,8 @@ __export(doctor_exports, {
   runDoctor: () => runDoctor
 });
 import { spawnSync as spawnSync2 } from "node:child_process";
-import { existsSync as existsSync7, realpathSync as realpathSync2 } from "node:fs";
-import { basename as basename2, dirname as dirname6, join as join9, resolve as resolve8 } from "node:path";
+import { existsSync as existsSync7, realpathSync as realpathSync3 } from "node:fs";
+import { basename as basename2, dirname as dirname6, join as join10, resolve as resolve8 } from "node:path";
 function formatReport(checks, { color = false, appRoot = "", title = "svelte-native doctor" } = {}) {
   const paint = (status) => color ? `\x1B[${COLORS[status]}m${WORDS[status]}\x1B[0m` : WORDS[status];
   const lines = [`${title}${appRoot ? `: ${appRoot}` : ""}`];
@@ -3063,7 +3208,7 @@ function nodeVersion() {
 }
 function workspaceRoot(directory) {
   for (let current = directory; ; current = dirname6(current)) {
-    if (existsSync7(join9(current, "pnpm-workspace.yaml"))) return current;
+    if (existsSync7(join10(current, "pnpm-workspace.yaml"))) return current;
     if (dirname6(current) === current) return void 0;
   }
 }
@@ -3071,8 +3216,8 @@ function isRepositoryApp(appRoot, packageRoot2) {
   const packages = dirname6(packageRoot2);
   if (basename2(packages) !== "packages") return false;
   try {
-    const root2 = workspaceRoot(realpathSync2(appRoot));
-    return root2 !== void 0 && root2 === realpathSync2(dirname6(packages));
+    const root2 = workspaceRoot(realpathSync3(appRoot));
+    return root2 !== void 0 && root2 === realpathSync3(dirname6(packages));
   } catch {
     return false;
   }
@@ -3511,7 +3656,8 @@ __export(autolinking_exports, {
   deferredNitroPackages: () => deferredNitroPackages,
   nitroPackage: () => nitroPackage,
   relinkedPackage: () => relinkedPackage,
-  runAndroidAutolinking: () => runAndroidAutolinking
+  runAndroidAutolinking: () => runAndroidAutolinking,
+  runIosAutolinking: () => runIosAutolinking
 });
 import { spawnSync as spawnSync3 } from "node:child_process";
 function relinkedPackage(name) {
@@ -3532,15 +3678,15 @@ function deferNitroLibraries(config) {
   }
   return { ...config, dependencies: relinked };
 }
-function runAndroidAutolinking(command2) {
+function runAutolinking(name, platform, command2, transform) {
   const [program, ...args2] = command2;
   if (!program) {
-    console.error("svelte-native android-autolinking: no command (settings.gradle gives it React Native's config command)");
+    console.error(`svelte-native ${name}: no command (${platform === "android" ? "settings.gradle" : "the Podfile"} gives it React Native's config command)`);
     return 2;
   }
   const result = spawnSync3(program, args2, { encoding: "utf8", stdio: ["inherit", "pipe", "inherit"], maxBuffer: 256 * 1024 * 1024 });
   if (result.error) {
-    console.error(`svelte-native android-autolinking: could not run ${program}: ${result.error.message}`);
+    console.error(`svelte-native ${name}: could not run ${program}: ${result.error.message}`);
     return 1;
   }
   if (result.status !== 0) {
@@ -3558,13 +3704,20 @@ function runAndroidAutolinking(command2) {
     process.stdout.write(result.stdout);
     return 0;
   }
-  process.stdout.write(JSON.stringify(deferNitroLibraries(config)));
+  try {
+    process.stdout.write(JSON.stringify(transform(linkVendored(config, platform))));
+  } catch (error) {
+    if (!(error instanceof VendoredCollision)) throw error;
+    console.error(`svelte-native ${name}: ${error.message}`);
+    return 1;
+  }
   return 0;
 }
-var core, deferredNitroPackages, nitroPackage, linkedAsDefault;
+var core, deferredNitroPackages, nitroPackage, linkedAsDefault, runAndroidAutolinking, runIosAutolinking;
 var init_autolinking = __esm({
   "src/autolinking.ts"() {
     "use strict";
+    init_vendored();
     core = "expo.modules.sveltecore";
     deferredNitroPackages = {
       "react-native-mmkv": { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()", library: "NitroMmkv" },
@@ -3572,6 +3725,8 @@ var init_autolinking = __esm({
     };
     nitroPackage = { name: "react-native-nitro-modules", packageImportPath: "import com.margelo.nitro.NitroModulesPackage;", packageInstance: "new NitroModulesPackage()" };
     linkedAsDefault = (android, linked) => android != null && android.packageImportPath === linked.packageImportPath && android.packageInstance === linked.packageInstance;
+    runAndroidAutolinking = (command2) => runAutolinking("android-autolinking", "android", command2, deferNitroLibraries);
+    runIosAutolinking = (command2) => runAutolinking("ios-autolinking", "ios", command2, (config) => config);
   }
 });
 
@@ -5334,20 +5489,20 @@ __export(build_exports, {
 });
 import { spawnSync as spawnSync4 } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync as existsSync8, mkdirSync as mkdirSync3, readdirSync as readdirSync6, readFileSync as readFileSync8, statSync as statSync2, watch as watch3, writeFileSync as writeFileSync3 } from "node:fs";
+import { existsSync as existsSync8, mkdirSync as mkdirSync3, readdirSync as readdirSync6, readFileSync as readFileSync9, statSync as statSync2, watch as watch3, writeFileSync as writeFileSync3 } from "node:fs";
 import { createRequire as createRequire3 } from "node:module";
-import { dirname as dirname7, extname, isAbsolute, join as join10, relative as relative3, resolve as resolve10, sep as sep4 } from "node:path";
+import { dirname as dirname7, extname, isAbsolute as isAbsolute2, join as join11, relative as relative4, resolve as resolve10, sep as sep5 } from "node:path";
 function sourceFiles(root2) {
   const files = [];
   const walk = (directory) => {
     for (const item of readdirSync6(directory, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : 1)) {
-      const path = join10(directory, item.name);
+      const path = join11(directory, item.name);
       if (item.isDirectory()) {
         if (!SKIPPED_DIRECTORIES.has(item.name)) walk(path);
       } else if (SOURCE_EXTENSIONS.has(extname(item.name))) files.push(path);
     }
   };
-  if (existsSync8(join10(root2, "src"))) walk(join10(root2, "src"));
+  if (existsSync8(join11(root2, "src"))) walk(join11(root2, "src"));
   return files;
 }
 function closingBracket(source, start) {
@@ -5388,18 +5543,18 @@ function candidatesIn(source, into = /* @__PURE__ */ new Set()) {
 }
 function candidatesOf(root2) {
   const candidates = /* @__PURE__ */ new Set();
-  for (const file of sourceFiles(root2)) candidatesIn(readFileSync8(file, "utf8"), candidates);
+  for (const file of sourceFiles(root2)) candidatesIn(readFileSync9(file, "utf8"), candidates);
   return [...candidates].sort();
 }
 function loadTailwind(root2) {
-  const fromApp = createRequire3(join10(root2, "package.json"));
+  const fromApp = createRequire3(join11(root2, "package.json"));
   const install = `pnpm add -D tailwindcss@${TAILWIND_VERSION}`;
   let directory;
   let manifest;
   try {
     const manifestFile = fromApp.resolve("tailwindcss/package.json");
     directory = dirname7(manifestFile);
-    manifest = JSON.parse(readFileSync8(manifestFile, "utf8"));
+    manifest = JSON.parse(readFileSync9(manifestFile, "utf8"));
   } catch (error) {
     throw new Error(`svelte-native: the css option needs Tailwind CSS in the app: ${install} (${error.message.split("\n")[0]})`, { cause: error });
   }
@@ -5425,14 +5580,14 @@ function packageStylesheet(id, base) {
   const name = id.startsWith("@") ? id.split("/").slice(0, 2).join("/") : id.split("/")[0];
   const subpath = id.slice(name.length);
   for (let directory = base; ; directory = dirname7(directory)) {
-    const packageDirectory = join10(directory, "node_modules", name);
-    const manifestFile = join10(packageDirectory, "package.json");
+    const packageDirectory = join11(directory, "node_modules", name);
+    const manifestFile = join11(packageDirectory, "package.json");
     if (existsSync8(manifestFile)) {
-      const manifest = JSON.parse(readFileSync8(manifestFile, "utf8"));
+      const manifest = JSON.parse(readFileSync9(manifestFile, "utf8"));
       let target;
       if (subpath === "") target = exportedStylesheet(manifest.exports, ".") ?? manifest.style ?? (manifest.main?.endsWith(".css") ? manifest.main : void 0);
       else {
-        for (const file of [join10(packageDirectory, subpath), join10(packageDirectory, `${subpath}.css`)]) if (existsSync8(file) && statSync2(file).isFile()) return file;
+        for (const file of [join11(packageDirectory, subpath), join11(packageDirectory, `${subpath}.css`)]) if (existsSync8(file) && statSync2(file).isFile()) return file;
         target = exportedStylesheet(manifest.exports, `.${subpath}`);
       }
       return target === void 0 ? void 0 : resolve10(packageDirectory, target);
@@ -5443,15 +5598,15 @@ function packageStylesheet(id, base) {
 function stylesheetLoader(tailwindDirectory, read2) {
   return async (id, base) => {
     let file;
-    if (id === "tailwindcss") file = join10(tailwindDirectory, "index.css");
-    else if (id.startsWith("tailwindcss/")) file = join10(tailwindDirectory, `${id.slice("tailwindcss/".length).replace(/\.css$/, "")}.css`);
-    else if (id.startsWith(".") || isAbsolute(id)) file = resolve10(base, id);
+    if (id === "tailwindcss") file = join11(tailwindDirectory, "index.css");
+    else if (id.startsWith("tailwindcss/")) file = join11(tailwindDirectory, `${id.slice("tailwindcss/".length).replace(/\.css$/, "")}.css`);
+    else if (id.startsWith(".") || isAbsolute2(id)) file = resolve10(base, id);
     else {
       const next = resolve10(base, id);
       file = existsSync8(next) && statSync2(next).isFile() ? next : packageStylesheet(id, base);
       if (file === void 0) {
         try {
-          file = createRequire3(join10(base, "noop.js")).resolve(id);
+          file = createRequire3(join11(base, "noop.js")).resolve(id);
         } catch (error) {
           throw new Error(`svelte-native: cannot resolve @import "${id}" from ${base}: ${error.message.split("\n")[0]}`, { cause: error });
         }
@@ -5460,7 +5615,7 @@ function stylesheetLoader(tailwindDirectory, read2) {
     }
     let content;
     try {
-      content = readFileSync8(file, "utf8");
+      content = readFileSync9(file, "utf8");
     } catch (error) {
       throw new Error(`svelte-native: cannot read @import "${id}" from ${base}: ${error.code ?? error.message}`, { cause: error });
     }
@@ -5495,7 +5650,7 @@ function unsupportedReasons(unsupported) {
 function writeIfChanged(file, content) {
   let current;
   try {
-    current = readFileSync8(file, "utf8");
+    current = readFileSync9(file, "utf8");
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
@@ -5510,7 +5665,7 @@ function inputsOf(candidates, entry, stylesheets) {
   for (const sheet of /* @__PURE__ */ new Set([entry, ...stylesheets])) {
     hash.update("\0");
     try {
-      hash.update(readFileSync8(sheet));
+      hash.update(readFileSync9(sheet));
     } catch {
       hash.update("missing");
     }
@@ -5520,7 +5675,7 @@ function inputsOf(candidates, entry, stylesheets) {
 async function buildClasses(options) {
   const root2 = resolve10(options.root);
   const entry = resolve10(root2, options.css);
-  const file = join10(root2, ".svelte-native", classesTableFile(options.variant));
+  const file = join11(root2, ".svelte-native", classesTableFile(options.variant));
   if (!existsSync8(entry)) throw new Error(`svelte-native: the css option names ${options.css}, which is not a file (relative to ${root2})`);
   const candidates = candidatesOf(root2);
   const previous = built.get(file);
@@ -5529,7 +5684,7 @@ async function buildClasses(options) {
   const { tailwind, directory } = loadTailwind(root2);
   const read2 = /* @__PURE__ */ new Set([entry]);
   const skipped = /* @__PURE__ */ new Set();
-  const compiler = await tailwind.compile(readFileSync8(entry, "utf8"), {
+  const compiler = await tailwind.compile(readFileSync9(entry, "utf8"), {
     base: dirname7(entry),
     from: entry,
     loadStylesheet: stylesheetLoader(directory, read2),
@@ -5548,12 +5703,12 @@ async function buildClasses(options) {
 function buildClassesSync(options) {
   const root2 = resolve10(options.root);
   const entry = resolve10(root2, options.css);
-  const file = join10(root2, ".svelte-native", classesTableFile(options.variant));
+  const file = join11(root2, ".svelte-native", classesTableFile(options.variant));
   const previous = built.get(file);
   const candidates = candidatesOf(root2);
   const inputs = existsSync8(entry) ? inputsOf(candidates, entry, previous?.result.stylesheets ?? []) : "";
   if (previous !== void 0 && previous.inputs === inputs && existsSync8(file)) return { ...previous.result, changed: false };
-  const cli = process.versions.bun !== void 0 && import.meta.filename.endsWith(".ts") ? sourceFile("cli.ts") : join10(packageRoot, "dist/node/cli.js");
+  const cli = process.versions.bun !== void 0 && import.meta.filename.endsWith(".ts") ? sourceFile("cli.ts") : join11(packageRoot, "dist/node/cli.js");
   const run = spawnSync4(process.execPath, [cli, "css", options.css, "--variant", options.variant, "--json"], { cwd: root2, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
   if (run.error) throw new Error(`svelte-native: could not run the CSS build (${run.error.message})`, { cause: run.error });
   if (run.status !== 0) throw new Error(run.stderr.trim() || `svelte-native: the CSS build exited with ${run.status}`);
@@ -5581,7 +5736,7 @@ function reportSkipped(skipped) {
 }
 function watchClasses(options, stylesheets = [], debounceMs = 100) {
   const root2 = resolve10(options.root);
-  const source = join10(root2, "src");
+  const source = join11(root2, "src");
   const watchers = /* @__PURE__ */ new Map();
   let timer;
   let running = Promise.resolve();
@@ -5594,7 +5749,7 @@ function watchClasses(options, stylesheets = [], debounceMs = 100) {
   };
   const followStylesheets = (files) => {
     for (const directory of new Set(files.map((file) => dirname7(file))))
-      if (!directory.split(sep4).includes("node_modules") && relative3(source, directory).startsWith("..")) watchDirectory(directory, false);
+      if (!directory.split(sep5).includes("node_modules") && relative4(source, directory).startsWith("..")) watchDirectory(directory, false);
   };
   function schedule() {
     clearTimeout(timer);
@@ -5688,6 +5843,12 @@ if (command === "push") {
 if (command === "android-autolinking") {
   const { runAndroidAutolinking: runAndroidAutolinking2 } = await Promise.resolve().then(() => (init_autolinking(), autolinking_exports));
   const status = runAndroidAutolinking2(args);
+  await new Promise((flushed) => process.stdout.write("", () => flushed()));
+  process.exit(status);
+}
+if (command === "ios-autolinking") {
+  const { runIosAutolinking: runIosAutolinking2 } = await Promise.resolve().then(() => (init_autolinking(), autolinking_exports));
+  const status = runIosAutolinking2(args);
   await new Promise((flushed) => process.stdout.write("", () => flushed()));
   process.exit(status);
 }

@@ -109,6 +109,16 @@
       "default": "./app.plugin.js"
     }
   },
+  "imports": {
+    "#vendor/react-native-mmkv": {
+      "types": "./vendor/react-native-mmkv/lib/index.d.ts",
+      "default": "./vendor/react-native-mmkv/src/index.ts"
+    },
+    "#vendor/react-native-nitro-modules": {
+      "types": "./vendor/react-native-nitro-modules/lib/typescript/index.d.ts",
+      "default": "./vendor/react-native-nitro-modules/src/index.ts"
+    }
+  },
   "bin": {
     "svelte-native": "./dist/node/cli.js"
   },
@@ -117,6 +127,7 @@
     "dist/node",
     "dist/types",
     "native",
+    "vendor",
     "patches",
     "expo-module.config.json",
     "app.plugin.js",
@@ -129,7 +140,11 @@
     "!native/**/build",
     "!native/**/.cxx",
     "!native/**/.gradle",
-    "!native/**/Pods"
+    "!native/**/Pods",
+    "!vendor/**/build",
+    "!vendor/**/.cxx",
+    "!vendor/**/.gradle",
+    "!vendor/**/Pods"
   ],
   "scripts": {
     "typecheck": "svelte-check --tsconfig ./tsconfig.json",
@@ -163,8 +178,6 @@
     "react-native-fast-shadow": "~0.1.1",
     "react-native-gesture-handler": "~2.32.0",
     "react-native-maps": "1.27.2",
-    "react-native-mmkv": "4.3.1",
-    "react-native-nitro-modules": "0.35.10",
     "react-native-pdf": "7.0.3",
     "react-native-quick-base64": "2.2.2",
     "react-native-quick-crypto": "1.1.3",

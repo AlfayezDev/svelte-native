@@ -6,6 +6,7 @@ import { withCapabilities, type Capabilities } from "./capabilities.ts";
 export type { Capabilities, LocationCapability, PushCapability } from "./capabilities.ts";
 import type { RemoteHostConfig } from "./remote/host.ts";
 import { withRemoteHost } from "./remote/plugin.ts";
+import { collisionMessage, declaredVendored } from "./vendored.ts";
 
 export type ViewRecycling = { view?: boolean; text?: boolean; image?: boolean; scrollView?: boolean };
 export type SvelteNativeOptions = {
@@ -328,7 +329,8 @@ export function applyAppDelegate(contents: string): string {
 
 /**
  * `settings.gradle`: excludes packages from Expo and React Native autolinking, the headless ones and `extra`, and runs React Native's config command
- * through the library's `android-autolinking` (`autolinking.ts`: the Nitro modules' native libraries load after the start). With
+ * through the library's `android-autolinking` (`autolinking.ts`: the packages the library carries are linked from its directory, and the Nitro modules' native libraries load
+ * after the start). With
  * `EXPO_USE_COMMUNITY_AUTOLINKING=1` the community CLI's command runs as it is. Idempotent.
  */
 export function applyHeadlessSettings(contents: string, extra: readonly string[] = []): string {
@@ -384,6 +386,28 @@ export function applyPodfileAutolinkingExclude(contents: string, names: readonly
   ].join("\n");
   const useEnd = useAnchor.index + useAnchor[0].length;
   return `${stripped.slice(0, useAnchor.index)}${list}\n${stripped.slice(useAnchor.index, useEnd).replace("use_expo_modules!", "use_expo_modules!(exclude: svelte_native_exclude)")}${stripped.slice(useEnd, commandAnchor.index)}${command}\n${stripped.slice(commandAnchor.index)}`;
+}
+
+const podfileLinkBegin = "  # Svelte native: the packages the library carries are linked from its own directory (generated, do not edit)";
+const podfileLinkEnd = "  # Svelte native: end of the library's own packages";
+
+/**
+ * `Podfile`: the config command that `use_native_modules!` runs goes through the library's `ios-autolinking` (`autolinking.ts`), which adds the packages the library carries
+ * (`vendored.ts`: the Nitro runtime and MMKV) to its output, with the podspecs of `vendor/` in the library's directory, so the app's package.json lists none of them. The block
+ * goes in front of the line that reads the config, after anything that already extended the command; stripped and written again on every prebuild, so an update of the
+ * library moves it. With `EXPO_USE_COMMUNITY_AUTOLINKING=1` the command underneath is the community CLI's, and its output gets the same entries.
+ */
+export function applyPodfileVendoredLinking(contents: string): string {
+  const stripped = contents.replace(blockPattern(podfileLinkBegin, podfileLinkEnd), "");
+  const anchor = /^[ \t]*config = use_native_modules!\(config_command\)[ \t]*$/m.exec(stripped);
+  if (!anchor) throw new Error("Svelte native could not find use_native_modules!(config_command) in the Podfile");
+  const block = [
+    podfileLinkBegin,
+    `  svelte_native_cli = File.join(File.dirname(\`node --print "require.resolve('${libraryPackage}/package.json')"\`), 'dist/node/cli.js')`,
+    "  config_command = ['node', svelte_native_cli, 'ios-autolinking'] + config_command",
+    podfileLinkEnd,
+  ].join("\n");
+  return `${stripped.slice(0, anchor.index)}${block}\n${stripped.slice(anchor.index)}`;
 }
 
 /** Kotlin source for the package that replaces `MainReactPackage` in headless builds. */
@@ -511,12 +535,22 @@ export function leaveOutOfAutoPlugins<Config extends { _internal?: Record<string
   return config;
 }
 
+/**
+ * The prebuild stops for an app that installs a package the library carries (`vendored.ts`): the library links its copy, and the app's own would be linked beside it, two
+ * native modules of one name. The same refusal as `svelte-native doctor`'s and `ios-autolinking`'s.
+ */
+export function assertNoVendoredOriginals(projectRoot: string): void {
+  const declared = declaredVendored(projectRoot);
+  if (declared.length > 0) throw new Error(collisionMessage(declared, libraryPackage));
+}
+
 const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined> = (config, options) => {
   config = leaveOutOfAutoPlugins(config, options?.autolinkingExclude ?? []);
   config = withCapabilities(config, options?.capabilities, { excluded: options?.autolinkingExclude });
   if (options?.remote) config = withRemoteHost(config, options.remote);
   for (const platform of ["android", "ios"] as const) {
     config = withDangerousMod(config, [platform, async (config) => {
+      assertNoVendoredOriginals(config.modRequest.projectRoot);
       await syncNative(config.modRequest.projectRoot, { variant: options?.variant });
       return config;
     }]);
@@ -551,7 +585,7 @@ const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined> = (config,
     return config;
   });
   config = withPodfile(config, (config) => {
-    config.modResults.contents = applyPodfileAutolinkingExclude(config.modResults.contents, options?.autolinkingExclude ?? []);
+    config.modResults.contents = applyPodfileVendoredLinking(applyPodfileAutolinkingExclude(config.modResults.contents, options?.autolinkingExclude ?? []));
     return config;
   });
   if (options?.androidProfileable) {

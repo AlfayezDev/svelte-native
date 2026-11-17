@@ -116,7 +116,7 @@ function probe(file: string, cwd = app): Record<string, unknown> {
 
 describe("the package as it is packed", () => {
   test("ships the built JavaScript next to the sources, and the bin points at it", () => {
-    for (const file of ["cli.js", "expo.cjs", "lower.js", "metro.cjs", "routes.js", "transformer.cjs", "vite.js"]) expect([file, existsSync(join(installed, "dist/node", file))]).toEqual([file, true]);
+    for (const file of ["cli.js", "expo.cjs", "lower.js", "metro.cjs", "push-server.js", "routes.js", "transformer.cjs", "vite.js"]) expect([file, existsSync(join(installed, "dist/node", file))]).toEqual([file, true]);
     expect(existsSync(join(installed, "app.plugin.js"))).toBe(true);
     expect(existsSync(join(installed, "src/fabric/react-native-lite.ts"))).toBe(true);
     expect(JSON.parse(readFileSync(join(installed, "package.json"), "utf8")).bin).toEqual({ "svelte-native": "./dist/node/cli.js" });
@@ -277,6 +277,14 @@ try { transformer.transform({ filename: process.cwd() + "/src/Plain.svelte", src
     // The web target, in an app that has SvelteKit: the library's plugins (`mobile` of `$app/env`, then the web options) and SvelteKit's.
     expect(result.web.slice(0, 2)).toEqual(["svelte-native:mobile", "svelte-native:web"]);
     expect(result.web.some((name) => name?.startsWith("vite-plugin-sveltekit"))).toBe(true);
+  });
+
+  test("@alfayez/svelte-native/push/server: imported, and it sends a message (the file in dist/node, not the TypeScript)", () => {
+    const resolved = run(["-e", 'console.log(require.resolve("@alfayez/svelte-native/push/server"))']).stdout.trim();
+    expect(resolved).toBe(join(installed, "dist/node/push-server.js"));
+    const result = probe("push-server.mjs") as { exports: string[]; result: unknown };
+    expect(result.exports).toEqual(["createPush"]);
+    expect(result.result).toEqual({ ok: true, id: "0:1%abc" });
   });
 
   test("@alfayez/svelte-native/lower and /routes are importable", () => {

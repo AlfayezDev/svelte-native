@@ -75,13 +75,14 @@ export function apnsRequest(token: PushToken, message: PushSend): { headers: Out
 }
 
 /**
- * What APNs's answer to a refused send means (the status table of "Handling notification responses from APNs"). A token APNs does not know is a fault of the token whatever
- * the status; every 403 is a credential, the provider token or the key's right to the topic.
+ * What APNs's answer to a refused send means (the status table of "Handling notification responses from APNs"). `gone` and `invalid-token` tell the app to delete a token, so
+ * they are decided by APNs's reason for it (`Unregistered`, `BadDeviceToken`...) and never by a status alone: a bare 400 is a fault of the message, and a 410 with no
+ * reason (a proxy's) is not a token that is gone. Every 403 is a credential: the provider token or the key's right to the topic.
  */
 export function apnsFailure(status: number, reason: string | undefined, retryAfter: number | undefined): Failure {
   const detail = reason ?? `HTTP ${status}`;
   if (reason === "BadDeviceToken" || reason === "DeviceTokenNotForTopic") return failure("invalid-token", detail, status);
-  if (status === 410) return failure("gone", detail, status);
+  if (status === 410 && (reason === "Unregistered" || reason === "ExpiredToken")) return failure("gone", detail, status);
   if (status === 401 || status === 403) return failure("auth", detail, status);
   if (status === 429) return failure("rate-limited", detail, status, retryAfter);
   if (status >= 500) return failure("unavailable", detail, status, retryAfter);

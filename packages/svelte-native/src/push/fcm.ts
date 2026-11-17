@@ -92,7 +92,8 @@ function readError(body: unknown): { code?: string; message?: string; aboutToken
 
 /**
  * What FCM's answer to a refused send means (the error table of the HTTP v1 reference). The FCM-specific code decides when there is one, and the HTTP status when there is not
- * (an error page of a proxy, a `NOT_FOUND` of the canonical codes). A 404 is a registration that is gone.
+ * (an error page of a proxy, a `NOT_FOUND` of the canonical codes). `gone` and `invalid-token` tell the app to delete a token, so only the body's own word for it decides
+ * them: a bare 404 is a wrong project id or endpoint, which would otherwise make a misconfigured server delete every token it has.
  */
 export function fcmFailure(status: number, body: unknown, text: string, retryAfter: number | undefined): Failure {
   const { code, message, aboutToken } = readError(body);
@@ -115,7 +116,7 @@ export function fcmFailure(status: number, body: unknown, text: string, retryAft
     case "PERMISSION_DENIED":
       return failure("auth", detail, status);
   }
-  if (status === 404) return failure("gone", detail, status);
+  if (status === 404) return failure("error", `FCM answered 404 (${detail}): the endpoint or the project was not found; check the service account's \`project_id\` and \`fcm.baseUrl\`.`, status);
   if (status === 429) return failure("rate-limited", detail, status, retryAfter);
   if (status >= 500) return failure("unavailable", detail, status, retryAfter);
   if (status === 401 || status === 403) return failure("auth", detail, status);

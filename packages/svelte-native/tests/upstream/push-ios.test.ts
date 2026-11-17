@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { nodeModules } from "../support/paths.ts";
 import { expoTemplateAppDelegate } from "../cli/support/app-delegate.ts";
 
-// iOS push (`packages/svelte-native-push/ios`, PUSH.md) is written against the sources of Expo's app delegate, Expo modules core and React Native, which cannot be compiled on the
+// iOS push (`native/svelte-core/ios/push`, PUSH.md) is written against the sources of Expo's app delegate, Expo modules core and React Native, which cannot be compiled on the
 // machines these tests run on. What the Swift assumes of them is read from the installed sources here, so an update of one that changes the facts fails this file and says what, before
 // a Mac build says it with a compile error or a screen that mounts in the background. What the Swift itself does is `native-host/contracts/push-ios.test.ts`.
 const read = (path: string) => readFileSync(resolve(nodeModules, path), "utf8");

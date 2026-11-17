@@ -2,7 +2,7 @@
 title: Modules
 ---
 
-Svelte Native's code is split into a few entry points. An app imports almost everything from the main one and reaches for `/foreign`, `/platform`, `/remote` and `/updates` for the rest. This page lists each entry point and what it exports, with a link to the page that explains it.
+Svelte Native's code is split into a few entry points. An app imports almost everything from the main one and reaches for `/foreign`, `/platform`, `/remote`, `/updates` and `/push` for the rest. This page lists each entry point and what it exports, with a link to the page that explains it.
 
 ## @alfayez/svelte-native
 
@@ -133,6 +133,25 @@ SvelteKit's remote functions on the device. [Loading data](loading-data#remote-f
 ## @alfayez/svelte-native/updates
 
 Over-the-air updates, compatible with `eas update`: `isEnabled`, `updateId`, `channel`, `runtimeVersion`, `checkForUpdateAsync`, `fetchUpdateAsync`, `reloadAsync` and `checkOnLaunch`. [Updates](updates)
+
+## @alfayez/svelte-native/push
+
+Push notifications on the device, with `@alfayez/svelte-native-push` installed. [Push notifications](push-notifications)
+
+| Export | Description |
+| --- | --- |
+| `push` | `push.permission` and `push.token` as state, and `push.subscribe({ save })`, `push.unsubscribe()` and `push.on('message', listener)`. |
+| `PushHooks`, `PushPresentation` | The types of the `push` export of `src/hooks.mobile.ts`. |
+| `PushMessage`, `PushToken`, `PushPermission` | The types of a message, of the token the app saves, and of `push.permission`. |
+
+## @alfayez/svelte-native/push/server
+
+The sender, for your server (Node, no dependencies; it does not run on the device). [Push notifications](push-notifications#on-the-server)
+
+| Export | Description |
+| --- | --- |
+| `createPush({ fcm, apns, timeout })` | Makes the sender. It has `send(token, message)`, which sends one message to one device and resolves with a `SendResult`, and `close()`. |
+| `PushSend`, `SendResult`, `PushToken`, `Push`, `PushOptions` | The types of a message, of its result, of the token the app saved, of the sender and of its options. |
 
 ## Build tools
 

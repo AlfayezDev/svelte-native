@@ -2,25 +2,47 @@
 title: Push notifications
 ---
 
-Push notifications in Svelte Native are a direct line from your server to Firebase Cloud Messaging (FCM) on Android and the Apple Push Notification service (APNs) on iOS, with your app's own credentials. There is no Expo push service and no relay of ours in between.
+A Svelte Native app can get push notifications three ways. They differ in who delivers a message, where the keys that can send to every user are kept, and how much you build around a send.
 
-The library does the device's side: the permission, the token, receiving a message, showing it, a tap on it, and a message that arrives while the app is closed. For your server it gives a sender that sends one message to one device and tells you what happened. Everything around a send is your app's: the queue, the retries, where the tokens are kept, sending to many devices and the providers' rate limits ([What your app owns](#what-your-app-owns)). An app that would rather hand all of that to a service installs `expo-notifications` and uses Expo's push service instead. The two exclude each other, and so does `@react-native-firebase/messaging`: an app has one push library, and the config plugin stops the prebuild when it finds two.
+| | [Standalone](#standalone-alfayezsvelte-native-push) | [Firebase](#with-firebase-react-native-firebasemessaging) | [Expo](#with-expo-expo-notifications) |
+| --- | --- | --- | --- |
+| Library in the app | `@alfayez/svelte-native-push` | `@react-native-firebase/messaging` | `expo-notifications` |
+| Your server sends with | `createPush` from this library | `firebase-admin` | `expo-server-sdk` |
+| The path of a message | your server → FCM (Android) or APNs (iOS) | your server → FCM, which hands iOS messages to APNs | your server → Expo's push service → FCM or APNs |
+| The sending keys are kept | on your server | on your server (FCM), and in Firebase (the APNs key) | at Expo, in your EAS project |
+| A tap opens a screen | built in: the message's `url` goes through the router | your code calls `goto` | your code calls `goto` |
+| A silent push on iOS | runs your hook with no screen mounted | mounts the first screen | mounts the first screen |
+| You build | a job queue, retries, token storage, fan-out | a job queue, token storage | a job queue, a receipts check, token storage |
 
-Three rules shape the rest of this page:
+An app has one push library. The three exclude each other: Android delivers to one messaging service and iOS has one notification center delegate. The config plugin stops the prebuild when `capabilities.push` is on and `expo-notifications` or `@react-native-firebase/messaging` is installed too.
+
+**Which one?**
+
+- **Standalone** when nothing should sit between your server and Apple and Google, and you can run a job queue. It is the one Svelte Native is built around: a tap is a link, and a background message never mounts a screen.
+- **Firebase** when the app uses Firebase already (Analytics, Crashlytics), or you want Firebase's topics and its console's campaigns.
+- **Expo** when you'd rather not handle the providers at all: Expo keeps the keys and talks to Apple and Google, and you send one kind of token from your server. It needs an EAS project.
+
+## Standalone: `@alfayez/svelte-native-push`
+
+Your server sends straight to Firebase Cloud Messaging (FCM) on Android and the Apple Push Notification service (APNs) on iOS, with your own credentials. There is no relay in between. The library does the device's side: the permission, the token, receiving a message, showing it, a tap on it, and a message that arrives while the app is closed. For your server it has a sender that sends one message to one device and tells you what happened.
+
+> **important** **You need a job queue.** The sender doesn't queue, retry or fan out, so these are yours to run: a queue that sends from a job and not from the user's request, retries with backoff for the answers that ask for one, a table of tokens that you clean up from the answers, and sending to many devices with a concurrency limit. Postgres (with a job table or pg-boss), Redis (BullMQ) or a cloud queue all work. [What your app owns](#what-your-app-owns) has the list and a worked recipe. If you don't want to run this, use [Expo's push service](#with-expo-expo-notifications), which does most of it for you.
+
+Three rules shape it:
 
 1. **A tapped notification is a link.** Its `url` opens a screen the way any [link to your app](routing#deep-links) does, from a closed app or a running one. The router does not change, and a path such as `/orders/42` works.
 2. **A push that wakes the app mounts no screen.** The background hook and `init` run, and the first screen waits until the user opens the app.
 3. **Secrets never go in the app.** The app's config holds identifiers only. The keys that can send to every user, the FCM service account and the APNs key, live in your server's environment, and the config plugin refuses a build that contains one.
 
-## Setting up
+### Setting up
 
-### The accounts
+#### The accounts
 
 On Android, create a Firebase project, add your app to it with its Android package, and download `google-services.json`. It goes in your app's repository: it holds identifiers, not secrets. For your server, create a service account key with the Firebase Cloud Messaging API Admin role and keep it in the server's secrets.
 
 On iOS, you need a paid Apple Developer team: a Personal Team can't sign the push entitlement. Create an APNs authentication key (a `.p8` file) and keep it, with its key id and your team id, on the server. iOS goes to APNs directly, so there is no Firebase on iOS.
 
-### The package and the config
+#### The package and the config
 
 Push's native code is a package of its own, so that Firebase is in the build of the apps that use push and of no other. Install it from the same repository and tag as the library:
 
@@ -65,7 +87,7 @@ The plugin does what the plugin of any push library does, from those identifiers
 
 A build without the package still runs. `push.permission` reads `'denied'`, `push.subscribe` resolves with `null`, and the console has one warning that says what to install.
 
-## On the device
+### On the device
 
 `push` is in `@alfayez/svelte-native/push`. What the app does with a message depends on where the app is and what the message is:
 
@@ -74,7 +96,7 @@ A build without the package still runs. `push.permission` reads `'denied'`, `pus
 | A notification (it has a `title` or a `body`) | The `foreground` hook says how to show it, then `push.on('message')` listeners hear it. | The system shows it, and no hook runs. A tap runs `opened` and opens the `url`. |
 | A silent message (`silent: true`) | The `foreground` hook and the `push.on('message')` listeners hear it. Nothing is shown. | The `background` hook runs, with no screen. |
 
-### Permission and token
+#### Permission and token
 
 ```svelte
 <!--- file: src/routes/settings/+mobile.svelte --->
@@ -159,7 +181,7 @@ Asking at the moment the user turns notifications on, with a button, is kinder t
 {@render children()}
 ```
 
-### Hooks
+#### Hooks
 
 The app answers the three things a push can do to it with the `push` export of [`src/hooks.mobile.ts`](hooks):
 
@@ -219,13 +241,13 @@ To react to a message in a screen, for example to refresh a list, listen with `p
 
 **`opened(message)`** runs when a notification is tapped, whether the app was closed, in the background or open, and for the tap that launched the app too. Return `false` to stop its `url` from opening. Keep it quick: the router waits only three seconds for the link a launch carries. On Android, a notification that the system showed while the app was away comes back here with its `id`, `url` and `data` and without its `title` and `body`. Treat what `opened` gets as untrusted input, as you would a link: on Android another app can start yours with the same extras a tap carries, so a message here is not proof that your server sent it. Its `url` can only open a screen of your app, but don't act on its `data` (a payment, a deletion) without checking with your server.
 
-### A tap opens a link
+#### A tap opens a link
 
 When `opened` doesn't return `false` and the message has a `url`, the tap opens it through the router, the way any link to your app opens. A path of the app, `/orders/42`, is read by its path. A full link, `myapp://orders/42` or an https link your app handles, is used as it is. A tap that launches the app makes the link the first screen, with no back button; a tap while the app runs opens it like any link that arrives then. A link that matches no route is ignored, and a message without a `url` just opens the app.
 
 An app that reads `Linking` itself sees a path as `https://app.invalid/orders/42`. The router ignores the host, and `.invalid` can never be a real site.
 
-## On the server
+### On the server
 
 The sender is in `@alfayez/svelte-native/push/server`. It is built for Node, has no dependencies, and runs nothing on the device, so import it from server code only. Make one `createPush` for the process:
 
@@ -250,7 +272,7 @@ A provider with none of its options set is not configured: the module loads with
 
 `fcm.baseUrl`, `fcm.tokenUrl`, `apns.productionUrl` and `apns.sandboxUrl` replace the providers' addresses, for tests and proxies.
 
-### Sending
+#### Sending
 
 ```ts
 import { push } from '$lib/server/push';
@@ -270,7 +292,7 @@ The one retry it makes is its own: when APNs answers `ExpiredProviderToken`, it 
 
 `close()` waits for the sends in flight and ends the connections to APNs. The sender keeps one HTTP/2 connection per APNs host open and reuses it, as Apple wants, so call `close()` when the server shuts down or a script is done; otherwise the process doesn't exit. A send after `close()` answers `unavailable`.
 
-### What a send returns
+#### What a send returns
 
 ```ts
 type SendResult =
@@ -296,7 +318,7 @@ type SendResult =
 
 `gone` and `invalid-token` tell you to delete a token, so only the provider's own word decides them: FCM's `UNREGISTERED`, APNs's `Unregistered` and `ExpiredToken`, `BadDeviceToken` and `DeviceTokenNotForTopic`. A bare 404 or 410 is `error`, because a wrong `project_id` answers 404 too, and a misconfigured server must not delete every token it has; for the same reason FCM's `SENDER_ID_MISMATCH`, which every token answers when the server has another project's credentials, is `auth`. A device doesn't save a token it saved before, so a token deleted by mistake stays deleted until it changes.
 
-### The message
+#### The message
 
 | Field | Description |
 | --- | --- |
@@ -311,7 +333,7 @@ type SendResult =
 | `priority` | `'high'` or `'normal'`. FCM's `HIGH` and `NORMAL`, APNs's 10 and 5. |
 | `ttl` | Seconds the provider keeps the message for a device that is offline. `0` delivers at once or not at all. |
 
-## What your app owns
+### What your app owns
 
 The sender sends and says what happened. These are yours:
 
@@ -365,7 +387,7 @@ export async function work(job: Job) {
 }
 ```
 
-## Testing
+### Testing
 
 On the iOS simulator, `xcrun simctl push` delivers an alert to an app that is running. That is enough to try the `foreground` hook, the message you get, a tap and the link it opens. Put the payload in a file, with your `url` as a key beside `aps`:
 
@@ -389,9 +411,9 @@ A device needs a paid Apple Developer team for the entitlement. On Android, FCM 
 
 `svelte-native push send` sends one message to one token from the command line, with your server's credentials in `FCM_SERVICE_ACCOUNT`, or `APNS_KEY`, `APNS_KEY_ID` and `APNS_TEAM_ID`. It is for trying a device without writing a server first. The command line also takes the path of the key's file in `FCM_SERVICE_ACCOUNT` and `APNS_KEY`; `createPush` takes the contents only. Its options are in [Command line](cli#push).
 
-## Limits
+### Limits
 
-### On iOS
+#### On iOS
 
 A silent push can start the app in the background. The plugin makes that launch run your JavaScript, `init` and the hooks, and start the first screen when the user opens the app. Two things follow:
 
@@ -404,7 +426,7 @@ A silent push can start the app in the background. The plugin makes that launch 
 
   Push doesn't support that template yet.
 
-### Not in version 1
+#### Not in version 1
 
 - Scheduled local notifications. Push shows a notification now, which it needs for the foreground, and schedules nothing.
 - Action buttons and categories.
@@ -414,3 +436,290 @@ A silent push can start the app in the background. The plugin makes that launch 
 - Phones without Google services (Huawei's HMS).
 - iOS provisional and critical alerts.
 - Live Activities.
+
+## With Firebase: `@react-native-firebase/messaging`
+
+React Native Firebase uses Firebase Cloud Messaging on both platforms. On iOS, FCM hands each message to APNs with the APNs key you upload to Firebase, so the device's token is an FCM token on both. Your server sends with Google's `firebase-admin`. Its functions are plain JavaScript, so they work in a Svelte Native app; the parts this library does for the standalone package (opening a tap's link, a background launch with no screen) are yours to write, and the code below does them.
+
+> **info** **Still send from a job.** `firebase-admin` doesn't queue either, so send from a job, not from the user's request, and keep the tokens in a table. Firebase lightens the rest: `sendEachForMulticast` sends one message to up to 500 tokens, and topics let Firebase do the fan-out. Delete a token when a send fails with `messaging/registration-token-not-registered`.
+
+### Setting up Firebase
+
+Create a Firebase project and add both apps to it: download `google-services.json` (Android) and `GoogleService-Info.plist` (iOS). In the project's settings, under Cloud Messaging, upload your APNs key (the `.p8`, its key id and your team id). For the server, create a service account key, as for the standalone package.
+
+```sh
+npx expo install @react-native-firebase/app @react-native-firebase/messaging expo-build-properties
+```
+
+```ts
+/// file: app.config.ts
+export default {
+	expo: {
+		android: { package: 'dev.example.myapp', googleServicesFile: './google-services.json' },
+		ios: {
+			bundleIdentifier: 'dev.example.myapp',
+			googleServicesFile: './GoogleService-Info.plist',
+			entitlements: { 'aps-environment': 'production' },
+			infoPlist: { UIBackgroundModes: ['remote-notification'] }
+		},
+		plugins: [
+			'@alfayez/svelte-native',
+			'@react-native-firebase/app',
+			'@react-native-firebase/messaging',
+			// Firebase's iOS pods build as static frameworks.
+			['expo-build-properties', { ios: { useFrameworks: 'static' } }]
+		]
+	}
+};
+```
+
+Leave `capabilities.push` out of the `@alfayez/svelte-native` plugin's options, and don't install `@alfayez/svelte-native-push`. Firebase's plugins don't write the iOS push entitlement or the background mode, so the config sets them: `'aps-environment'` is `'development'` for a build signed for development. Then prebuild and build again.
+
+### Receiving with Firebase
+
+A message that arrives while the app is in the background or closed goes to Firebase's background handler. On Android, Firebase runs it as a headless task, which starts your JavaScript with no screen, so register it where it runs before anything else: the top level of [`src/hooks.mobile.ts`](hooks).
+
+```ts
+/// file: src/hooks.mobile.ts
+import { getMessaging, setBackgroundMessageHandler } from '@react-native-firebase/messaging';
+import { syncInbox } from '#lib/inbox.ts';
+
+setBackgroundMessageHandler(getMessaging(), async (message) => {
+	if (message.data?.inbox) await syncInbox(String(message.data.inbox));
+});
+```
+
+The rest belongs to the app's first screen: the permission, the token, messages in the foreground, and taps. A tap is not a link here, so the code opens the message's `url` with `goto`, from a tap that launched the app (`getInitialNotification`) and from one while it runs (`onNotificationOpenedApp`):
+
+```ts
+/// file: src/lib/push.ts
+import { goto } from '$app/navigation';
+import { Platform } from '@alfayez/svelte-native/platform';
+import {
+	AuthorizationStatus,
+	getInitialNotification,
+	getMessaging,
+	getToken,
+	onMessage,
+	onNotificationOpenedApp,
+	onTokenRefresh,
+	requestPermission,
+	type RemoteMessage
+} from '@react-native-firebase/messaging';
+import PermissionsAndroid from 'react-native/Libraries/PermissionsAndroid/PermissionsAndroid';
+import { savePushToken } from '#lib/push.remote.ts';
+
+const messaging = getMessaging();
+
+function open(message: RemoteMessage | null) {
+	const url = message?.data?.url;
+	if (typeof url === 'string') goto(url);
+}
+
+/** Asks for the permission and saves the token. Call it when the user turns notifications on. */
+export async function subscribe() {
+	if (Platform.OS === 'android') {
+		// Android 13 and later ask for POST_NOTIFICATIONS; Firebase's requestPermission only asks on iOS.
+		const answer = await PermissionsAndroid.request('android.permission.POST_NOTIFICATIONS');
+		if (answer !== 'granted') return;
+	} else {
+		const status = await requestPermission(messaging);
+		if (status !== AuthorizationStatus.AUTHORIZED && status !== AuthorizationStatus.PROVISIONAL) return;
+	}
+	await savePushToken({ provider: 'fcm', token: await getToken(messaging) });
+}
+
+/** Listens for tokens, messages and taps while the app runs. Returns what stops it. */
+export function listen(onForeground: (message: RemoteMessage) => void) {
+	getInitialNotification(messaging).then(open);
+	const stops = [
+		onNotificationOpenedApp(messaging, open),
+		onMessage(messaging, async (message) => onForeground(message)),
+		onTokenRefresh(messaging, (token) => savePushToken({ provider: 'fcm', token }))
+	];
+	return () => stops.forEach((stop) => stop());
+}
+```
+
+```svelte
+<!--- file: src/routes/+layout.mobile.svelte --->
+<script lang="ts">
+	import { listen } from '#lib/push.ts';
+
+	let { children } = $props();
+
+	// FCM shows nothing while the app is open: a message in the foreground is the app's to show.
+	$effect(() => listen((message) => console.log('message', message.notification?.title)));
+</script>
+
+{@render children()}
+```
+
+The effect runs once the router has mounted, so `goto` has a router to drive, and the launch tap opens its screen over the first one. `savePushToken` is your remote function, as in [Permission and token](#permission-and-token), with a schema for this token's shape.
+
+### Sending with firebase-admin
+
+```ts
+/// file: src/lib/server/push.ts
+import { cert, initializeApp } from 'firebase-admin/app';
+import { getMessaging } from 'firebase-admin/messaging';
+import { env } from '$env/dynamic/private';
+
+const messaging = getMessaging(initializeApp({ credential: cert(JSON.parse(env.FCM_SERVICE_ACCOUNT)) }));
+
+export async function send(token: string, title: string, body: string, url: string) {
+	try {
+		await messaging.send({
+			token,
+			notification: { title, body },
+			data: { url },
+			apns: { payload: { aps: { sound: 'default' } } }
+		});
+	} catch (error) {
+		if ((error as { code?: string }).code === 'messaging/registration-token-not-registered') await deleteToken(token);
+		else throw error; // let the job retry
+	}
+}
+```
+
+A data-only message (no `notification`) reaches `setBackgroundMessageHandler`; on iOS it also needs `apns: { headers: { 'apns-priority': '5', 'apns-push-type': 'background' }, payload: { aps: { 'content-available': 1 } } }`.
+
+### Limits with Firebase
+
+- **A silent push on iOS mounts the first screen.** iOS starts the app in the background, and the screen mounts nobody can see. Only the standalone package keeps it from mounting.
+- **Taps are your code.** A tap's `url` opens because `listen` calls `goto`; a layout that doesn't run it opens nothing.
+- **React hooks don't run.** React Native Firebase's API is functions, so it works; anything a guide shows as a React hook or component doesn't. See [Native libraries](native-libraries#functions-work-hooks-dont).
+
+## With Expo: `expo-notifications`
+
+Your server sends to Expo's push service with an Expo push token, and Expo delivers the message through FCM and APNs with the credentials you give it in your EAS project. You keep no Apple or Google key on your server: it holds an Expo access token. Expo batches requests and retries the providers for you.
+
+> **info** **Still send from a job, and check the receipts.** Expo answers a send with a ticket, and about 15 minutes later it has a receipt that says whether Apple or Google took the message. A receipt of `DeviceNotRegistered` means delete the token. So you run two jobs: one that sends, and a delayed one that reads the receipts.
+
+### Setting up Expo notifications
+
+You need an EAS project (`eas init` writes its id into the config as `extra.eas.projectId`). Upload the credentials there with `eas credentials`: a Firebase service account key for Android (FCM V1), and an APNs key for iOS, which EAS can create for you. Android also needs a Firebase project's `google-services.json` in the app, because Expo delivers to Android through FCM.
+
+```sh
+npx expo install expo-notifications expo-constants expo-task-manager
+```
+
+```ts
+/// file: app.config.ts
+export default {
+	expo: {
+		android: { package: 'dev.example.myapp', googleServicesFile: './google-services.json' },
+		ios: { bundleIdentifier: 'dev.example.myapp' },
+		extra: { eas: { projectId: 'your-eas-project-id' } },
+		plugins: [
+			'@alfayez/svelte-native',
+			['expo-notifications', { icon: './assets/notify.png', color: '#0a7f5a', enableBackgroundRemoteNotifications: true }]
+		]
+	}
+};
+```
+
+Leave `capabilities.push` off, and don't install `@alfayez/svelte-native-push`. Expo's plugin writes the push entitlement and the background mode itself. Then prebuild and build again.
+
+### Receiving with Expo notifications
+
+How a message shows while the app is open, and the background task, are set where they run first, the top level of [`src/hooks.mobile.ts`](hooks):
+
+```ts
+/// file: src/hooks.mobile.ts
+import * as Notifications from 'expo-notifications';
+import * as TaskManager from 'expo-task-manager';
+import { syncInbox } from '#lib/inbox.ts';
+
+Notifications.setNotificationHandler({
+	handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false })
+});
+
+const BACKGROUND = 'push-background';
+TaskManager.defineTask<Notifications.NotificationTaskPayload>(BACKGROUND, async ({ data }) => {
+	if (!('actionIdentifier' in data)) await syncInbox();
+});
+Notifications.registerTaskAsync(BACKGROUND);
+```
+
+The permission, the token and taps go in the app, as with Firebase. `useLastNotificationResponse` is a React hook and doesn't run in Svelte Native; `getLastNotificationResponse()` gives the same tap:
+
+```ts
+/// file: src/lib/push.ts
+import { goto } from '$app/navigation';
+import { Platform } from '@alfayez/svelte-native/platform';
+import Constants from 'expo-constants';
+import * as Notifications from 'expo-notifications';
+import { savePushToken } from '#lib/push.remote.ts';
+
+function open(response: Notifications.NotificationResponse | null) {
+	const url = response?.notification.request.content.data?.url;
+	if (typeof url === 'string') goto(url);
+}
+
+/** Asks for the permission and saves the Expo push token. Call it when the user turns notifications on. */
+export async function subscribe() {
+	if (Platform.OS === 'android') {
+		// Android 13 asks only an app that has a channel.
+		await Notifications.setNotificationChannelAsync('default', { name: 'Updates', importance: Notifications.AndroidImportance.HIGH });
+	}
+	const { granted } = await Notifications.requestPermissionsAsync();
+	if (!granted) return;
+	const { data } = await Notifications.getExpoPushTokenAsync({ projectId: Constants.expoConfig?.extra?.eas?.projectId });
+	await savePushToken({ provider: 'expo', token: data });
+}
+
+/** Listens for messages and taps while the app runs. Returns what stops it. */
+export function listen(onForeground: (notification: Notifications.Notification) => void) {
+	open(Notifications.getLastNotificationResponse());
+	const received = Notifications.addNotificationReceivedListener(onForeground);
+	const tapped = Notifications.addNotificationResponseReceivedListener(open);
+	return () => {
+		received.remove();
+		tapped.remove();
+	};
+}
+```
+
+Call `listen` from the root `+layout.mobile.svelte` in an `$effect`, as in the Firebase example.
+
+### Sending with expo-server-sdk
+
+```ts
+/// file: src/lib/server/push.ts
+import { Expo, type ExpoPushMessage } from 'expo-server-sdk';
+import { env } from '$env/dynamic/private';
+
+const expo = new Expo({ accessToken: env.EXPO_ACCESS_TOKEN });
+
+/** The send job: returns the ticket ids for the receipts job. */
+export async function send(messages: ExpoPushMessage[]) {
+	const ids: string[] = [];
+	for (const chunk of expo.chunkPushNotifications(messages)) {
+		for (const ticket of await expo.sendPushNotificationsAsync(chunk)) {
+			if (ticket.status === 'ok') ids.push(ticket.id);
+			else if (ticket.details?.error === 'DeviceNotRegistered') await deleteToken(ticket.details.expoPushToken);
+		}
+	}
+	return ids; // queue the receipts job for about 15 minutes from now
+}
+
+/** The receipts job. */
+export async function checkReceipts(ids: string[]) {
+	for (const chunk of expo.chunkPushNotificationReceiptIds(ids)) {
+		const receipts = await expo.getPushNotificationReceiptsAsync(chunk);
+		for (const receipt of Object.values(receipts)) {
+			if (receipt.status === 'error' && receipt.details?.error === 'DeviceNotRegistered') await deleteToken(receipt.details.expoPushToken);
+		}
+	}
+}
+```
+
+A message is `{ to: token, title, body, data: { url: '/orders/42' } }`; `_contentAvailable: true` with no `title` makes it a background message on iOS.
+
+### Limits with Expo
+
+- **A silent push on iOS mounts the first screen**, as with Firebase.
+- **Taps are your code**: `listen` calls `goto`.
+- **Expo is in the path.** Every message goes through Expo's service, and your EAS project holds the keys that can send to all your users.
+- **React hooks don't run**: use `getLastNotificationResponse()`, not `useLastNotificationResponse()`.

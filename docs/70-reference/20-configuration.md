@@ -242,3 +242,5 @@ The prebuild stops, with a message that says what to do ([Troubleshooting](troub
 - the Google services file is missing, isn't JSON, or has no client for the app's `android.package`;
 - the config or the Google services file holds a server secret: a service account key, a PEM private key, or the path of a `.p8` file. Those belong to the server's environment;
 - an option is malformed: no platform named, `android` without `googleServicesFile`, no `android.package`, an icon that isn't a PNG or isn't there, a color that isn't hex, a channel without a `name`, or an `ios.mode` that is neither `'development'` nor `'production'`.
+
+Turning push off (or leaving a platform out) and prebuilding again without `--clean` removes what the capability added to that platform's native project: the `AppDelegate.swift` change, the manifest entries, and the channel, icon and color resources. The `aps-environment` entitlement, the `remote-notification` background mode and the Google services file stay, because the app or another library may need them: remove them by hand, or prebuild with `--clean`.

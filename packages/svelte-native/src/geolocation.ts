@@ -5,8 +5,10 @@
  *
  * What it follows of the web: `getCurrentPosition`, `watchPosition` and `clearWatch` call back asynchronously, with a `GeolocationPosition` or a
  * `GeolocationPositionError` (`PERMISSION_DENIED`, `POSITION_UNAVAILABLE`, `TIMEOUT`); the first use asks for the permission, and `timeout` counts from when it is
- * granted; `maximumAge` answers from the last position, the app's or the system's, when it is young enough (the system's is a native lookup that may not answer: a
- * `getCurrentPosition` waits for it at most `CACHE_LOOKUP_MS`, a watch looks it up alongside its native watch); `enableHighAccuracy` asks for the GPS. Where it differs: a
+ * granted; `maximumAge` answers from the last position, the app's or the system's, when it is young enough and was taken as this request asks, with or without
+ * `enableHighAccuracy` (the web's cached position and its `[[isHighAccuracy]]`; the system's last known position, taken no one knows how, answers only a request without
+ * it; the system's is also a native lookup that may not answer: a `getCurrentPosition` waits for it at most `CACHE_LOOKUP_MS`, a watch looks it up alongside its native
+ * watch); `enableHighAccuracy` asks for the GPS. Where it differs: a
  * position the platform cannot place in altitude, heading or speed reports `null` for them (Android reports 0 when it does not know, and it is read as unknown when its
  * accuracy is 0); and the permission is the system's, so a user who denied it can be asked again where the system still allows it (Android asks twice).
  */
@@ -147,8 +149,10 @@ function milliseconds(value: unknown, fallback: number): number {
 }
 
 function readOptions(options: PositionOptions | null | undefined) {
+  const high = Boolean(options?.enableHighAccuracy);
   return {
-    accuracy: options?.enableHighAccuracy ? HIGH : BALANCED,
+    high,
+    accuracy: high ? HIGH : BALANCED,
     timeout: milliseconds(options?.timeout, NO_TIMEOUT),
     maximumAge: milliseconds(options?.maximumAge, 0),
   };
@@ -247,7 +251,8 @@ export class Geolocation {
   #nextWatch = FIRST_WATCH;
   #subscriptions: Subscription[] | null = null;
   #asking: Promise<boolean> | null = null;
-  #last: NativeLocation | null = null;
+  /** The app's last position, with whether it was asked for with high accuracy (the web's `[[cachedPosition]]` and its `[[isHighAccuracy]]`). */
+  #last: { location: NativeLocation; high: boolean } | null = null;
   #foregroundSubscribed = false;
 
   constructor(native: NativeLocationModule, onForeground: (listener: () => void) => void = () => {}) {
@@ -322,14 +327,28 @@ export class Geolocation {
     return state === "granted";
   }
 
-  /** The app's last position, when it is no older than `maximumAge`. */
+  /** Whether a position is no older than `maximumAge`. */
   #young(location: NativeLocation | null, maximumAge: number): location is NativeLocation {
     return maximumAge > 0 && location !== null && Date.now() - location.timestamp <= maximumAge;
   }
 
-  /** The system's last known position, when it is no older than `maximumAge` and the native lookup answers within `bound` ms, if given (later, it is not used). */
-  async #lastKnown(maximumAge: number, bound?: number): Promise<NativeLocation | null> {
-    if (maximumAge <= 0) return null;
+  /**
+   * The app's last position when it may answer a request: no older than `maximumAge`, and taken with the accuracy the request asks for (issue #69: a
+   * Balanced position answered a request with `enableHighAccuracy`). Equal, as the web's acquisition steps compare it: a GPS position does not answer a
+   * request without it either.
+   */
+  #cached(options: { maximumAge: number; high: boolean }): NativeLocation | null {
+    const last = this.#last;
+    return last !== null && last.high === options.high && this.#young(last.location, options.maximumAge) ? last.location : null;
+  }
+
+  /**
+   * The system's last known position, when it is no older than `maximumAge` and the native lookup answers within `bound` ms, if given (later, it is not used).
+   * Only for a request without `enableHighAccuracy`: how the system took it is not known, so it cannot stand for a GPS position.
+   */
+  async #lastKnown(options: { maximumAge: number; high: boolean }, bound?: number): Promise<NativeLocation | null> {
+    const { maximumAge } = options;
+    if (maximumAge <= 0 || options.high) return null;
     let lookup: Promise<NativeLocation | null>;
     try {
       lookup = this.#native.getLastKnownPositionAsync({ maxAge: maximumAge }).catch(() => null);
@@ -348,8 +367,9 @@ export class Geolocation {
     }
   }
 
-  #remember(location: NativeLocation): GeolocationPosition {
-    if (this.#last === null || location.timestamp >= this.#last.timestamp) this.#last = location;
+  /** Keeps a position as the app's last one (unless an earlier one comes late), with whether it was asked for with high accuracy. */
+  #remember(location: NativeLocation, high: boolean): GeolocationPosition {
+    if (this.#last === null || location.timestamp >= this.#last.location.timestamp) this.#last = { location, high };
     return new GeolocationPosition(ILLEGAL, location);
   }
 
@@ -359,11 +379,12 @@ export class Geolocation {
     } catch (error) {
       throw error instanceof GeolocationPositionError ? error : failure(error);
     }
-    if (this.#young(this.#last, options.maximumAge)) return this.#remember(this.#last);
+    const cached = this.#cached(options);
+    if (cached) return this.#remember(cached, options.high);
     if (options.timeout === 0) {
       // Only a cached position can answer in no time: the system's, if its lookup answers within CACHE_LOOKUP_MS.
-      const system = await this.#lastKnown(options.maximumAge, CACHE_LOOKUP_MS);
-      if (system) return this.#remember(system);
+      const system = await this.#lastKnown(options, CACHE_LOOKUP_MS);
+      if (system) return this.#remember(system, false);
       throw positionError(3, "Timeout expired");
     }
     // The timeout covers the system's cache too, and a lookup that does not answer in CACHE_LOOKUP_MS gives way to a current position.
@@ -376,12 +397,12 @@ export class Geolocation {
       }, options.timeout);
     });
     const located = (async () => {
-      const system = await this.#lastKnown(options.maximumAge, CACHE_LOOKUP_MS);
-      if (system) return this.#remember(system);
+      const system = await this.#lastKnown(options, CACHE_LOOKUP_MS);
+      if (system) return this.#remember(system, false);
       // The caller has had its TIMEOUT: no native request that nobody will read.
       if (timedOut) throw positionError(3, "Timeout expired");
       try {
-        return this.#remember(await this.#native.getCurrentPositionAsync({ accuracy: options.accuracy }));
+        return this.#remember(await this.#native.getCurrentPositionAsync({ accuracy: options.accuracy }), options.high);
       } catch (error) {
         throw failure(error);
       }
@@ -401,7 +422,7 @@ export class Geolocation {
         const watch = this.#watches.get(id);
         if (!watch) return;
         watch.positioned = true;
-        const position = this.#remember(event.location as NativeLocation);
+        const position = this.#remember(event.location as NativeLocation, watch.options.high);
         this.#arm(id, watch);
         invoke(watch.success, position);
       }),
@@ -458,18 +479,19 @@ export class Geolocation {
       return;
     }
     if (!current()) return;
-    if (this.#young(this.#last, watch.options.maximumAge)) {
+    const cached = this.#cached(watch.options);
+    if (cached) {
       // The app's own last position is the first callback, before anything native starts; that callback may clear the watch.
       watch.positioned = true;
-      invoke(watch.success, this.#remember(this.#last));
+      invoke(watch.success, this.#remember(cached, watch.options.high));
       if (!current()) return;
     } else {
       // The system's last known position is looked up alongside the native watch, not before it: a lookup that never answers holds up neither the watch nor its
       // clock, and one that answers after the watch's first position is not used. A cached position starts the clock again, as any position does.
-      void this.#lastKnown(watch.options.maximumAge).then((system) => {
+      void this.#lastKnown(watch.options).then((system) => {
         if (!system || !current() || watch.positioned) return;
         watch.positioned = true;
-        const position = this.#remember(system);
+        const position = this.#remember(system, false);
         if (watch.timer !== undefined) this.#arm(id, watch);
         invoke(watch.success, position);
       });

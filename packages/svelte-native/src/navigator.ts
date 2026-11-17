@@ -6,7 +6,7 @@
  * - `vibrate()`: the Vibration API (React Native's `Vibration`);
  * - `language` and `languages`: the device's language, as a BCP 47 tag;
  * - `geolocation` and `permissions` (and the globals `GeolocationPositionError`, `GeolocationPosition`, `GeolocationCoordinates`, `PermissionStatus`): the
- *   Geolocation API over expo-location's native module, in a build with the location capability (`geolocation.ts`).
+ *   Geolocation API over the library's own `SvelteLocation` native module, in a build with the location capability (`capabilities: { location }`; `geolocation.ts`).
  *
  * `polyfills.ts` installs them on the `navigator` React Native's start-up made. Nothing is loaded until it is used: `clipboard` and `ClipboardItem` are
  * lazy globals, and the others require their React Native module on the first call or read. A member the platform or a library defined already is kept.

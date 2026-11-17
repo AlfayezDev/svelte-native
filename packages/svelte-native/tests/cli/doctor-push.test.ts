@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { pushSettings } from "../../src/capabilities.ts";
+import { CapabilityConfigError, pushSettings, withCapabilities } from "../../src/capabilities.ts";
 import { runChecks, type Check } from "../../src/doctor/checks.ts";
 import { formatReport, runDoctor } from "../../src/doctor/index.ts";
 import { plistStrings, plistString } from "../../src/doctor/push.ts";
@@ -165,6 +165,100 @@ describe("the capability", () => {
   });
 });
 
+describe("the capability's value: the doctor refuses what the plugin refuses, with the plugin's message", () => {
+  const pem = "-----BEGIN PRIVATE KEY-----\nTOPSECRETKEYBODY\n-----END PRIVATE KEY-----\n";
+  const android = (more: object = {}) => ({ googleServicesFile: "./google-services.json", ...more });
+  const refusedConfigs: [string, unknown][] = [
+    ["an empty object", {}],
+    ["true", true],
+    ["a string", "on"],
+    ["a number", 1],
+    ["an array", []],
+    ["android with nothing in it", { android: {} }],
+    ["android with an empty file", { android: { googleServicesFile: "" } }],
+    ["android that is a string", { android: "./google-services.json" }],
+    ["ios with nothing in it", { ios: {} }],
+    ["ios with a mode that is not one", { ios: { mode: "staging" } }],
+    ["ios with a mode of another case", { ios: { mode: "Production" } }],
+    ["ios that is a string", { ios: "production" }],
+    ["an icon that is not a PNG", { android: android({ icon: "./assets/icon.jpg" }) }],
+    ["an empty icon", { android: android({ icon: "" }) }],
+    ["a color that is not hex", { android: android({ color: "green" }) }],
+    ["a channel with no name", { android: android({ channel: {} }) }],
+    ["a channel with an empty id", { android: android({ channel: { name: "Updates", id: "" } }) }],
+    ["a channel with a blank description", { android: android({ channel: { name: "Updates", description: " " } }) }],
+    ["a service account in it", { ...fullPush, serviceAccount: { type: "service_account", project_id: "demo" } }],
+    ["a PEM key in it", { ...fullPush, key: pem }],
+    ["the path of an APNs key", { ios: { mode: "production", key: "./AuthKey_ABC123DEFG.p8" } }],
+  ];
+  const takenConfigs: [string, unknown][] = [
+    ["both platforms", fullPush],
+    ["iOS alone", { ios: { mode: "development" } }],
+    ["Android alone", { android: android() }],
+    ["everything the plugin reads", { android: android({ icon: "./assets/notify.png", color: "#0a7f5a", channel: { id: "orders", name: "Orders", description: "Order updates" } }), ios: { mode: "production" } }],
+    ["a text that looks like a number or a reference", { android: android({ channel: { id: "007", name: "@mentions", description: "?what" } }) }],
+  ];
+  const pluginsAnswer = (root: string, push: unknown): Error | undefined => {
+    try {
+      withCapabilities({ name: "fake", slug: "fake", android: { package: "io.e.a" }, _internal: { projectRoot: root } }, { push: push as never }, { projectRoot: root });
+      return undefined;
+    } catch (error) {
+      return error as Error;
+    }
+  };
+  const asked = (push: unknown) => run({ files: { "app.json": appJson(push), "assets/notify.png": "a png, nearly" } });
+  const refusal = (push: Check[]) => push.find((check) => check.message.includes("and the config plugin refuses it"));
+
+  for (const [what, push] of refusedConfigs) {
+    test(`${what}: the plugin stops the prebuild, and the doctor fails with the plugin's message`, () => {
+      const { root, push: checks } = asked(push);
+      const plugin = pluginsAnswer(root, push);
+      expect(plugin).toBeInstanceOf(CapabilityConfigError);
+      expect(refusal(checks)?.status).toBe("fail");
+      expect(refusal(checks)?.message).toContain(`: ${plugin?.message}`);
+      expect(find(checks, "turns capabilities.push on (")).toBeUndefined();
+      // A secret is not repeated in what the doctor prints.
+      expect(JSON.stringify(checks)).not.toContain("TOPSECRETKEYBODY");
+    });
+  }
+
+  for (const [what, push] of takenConfigs) {
+    test(`${what}: the plugin takes it, and the doctor passes it`, () => {
+      const { root, push: checks } = asked(push);
+      expect(pluginsAnswer(root, push)).toBeUndefined();
+      expect(refusal(checks)).toBeUndefined();
+      expect(find(checks, "turns capabilities.push on (")?.status).toBe("pass");
+      expect(failures(checks)).toEqual([]);
+    });
+  }
+
+  test("a capability that is off is not refused by either: false, null and leaving it out", () => {
+    for (const push of [false, null, undefined]) {
+      const { root, push: checks } = run({ files: { "app.json": appJson(push) } });
+      expect(refusal(checks)).toBeUndefined();
+      // With the package installed the plugin refuses the capability that is off, and the doctor says that, not that the value is malformed.
+      expect(pluginsAnswer(root, push)?.message).toContain("is installed, but the push capability is off");
+      expect(find(checks, "does not turn capabilities.push on")?.status).toBe("fail");
+    }
+  });
+
+  test("with an app.config.ts beside app.json, what app.json holds may be changed by the code: the doctor says it could not tell, and a secret is a failure either way", () => {
+    const code = { "app.config.ts": "export default ({ config }) => config;\n" };
+    const { push: malformed } = run({ files: { "app.json": appJson({}), ...code } });
+    expect(refusal(malformed)?.status).toBe("unknown");
+    expect(refusal(malformed)?.message).toContain("unless the app's config code changes it: capabilities.push names no platform");
+    const { push: secret } = run({ files: { "app.json": appJson({ ...fullPush, key: pem }), ...code } });
+    expect(refusal(secret)?.status).toBe("fail");
+  });
+
+  test("the failure says what to do, and a failing capability makes the doctor exit 1", () => {
+    const { root, push: checks } = asked({ ios: {} });
+    expect(refusal(checks)?.fix).toContain("change capabilities.push in app.json as the message says");
+    expect(refusal(asked({ ...fullPush, key: pem }).push)?.fix).toContain("FCM_SERVICE_ACCOUNT");
+    expect(runDoctor(root, [], { write: () => undefined }, { ...tools })).toBe(1);
+  });
+});
+
 describe("the Google services file", () => {
   test("a server secret in it is a failure with a security fix, and nothing else is said of the file", () => {
     for (const secret of [
@@ -226,9 +320,11 @@ describe("the Google services file", () => {
     expect(failure?.fix).toContain("Firebase console");
   });
 
-  test("a file the config does not name is found in the app's directory (google-services*.json, the plain name first), or as the prebuild's copy", () => {
+  test("a file the config does not name is found in the app's directory (google-services*.json, the plain name first), or as the prebuild's copy; the config that does not name it is refused all the same", () => {
     const unnamed = appJson({ android: {}, ios: { mode: "production" } });
     expect(find(run({ files: { "app.json": unnamed, "google-services.json": null, "google-services.dev.json": googleServices("io.e.a") } }).push, "google-services.dev.json is JSON")?.status).toBe("pass");
+    // The plugin stops the prebuild on `android` without a `googleServicesFile` (the capability's own, not Expo's), and the doctor says so beside what it found.
+    expect(find(run({ files: { "app.json": unnamed } }).push, "capabilities.push.android needs googleServicesFile")?.status).toBe("fail");
     const both = run({ files: { "app.json": unnamed, "google-services.json": googleServices("io.e.a"), "google-services.dev.json": googleServices("io.e.other") } }).push;
     expect(find(both, "google-services.json is JSON")?.status).toBe("pass");
     expect(find(both, "google-services.dev.json")).toBeUndefined();
@@ -236,10 +332,11 @@ describe("the Google services file", () => {
     expect(find(copy, "android/app/google-services.json is JSON")?.status).toBe("pass");
   });
 
-  test("the file android.googleServicesFile of the config names counts when the plugin does not", () => {
+  test("the file android.googleServicesFile of the config names is checked when capabilities.push does not name one (which the plugin refuses, and the doctor says)", () => {
     const config = JSON.stringify({ expo: { name: "fake", android: { package: "io.e.a", googleServicesFile: "./config/firebase.json" }, plugins: [[library.name, { capabilities: { push: { android: {} } } }]] } });
     const { push } = run({ files: { "app.json": config, "google-services.json": null, "config/firebase.json": googleServices("io.e.a") } });
     expect(find(push, "config/firebase.json is JSON")?.status).toBe("pass");
+    expect(find(push, "capabilities.push.android needs googleServicesFile")?.status).toBe("fail");
   });
 
   test("an app.config.ts and no file at all: it could not tell, and says how to let it", () => {

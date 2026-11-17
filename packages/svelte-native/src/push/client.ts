@@ -27,6 +27,7 @@
  *   that came while no router listened is not the native module's to keep (it was an `opened` event), it is this file's.
  */
 import type { PushHooks, PushPresentation } from "./hooks.ts";
+import { MISSING_PUSH } from "./missing.ts";
 import type { PushMessage, PushToken } from "./types.ts";
 
 /** The state of the notification permission, as the system reports it: `prompt` while it can still be asked for (Android 13+ `POST_NOTIFICATIONS`, iOS's first request). */
@@ -123,9 +124,8 @@ export function storedPermission(storage: Storage | undefined): PushPermission |
   return value === "granted" || value === "denied" || value === "prompt" ? value : null;
 }
 
-/** Why `push` does nothing in a build: the native module is missing. */
-export const MISSING_PUSH =
-  "[Svelte push] push is not part of this app's build: install @alfayez/svelte-native-push from the same git tag as @alfayez/svelte-native (its README shows the command), turn on `capabilities: { push: { … } }` in the @alfayez/svelte-native plugin of the app config, and rebuild the native app. Until then `push.permission` reads \"denied\" and `push.subscribe` resolves with null";
+/** Why `push` does nothing in a build: the native module is missing (shared with the stand-in an app without the package bundles, `absent.ts`). */
+export { MISSING_PUSH };
 
 /** The default presentation of a message in the foreground: shown as it is in the background. */
 const SHOWN: Required<PushPresentation> = { banner: true, sound: true, badge: true };

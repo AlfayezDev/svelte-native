@@ -27,6 +27,7 @@
  *   that came while no router listened is not the native module's to keep (it was an `opened` event), it is this file's.
  */
 import type { PushHooks, PushPresentation } from "./hooks.js";
+import { MISSING_PUSH } from "./missing.js";
 import type { PushMessage, PushToken } from "./types.js";
 /** The state of the notification permission, as the system reports it: `prompt` while it can still be asked for (Android 13+ `POST_NOTIFICATIONS`, iOS's first request). */
 export type PushPermission = "granted" | "denied" | "prompt";
@@ -120,8 +121,8 @@ export declare const SAVED_TOKEN_KEY = "svelte-native.push.saved-token";
 export declare const PERMISSION_KEY = "svelte-native.push.permission";
 /** The permission the system last reported to this app, read from the storage; `null` for an app that has never read it. */
 export declare function storedPermission(storage: Storage | undefined): PushPermission | null;
-/** Why `push` does nothing in a build: the native module is missing. */
-export declare const MISSING_PUSH = "[Svelte push] push is not part of this app's build: install @alfayez/svelte-native-push from the same git tag as @alfayez/svelte-native (its README shows the command), turn on `capabilities: { push: { \u2026 } }` in the @alfayez/svelte-native plugin of the app config, and rebuild the native app. Until then `push.permission` reads \"denied\" and `push.subscribe` resolves with null";
+/** Why `push` does nothing in a build: the native module is missing (shared with the stand-in an app without the package bundles, `absent.ts`). */
+export { MISSING_PUSH };
 /**
  * The link the router opens for a notification's `url`. A full link (any scheme: `myapp://orders/42`, `https://example.com/orders/42`) is kept as it is. A path of the app
  * (`/orders/42?tab=1#top`) is not a link, and `openURL` refuses what `URL.parse` does not accept, so it becomes `https://app.invalid/orders/42?tab=1#top`: the router takes
@@ -150,4 +151,3 @@ export declare class PushClient {
 }
 /** The native module `SveltePush`, looked up the way the library finds its other optional ones (`geolocation.ts`): `null` in a build without `@alfayez/svelte-native-push`. */
 export declare function loadNativePush(): NativePushModule | null;
-export {};

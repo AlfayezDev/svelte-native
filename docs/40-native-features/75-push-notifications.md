@@ -385,9 +385,9 @@ The simulator doesn't deliver a silent push, neither to an app in the background
 
 A device needs a paid Apple Developer team for the entitlement. On Android, FCM needs Google Play services, so an emulator needs a system image with Google Play. A phone with Google Play services works as it is; a phone without them (Huawei's) does not.
 
-`svelte-native doctor` has a push section. It says what is missing: the Firebase file and its package, the entitlement in the last iOS build and whether its signing team can carry it. [Command line](cli) has its options.
+`svelte-native doctor` has a push section when the app has push. It checks the package and its version, a second push library, `capabilities.push` in `app.json`, the Google services file (it parses, it holds no secret, and it has a client for your package) and, after a prebuild, the iOS entitlement and background mode. It does not check the signing team: Xcode refuses to sign the entitlement with a Personal Team. `svelte-native doctor --server` checks your server's credentials instead: it reads the variables below, loads the keys, and asks each provider once whether it accepts them. [Command line](cli#the-push-section) has the details.
 
-`svelte-native push send` sends one message to one token from the command line, with your server's credentials in `FCM_SERVICE_ACCOUNT`, or `APNS_KEY`, `APNS_KEY_ID` and `APNS_TEAM_ID`. It is for trying a device without writing a server first. Its options are in [Command line](cli).
+`svelte-native push send` sends one message to one token from the command line, with your server's credentials in `FCM_SERVICE_ACCOUNT`, or `APNS_KEY`, `APNS_KEY_ID` and `APNS_TEAM_ID`. It is for trying a device without writing a server first. The command line also takes the path of the key's file in `FCM_SERVICE_ACCOUNT` and `APNS_KEY`; `createPush` takes the contents only. Its options are in [Command line](cli#push).
 
 ## Limits
 

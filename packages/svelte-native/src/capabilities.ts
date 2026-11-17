@@ -24,8 +24,13 @@ import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import type { ExpoConfig } from "expo/config";
 // `.js` spelled out, as in `remote/plugin.ts`: Node's own module loader, which loads this file from its source in `tests/cli/remote-plugin.test.ts` ("loading"), resolves no `expo/config-plugins` without it.
-import { AndroidConfig, withAndroidColors, withAndroidManifest, withAppDelegate, withDangerousMod, withStringsXml } from "expo/config-plugins.js";
+// The `with*` functions are plain exports of that CommonJS module, which Node's loader names. `AndroidConfig` is not: Expo defines it with a getter, which the CommonJS lexer of Node before 24
+// does not see ("Named export 'AndroidConfig' not found"), so its values come from the default import, which is the module's exports in every loader (Node, Bun, the bundle); its types stay a named import.
+import type { AndroidConfig } from "expo/config-plugins.js";
+import configPlugins, { withAndroidColors, withAndroidManifest, withAppDelegate, withDangerousMod, withStringsXml } from "expo/config-plugins.js";
 import { apsEnvironmentEntitlement, checkPushConfig, findPushSecret, googleServicesPackages, otherPushLibraries, pushIsOn, pushPackage, pushSecretMessage, remoteNotificationMode } from "./push/config.ts";
+
+const { AndroidConfig: expoAndroid } = configPlugins;
 
 // Defined in `push/config.ts` now, which the doctor loads without Expo; they stay importable from here.
 export { findPushSecret, pushPackage };
@@ -463,7 +468,7 @@ const channelStringNames = [pushResources.channelId, pushResources.channelName, 
 
 /** Takes the channel's string resources out of `strings.xml`: the names are ours. */
 export function removePushStrings(strings: AndroidConfig.Resources.ResourceXML): AndroidConfig.Resources.ResourceXML {
-  for (const name of channelStringNames) AndroidConfig.Strings.removeStringItem(name, strings);
+  for (const name of channelStringNames) expoAndroid.Strings.removeStringItem(name, strings);
   return strings;
 }
 
@@ -480,7 +485,7 @@ export function applyPushStrings(strings: AndroidConfig.Resources.ResourceXML, c
     const attributes = { name, translatable: "false", formatted: "false" };
     return [{ $: attributes, _: androidStringText(text) }];
   });
-  return AndroidConfig.Strings.setStringItem(items, strings);
+  return expoAndroid.Strings.setStringItem(items, strings);
 }
 
 /** Copies the notification icon into the Android project's `res/drawable`, under the fixed name the manifest names. */
@@ -512,9 +517,9 @@ function withPushAndroid(config: ExpoConfig, android: NonNullable<PushSettings["
     config = { ...config, android: { ...config.android, googleServicesFile: android.googleServicesFile } };
   }
   config = withAndroidManifest(config, (config) => {
-    if (android) applyPushManifest(AndroidConfig.Manifest.getMainApplicationOrThrow(config.modResults), android);
+    if (android) applyPushManifest(expoAndroid.Manifest.getMainApplicationOrThrow(config.modResults), android);
     else {
-      const application = AndroidConfig.Manifest.getMainApplication(config.modResults);
+      const application = expoAndroid.Manifest.getMainApplication(config.modResults);
       if (application) removePushManifest(application);
     }
     return config;
@@ -525,7 +530,7 @@ function withPushAndroid(config: ExpoConfig, android: NonNullable<PushSettings["
   });
   config = withAndroidColors(config, (config) => {
     // Sets the color, or takes the one of an earlier prebuild away when the config has none.
-    config.modResults = AndroidConfig.Colors.assignColorValue(config.modResults, { name: pushResources.color, value: android?.color });
+    config.modResults = expoAndroid.Colors.assignColorValue(config.modResults, { name: pushResources.color, value: android?.color });
     return config;
   });
   const icon = android?.icon;

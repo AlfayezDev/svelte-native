@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { withAndroidManifest, withAppBuildGradle, withAppDelegate, withDangerousMod, withMainActivity, withMainApplication, withPodfile, withSettingsGradle, type ConfigPlugin } from "expo/config-plugins";
 import { syncNative } from "./build.ts";
 import { withCapabilities, type Capabilities } from "./capabilities.ts";
-export type { Capabilities, LocationCapability } from "./capabilities.ts";
+export type { Capabilities, LocationCapability, PushCapability } from "./capabilities.ts";
 import type { RemoteHostConfig } from "./remote/host.ts";
 import { withRemoteHost } from "./remote/plugin.ts";
 
@@ -55,7 +55,8 @@ export type SvelteNativeOptions = {
   /**
    * The web APIs that need a permission of the system, each turned on by saying why the app uses it. `location` (with expo-location installed) is
    * `navigator.geolocation`: `{ location: "Shows the stores near you." }`, the text iOS shows when it asks, or `{ location: { whenInUse, background } }` for the
-   * background too. A capability on without its library, and a library installed without its capability, stop the prebuild (`capabilities.ts`).
+   * background too. `push` (with `@alfayez/svelte-native-push` installed) is push notifications, from the app's identifiers: `{ push: { android: { googleServicesFile },
+   * ios: { mode } } }`, and never a server key. A capability on without its library, and a library installed without its capability, stop the prebuild (`capabilities.ts`).
    */
   capabilities?: Capabilities;
 };

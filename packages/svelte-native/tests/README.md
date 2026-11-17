@@ -20,7 +20,7 @@ The root of `tests/` holds directories, `tsconfig.json` (the type check of the h
 | `updates/` | The over-the-air updates client, its launch hook and the protocol |
 | `compiler/` | The lowering of the primitives and HTML, class resolution and the Tailwind table, Metro's integration, the transformer's options (runes, async mode), worklets, the file watcher |
 | `cli/` | `svelte-native` commands: sync, init, doctor, the Expo headless config, variants, capabilities |
-| `package/` | What the package ships: exports, `dist/`, declarations and their type budget, packing, the package run by plain Node, docs |
+| `package/` | What the package ships: exports, `dist/`, declarations and their type budget, packing, the package run by plain Node, docs, and the push package's skeleton (`push-package.test.ts`: version, peers, module config, manifest, Firebase pin) |
 | `startup/` | What loads at boot, the platform lookups and the lite React Native shim |
 | `native-host/` | Kotlin and C++ of the native modules, compiled for the host and run; `native-host/contracts/` reads our own native sources and pins what JavaScript relies on |
 | `upstream/` | Pins of third-party code: the text of libraries in `node_modules` and of our patches of them, so an update of one fails here and says what changed |

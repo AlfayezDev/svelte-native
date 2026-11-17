@@ -8,19 +8,19 @@
  * (`ios/`, `android/`) it reads back, to catch a prebuild that is older than the config.
  */
 import { join } from "node:path";
-import { apsEnvironmentEntitlement, checkPushConfig, findPushSecret, googleServicesPackages, otherPushLibraries, pushIsOn, pushPackage, pushSecretMessage, remoteNotificationMode } from "../push/config.ts";
+import { apsEnvironmentEntitlement, checkPushConfig, findPushSecret, googleServicesPackages, otherPushLibraries, pushIsOn, pushSecretMessage, remoteNotificationMode } from "../push/config.ts";
 import type { Check, Context } from "./checks.ts";
 import { appJson, codeConfig } from "./integration.ts";
 import { findPackage, readerFor, type Reader } from "./resolve.ts";
+
+/** What a prebuild with push on writes, and the native side reads: the Android manifest's meta-data and the iOS Info.plist's key (`capabilities.ts`). */
+export const ANDROID_PUSH_FLAG = "expo.modules.sveltepush.enabled";
+export const IOS_PUSH_FLAG = "SveltePushEnabled";
 
 const group = "push";
 
 const record = (value: unknown): Record<string, unknown> => (typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
 const text = (value: unknown): string | undefined => (typeof value === "string" && value !== "" ? value : undefined);
-
-/** The release tag of the library as the install specifier spells it (README, "Release"): the push package comes from the same repository and tag. */
-const installFix = (version: string) =>
-  `install the same tag as the library: pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v${version}&path:packages/svelte-native-push", then npx expo prebuild`;
 
 /** A string value of a plist (`<key>name</key><string>value</string>`), or undefined. The files Expo writes are XML plists. */
 export function plistString(plist: string, key: string): string | undefined {
@@ -50,40 +50,14 @@ function readConfig(context: Context, library: string): { config: Config | undef
   return { config: { file: json.file, push, value: capabilities.push, androidPackage: text(android.package), googleServicesFile: text(android.googleServicesFile), conclusive: code === undefined }, code };
 }
 
-/** The package, when the library is installed: its checks come first, as they are the ones that stop the build. */
-function packageChecks(context: Context, library: { name: string; version: string }, dependencies: Record<string, unknown>): Check[] {
-  const installed = findPackage(pushPackage, context.appRoot);
-  const declared = pushPackage in dependencies;
-  if (!installed) {
-    return [{
-      group,
-      status: "fail",
-      message: declared ? `${pushPackage} is a dependency of the app but is not installed` : `${pushPackage} is not installed: push has no native module without it`,
-      fix: declared ? "pnpm install" : installFix(library.version),
-    }];
-  }
-  if (installed.version !== library.version) {
-    return [{ group, status: "fail", message: `${pushPackage} ${installed.version} does not match ${library.name} ${library.version}: the two are released together and the native module follows the JavaScript's contract`, fix: installFix(library.version) }];
-  }
-  if (!declared) {
-    return [{
-      group,
-      status: "fail",
-      message: `${pushPackage} is installed but is not a dependency of the app (${join(context.appRoot, "package.json")}): React Native's autolinking links only the app's own dependencies, so the build would not have its native module`,
-      fix: installFix(library.version),
-    }];
-  }
-  return [{ group, status: "pass", message: `${pushPackage} ${installed.version} is a dependency of the app and matches ${library.name} ${library.version}` }];
-}
-
 function otherLibraries(context: Context, dependencies: Record<string, unknown>): Check[] {
   const found = otherPushLibraries.filter((name) => name in dependencies || findPackage(name, context.appRoot) !== undefined);
   if (found.length === 0) return [{ group, status: "pass", message: `no other push library (${otherPushLibraries.join(", ")}) is installed` }];
   return found.map((name): Check => ({
     group,
     status: "fail",
-    message: `${name} is installed beside ${pushPackage}: an app has one push library (Android delivers a message to one FirebaseMessagingService, iOS has one notification center delegate), and the config plugin refuses the build`,
-    fix: `pnpm remove ${name} (or take push out of the app: turn capabilities.push off and remove ${pushPackage})`,
+    message: `${name} is installed and capabilities.push is on: an app has one push library (Android delivers a message to one FirebaseMessagingService, iOS has one notification center delegate), and the config plugin refuses the build`,
+    fix: `pnpm remove ${name}, or turn capabilities.push off and use ${name} for push (the guide's "Push notifications" page sets up each)`,
   }));
 }
 
@@ -91,7 +65,7 @@ function otherLibraries(context: Context, dependencies: Record<string, unknown>)
  * Whether `capabilities.push` is on in `app.json`, which is the one place the doctor can read it from, and whether the plugin would take it: it refuses a secret in it, and a value that is
  * not an object, that names no platform, or whose `android` or `ios` is malformed (`checkPushConfig`, the plugin's own function), each with the message it stops the prebuild with.
  */
-function capabilityCheck(config: Config | undefined, library: string): Check[] {
+function capabilityCheck(config: Config | undefined): Check[] {
   if (!config) return [];
   if (config.push) {
     const secret = findPushSecret(config.value, "capabilities.push");
@@ -111,19 +85,13 @@ function capabilityCheck(config: Config | undefined, library: string): Check[] {
         group,
         status: config.conclusive ? "fail" : "unknown",
         message: `${config.file} turns capabilities.push on, and the config plugin refuses it${code}: ${checked.problem}`,
-        fix: `change capabilities.push in ${config.file} as the message says (PUSH.md, "The config"), or turn it off with \`push: false\` and remove ${pushPackage}`,
+        fix: `change capabilities.push in ${config.file} as the message says (PUSH.md, "The config"), or turn it off with \`push: false\``,
       }];
     }
     const platforms = ["android", "ios"].filter((name) => config.push?.[name] !== undefined);
     return [{ group, status: "pass", message: `${config.file} turns capabilities.push on (${platforms.join(", ")})` }];
   }
-  if (!config.conclusive) return [];
-  return [{
-    group,
-    status: "fail",
-    message: `${config.file} does not turn capabilities.push on in the ${library} plugin: the push package is installed, and the prebuild refuses a build that has the package with the capability off`,
-    fix: `plugins: [["${library}", { capabilities: { push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } } } }]] in ${config.file}, or remove the push package`,
-  }];
+  return [];
 }
 
 /** `package` from `applicationId` in `android/app/build.gradle` (or `.kts`): what the last prebuild made of `android.package`. */
@@ -257,20 +225,48 @@ function iosChecks(config: Config | undefined, reader: Reader): Check[] {
   return checks;
 }
 
+/** Whether the last prebuild turned push on: the flag it writes in the Android manifest or the iOS Info.plist (undefined for a platform with no native project yet). */
+function prebuiltPush(reader: Reader): { android: boolean | undefined; ios: boolean | undefined } {
+  const manifest = reader.read("android/app/src/main/AndroidManifest.xml");
+  const directory = reader.list("ios").length === 0 ? undefined : iosAppDirectory(reader);
+  const infoPlist = directory === undefined ? undefined : reader.read(`ios/${directory}/Info.plist`);
+  return {
+    android: manifest === undefined ? undefined : new RegExp(`android:name="${ANDROID_PUSH_FLAG.replaceAll(".", "\\.")}"\\s+android:value="true"`).test(manifest),
+    ios: infoPlist === undefined ? undefined : new RegExp(`<key>${IOS_PUSH_FLAG}</key>\\s*<true/>`).test(infoPlist),
+  };
+}
+
+/** A platform the config turns push on for, whose native project the last prebuild wrote without it: the build would have no push until the next prebuild. */
+function prebuildChecks(config: Config | undefined, prebuilt: { android: boolean | undefined; ios: boolean | undefined }): Check[] {
+  if (!config?.push) return [];
+  const checks: Check[] = [];
+  for (const platform of ["android", "ios"] as const) {
+    if (config.push[platform] === undefined || prebuilt[platform] === undefined) continue;
+    const where = platform === "android" ? `android/app/src/main/AndroidManifest.xml (${ANDROID_PUSH_FLAG})` : `ios/…/Info.plist (${IOS_PUSH_FLAG})`;
+    checks.push(prebuilt[platform]
+      ? { group, status: "pass", message: `the last prebuild turned push on for ${platform}: ${where}` }
+      : { group, status: "fail", message: `capabilities.push names ${platform}, and the last prebuild did not turn push on there (no ${where}): the prebuild is older than the config`, fix: `npx expo prebuild --platform ${platform}, then build the app again` });
+  }
+  return checks;
+}
+
 /**
- * The push checks for the app, or none when push is not in play: the push package is a dependency of the app or installed, or `app.json` turns the capability on. `library` is
- * the library's name and version (the push package is released at the same version).
+ * The push checks for the app, or none when push is not in play: `app.json` turns the capability on, or the last prebuild did (an app whose config is code). `library` is the
+ * library's name and version.
  */
 export function pushChecks(context: Context, library: { name: string; version: string }, appPackage: Record<string, unknown>): Check[] {
   const dependencies = { ...record(appPackage.dependencies), ...record(appPackage.devDependencies), ...record(appPackage.optionalDependencies) };
   const { config, code } = readConfig(context, library.name);
-  if (!(pushPackage in dependencies) && !findPackage(pushPackage, context.appRoot) && !config?.push) return [];
   const reader = readerFor(context.appRoot);
+  const prebuilt = prebuiltPush(reader);
+  // `app.json` decides when it is the whole config; with code beside it (or none at all), what the last prebuild wrote says push is on.
+  const inPlay = config?.push !== undefined || (config?.conclusive !== true && (prebuilt.android === true || prebuilt.ios === true));
+  if (!inPlay) return [];
   return [
-    ...packageChecks(context, library, dependencies),
     ...otherLibraries(context, dependencies),
-    ...capabilityCheck(config, library.name),
+    ...capabilityCheck(config),
     ...androidChecks(context, config, code, reader),
     ...iosChecks(config, reader),
+    ...prebuildChecks(config, prebuilt),
   ];
 }

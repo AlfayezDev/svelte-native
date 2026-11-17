@@ -33,13 +33,15 @@ export type PushWorld = {
 export const TOKEN: PushToken = { provider: "fcm", token: "token-1", app: "dev.example.app" };
 export const message = (patch: Partial<PushMessage> = {}): PushMessage => ({ id: "m1", title: "Order ready", body: "Pickup at gate 3", data: {}, provider: "fcm", ...patch });
 
-export function world(options: { module?: false } = {}): PushWorld {
+/** `module: "off"` is the realistic build without push: the module is part of the library's native code, so it is there, with `enabled` false. `false` is no module at all. */
+export function world(options: { module?: false | "off" } = {}): PushWorld {
   const listeners: { event: string; listener: (payload: unknown) => void }[] = [];
   const state: PushWorld = {
     native: null, lookups: [], appState: [], calls: [], initialURL: null, linkHandlers: [], originalGetInitialURL: undefined, permission: "prompt", holdPermission: undefined, launch: null, token: TOKEN,
     dispatch: (event, payload) => { for (const { event: name, listener } of [...listeners]) if (name === event) listener(payload); },
   };
   state.native = options.module === false ? null : {
+    enabled: options.module !== "off",
     permission: async () => { await state.holdPermission; return state.permission; },
     requestPermission: async () => { state.calls.push("request"); state.permission = "granted"; return state.permission; },
     register: async () => { state.calls.push("register"); return state.token; },

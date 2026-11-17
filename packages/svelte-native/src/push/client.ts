@@ -52,6 +52,11 @@ export type NativePushEvents = {
 
 /** What this file uses of the native module `SveltePush`: the contract of PUSH.md, the same on both platforms. */
 export type NativePushModule = {
+  /**
+   * Whether push is on in this build for this platform: the config plugin's `capabilities.push` named it, which adds what push needs to the native project. The module is part of
+   * the library's native code, so it is in every build; with this `false` the app has no push, and nothing else here is called.
+   */
+  readonly enabled?: boolean;
   /** The system's state, without asking. */
   permission(): Promise<PushPermission>;
   /** Asks (Android 13+: `POST_NOTIFICATIONS`; iOS: alert, sound and badge), and resolves with the state after the user's answer. */
@@ -478,10 +483,11 @@ export class PushClient {
   }
 }
 
-/** The native module `SveltePush`, looked up the way the library finds its other optional ones (`geolocation.ts`): `null` in a build without `@alfayez/svelte-native-push`. */
+/** The native module `SveltePush` when push is on in this build (its `enabled`, which `capabilities.push` turns on), else `null`. The module itself is part of the library's native code. */
 export function loadNativePush(): NativePushModule | null {
   /* eslint-disable @typescript-eslint/no-require-imports -- required when push starts */
   const registry = require("expo-modules-core") as Partial<typeof import("expo-modules-core")>;
   /* eslint-enable @typescript-eslint/no-require-imports */
-  return registry.requireOptionalNativeModule?.<NativePushModule>("SveltePush") ?? null;
+  const module = registry.requireOptionalNativeModule?.<NativePushModule>("SveltePush") ?? null;
+  return module?.enabled === true ? module : null;
 }

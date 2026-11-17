@@ -136,7 +136,7 @@ describe("the permission", () => {
     expect(state.permission).toBe("denied");
   });
 
-  test("a build without the module: denied at once, subscribe resolves null, and one warning says what to install", async () => {
+  test("a build without push: denied at once, subscribe resolves null, and one warning says how to turn it on", async () => {
     const { warnings, messages } = logs();
     const storage = createStorage(memoryBackend());
     const { client, state, calls } = fake({ module: false, storage });
@@ -147,8 +147,8 @@ describe("the permission", () => {
     await client.unsubscribe();
     expect(calls).toEqual([]);
     expect(messages(warnings)).toEqual([MISSING_PUSH]);
-    expect(MISSING_PUSH).toContain("@alfayez/svelte-native-push");
     expect(MISSING_PUSH).toContain("capabilities");
+    expect(MISSING_PUSH).not.toContain("svelte-native-push"); // push is part of the library: there is nothing to install
     // Messages are not delivered, but the listeners can still be added and removed.
     expect(client.on("message", () => {})).toBeInstanceOf(Function);
   });

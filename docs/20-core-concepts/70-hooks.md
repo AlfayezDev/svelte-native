@@ -45,6 +45,19 @@ It doesn't see other errors, such as a throw in a component or an event handler.
 
 `configureRemote({ transport, handleError })` replaces these two from code when you pass them.
 
+## push
+
+`push` is the hooks of [push notifications](push-notifications): `foreground` says how a message that arrives while the app is open is shown, `background` handles a silent message with no screen, and `opened` runs when a notification is tapped and can stop its link from opening. They run where `init` runs, after it has settled.
+
+```ts
+/// file: src/hooks.mobile.ts
+import type { PushHooks } from '@alfayez/svelte-native/push';
+
+export const push: PushHooks = {
+	foreground: () => ({ banner: true, sound: false })
+};
+```
+
 ## While you develop
 
 When you save the file, its new exports take effect at once and the screens remount. `init` doesn't run again: reload the app to run it. The development server notices when you add or remove the file. Adding it to a running app runs its `init`, and the screens remount once `init` has finished.

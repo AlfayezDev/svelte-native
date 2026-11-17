@@ -2,16 +2,17 @@
 // entries its library needs (`push`), and the half-made states (on without the library, the library without the capability, the capability and the library's own
 // plugin entry both) stop the prebuild.
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExpoConfig } from "expo/config";
-import { AndroidConfig, compileModsAsync, withPlugins, type ExportedConfig } from "expo/config-plugins";
-import { CapabilityConfigError, type PushCapability, applyPushAppDelegate, applyPushManifest, copyPushIcon, defaultPushChannel, findPushSecret, locationPluginProps, pushMetaData, pushPackage, pushResources, pushSettings, withCapabilities } from "../../src/capabilities.ts";
+import { AndroidConfig, compileModsAsync, withPlugins, XML, type ExportedConfig } from "expo/config-plugins";
+import { CapabilityConfigError, type PushCapability, androidStringText, applyPushAppDelegate, applyPushManifest, applyPushStrings, copyPushIcon, defaultPushChannel, findPushSecret, locationPluginProps, pushMetaData, pushPackage, pushResources, pushSettings, withCapabilities } from "../../src/capabilities.ts";
 import expoPlugin, { applyAppDelegate } from "../../src/expo.ts";
 import { createProject } from "../support/project.ts";
 import { expoTemplateAppDelegate } from "./support/app-delegate.ts";
+import { findHostJars } from "../support/host-tools.ts";
 import { libraryVersion, peerRange } from "../support/versions.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -159,12 +160,20 @@ const withPush = (project: { root: string }, push: unknown, config: ExpoConfig =
   withCapabilities(config, { push: push as PushCapability }, { projectRoot: project.root, ...options });
 const mods = (config: ExportedConfig) => config.mods as Record<string, Record<string, (config: object) => Promise<unknown>>>;
 
-/** What Expo's mods make of the config's Android and iOS parts, without writing files (its introspection): the manifest, `colors.xml`, `Info.plist` and the entitlements. */
+/** What Expo's mods make of the config's Android and iOS parts, without writing files (its introspection): the manifest, `colors.xml`, `strings.xml`, `Info.plist` and the entitlements. */
 async function compile(config: ExportedConfig) {
   const compiled = await compileModsAsync(config, { projectRoot: String(config._internal?.projectRoot), introspect: true, platforms: ["android", "ios"], assertMissingModProviders: false });
   const results = compiled._internal?.modResults;
-  return { manifest: results.android.manifest.manifest as { application: AndroidConfig.Manifest.ManifestApplication[] }, colors: results.android.colors as AndroidConfig.Resources.ResourceXML, infoPlist: compiled.ios?.infoPlist, entitlements: compiled.ios?.entitlements };
+  return {
+    manifest: results.android.manifest.manifest as { application: AndroidConfig.Manifest.ManifestApplication[] },
+    colors: results.android.colors as AndroidConfig.Resources.ResourceXML,
+    strings: results.android.strings as AndroidConfig.Resources.ResourceXML,
+    infoPlist: compiled.ios?.infoPlist,
+    entitlements: compiled.ios?.entitlements,
+  };
 }
+/** The `<string>` entries of a `strings.xml` as written (`name` to its content), without the attributes: the plugin's own are `translatable="false" formatted="false"`. */
+const stringResources = (strings: AndroidConfig.Resources.ResourceXML) => Object.fromEntries((strings.resources.string ?? []).map((item) => [item.$.name, item._]));
 const metaData = (manifest: { application?: AndroidConfig.Manifest.ManifestApplication[] }) =>
   Object.fromEntries((manifest.application?.[0]?.["meta-data"] ?? []).map((item) => [item.$["android:name"], item.$["android:value"] ?? item.$["android:resource"]]));
 
@@ -216,31 +225,37 @@ describe("capabilities.push", () => {
     ]);
   });
 
-  test("Android: the manifest names the icon and color resources (Firebase's defaults) and the channel", async () => {
+  test("Android: the manifest names the icon and color resources (Firebase's defaults) and the channel, whose texts are string resources", async () => {
     using project = pushApp();
-    const { manifest } = await compile(withPush(project, fullPush));
+    const { manifest, strings } = await compile(withPush(project, fullPush));
+    // The texts are references (`android:value="@string/…"`), not the texts: the resource compiler would read a text that looks like a number, a color or a reference for one.
     expect(metaData(manifest)).toEqual({
       "com.google.firebase.messaging.default_notification_icon": "@drawable/svelte_push_icon",
       "com.google.firebase.messaging.default_notification_color": "@color/svelte_push_color",
-      "com.google.firebase.messaging.default_notification_channel_id": "default",
-      "expo.modules.sveltepush.channel_id": "default",
-      "expo.modules.sveltepush.channel_name": "Updates",
-      "expo.modules.sveltepush.channel_description": "Order updates",
+      "com.google.firebase.messaging.default_notification_channel_id": "@string/svelte_push_channel_id",
+      "expo.modules.sveltepush.channel_id": "@string/svelte_push_channel_id",
+      "expo.modules.sveltepush.channel_name": "@string/svelte_push_channel_name",
+      "expo.modules.sveltepush.channel_description": "@string/svelte_push_channel_description",
     });
+    expect(stringResources(strings)).toEqual({ svelte_push_channel_id: '"default"', svelte_push_channel_name: '"Updates"', svelte_push_channel_description: '"Order updates"' });
     // A channel with its own id.
     const orders = withPush(project, { android: { googleServicesFile: "./google-services.json", channel: { id: "orders", name: "Orders" } } });
-    expect(metaData((await compile(orders)).manifest)).toEqual({
-      [pushMetaData.firebaseChannel]: "orders", [pushMetaData.channelId]: "orders", [pushMetaData.channelName]: "Orders",
+    const own = await compile(orders);
+    expect(metaData(own.manifest)).toEqual({
+      [pushMetaData.firebaseChannel]: "@string/svelte_push_channel_id", [pushMetaData.channelId]: "@string/svelte_push_channel_id", [pushMetaData.channelName]: "@string/svelte_push_channel_name",
     });
+    expect(stringResources(own.strings)).toEqual({ svelte_push_channel_id: '"orders"', svelte_push_channel_name: '"Orders"' });
   });
 
   test("Android: with only the file, no icon or color is named and the channel is the default one", async () => {
     using project = pushApp();
-    expect(metaData((await compile(withPush(project, { android: { googleServicesFile: "./google-services.json" } }))).manifest)).toEqual({
-      [pushMetaData.firebaseChannel]: defaultPushChannel.id,
-      [pushMetaData.channelId]: defaultPushChannel.id,
-      [pushMetaData.channelName]: defaultPushChannel.name,
+    const { manifest, strings } = await compile(withPush(project, { android: { googleServicesFile: "./google-services.json" } }));
+    expect(metaData(manifest)).toEqual({
+      [pushMetaData.firebaseChannel]: "@string/svelte_push_channel_id",
+      [pushMetaData.channelId]: "@string/svelte_push_channel_id",
+      [pushMetaData.channelName]: "@string/svelte_push_channel_name",
     });
+    expect(stringResources(strings)).toEqual({ svelte_push_channel_id: `"${defaultPushChannel.id}"`, svelte_push_channel_name: `"${defaultPushChannel.name}"` });
     expect(defaultPushChannel).toEqual({ id: "default", name: "Notifications" });
   });
 
@@ -386,6 +401,75 @@ describe("capabilities.push on iOS: a push that wakes the app mounts no screen",
     const refused = await run(withPush(project, { ios: { mode: "production" } }), { language: "objc", path: "AppDelegate.mm", contents: "" }).catch((error: Error) => error);
     expect((refused as Error).message).toBe("Svelte native requires Expo's Swift AppDelegate");
     expect(withPush(project, { android: { googleServicesFile: "./google-services.json" } }).mods?.ios).toBeUndefined();
+  });
+});
+
+describe("capabilities.push: the channel's texts reach the native code exactly", () => {
+  /** Texts the resource compiler would take for something else in `android:value`: a number, a float, a boolean, a color, a reference, or a reference that does not resolve. */
+  const misread = ["007", "0x10", "1e3", "true", "False", "#fff", "@null", "@empty", "@string/nothere", "?what", "@+id/x", " 12"];
+
+  test("the text is quoted and escaped as an Android string resource: whitespace kept, a leading @ or ? escaped, control characters as \\uXXXX", () => {
+    const cases: [string, string][] = [
+      ["Updates", '"Updates"'],
+      ["@mentions", '"\\@mentions"'],
+      ["?what", '"\\?what"'],
+      ["007", '"007"'],
+      ['say "hi"', '"say \\"hi\\""'],
+      ["C:\\path", '"C:\\\\path"'],
+      ["line1\nline2\tx", '"line1\\nline2\\tx"'],
+      ["bell\u0007", '"bell\\u0007"'],
+      ["  padded  ", '"  padded  "'],
+      ["Don't miss 50% off", '"Don\'t miss 50% off"'],
+      ["a@b?c", '"a@b?c"'],
+    ];
+    for (const [text, content] of cases) expect([text, androidStringText(text)]).toEqual([text, content]);
+  });
+
+  test("a text the resource compiler would misread is in strings.xml, and the manifest holds only references to it", async () => {
+    using project = pushApp();
+    for (const text of misread) {
+      const { manifest, strings } = await compile(withPush(project, { android: { googleServicesFile: "./google-services.json", channel: { id: text, name: text, description: text } } }));
+      expect(Object.values(metaData(manifest)).every((value) => /^@string\//.test(String(value))), text).toBe(true);
+      expect(stringResources(strings), text).toEqual({ svelte_push_channel_id: androidStringText(text), svelte_push_channel_name: androidStringText(text), svelte_push_channel_description: androidStringText(text) });
+    }
+  });
+
+  test("the strings are written as they are read back: translatable=\"false\" keeps Expo from escaping them again, formatted=\"false\" makes a % a %", async () => {
+    using project = pushApp();
+    const { strings } = await compile(withPush(project, { android: { googleServicesFile: "./google-services.json", channel: { name: "50% off", description: 'say "hi"' } } }));
+    expect((strings.resources.string ?? []).map((item) => item.$)).toEqual([
+      { name: "svelte_push_channel_id", translatable: "false", formatted: "false" },
+      { name: "svelte_push_channel_name", translatable: "false", formatted: "false" },
+      { name: "svelte_push_channel_description", translatable: "false", formatted: "false" },
+    ]);
+    // Expo writes the strings of the app that are not translatable as they are: the escaping above is the whole of it.
+    const written = XML.format({ resources: { string: [{ $: { name: "x", translatable: "false" }, _: androidStringText('say "hi"') }] } });
+    expect(written).toContain('>"say \\"hi\\""</string>');
+  });
+
+  test("what an earlier prebuild wrote is replaced, and a description or icon the config no longer has is taken away", () => {
+    const earlier = { googleServicesFile: "g.json", icon: "i.png", color: "#fff", channel: { id: "orders", name: "Orders", description: "Order updates" } };
+    const application: AndroidConfig.Manifest.ManifestApplication = { $: { "android:name": ".MainApplication" }, "meta-data": [{ $: { "android:name": "com.example.key", "android:value": "1" } }] };
+    const strings: AndroidConfig.Resources.ResourceXML = { resources: { string: [{ $: { name: "app_name" }, _: "App" }] } };
+    applyPushManifest(application, earlier);
+    applyPushStrings(strings, earlier.channel);
+    expect(Object.keys(metaData({ application: [application] }))).toContain(pushMetaData.channelDescription);
+    // The config drops the description, the icon and the color, and renames the channel.
+    const now = { googleServicesFile: "g.json", channel: { id: "orders", name: "Orders and news" } };
+    applyPushManifest(application, now);
+    applyPushStrings(strings, now.channel);
+    expect(metaData({ application: [application] })).toEqual({
+      "com.example.key": "1",
+      [pushMetaData.firebaseChannel]: "@string/svelte_push_channel_id",
+      [pushMetaData.channelId]: "@string/svelte_push_channel_id",
+      [pushMetaData.channelName]: "@string/svelte_push_channel_name",
+    });
+    expect(stringResources(strings)).toEqual({ app_name: "App", svelte_push_channel_id: '"orders"', svelte_push_channel_name: '"Orders and news"' });
+    // Twice is once: an entry of each name.
+    applyPushManifest(application, now);
+    applyPushStrings(strings, now.channel);
+    expect((application["meta-data"] ?? []).length).toBe(4);
+    expect((strings.resources.string ?? []).length).toBe(3);
   });
 });
 
@@ -541,5 +625,86 @@ describe("capabilities.push refusals", () => {
     expect(refused(() => withPush(project, android({ channel: { name: "Updates", id: "" } })))).toBe("capabilities.push.android.channel.id must be a text that is not empty.");
     expect(refused(() => withPush(project, android({ channel: { name: "Updates", description: " " } })))).toBe("capabilities.push.android.channel.description must be a text that is not empty.");
     expect(refused(() => withPush(project, android({ channel: "Updates" })))).toStartWith("capabilities.push.android.channel takes an object");
+  });
+});
+
+/** aapt2, the resource compiler the Gradle build runs, from the newest build-tools of the Android SDK (`ANDROID_HOME`, `ANDROID_SDK_ROOT`, else `~/Android/sdk`), or null. */
+function findAapt2(): string | null {
+  const tools = join(process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT ?? join(homedir(), "Android/sdk"), "build-tools");
+  const versions = existsSync(tools) ? readdirSync(tools).sort((a, b) => b.localeCompare(a, undefined, { numeric: true })) : [];
+  return versions.map((version) => join(tools, version, "aapt2")).find(existsSync) ?? null;
+}
+const aapt2 = findAapt2();
+const androidJar = findHostJars().androidJar;
+
+// What the plugin writes, run through aapt2 as a build would: the channel's texts come out of the compiled resources exactly as the config has them, and the manifest's meta-data are
+// references to them. Skipped without an Android SDK that has build-tools and a platform (the Kotlin and C++ host checks skip the same way).
+describe.skipIf(aapt2 === null || androidJar === null)("capabilities.push: aapt2 reads the channel's texts back as the config has them", () => {
+  const texts = [
+    "Updates", "@mentions", "@null", "@empty", "@string/nothere", "@+id/x", "?what", "?", "007", "0x10", "1e3", "true", "False", "#fff", "#general", " 12", "nan",
+    "Don't miss", 'say "hi"', "back\\slash", "\\n not a newline", "\\u0041 not an A", "50% off %s %d", "%", "a  b", " lead", "trail ", "  both  ", "tab\there", "line1\nline2", "bell\u0007",
+    "<b>bold</b> & more", "&amp; as typed", "é 日本語", "{0} {name}", "end?", "x@y",
+  ];
+
+  /** Compiles the resources and the manifest the plugin writes for `channel` with aapt2; the strings of the compiled table by resource name, and the meta-data's values by name. */
+  async function build(project: { root: string }, channel: { id: string; name: string; description: string }) {
+    const { manifest, strings } = await compile(withPush(project, { android: { googleServicesFile: "./google-services.json", channel } }));
+    const directory = mkdtempSync(join(tmpdir(), "svelte-native-push-aapt2-"));
+    try {
+      mkdirSync(join(directory, "res/values"), { recursive: true });
+      writeFileSync(join(directory, "res/values/strings.xml"), XML.format(strings));
+      const entries = (manifest.application[0]?.["meta-data"] ?? []).map((item) => `<meta-data android:name="${item.$["android:name"]}" android:value="${item.$["android:value"]}"/>`).join("");
+      writeFileSync(join(directory, "AndroidManifest.xml"), `<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="io.e.a"><application>${entries}</application></manifest>`);
+      const aapt = (...args: string[]) => {
+        const done = Bun.spawnSync([aapt2 as string, ...args], { cwd: directory, stdout: "pipe", stderr: "pipe" });
+        if (done.exitCode !== 0) throw new Error(`aapt2 ${args.join(" ")}: ${done.stderr.toString()}`);
+        return done.stdout.toString();
+      };
+      aapt("compile", "--dir", "res", "-o", "res.zip");
+      aapt("link", "-I", androidJar as string, "--manifest", "AndroidManifest.xml", "-o", "out.apk", "res.zip");
+      // `dump strings`: the table's string pool; a string with a line break is several lines, so it is cut at the pool's own `String #n :` markers.
+      const pool = aapt("dump", "strings", "out.apk").split(/^String #\d+ : /m).slice(1).map((text) => text.replace(/\n$/, ""));
+      // `dump resources` names each id (`resource 0x7f010000 string/svelte_push_channel_name`); the manifest's references are to those ids.
+      const ids = Object.fromEntries([...aapt("dump", "resources", "out.apk").matchAll(/resource (0x[0-9a-f]+) string\/(\w+)/g)].map((match) => [match[1], match[2]]));
+      const tree = aapt("dump", "xmltree", "--file", "AndroidManifest.xml", "out.apk");
+      const values = [...tree.matchAll(/android:name\(0x01010003\)="([^"]+)"[^\n]*\n\s+A: [^\n]*android:value\(0x01010024\)=(.*)/g)].map((match) => [match[1], match[2]] as const);
+      return { pool, referenced: Object.fromEntries(values.map(([name, value]) => [name, /^@(0x[0-9a-f]+)$/.exec(value ?? "")?.[1]]).map(([name, id]) => [name, id === undefined ? undefined : ids[id]])), tree };
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+
+  test("every text: the compiled string is the text, and the manifest's entries are references to the strings, never the text", async () => {
+    using project = pushApp();
+    const wrong: string[] = [];
+    for (let at = 0; at < texts.length; at += 3) {
+      const [id = "default", name = "Notifications", description = "d"] = texts.slice(at, at + 3);
+      const { pool, referenced } = await build(project, { id, name, description });
+      for (const text of [id, name, description]) if (!pool.includes(text)) wrong.push(JSON.stringify(text));
+      expect(referenced).toEqual({
+        [pushMetaData.firebaseChannel]: "svelte_push_channel_id",
+        [pushMetaData.channelId]: "svelte_push_channel_id",
+        [pushMetaData.channelName]: "svelte_push_channel_name",
+        [pushMetaData.channelDescription]: "svelte_push_channel_description",
+      });
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  test("the control: the same texts written into android:value are misread or refused by the resource compiler (what the strings are for)", () => {
+    const directory = mkdtempSync(join(tmpdir(), "svelte-native-push-aapt2-"));
+    try {
+      const link = (text: string) => {
+        writeFileSync(join(directory, "AndroidManifest.xml"), `<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="io.e.a"><application><meta-data android:name="t" android:value="${text}"/></application></manifest>`);
+        const linked = Bun.spawnSync([aapt2 as string, "link", "-I", androidJar as string, "--manifest", "AndroidManifest.xml", "-o", "out.apk"], { cwd: directory, stdout: "pipe", stderr: "pipe" });
+        if (linked.exitCode !== 0) return "refused";
+        const tree = Bun.spawnSync([aapt2 as string, "dump", "xmltree", "--file", "AndroidManifest.xml", "out.apk"], { cwd: directory, stdout: "pipe" }).stdout.toString();
+        return /android:value\(0x01010024\)="/.test(tree) ? "string" : "not a string";
+      };
+      expect(["Updates", "@mentions"].map(link)).toEqual(["string", "string"]);
+      for (const text of ["007", "0x10", "1e3", "true", "#fff", "@null", "?what", "@string/nothere"]) expect([text, link(text)]).not.toEqual([text, "string"]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

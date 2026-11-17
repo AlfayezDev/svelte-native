@@ -73,8 +73,10 @@ export declare const defaultPushChannel: {
 /**
  * What the plugin writes into the Android manifest, which is how the native code reads it (PUSH.md): the first three are Firebase's own, read when it shows a
  * notification itself (the app in the background); the channel's id, name and description are the module's, for the channel it creates, and always written
- * (defaults for what the app leaves out). A `<meta-data android:value>` that looks like a number reads back as a number (`Bundle.getString` is then `null`), so
- * the native code reads them with `Bundle.get(name)?.toString()`.
+ * (defaults for what the app leaves out). The icon and the color are references to resources of the app (`android:resource`) and the channel's texts are references
+ * to string resources (`android:value="@string/…"`, `pushResources`): a text written into `android:value` itself is read by the resource compiler, which takes a text that
+ * looks like a number (`007`), a boolean (`true`), a color (`#fff`) or a reference (`@null`, `?what`) for one, and the native code would read another text back. A
+ * reference to a string resource reads back as the string, character for character; the native code reads them with `Bundle.get(name)?.toString()`.
  */
 export declare const pushMetaData: {
     readonly icon: "com.google.firebase.messaging.default_notification_icon";
@@ -84,10 +86,16 @@ export declare const pushMetaData: {
     readonly channelName: "expo.modules.sveltepush.channel_name";
     readonly channelDescription: "expo.modules.sveltepush.channel_description";
 };
-/** The icon's file in `res/drawable` (without its extension) and the color's name in `res/values/colors.xml`: fixed, so the manifest and the file agree. */
+/**
+ * The resources the capability writes into the Android project, by fixed names so that the manifest and the files agree and a later prebuild finds what an earlier one
+ * wrote: the icon's file in `res/drawable` (without its extension), the color's name in `res/values/colors.xml`, and the three texts of the channel in `res/values/strings.xml`.
+ */
 export declare const pushResources: {
     readonly icon: "svelte_push_icon";
     readonly color: "svelte_push_color";
+    readonly channelId: "svelte_push_channel_id";
+    readonly channelName: "svelte_push_channel_name";
+    readonly channelDescription: "svelte_push_channel_description";
 };
 /** What `capabilities.push` says once it has been checked. */
 export type PushSettings = {
@@ -122,9 +130,30 @@ export declare function pushSettings(push: unknown, appPackage: string | undefin
  */
 export declare function applyPushAppDelegate(contents: string): string;
 /**
+ * Takes out of the application element what `applyPushManifest` wrote, and nothing else: the module's own meta-data (its names are ours), and Firebase's icon, color and channel only when
+ * they name what the capability wrote (the icon and color resources, the channel's id string; or, for the channel, the id as text beside the module's own entry, as an earlier version
+ * wrote it). An app that set one of Firebase's defaults itself keeps it, whatever the capability says.
+ */
+export declare function removePushManifest(application: AndroidConfig.Manifest.ManifestApplication): void;
+/**
  * The manifest entries push reads: Firebase's default icon, color and channel (the first two only when the app gives them) and the module's channel, with its
- * defaults. The messaging service and `POST_NOTIFICATIONS` are static, so the library's own manifest declares them.
+ * defaults, the texts as references to the string resources of `applyPushStrings` (`pushMetaData`). What an earlier prebuild wrote is taken away first, so that a description,
+ * an icon or a color the config no longer has is not kept. The messaging service and `POST_NOTIFICATIONS` are static, so the library's own manifest declares them.
  */
 export declare function applyPushManifest(application: AndroidConfig.Manifest.ManifestApplication, android: NonNullable<PushSettings["android"]>): void;
+/**
+ * `text` as the content of a `<string>` of `res/values/strings.xml` that the resource compiler (aapt2) reads back as exactly `text`: in double quotes (so that its spaces are kept, not trimmed
+ * and collapsed), with `\` and `"` escaped, a line break and a tab as their escapes, any other control character as `\uXXXX`, and a leading `@` or `?` escaped (it would be a reference). The
+ * string is written with `formatted="false"` (`applyPushStrings`), so a `%` in the text is a `%`. (The XML's own escaping of `&` and `<` is the writer's.)
+ */
+export declare function androidStringText(text: string): string;
+/** Takes the channel's string resources out of `strings.xml`: the names are ours. */
+export declare function removePushStrings(strings: AndroidConfig.Resources.ResourceXML): AndroidConfig.Resources.ResourceXML;
+/**
+ * The channel's id, name and description as string resources, which the manifest's meta-data refer to (`pushMetaData`): a text in a resource reaches the native code exactly as the config has it
+ * (`androidStringText`), where the same text in `android:value` would be read by the resource compiler for a number, a boolean, a color or a reference. They are `translatable="false"`, which also
+ * keeps Expo from escaping and unescaping them a second time (it does so for the strings it reads and writes), and `formatted="false"`.
+ */
+export declare function applyPushStrings(strings: AndroidConfig.Resources.ResourceXML, channel: NonNullable<PushSettings["android"]>["channel"]): AndroidConfig.Resources.ResourceXML;
 /** Copies the notification icon into the Android project's `res/drawable`, under the fixed name the manifest names. */
 export declare function copyPushIcon(source: string, platformProjectRoot: string): Promise<void>;

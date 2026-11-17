@@ -575,7 +575,13 @@ var pushMetaData = {
   channelName: "expo.modules.sveltepush.channel_name",
   channelDescription: "expo.modules.sveltepush.channel_description"
 };
-var pushResources = { icon: "svelte_push_icon", color: "svelte_push_color" };
+var pushResources = {
+  icon: "svelte_push_icon",
+  color: "svelte_push_color",
+  channelId: "svelte_push_channel_id",
+  channelName: "svelte_push_channel_name",
+  channelDescription: "svelte_push_channel_description"
+};
 var secretError = (secret) => new CapabilityConfigError(pushSecretMessage(secret));
 var unreadable = (error) => error.code === "ENOENT" ? "does not exist" : `cannot be read: ${error instanceof Error ? error.message : String(error)}`;
 function checkGoogleServicesFile(file, appPackage, projectRoot) {
@@ -699,13 +705,56 @@ function setMetaData(application, name, attribute, content) {
   const others = (application["meta-data"] ?? []).filter((item) => item.$["android:name"] !== name);
   application["meta-data"] = [...others, { $: { "android:name": name, [`android:${attribute}`]: content } }];
 }
+function removePushManifest(application) {
+  const items = application["meta-data"];
+  if (items === void 0) return;
+  const content = (item) => item.$["android:value"] ?? item.$["android:resource"];
+  const channelId = items.map((item) => item.$["android:name"] === pushMetaData.channelId ? content(item) : void 0).find((value) => value !== void 0);
+  const ours = (item) => {
+    switch (item.$["android:name"]) {
+      case pushMetaData.channelId:
+      case pushMetaData.channelName:
+      case pushMetaData.channelDescription:
+        return true;
+      case pushMetaData.icon:
+        return content(item) === `@drawable/${pushResources.icon}`;
+      case pushMetaData.color:
+        return content(item) === `@color/${pushResources.color}`;
+      case pushMetaData.firebaseChannel:
+        return content(item) === `@string/${pushResources.channelId}` || channelId !== void 0 && content(item) === channelId;
+      default:
+        return false;
+    }
+  };
+  application["meta-data"] = items.filter((item) => !ours(item));
+}
 function applyPushManifest(application, android) {
+  removePushManifest(application);
   if (android.icon !== void 0) setMetaData(application, pushMetaData.icon, "resource", `@drawable/${pushResources.icon}`);
   if (android.color !== void 0) setMetaData(application, pushMetaData.color, "resource", `@color/${pushResources.color}`);
-  setMetaData(application, pushMetaData.firebaseChannel, "value", android.channel.id);
-  setMetaData(application, pushMetaData.channelId, "value", android.channel.id);
-  setMetaData(application, pushMetaData.channelName, "value", android.channel.name);
-  if (android.channel.description !== void 0) setMetaData(application, pushMetaData.channelDescription, "value", android.channel.description);
+  setMetaData(application, pushMetaData.firebaseChannel, "value", `@string/${pushResources.channelId}`);
+  setMetaData(application, pushMetaData.channelId, "value", `@string/${pushResources.channelId}`);
+  setMetaData(application, pushMetaData.channelName, "value", `@string/${pushResources.channelName}`);
+  if (android.channel.description !== void 0) setMetaData(application, pushMetaData.channelDescription, "value", `@string/${pushResources.channelDescription}`);
+}
+function androidStringText(text) {
+  const escaped = text.replace(/[\\"]/g, "\\$&").replace(/^[@?]/, "\\$&").replace(new RegExp("\\p{Cc}", "gu"), (char) => char === "\n" ? "\\n" : char === "	" ? "\\t" : `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  return `"${escaped}"`;
+}
+var channelStringNames = [pushResources.channelId, pushResources.channelName, pushResources.channelDescription];
+function removePushStrings(strings) {
+  for (const name of channelStringNames) import_config_plugins.AndroidConfig.Strings.removeStringItem(name, strings);
+  return strings;
+}
+function applyPushStrings(strings, channel) {
+  removePushStrings(strings);
+  const entries = [[pushResources.channelId, channel.id], [pushResources.channelName, channel.name], [pushResources.channelDescription, channel.description]];
+  const items = entries.flatMap(([name, text]) => {
+    if (text === void 0) return [];
+    const attributes = { name, translatable: "false", formatted: "false" };
+    return [{ $: attributes, _: androidStringText(text) }];
+  });
+  return import_config_plugins.AndroidConfig.Strings.setStringItem(items, strings);
 }
 async function copyPushIcon(source, platformProjectRoot) {
   const directory = (0, import_node_path4.join)(platformProjectRoot, "app/src/main/res/drawable");
@@ -721,6 +770,10 @@ function withPushAndroid(config, android, projectRoot) {
   config = { ...config, android: { ...config.android, googleServicesFile: android.googleServicesFile } };
   config = (0, import_config_plugins.withAndroidManifest)(config, (config2) => {
     applyPushManifest(import_config_plugins.AndroidConfig.Manifest.getMainApplicationOrThrow(config2.modResults), android);
+    return config2;
+  });
+  config = (0, import_config_plugins.withStringsXml)(config, (config2) => {
+    config2.modResults = applyPushStrings(config2.modResults, android.channel);
     return config2;
   });
   const { color, icon } = android;

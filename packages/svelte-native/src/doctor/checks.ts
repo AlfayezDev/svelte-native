@@ -8,10 +8,11 @@ import { pushChecks } from "./push.ts";
 import { nodeAdvice, requirements } from "./requirements.ts";
 import { findPackage, readerFor, readJson, type InstalledPackage } from "./resolve.ts";
 import { satisfies } from "./semver.ts";
+import { collisionMessage, declaredVendored, vendoredPackages, vendoredRoot } from "../vendored.ts";
 
 export type Status = "pass" | "fail" | "skip" | "unknown";
 export type Check = {
-  group: "environment" | "svelte" | "peer dependencies" | "patches" | "build integration" | "push" | "push server";
+  group: "environment" | "svelte" | "peer dependencies" | "vendored packages" | "patches" | "build integration" | "push" | "push server";
   status: Status;
   message: string;
   /** More lines under the message (what exactly is missing). */
@@ -142,10 +143,11 @@ function expoRuntime(context: Context): Check[] {
 /**
  * Required peers that carry a native module React Native's autolinking must link. It reads the app's own `dependencies`, not whatever is installed
  * below `node_modules`, so a library that only comes with another package (or a hoisted install) is in the JavaScript bundle and missing from the build. `hermes-intl` is
- * the library's `Intl` constructors (`PluralRules`, `RelativeTimeFormat`, `ListFormat`, `Locale`: Hermes lacks them); the others are what the web's `crypto` and `localStorage` are made of:
- * react-native-quick-crypto with the Nitro runtime it and react-native-mmkv share (`react-native-nitro-modules`) and the base64 module it asks for (`react-native-quick-base64`).
+ * the library's `Intl` constructors (`PluralRules`, `RelativeTimeFormat`, `ListFormat`, `Locale`: Hermes lacks them); the others are what the web's `crypto` is made of:
+ * react-native-quick-crypto and the base64 module it asks for (`react-native-quick-base64`). The Nitro runtime they share, and MMKV (`localStorage`), are not here: the library
+ * carries them (`vendored`, VENDORING.md).
  */
-const AUTOLINKED_PEERS = ["hermes-intl", "react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64", "react-native-quick-crypto"] as const;
+const AUTOLINKED_PEERS = ["hermes-intl", "react-native-quick-base64", "react-native-quick-crypto"] as const;
 
 function autolinkedPeers(context: Context, peers: Record<string, unknown>, appPackage: Record<string, unknown>): Check[] {
   const dependencies = { ...record(appPackage.dependencies), ...record(appPackage.devDependencies), ...record(appPackage.optionalDependencies) };
@@ -159,6 +161,32 @@ function autolinkedPeers(context: Context, peers: Record<string, unknown>, appPa
       checks.push({ group: "peer dependencies", status: "fail", message: `${name} is installed but is not a dependency of the app (${join(context.appRoot, "package.json")}): React Native's autolinking links only the app's own dependencies, so the build would not have its native module`, fix: `pnpm add ${name}@${range}, then npx expo prebuild` });
     }
     // Not installed and not declared: the peer dependency check above already fails it.
+  }
+  return checks;
+}
+
+/**
+ * The packages the library carries (`vendored.ts`): present in the installed library at the version it pins, and not among the app's own dependencies. An app that lists one
+ * links it twice (its own native module beside the library's copy), which the config plugin and the autolinking command refuse as well.
+ */
+function vendored(context: Context, libraryName: string): Check[] {
+  const declared = new Set(declaredVendored(context.appRoot));
+  const checks: Check[] = [];
+  for (const { name, version } of vendoredPackages) {
+    const directory = vendoredRoot(name, context.packageRoot);
+    const copy = readJson(join(directory, "package.json"));
+    if (copy === undefined || copy.version !== version) {
+      checks.push({
+        group: "vendored packages",
+        status: "fail",
+        message: copy === undefined ? `${libraryName} has no copy of ${name} (${directory}): the installed library is incomplete` : `${directory} is ${name} ${String(copy.version)}, the library pins ${version}`,
+        fix: `install ${libraryName} again (a package manager that dropped the library's vendor/ folder, or a stale cache, leaves it incomplete)`,
+      });
+    } else if (declared.has(name)) {
+      checks.push({ group: "vendored packages", status: "fail", message: `${name} is a dependency of the app (${join(context.appRoot, "package.json")}): ${collisionMessage([name], libraryName)}`, fix: `pnpm remove ${name}, then npx expo prebuild` });
+    } else {
+      checks.push({ group: "vendored packages", status: "pass", message: `${name} ${version} comes with ${libraryName} (vendor/${name}); the app does not list it` });
+    }
   }
   return checks;
 }
@@ -248,6 +276,7 @@ export function runChecks(context: Context): Check[] {
     svelte(context, peers),
     ...peerDependencies(context, peers, optional),
     ...autolinkedPeers(context, peers, appPackage),
+    ...vendored(context, name),
     ...expoRuntime(context),
     ...patches(context, name, optional),
     library(context, name, text(own.version) ?? "?", appPackage),

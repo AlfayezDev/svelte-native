@@ -57,16 +57,22 @@ describe("the manifest holds nothing that only resolves inside this repository",
   });
 
   // React Native's autolinking links a native module only from the app's own dependencies, so an app installs these itself: they are required peers, at an exact version where several of
-  // them share a runtime (Nitro), and not dependencies of the package. SvelteKit and Vite it may leave out.
-  test("hermes-intl, the SVG library and the four the web's crypto and localStorage are made of are required peers, not dependencies; SvelteKit and Vite are optional", () => {
-    for (const name of ["hermes-intl", "react-native-svg", "react-native-quick-crypto", "react-native-nitro-modules", "react-native-quick-base64", "react-native-mmkv"]) {
+  // them share a runtime, and not dependencies of the package. SvelteKit and Vite it may leave out. The Nitro runtime and MMKV are not among them: the library carries them (vendor/, below).
+  test("hermes-intl, the SVG library and the two the web's crypto is made of are required peers, not dependencies; SvelteKit and Vite are optional", () => {
+    for (const name of ["hermes-intl", "react-native-svg", "react-native-quick-crypto", "react-native-quick-base64"]) {
       expect([name, typeof manifest.peerDependencies[name]]).toEqual([name, "string"]);
       expect([name, manifest.peerDependenciesMeta?.[name]]).toEqual([name, undefined]);
       expect([name, manifest.dependencies[name]]).toEqual([name, undefined]);
     }
-    for (const name of ["react-native-quick-crypto", "react-native-nitro-modules", "react-native-quick-base64", "react-native-mmkv"]) expect([name, manifest.peerDependencies[name]]).toEqual([name, expect.stringMatching(/^\d+\.\d+\.\d+$/)]);
+    for (const name of ["react-native-quick-crypto", "react-native-quick-base64"]) expect([name, manifest.peerDependencies[name]]).toEqual([name, expect.stringMatching(/^\d+\.\d+\.\d+$/)]);
     expect(manifest.peerDependenciesMeta?.["@sveltejs/kit"]).toEqual({ optional: true });
     expect(manifest.peerDependenciesMeta?.vite).toEqual({ optional: true });
+  });
+
+  test("the vendored packages are no peer, no dependency and no development dependency: an app's package.json lists the library and nothing beside it", () => {
+    for (const name of ["react-native-mmkv", "react-native-nitro-modules"]) {
+      expect([name, manifest.peerDependencies[name], manifest.peerDependenciesMeta?.[name], manifest.dependencies[name], (manifest as { devDependencies?: Record<string, string> }).devDependencies?.[name]]).toEqual([name, undefined, undefined, undefined, undefined]);
+    }
   });
 
   test("the license is the repository's", () => {
@@ -163,6 +169,37 @@ describe("what `files` packs", () => {
   test("it holds no test, fixture, plan, specification or build output", () => {
     const unwanted = listed.filter((path) => /^tests\/|(^|\/)test\/|(^|\/)(build|\.cxx|\.gradle|Pods)\//.test(path) || /(^|\/)(SPEC|NOTES|PLAN)\.md$/.test(path) || /\.test\.ts$/.test(path));
     expect(unwanted).toEqual([]);
-    expect(listed.filter((path) => path.endsWith(".md")).sort()).toEqual(["CHANGELOG.md", "README.md", "REFERENCE.md"]);
+    // The package's own documents; a vendored package brings its README and the VENDOR.md that says where it came from (checked below).
+    expect(listed.filter((path) => path.endsWith(".md") && !path.startsWith("vendor/")).sort()).toEqual(["CHANGELOG.md", "README.md", "REFERENCE.md"]);
+  });
+
+  test("it holds the vendored packages whole, each with the license and the VENDOR.md that came with the copy (VENDORING.md)", () => {
+    for (const name of ["react-native-mmkv", "react-native-nitro-modules"]) {
+      // What the library's `imports` map points at (`#vendor/<name>`): the source Metro bundles and the declarations the type checker reads.
+      for (const file of ["LICENSE", "VENDOR.md", "package.json", "android/build.gradle", "android/CMakeLists.txt", "react-native.config.js", "src/index.ts", name === "react-native-mmkv" ? "lib/index.d.ts" : "lib/typescript/index.d.ts"])
+        expect([`vendor/${name}/${file}`, listed.includes(`vendor/${name}/${file}`)]).toEqual([`vendor/${name}/${file}`, true]);
+      expect([name, listed.some((path) => path.startsWith(`vendor/${name}/cpp/`)), listed.some((path) => path.startsWith(`vendor/${name}/android/src/main/`))]).toEqual([name, true, true]);
+    }
+    // The generated code of MMKV (Nitro's codegen output, which the app does not run), the podspecs and the Swift of both, and Nitro's own iOS sources.
+    for (const path of [
+      "vendor/react-native-mmkv/NitroMmkv.podspec",
+      "vendor/react-native-mmkv/nitro.json",
+      "vendor/react-native-mmkv/nitrogen/generated/android/NitroMmkv+autolinking.cmake",
+      "vendor/react-native-mmkv/nitrogen/generated/android/NitroMmkv+autolinking.gradle",
+      "vendor/react-native-mmkv/nitrogen/generated/ios/NitroMmkv+autolinking.rb",
+      "vendor/react-native-mmkv/ios/HybridMMKVPlatformContext.swift",
+      "vendor/react-native-mmkv/android/src/main/java/com/margelo/nitro/mmkv/NitroMmkvPackage.java",
+      "vendor/react-native-nitro-modules/NitroModules.podspec",
+      "vendor/react-native-nitro-modules/nitro_pod_utils.rb",
+      "vendor/react-native-nitro-modules/android/src/main/java/com/margelo/nitro/NitroModulesPackage.kt",
+      "vendor/react-native-nitro-modules/ios/core/HybridObject.swift",
+    ])
+      expect([path, listed.includes(path)]).toEqual([path, true]);
+  });
+
+  test("the vendored LICENSE and VENDOR.md are the copy's own files, not the package's: the package's LICENSE is still the repository's", () => {
+    expect(read("vendor/react-native-mmkv/LICENSE")).not.toBe(read("LICENSE"));
+    expect(read("LICENSE")).toBe(readFileSync(resolve(root, "../../LICENSE"), "utf8"));
+    for (const name of ["react-native-mmkv", "react-native-nitro-modules"]) expect(read(`vendor/${name}/VENDOR.md`)).toStartWith(`# ${name} `);
   });
 });

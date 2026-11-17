@@ -1,0 +1,18 @@
+{
+  "platforms": ["android", "apple"],
+  "android": {
+    "projects": [
+      {
+        "name": "svelte-push",
+        "path": "android",
+        "modules": ["expo.modules.sveltepush.SveltePushModule"]
+      }
+    ]
+  },
+  "apple": {
+    "podspecPath": ["ios/SveltePush.podspec"],
+    "swiftModuleName": ["SveltePush"],
+    "modules": ["SveltePushModule"],
+    "appDelegateSubscribers": ["SveltePushAppDelegateSubscriber"]
+  }
+}

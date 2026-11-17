@@ -87,6 +87,14 @@ private fun mapping() {
   // What JavaScript is given: members the sender did not give are left out, so JavaScript reads undefined.
   expect("toMap leaves out what is missing", bare.toMap(), mapOf("id" to "generated-1", "data" to emptyMap<String, String>(), "provider" to "fcm"))
   expect("toMap has every member that is there", full.toMap().keys.toList(), listOf("id", "title", "body", "url", "data", "provider"))
+  // The channel the sender named is the device's: it rides the message to the notifier, and is neither given to JavaScript nor carried by a PendingIntent.
+  val channeled = PushMapping.fromRemote("m3", "T", "B", mapOf("url" to "/x"), newId, channelId = "orders")
+  expect("a remote message keeps the channel its notification names", channeled.channelId, "orders")
+  expect("a message with no channel has none", full.channelId, null)
+  expect("a blank channel is none", PushMapping.fromRemote("m4", "T", "B", emptyMap(), newId, channelId = "  ").channelId, null)
+  expect("the channel is not given to JavaScript", channeled.toMap().keys.toList(), listOf("id", "title", "body", "url", "data", "provider"))
+  expect("nor carried by the PendingIntent's extras", PushMapping.toExtras(channeled).keys.any { it.contains("channel") }, false)
+  expect("the tap on it reads back as the message, without the channel", PushMapping.fromExtras(PushMapping.toExtras(channeled)), channeled.copy(channelId = null))
   expect("the token's shape", PushToken("t", "io.example.app").toMap(), mapOf("provider" to "fcm", "token" to "t", "app" to "io.example.app"))
 
   // Out and back through our own PendingIntent: nothing the sender names collides with it, whatever the data keys are.
@@ -166,6 +174,14 @@ private fun rules() {
   expect("an id and a name that look like numbers", PushRules.channel { numbers[it] }, ChannelSpec("2024", "7", null))
   val blanks = mapOf<String, Any?>(PushRules.META_CHANNEL_ID to " ", PushRules.META_CHANNEL_NAME to "", PushRules.META_CHANNEL_DESCRIPTION to "  ")
   expect("blank values are the defaults", PushRules.channel { blanks[it] }, ChannelSpec("default", "Notifications", null))
+
+  // The channel a notification this module shows goes to: the sender's when the device has it, else the default.
+  val made = setOf("default", "orders")
+  expect("a named channel the app has", PushRules.channelFor("orders", { it in made }, "default"), "orders")
+  expect("a named channel the app never made", PushRules.channelFor("promos", { it in made }, "default"), "default")
+  expect("no channel named", PushRules.channelFor(null, { it in made }, "default"), "default")
+  expect("the app's own default channel, named", PushRules.channelFor("default", { it in made }, "updates"), "default")
+  expect("the question is asked about the named channel only", ArrayList<String>().also { asked -> PushRules.channelFor("orders", { asked.add(it); true }, "default"); PushRules.channelFor(null, { asked.add(it); true }, "default") }, listOf("orders"))
 
   // Which way a message goes.
   expect("a data message in the foreground", PushRules.route(foreground = true, hasNotification = false), PushRules.Route.FOREGROUND)

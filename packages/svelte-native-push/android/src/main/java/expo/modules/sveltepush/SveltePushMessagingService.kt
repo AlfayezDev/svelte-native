@@ -30,7 +30,14 @@ class SveltePushMessagingService : FirebaseMessagingService() {
   /** On Firebase's worker thread; it returns only when the message has been dealt with (see `PushDelivery`), which keeps the process alive meanwhile. */
   override fun onMessageReceived(message: RemoteMessage) {
     val notification = message.notification
-    val pushMessage = PushMapping.fromRemote(message.messageId, notification?.title, notification?.body, message.data) { UUID.randomUUID().toString() }
+    val pushMessage = PushMapping.fromRemote(
+      message.messageId,
+      notification?.title,
+      notification?.body,
+      message.data,
+      newId = { UUID.randomUUID().toString() },
+      channelId = notification?.channelId,
+    )
     val delivery = PushDelivery(
       PushRuntime.events,
       PushRuntime.shows,

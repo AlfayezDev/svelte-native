@@ -15,9 +15,10 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 
 /**
- * Shows a notification the way Firebase would have shown it in the background, so that the two look the same: the channel, the small icon and the color come from
- * the manifest (the config plugin wrote them; `capabilities.ts`), and a tap launches the app's launch Activity with the message in the extras, which `PushTapListener`
- * reads back. Notifications of the same message id replace each other (the tag), so `show` is idempotent per message.
+ * Shows a notification the way Firebase would have shown it in the background, so that the two look the same: the channel (the one the message names when the app has
+ * it, else the config's default), the small icon and the color come from the manifest (the config plugin wrote them; `capabilities.ts`), and a tap launches the app's
+ * launch Activity with the message in the extras, which `PushTapListener` reads back. Notifications of the same message id replace each other (the tag), so `show` is
+ * idempotent per message.
  */
 internal object PushNotifier {
   private var channel: ChannelSpec? = null
@@ -117,7 +118,11 @@ internal object PushNotifier {
       return
     }
     try {
-      val builder = NotificationCompat.Builder(context, ensureChannel(context))
+      val channelId = PushRules.channelFor(message.channelId, { manager.getNotificationChannelCompat(it) != null }, ensureChannel(context))
+      if (Build.VERSION.SDK_INT >= 26 && message.channelId != null && channelId != message.channelId) {
+        Log.w(LOG_TAG, "the app has no notification channel ${message.channelId}, which message ${message.id} names, so it is shown in $channelId")
+      }
+      val builder = NotificationCompat.Builder(context, channelId)
         .setSmallIcon(smallIcon(context))
         .setAutoCancel(true)
         .setPriority(NotificationCompat.PRIORITY_HIGH)

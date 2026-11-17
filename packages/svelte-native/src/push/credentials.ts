@@ -11,6 +11,7 @@
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { hostOf, httpUrl } from "./common.ts";
 import { privateKeyOf } from "./jwt.ts";
 import type { ApnsOptions, FcmOptions, ServiceAccount } from "./server.ts";
 
@@ -73,13 +74,7 @@ function urlOf(env: Env, name: string): { url?: string; problem?: string } {
 }
 
 /** A URL's host, which is what a report says of an endpoint (the rest may hold a password or a query). */
-export const hostOf = (url: string): string => {
-  try {
-    return new URL(url).host;
-  } catch {
-    return "the endpoint";
-  }
-};
+export { hostOf };
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const APNS_SANDBOX_URL = "https://api.sandbox.push.apple.com";
@@ -102,6 +97,13 @@ export function readFcm(env: Env, cwd: string): FcmCredential {
     if (typeof account[field] !== "string" || account[field] === "") return { state: "invalid", problem: `${name} (${describeSource(read.source)}) has no \`${field}\`: it is not a service account key` };
   }
   if (account.token_uri !== undefined && typeof account.token_uri !== "string") return { state: "invalid", problem: `${name} (${describeSource(read.source)}) has a \`token_uri\` that is not a string` };
+  if (typeof account.token_uri === "string") {
+    try {
+      httpUrl(account.token_uri, "token_uri");
+    } catch {
+      return { state: "invalid", problem: `${name} (${describeSource(read.source)}) has a \`token_uri\` that is not an http or https URL` };
+    }
+  }
   try {
     privateKeyOf(String(account.private_key), "RS256", `the private_key of ${name}`);
   } catch (error) {

@@ -22,12 +22,27 @@ export function retryAfterOf(value: string | string[] | null | undefined): numbe
   return Number.isNaN(date) ? undefined : Math.max(0, date - Date.now());
 }
 
-/** A failed connection or request as a sentence: the error's message and, for `fetch`, the reason of its `cause` (`fetch failed` alone says nothing). */
+/** A failed connection or request as a sentence: the error's message and, for `fetch`, the reason of its `cause` (`fetch failed` alone says nothing). Any URL in it is cut to its host (`withoutSecrets`). */
 export function describeNetworkError(error: unknown): string {
-  if (!(error instanceof Error)) return String(error);
+  if (!(error instanceof Error)) return withoutSecrets(String(error));
   const cause = error.cause instanceof Error ? error.cause.message : undefined;
-  return cause === undefined || cause === error.message ? error.message : `${error.message} (${cause})`;
+  return withoutSecrets(cause === undefined || cause === error.message ? error.message : `${error.message} (${cause})`);
 }
+
+/** A URL's host, which is what a message says of an endpoint: the rest may hold a password (`user:pw@`) or a key in its query. */
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).host || "the endpoint";
+  } catch {
+    return "the endpoint";
+  }
+}
+
+/**
+ * A message with every URL in it cut to its scheme and host. Node's own errors quote the URL they were given (`fetch` refuses one with credentials by quoting it whole), and
+ * a `detail` is printed by `push send` and logged by apps.
+ */
+export const withoutSecrets = (text: string): string => text.replace(/\b([a-z][a-z\d+.-]*:\/\/)[^\s"'<>]+/gi, (url, scheme: string) => `${scheme}${hostOf(url)}`);
 
 /** A body that is JSON, or `undefined` when it is not: an error page of a proxy in front of a provider is text, and its status says what it is. */
 export function parseJson(text: string): unknown {

@@ -84,7 +84,7 @@ export type SendResult = {
 };
 export type Push = {
     /**
-     * Sends one message to one device and resolves with what happened. It never queues, retries or waits for more than the `timeout`, and it never throws for a provider's
+     * Sends one message to one device and resolves with what happened. It never queues or retries, each request to a provider waits at most `timeout`, and it never throws for a provider's
      * answer: only for a programming error (a `TypeError`: a token or a message that is not of the type, or a provider that was not configured). After `close`, it resolves with
      * `unavailable`.
      */

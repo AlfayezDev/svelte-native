@@ -3,7 +3,7 @@
  * needs no HTTP/2 from a client, and nothing here holds a connection open.
  */
 import type { KeyObject } from "node:crypto";
-import { describeNetworkError, failure, httpUrl, isRecord, parseJson, retryAfterOf, type Failure } from "./common.ts";
+import { describeNetworkError, failure, hostOf, httpUrl, isRecord, parseJson, retryAfterOf, type Failure } from "./common.ts";
 import { privateKeyOf, signJwt } from "./jwt.ts";
 import type { FcmOptions, PushSend, SendResult } from "./server.ts";
 import type { PushToken } from "./types.ts";
@@ -102,7 +102,9 @@ export function fcmFailure(status: number, body: unknown, text: string, retryAft
     case "UNREGISTERED":
       return failure("gone", detail, status);
     case "SENDER_ID_MISMATCH":
-      return failure("invalid-token", detail, status);
+      // Every token answers it when the server holds another Firebase project's credentials: the server's fault, not the token's, and a reason that deletes tokens would
+      // delete them all (and a device does not save an unchanged token again).
+      return failure("auth", `${detail}: the token belongs to another Firebase project than the service account's; check the server's credentials before suspecting the token`, status);
     case "INVALID_ARGUMENT":
       return failure(aboutToken ? "invalid-token" : "invalid-message", detail, status);
     case "QUOTA_EXCEEDED":
@@ -197,7 +199,7 @@ export class FcmSender {
       });
       text = await response.text();
     } catch (error) {
-      return failure("unavailable", `The token request to ${tokenUrl} failed: ${describeNetworkError(error)}`);
+      return failure("unavailable", `The token request to ${hostOf(tokenUrl)} failed: ${describeNetworkError(error)}`);
     }
     const body = parseJson(text);
     if (!response.ok) {

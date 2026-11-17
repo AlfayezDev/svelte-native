@@ -103,7 +103,7 @@ export type SendResult =
 
 export type Push = {
   /**
-   * Sends one message to one device and resolves with what happened. It never queues, retries or waits for more than the `timeout`, and it never throws for a provider's
+   * Sends one message to one device and resolves with what happened. It never queues or retries, each request to a provider waits at most `timeout`, and it never throws for a provider's
    * answer: only for a programming error (a `TypeError`: a token or a message that is not of the type, or a provider that was not configured). After `close`, it resolves with
    * `unavailable`.
    */
@@ -116,6 +116,8 @@ export type Push = {
 };
 
 const DEFAULT_TIMEOUT = 30_000;
+/** The longest a timer of Node's can wait. */
+const MAX_TIMEOUT = 2_147_483_647;
 
 const show = (value: unknown): string => inspect(value, { depth: 0 });
 
@@ -155,7 +157,7 @@ function checkMessage(message: PushSend): void {
     for (const [key, value] of Object.entries(message.data)) {
       if (typeof value !== "string") throw new TypeError(`\`data.${key}\` must be a string (both providers carry strings only), not ${show(value)}.`);
     }
-    if (message.url !== undefined && "url" in message.data) throw new TypeError("`url` is carried as the data key `url`: pass the link as `url`, not also in `data`.");
+    if (message.url !== undefined && Object.hasOwn(message.data, "url")) throw new TypeError("`url` is carried as the data key `url`: pass the link as `url`, not also in `data`.");
   }
   if (message.silent) {
     for (const name of ["title", "body", "badge", "sound", "channel"] as const) {
@@ -181,7 +183,8 @@ function checkMessage(message: PushSend): void {
  */
 export function createPush(options: PushOptions = {}): Push {
   const timeout = options.timeout ?? DEFAULT_TIMEOUT;
-  if (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0) throw new TypeError(`\`timeout\` must be a number of milliseconds above 0, not ${show(timeout)}.`);
+  // Above 2^31 - 1 a timer fires at once (Node's `setTimeout`) and `AbortSignal.timeout` throws, so every send would answer `unavailable`.
+  if (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0 || timeout > MAX_TIMEOUT) throw new TypeError(`\`timeout\` must be a number of milliseconds above 0 and at most ${MAX_TIMEOUT}, not ${show(timeout)}.`);
   const fcm = createFcm(options.fcm, timeout);
   const apns = createApns(options.apns, timeout);
   let closed = false;

@@ -141,7 +141,7 @@ Keep the whole object: the sender needs `provider` to pick the service, `environ
 Asking at the moment the user turns notifications on, with a button, is kinder than asking at launch. At each later start the permission is already `'granted'`, and `subscribe` only refreshes the token:
 
 ```svelte
-<!--- file: src/routes/+layout.svelte --->
+<!--- file: src/routes/+layout.mobile.svelte --->
 <script lang="ts">
 	import { push } from '@alfayez/svelte-native/push';
 	import { savePushToken } from '#lib/push.remote.ts';
@@ -215,9 +215,9 @@ To react to a message in a screen, for example to refresh a list, listen with `p
 </script>
 ```
 
-**`background(message)`** runs for a silent message when the app is in the background or closed. No screen is mounted: the app's JavaScript starts, runs `init` and the hook, and the native side holds the process until the hook's promise settles or its limit passes. The time is short and the system's to give: Android lets the hook run for 18 seconds, iOS for 25, and iOS decides for itself how often it wakes an app for a silent push, delaying or dropping them as it sees fit. Use it to keep data fresh. Nothing that must happen belongs in it.
+**`background(message)`** runs for a silent message when the app is in the background or closed. No screen is mounted: the app's JavaScript starts, runs `init` and the hook, and the native side holds the process until the hook's promise settles or its limit passes. The time is short and the system's to give: Android lets the hook run for 18 seconds, iOS for 25, and iOS decides for itself how often it wakes an app for a silent push, delaying or dropping them as it sees fit. Use it to keep data fresh. Nothing that must happen belongs in it. On Android, Firebase hands messages to the app one at a time, so a slow hook holds up the next message too; keep it to a few seconds.
 
-**`opened(message)`** runs when a notification is tapped, whether the app was closed, in the background or open, and for the tap that launched the app too. Return `false` to stop its `url` from opening. Keep it quick: the router waits only three seconds for the link a launch carries. On Android, a notification that the system showed while the app was away comes back here with its `id`, `url` and `data` and without its `title` and `body`.
+**`opened(message)`** runs when a notification is tapped, whether the app was closed, in the background or open, and for the tap that launched the app too. Return `false` to stop its `url` from opening. Keep it quick: the router waits only three seconds for the link a launch carries. On Android, a notification that the system showed while the app was away comes back here with its `id`, `url` and `data` and without its `title` and `body`. Treat what `opened` gets as untrusted input, as you would a link: on Android another app can start yours with the same extras a tap carries, so a message here is not proof that your server sent it. Its `url` can only open a screen of your app, but don't act on its `data` (a payment, a deletion) without checking with your server.
 
 ### A tap opens a link
 
@@ -264,7 +264,7 @@ const result = await push.send(token, {
 if (!result.ok && result.reason === 'gone') await deleteToken(token);
 ```
 
-`send(token, message)` sends one message to one device and resolves with what happened. It never queues, retries or waits longer than `timeout`, and it never throws for a provider's answer. It throws a `TypeError` for a bug in your code: a token or message that is not of the type, a notification with neither `title` nor `body`, a `silent` message with a `title`, `body`, `badge`, `sound` or `channel`, a `url` also given in `data`, a `data.aps` on APNs, a `collapseKey` that isn't printable ASCII without spaces on APNs, or a send to a provider that isn't configured.
+`send(token, message)` sends one message to one device and resolves with what happened. It never queues or retries, each request to a provider waits at most `timeout` (the first FCM send of a process makes two: the access token, then the message), and it never throws for a provider's answer. It throws a `TypeError` for a bug in your code: a token or message that is not of the type, a notification with neither `title` nor `body`, a `silent` message with a `title`, `body`, `badge`, `sound` or `channel`, a `url` also given in `data`, a `data.aps` on APNs, a `collapseKey` that isn't printable ASCII without spaces on APNs, or a send to a provider that isn't configured.
 
 The one retry it makes is its own: when APNs answers `ExpiredProviderToken`, it signs a new provider token and sends once more.
 
@@ -287,14 +287,14 @@ type SendResult =
 | `reason` | What it means | What to do |
 | --- | --- | --- |
 | `gone` | The token will never work again: the app was uninstalled, or the provider unregistered it. | Delete the token. |
-| `invalid-token` | The provider doesn't accept the token for this project or app: it is from another Firebase project or bundle id, or it isn't a token. | Don't retry. Delete the token. If many tokens answer this at once, look at the credentials and at the tokens' `app` first. |
+| `invalid-token` | The provider doesn't accept the token: it isn't a token, or it is for another bundle id than its `app` says. | Don't retry. Delete the token. If many tokens answer this at once, look at where the tokens' `app` and `environment` come from first. |
 | `invalid-message` | The provider refused the message, for example a payload that is too large. | Don't retry as it is. Fix the message. |
 | `rate-limited` | The provider asks you to slow down. | Retry later with a backoff, after `retryAfter` when it is given. |
 | `unavailable` | The provider didn't answer in time, or is down. | Retry later, as for `rate-limited`. |
-| `auth` | The server's credentials are wrong or revoked: the service account, or the APNs key or its right to your app. | Don't retry. Fix the credentials, and treat a rise in these as an incident. |
+| `auth` | The server's credentials are wrong or revoked: the service account, or the APNs key or its right to your app. FCM's `SENDER_ID_MISMATCH` is one: the token belongs to another Firebase project than the service account's. | Don't retry, and don't delete the token. Fix the credentials, and treat a rise in these as an incident. |
 | `error` | Anything else. `status` and `detail` say what. | Don't retry. Log it. |
 
-`gone` and `invalid-token` tell you to delete a token, so only the provider's own word decides them: FCM's `UNREGISTERED`, APNs's `Unregistered` and `ExpiredToken`, `BadDeviceToken` and `DeviceTokenNotForTopic`. A bare 404 or 410 is `error`, because a wrong `project_id` answers 404 too, and a misconfigured server must not delete every token it has.
+`gone` and `invalid-token` tell you to delete a token, so only the provider's own word decides them: FCM's `UNREGISTERED`, APNs's `Unregistered` and `ExpiredToken`, `BadDeviceToken` and `DeviceTokenNotForTopic`. A bare 404 or 410 is `error`, because a wrong `project_id` answers 404 too, and a misconfigured server must not delete every token it has; for the same reason FCM's `SENDER_ID_MISMATCH`, which every token answers when the server has another project's credentials, is `auth`. A device doesn't save a token it saved before, so a token deleted by mistake stays deleted until it changes.
 
 ### The message
 
@@ -307,7 +307,7 @@ type SendResult =
 | `badge` | iOS: the app icon's badge, a whole number of 0 or more. Not sent to Android, which has no reliable count. |
 | `sound` | `'default'`, the default for a notification, or `null` to send none. On Android the channel decides the sound, so `null` doesn't make a notification silent there. |
 | `channel` | Android: the id of the notification channel. Default: the channel in the config. Not sent to iOS. |
-| `collapseKey` | A newer message with the same key replaces an older one the provider still holds. FCM's `collapse_key`, APNs's `apns-collapse-id`. |
+| `collapseKey` | A newer message with the same key replaces an older one the provider still holds. FCM's `collapse_key`, APNs's `apns-collapse-id`. On APNs it must be printable ASCII without spaces, else `send` throws. |
 | `priority` | `'high'` or `'normal'`. FCM's `HIGH` and `NORMAL`, APNs's 10 and 5. |
 | `ttl` | Seconds the provider keeps the message for a device that is offline. `0` delivers at once or not at all. |
 

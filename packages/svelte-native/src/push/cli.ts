@@ -164,7 +164,7 @@ function messageOf(flags: Flags): PushSend {
       const equals = entry.indexOf("=");
       if (equals < 1) throw new UsageError("--data takes key=value, with a key");
       const key = entry.slice(0, equals);
-      if (key in message.data) throw new UsageError(`--data ${key} is given twice`);
+      if (Object.hasOwn(message.data, key)) throw new UsageError(`--data ${key} is given twice`);
       message.data[key] = entry.slice(equals + 1);
     }
   }

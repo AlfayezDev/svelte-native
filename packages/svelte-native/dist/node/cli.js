@@ -2236,9 +2236,16 @@ function retryAfterOf(value) {
   return Number.isNaN(date) ? void 0 : Math.max(0, date - Date.now());
 }
 function describeNetworkError(error) {
-  if (!(error instanceof Error)) return String(error);
+  if (!(error instanceof Error)) return withoutSecrets(String(error));
   const cause = error.cause instanceof Error ? error.cause.message : void 0;
-  return cause === void 0 || cause === error.message ? error.message : `${error.message} (${cause})`;
+  return withoutSecrets(cause === void 0 || cause === error.message ? error.message : `${error.message} (${cause})`);
+}
+function hostOf(url) {
+  try {
+    return new URL(url).host || "the endpoint";
+  } catch {
+    return "the endpoint";
+  }
 }
 function parseJson(text3) {
   if (text3 === "") return void 0;
@@ -2258,10 +2265,11 @@ function httpUrl(value, name) {
   if (url.protocol !== "http:" && url.protocol !== "https:") throw new TypeError(`${name} must be an http or https URL, not ${JSON.stringify(value)}.`);
   return url.href.replace(/\/+$/, "");
 }
-var isRecord;
+var withoutSecrets, isRecord;
 var init_common = __esm({
   "src/push/common.ts"() {
     "use strict";
+    withoutSecrets = (text3) => text3.replace(/\b([a-z][a-z\d+.-]*:\/\/)[^\s"'<>]+/gi, (url, scheme) => `${scheme}${hostOf(url)}`);
     isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
   }
 });
@@ -2329,7 +2337,7 @@ function apnsRequest(token, message) {
   if (priority !== void 0) headers["apns-priority"] = priority;
   if (message.ttl !== void 0) headers["apns-expiration"] = String(message.ttl === 0 ? 0 : Math.floor(Date.now() / 1e3) + message.ttl);
   if (message.collapseKey !== void 0) headers["apns-collapse-id"] = headerText(message.collapseKey, "`collapseKey`");
-  if (message.data !== void 0 && "aps" in message.data) throw new TypeError("`data.aps` is APNs's own key and cannot carry data: name the key something else.");
+  if (message.data !== void 0 && Object.hasOwn(message.data, "aps")) throw new TypeError("`data.aps` is APNs's own key and cannot carry data: name the key something else.");
   const aps = {};
   if (silent) {
     aps["content-available"] = 1;
@@ -2345,6 +2353,7 @@ function apnsFailure(status, reason, retryAfter) {
   if (reason === "BadDeviceToken" || reason === "DeviceTokenNotForTopic") return failure("invalid-token", detail, status);
   if (status === 410 && (reason === "Unregistered" || reason === "ExpiredToken")) return failure("gone", detail, status);
   if (status === 401 || status === 403) return failure("auth", detail, status);
+  if (reason === "IdleTimeout") return failure("unavailable", detail, status, retryAfter);
   if (status === 429) return failure("rate-limited", detail, status, retryAfter);
   if (status >= 500) return failure("unavailable", detail, status, retryAfter);
   if (status === 400 || status === 413) return failure("invalid-message", detail, status);
@@ -2558,6 +2567,13 @@ function readFcm(env, cwd) {
     if (typeof account[field] !== "string" || account[field] === "") return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) has no \`${field}\`: it is not a service account key` };
   }
   if (account.token_uri !== void 0 && typeof account.token_uri !== "string") return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) has a \`token_uri\` that is not a string` };
+  if (typeof account.token_uri === "string") {
+    try {
+      httpUrl(account.token_uri, "token_uri");
+    } catch {
+      return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) has a \`token_uri\` that is not an http or https URL` };
+    }
+  }
   try {
     privateKeyOf(String(account.private_key), "RS256", `the private_key of ${name}`);
   } catch (error) {
@@ -2607,10 +2623,11 @@ function readApns(env, cwd) {
     sandboxHost: hostOf(sandbox.url ?? APNS_SANDBOX_URL)
   };
 }
-var variables, describeSource, valueSet, hostOf, GOOGLE_TOKEN_URL, APNS_SANDBOX_URL, tenCharacters;
+var variables, describeSource, valueSet, GOOGLE_TOKEN_URL, APNS_SANDBOX_URL, tenCharacters;
 var init_credentials = __esm({
   "src/push/credentials.ts"() {
     "use strict";
+    init_common();
     init_jwt();
     variables = {
       fcmServiceAccount: "FCM_SERVICE_ACCOUNT",
@@ -2626,13 +2643,6 @@ var init_credentials = __esm({
     valueSet = (env, name) => {
       const value = env[name];
       return value === void 0 || value.trim() === "" ? void 0 : value;
-    };
-    hostOf = (url) => {
-      try {
-        return new URL(url).host;
-      } catch {
-        return "the endpoint";
-      }
     };
     GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
     APNS_SANDBOX_URL = "https://api.sandbox.push.apple.com";
@@ -2704,7 +2714,7 @@ function fcmFailure(status, body, text3, retryAfter) {
     case "UNREGISTERED":
       return failure("gone", detail, status);
     case "SENDER_ID_MISMATCH":
-      return failure("invalid-token", detail, status);
+      return failure("auth", `${detail}: the token belongs to another Firebase project than the service account's; check the server's credentials before suspecting the token`, status);
     case "INVALID_ARGUMENT":
       return failure(aboutToken ? "invalid-token" : "invalid-message", detail, status);
     case "QUOTA_EXCEEDED":
@@ -2802,7 +2812,7 @@ var init_fcm = __esm({
           });
           text3 = await response.text();
         } catch (error) {
-          return failure("unavailable", `The token request to ${tokenUrl} failed: ${describeNetworkError(error)}`);
+          return failure("unavailable", `The token request to ${hostOf(tokenUrl)} failed: ${describeNetworkError(error)}`);
         }
         const body = parseJson(text3);
         if (!response.ok) {
@@ -3107,7 +3117,7 @@ function checkMessage(message) {
     for (const [key, value] of Object.entries(message.data)) {
       if (typeof value !== "string") throw new TypeError(`\`data.${key}\` must be a string (both providers carry strings only), not ${show(value)}.`);
     }
-    if (message.url !== void 0 && "url" in message.data) throw new TypeError("`url` is carried as the data key `url`: pass the link as `url`, not also in `data`.");
+    if (message.url !== void 0 && Object.hasOwn(message.data, "url")) throw new TypeError("`url` is carried as the data key `url`: pass the link as `url`, not also in `data`.");
   }
   if (message.silent) {
     for (const name of ["title", "body", "badge", "sound", "channel"]) {
@@ -3119,7 +3129,7 @@ function checkMessage(message) {
 }
 function createPush(options = {}) {
   const timeout = options.timeout ?? DEFAULT_TIMEOUT;
-  if (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0) throw new TypeError(`\`timeout\` must be a number of milliseconds above 0, not ${show(timeout)}.`);
+  if (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0 || timeout > MAX_TIMEOUT) throw new TypeError(`\`timeout\` must be a number of milliseconds above 0 and at most ${MAX_TIMEOUT}, not ${show(timeout)}.`);
   const fcm = createFcm(options.fcm, timeout);
   const apns = createApns(options.apns, timeout);
   let closed = false;
@@ -3157,7 +3167,7 @@ async function deliver(sender, token, message) {
     return failure("error", error instanceof Error ? error.message : String(error));
   }
 }
-var DEFAULT_TIMEOUT, show;
+var DEFAULT_TIMEOUT, MAX_TIMEOUT, show;
 var init_server2 = __esm({
   "src/push/server.ts"() {
     "use strict";
@@ -3165,6 +3175,7 @@ var init_server2 = __esm({
     init_common();
     init_fcm();
     DEFAULT_TIMEOUT = 3e4;
+    MAX_TIMEOUT = 2147483647;
     show = (value) => inspect(value, { depth: 0 });
   }
 });
@@ -3261,7 +3272,7 @@ function messageOf(flags) {
       const equals = entry.indexOf("=");
       if (equals < 1) throw new UsageError("--data takes key=value, with a key");
       const key = entry.slice(0, equals);
-      if (key in message.data) throw new UsageError(`--data ${key} is given twice`);
+      if (Object.hasOwn(message.data, key)) throw new UsageError(`--data ${key} is given twice`);
       message.data[key] = entry.slice(equals + 1);
     }
   }

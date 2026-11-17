@@ -106,8 +106,9 @@ export type PushSettings = {
     };
 };
 /**
- * Checks `capabilities.push` (already known not to be off, and to hold no secret) and returns what it says. Reads the Google services file and the icon, from the
- * app's directory, so that a file that is not there stops the prebuild here, with its path, and not in a Gradle log. Throws a `CapabilityConfigError`.
+ * Checks `capabilities.push` (already known not to be off, and to hold no secret) and returns what it says. The shape is `checkPushConfig`'s, the one the doctor checks too; this reads
+ * the Google services file and the icon, from the app's directory, so that a file that is not there stops the prebuild here, with its path, and not in a Gradle log. Throws a
+ * `CapabilityConfigError`.
  */
 export declare function pushSettings(push: unknown, appPackage: string | undefined, projectRoot: string): PushSettings;
 /**

@@ -420,6 +420,74 @@ function googleServicesPackages(parsed) {
     return typeof name === "string" ? [name] : [];
   });
 }
+var pushSecretMessage = ({ where, what }) => `${where} is ${what}: a key that can send to every user must never be in the app or its build. Keep it in the server's environment (the FCM service account, the APNs .p8 with its key id and team id) and give the app identifiers only.`;
+var Refusal = class extends Error {
+};
+var refuse = (message) => {
+  throw new Refusal(message);
+};
+function section(value, where, example) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return refuse(`${where} takes an object: ${example}`);
+  return value;
+}
+function optionalText(value, where) {
+  if (value === void 0) return void 0;
+  if (typeof value !== "string" || value.trim() === "") return refuse(`${where} must be a text that is not empty.`);
+  return value;
+}
+function readIos(value) {
+  const ios = section(value, "capabilities.push.ios", '`ios: { mode: "production" }`');
+  if (ios.mode !== "development" && ios.mode !== "production")
+    return refuse(
+      'capabilities.push.ios.mode must be "development" or "production": it is the aps-environment entitlement, "development" for a build signed for development and "production" for TestFlight and the App Store.'
+    );
+  return { mode: ios.mode };
+}
+function readAndroid(value) {
+  const android = section(value, "capabilities.push.android", '`android: { googleServicesFile: "./google-services.json" }`');
+  const file = android.googleServicesFile;
+  if (typeof file !== "string" || file.trim() === "")
+    return refuse(
+      'capabilities.push.android needs googleServicesFile, the path of the Firebase project\'s google-services.json (Firebase console, Project settings, your Android app): `android: { googleServicesFile: "./google-services.json" }`. Leave `android` out for an app that has no push on Android.'
+    );
+  const settings = { googleServicesFile: file };
+  const icon = optionalText(android.icon, "capabilities.push.android.icon");
+  if (icon !== void 0) {
+    if (!/\.png$/i.test(icon)) return refuse(`capabilities.push.android.icon ("${icon}") must be a PNG file: the notification's small icon, white on a transparent background.`);
+    settings.icon = icon;
+  }
+  const color = optionalText(android.color, "capabilities.push.android.color");
+  if (color !== void 0) {
+    if (!/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color)) return refuse(`capabilities.push.android.color ("${color}") must be a hex color such as "#0a7f5a": the notification's accent color.`);
+    settings.color = color;
+  }
+  if (android.channel !== void 0) {
+    const channel = section(android.channel, "capabilities.push.android.channel", '`channel: { name: "Updates" }`');
+    if (typeof channel.name !== "string" || channel.name.trim() === "")
+      return refuse('capabilities.push.android.channel needs a name, as the user will read it in the app\'s notification settings: `channel: { name: "Updates" }`.');
+    const id = optionalText(channel.id, "capabilities.push.android.channel.id");
+    const description = optionalText(channel.description, "capabilities.push.android.channel.description");
+    settings.channel = { ...id === void 0 ? {} : { id }, name: channel.name, ...description === void 0 ? {} : { description } };
+  }
+  return settings;
+}
+function checkPushConfig(push) {
+  try {
+    const platforms = section(push, "capabilities.push", '`push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } }`, or `push: false`');
+    if (platforms.android === void 0 && platforms.ios === void 0)
+      return refuse(
+        "capabilities.push names no platform: give `android` (its google-services.json), `ios` (its aps-environment mode) or both, or turn the capability off with `push: false` and uninstall @alfayez/svelte-native-push."
+      );
+    const config = {};
+    if (platforms.android !== void 0) config.android = readAndroid(platforms.android);
+    if (platforms.ios !== void 0) config.ios = readIos(platforms.ios);
+    return { config };
+  } catch (error) {
+    if (error instanceof Refusal) return { problem: error.message };
+    throw error;
+  }
+}
+var pushIsOn = (push) => push !== void 0 && push !== null && push !== false;
 
 // src/capabilities.ts
 var CapabilityConfigError = class extends Error {
@@ -508,19 +576,8 @@ var pushMetaData = {
   channelDescription: "expo.modules.sveltepush.channel_description"
 };
 var pushResources = { icon: "svelte_push_icon", color: "svelte_push_color" };
-var secretError = ({ where, what }) => new CapabilityConfigError(
-  `${where} is ${what}: a key that can send to every user must never be in the app or its build. Keep it in the server's environment (the FCM service account, the APNs .p8 with its key id and team id) and give the app identifiers only.`
-);
+var secretError = (secret) => new CapabilityConfigError(pushSecretMessage(secret));
 var unreadable = (error) => error.code === "ENOENT" ? "does not exist" : `cannot be read: ${error instanceof Error ? error.message : String(error)}`;
-function section(value, where, example) {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new CapabilityConfigError(`${where} takes an object: ${example}`);
-  return value;
-}
-function optionalText(value, where) {
-  if (value === void 0) return void 0;
-  if (typeof value !== "string" || value.trim() === "") throw new CapabilityConfigError(`${where} must be a text that is not empty.`);
-  return value;
-}
 function checkGoogleServicesFile(file, appPackage, projectRoot) {
   const name = `capabilities.push.android.googleServicesFile ("${file}")`;
   const path = (0, import_node_path4.resolve)(projectRoot, file);
@@ -544,9 +601,8 @@ function checkGoogleServicesFile(file, appPackage, projectRoot) {
       `${name} has no client for the app's package "${appPackage}" (${packages.length === 0 ? "it has no Android client" : `it has ${packages.map((item) => `"${item}"`).join(", ")}`}): add an Android app with that package to the Firebase project and download google-services.json again, or fix android.package.`
     );
 }
-function checkIcon(icon, projectRoot) {
+function checkIconFile(icon, projectRoot) {
   const name = `capabilities.push.android.icon ("${icon}")`;
-  if (!/\.png$/i.test(icon)) throw new CapabilityConfigError(`${name} must be a PNG file: the notification's small icon, white on a transparent background.`);
   const path = (0, import_node_path4.resolve)(projectRoot, icon);
   let isFile;
   try {
@@ -556,57 +612,24 @@ function checkIcon(icon, projectRoot) {
   }
   if (!isFile) throw new CapabilityConfigError(`${name} is not a file (${path}): point it at the PNG of the notification's small icon.`);
 }
-function pushIosSettings(value) {
-  const ios = section(value, "capabilities.push.ios", '`ios: { mode: "production" }`');
-  if (ios.mode !== "development" && ios.mode !== "production")
-    throw new CapabilityConfigError(
-      'capabilities.push.ios.mode must be "development" or "production": it is the aps-environment entitlement, "development" for a build signed for development and "production" for TestFlight and the App Store.'
-    );
-  return { mode: ios.mode };
-}
-function pushAndroidSettings(value, appPackage, projectRoot) {
-  const android = section(value, "capabilities.push.android", '`android: { googleServicesFile: "./google-services.json" }`');
-  const file = android.googleServicesFile;
-  if (typeof file !== "string" || file.trim() === "")
-    throw new CapabilityConfigError(
-      'capabilities.push.android needs googleServicesFile, the path of the Firebase project\'s google-services.json (Firebase console, Project settings, your Android app): `android: { googleServicesFile: "./google-services.json" }`. Leave `android` out for an app that has no push on Android.'
-    );
-  if (!appPackage) throw new CapabilityConfigError("capabilities.push.android needs android.package in the Expo config: the Google services file is checked against it, and Firebase delivers to that package.");
-  checkGoogleServicesFile(file, appPackage, projectRoot);
-  const settings = { googleServicesFile: file, channel: { ...defaultPushChannel } };
-  const icon = optionalText(android.icon, "capabilities.push.android.icon");
-  if (icon !== void 0) {
-    checkIcon(icon, projectRoot);
-    settings.icon = icon;
-  }
-  const color = optionalText(android.color, "capabilities.push.android.color");
-  if (color !== void 0) {
-    if (!/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color))
-      throw new CapabilityConfigError(`capabilities.push.android.color ("${color}") must be a hex color such as "#0a7f5a": the notification's accent color.`);
-    settings.color = color;
-  }
-  if (android.channel !== void 0) {
-    const channel = section(android.channel, "capabilities.push.android.channel", '`channel: { name: "Updates" }`');
-    if (typeof channel.name !== "string" || channel.name.trim() === "")
-      throw new CapabilityConfigError('capabilities.push.android.channel needs a name, as the user will read it in the app\'s notification settings: `channel: { name: "Updates" }`.');
-    const description = optionalText(channel.description, "capabilities.push.android.channel.description");
-    settings.channel = {
-      id: optionalText(channel.id, "capabilities.push.android.channel.id") ?? defaultPushChannel.id,
-      name: channel.name,
-      ...description === void 0 ? {} : { description }
+function pushSettings(push, appPackage, projectRoot) {
+  const checked = checkPushConfig(push);
+  if ("problem" in checked) throw new CapabilityConfigError(checked.problem);
+  const { android, ios } = checked.config;
+  const settings = {};
+  if (android) {
+    if (!appPackage) throw new CapabilityConfigError("capabilities.push.android needs android.package in the Expo config: the Google services file is checked against it, and Firebase delivers to that package.");
+    checkGoogleServicesFile(android.googleServicesFile, appPackage, projectRoot);
+    if (android.icon !== void 0) checkIconFile(android.icon, projectRoot);
+    const { id, name, description } = android.channel ?? {};
+    settings.android = {
+      googleServicesFile: android.googleServicesFile,
+      ...android.icon === void 0 ? {} : { icon: android.icon },
+      ...android.color === void 0 ? {} : { color: android.color },
+      channel: { id: id ?? defaultPushChannel.id, name: name ?? defaultPushChannel.name, ...description === void 0 ? {} : { description } }
     };
   }
-  return settings;
-}
-function pushSettings(push, appPackage, projectRoot) {
-  const platforms = section(push, "capabilities.push", '`push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } }`, or `push: false`');
-  if (platforms.android === void 0 && platforms.ios === void 0)
-    throw new CapabilityConfigError(
-      "capabilities.push names no platform: give `android` (its google-services.json), `ios` (its aps-environment mode) or both, or turn the capability off with `push: false` and uninstall @alfayez/svelte-native-push."
-    );
-  const settings = {};
-  if (platforms.android !== void 0) settings.android = pushAndroidSettings(platforms.android, appPackage, projectRoot);
-  if (platforms.ios !== void 0) settings.ios = pushIosSettings(platforms.ios);
+  if (ios) settings.ios = ios;
   return settings;
 }
 var holdBegin = "    // Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
@@ -714,7 +737,7 @@ function withPushAndroid(config, android, projectRoot) {
   return config;
 }
 function withPush(config, push, context) {
-  const on = push !== void 0 && push !== null && push !== false;
+  const on = pushIsOn(push);
   const installed = context.linked.has(pushPackage);
   if (!on) {
     if (installed)

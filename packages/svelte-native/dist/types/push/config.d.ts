@@ -1,7 +1,8 @@
 /**
  * What the app's push configuration is checked against, in one place for the two that check it: the config plugin (`capabilities.ts`, which refuses a prebuild that
- * ships a secret, a Google services file that is not the app's, or a second push library) and `svelte-native doctor` (which says the same things before the prebuild, and about
- * the files of the last one). Nothing here reads a file or imports Expo: the doctor is bundled into the CLI, which has to start in an app that has no Expo installed yet.
+ * ships a secret, a malformed `capabilities.push`, a Google services file that is not the app's, or a second push library) and `svelte-native doctor` (which says the same things
+ * before the prebuild, and about the files of the last one). Nothing here reads a file or imports Expo: the doctor is bundled into the CLI, which has to start in an app that has no
+ * Expo installed yet.
  */
 /** The native code of push: an Expo module of its own, so that Firebase is in the apps that use push and in no other. */
 export declare const pushPackage = "@alfayez/svelte-native-push";
@@ -24,3 +25,36 @@ export declare function findPushSecret(value: unknown, where: string): {
 } | undefined;
 /** The package names of the Firebase clients in a `google-services.json`: `client[].client_info.android_client_info.package_name`. */
 export declare function googleServicesPackages(parsed: unknown): string[];
+/** The refusal of a secret in the config, as the plugin and the doctor both say it: `where` names the value and `what` the kind of key it is (`findPushSecret`). */
+export declare const pushSecretMessage: ({ where, what }: {
+    where: string;
+    what: string;
+}) => string;
+/** What `capabilities.push` says once its shape has been checked: nothing is read from disk, so a file it names may still be missing, and the channel's defaults are not filled in. */
+export type PushConfig = {
+    android?: {
+        googleServicesFile: string;
+        icon?: string;
+        color?: string;
+        channel?: {
+            id?: string;
+            name: string;
+            description?: string;
+        };
+    };
+    ios?: {
+        mode: "development" | "production";
+    };
+};
+/**
+ * Checks the shape of `capabilities.push` (the value of the config, whatever it is; the caller has found it not to be off, and to hold no secret) and returns what it says, or the
+ * `problem` the plugin stops the prebuild with. It reads nothing: the files it names, the app's package and the installed libraries are for the plugin to check (`pushSettings`), and
+ * the doctor says them in its own way. The plugin and the doctor both call this, so they refuse the same configs.
+ */
+export declare function checkPushConfig(push: unknown): {
+    config: PushConfig;
+} | {
+    problem: string;
+};
+/** Whether `capabilities.push` of the config is on: anything but `false`, `null` and leaving it out (so a value that is not an object is on, and is refused by `checkPushConfig`). */
+export declare const pushIsOn: (push: unknown) => boolean;

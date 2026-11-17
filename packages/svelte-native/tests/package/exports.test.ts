@@ -143,7 +143,8 @@ describe("the entries 0.4.0-rc.6 deprecated are removed, and what they exported 
     expect(manifest.exports["./app"]).toEqual({ "svelte-native-source": "./src/app.ts", types: "./dist/types/app.d.ts", default: "./src/app.ts" });
     expect(existsSync(src("init.ts")) && existsSync(src("polyfills.ts"))).toBe(true);
     const imports = readFileSync(src("app.ts"), "utf8").split("\n").filter((line) => line.startsWith("import "));
-    expect(imports).toEqual(['import "./init.ts";', 'import "./polyfills.ts";', expect.stringMatching(/^import \{ .* \} from "\.\/fabric\/index\.ts";$/)]);
+    // `push/load.ts` only watches the app's hooks for `push` (it evaluates no push code until they have it), so it is not one of the boot phases.
+    expect(imports).toEqual(['import "./init.ts";', 'import "./polyfills.ts";', 'import "./push/load.ts";', expect.stringMatching(/^import \{ .* \} from "\.\/fabric\/index\.ts";$/)]);
     expect(manifest.exports["./init"]).toBeUndefined();
     expect(manifest.exports["./polyfills"]).toBeUndefined();
   });

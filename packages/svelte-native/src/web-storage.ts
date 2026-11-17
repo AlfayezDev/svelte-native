@@ -76,8 +76,11 @@ export function createStorage(backend: StorageBackend): Storage {
     [Symbol.toStringTag]: { value: "Storage", configurable: true },
   });
   const target: object = Object.create(prototype);
-  /** Whether a property of the object is a member (or comes from `Object.prototype`) and so hides an item of that name. */
-  const hidden = (property: string): boolean => property in prototype;
+  /**
+   * Whether a property of the object is a member (or comes from `Object.prototype`) and so hides an item of that name. The live chain, as a browser's
+   * named properties read it: a string is never an own property of the target, so this is its prototypes, whatever `Object.setPrototypeOf` made them.
+   */
+  const hidden = (property: string): boolean => property in target;
   return new Proxy(target, {
     get(self, property, receiver) {
       if (typeof property === "symbol" || hidden(property)) return Reflect.get(self, property, receiver);

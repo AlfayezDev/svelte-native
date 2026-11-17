@@ -452,6 +452,19 @@ describe("watchPosition", () => {
     expect(calls.slice(before)).toEqual(["get"]);
   });
 
+  test("maximumAge: a GPS position answers timeout 0 with enableHighAccuracy, and is not the first position of a watch without it", async () => {
+    const { geolocation, calls } = fake({ permission: GRANTED });
+    await current(geolocation, { enableHighAccuracy: true });
+    expect((await current(geolocation, { enableHighAccuracy: true, maximumAge: 60_000, timeout: 0 })).position?.coords.latitude).toBe(24.7);
+    expect(calls).toEqual(["get", "current 4", "get"]);
+    const seen: number[] = [];
+    const id = geolocation.watchPosition((position) => seen.push(position.coords.latitude), null, { maximumAge: 60_000 });
+    await settle();
+    expect(seen).toEqual([]);
+    expect(calls.slice(3)).toEqual(["get", "last 60000", "listen Expo.locationChanged", "listen Expo.locationError", `watch ${id} 3 distance 0`]);
+    geolocation.clearWatch(id);
+  });
+
   test("maximumAge: a young enough last position is the first one the watch reports", async () => {
     const { geolocation } = fake({ permission: GRANTED, lastKnown: fix(5, 5, {}, Date.now() - 1000) });
     const seen: number[] = [];

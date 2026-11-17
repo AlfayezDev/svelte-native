@@ -189,6 +189,10 @@ describe("keys as properties, as a browser's storage has them", () => {
     expect(Object.getPrototypeOf(Object.getPrototypeOf(local))).toBe(Object.prototype);
     // Each storage has its own members (they close over its backend), on a prototype of its own.
     expect(Object.getPrototypeOf(local)).not.toBe(Object.getPrototypeOf(storage()));
+    // What hides an item is the live chain: without the prototype, an item named after a member is a property like any other.
+    local.setItem("getItem", "x");
+    Object.setPrototypeOf(local, null);
+    expect([local.getItem, Object.keys(local)]).toEqual(["x", ["getItem"]]);
   });
 
   test("it cannot be made non-extensible: Object.preventExtensions and Object.freeze throw, as for a browser's storage, and it keeps working", () => {
@@ -196,6 +200,7 @@ describe("keys as properties, as a browser's storage has them", () => {
     local.setItem("a", "1");
     expect(() => Object.preventExtensions(local)).toThrow(TypeError);
     expect(() => Object.freeze(local)).toThrow(TypeError);
+    expect(() => Object.seal(local)).toThrow(TypeError);
     expect(Object.isExtensible(local)).toBe(true);
     local.setItem("b", "2");
     expect(Object.keys(local)).toEqual(["a", "b"]);

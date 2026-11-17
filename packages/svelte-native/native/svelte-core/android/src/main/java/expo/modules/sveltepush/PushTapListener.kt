@@ -53,6 +53,7 @@ private fun extrasOf(intent: Intent): Map<String, Any?>? {
  */
 class PushTapListener : ReactActivityLifecycleListener {
   override fun onCreate(activity: Activity, savedInstanceState: Bundle?) {
+    // Nothing is installed (and `readTap` finds no tap rule) in a build with push off; the package does not even make this listener then.
     PushRuntime.install(activity.application)
     readLaunchTap(activity, savedInstanceState)
   }

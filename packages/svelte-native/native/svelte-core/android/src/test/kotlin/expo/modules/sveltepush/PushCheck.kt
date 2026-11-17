@@ -10,8 +10,10 @@ import kotlin.system.exitProcess
  * Plain-JVM check of what the Android side of push decides without Android: the mapping of a message to and from its three carriers, the rule that a tap is the launch
  * message until JavaScript has asked for it and an `opened` event after, the guard against delivering a tap twice, the events kept for a JavaScript that is not listening
  * yet, the background wait with its limit, the foreground wait for `show`, the foreground count, the permission and channel rules; and, in the sources, that the plain
- * files stay plain, and that the module, the manifest, the config and the config plugin say what `src/push/client.ts` expects of them.
- * Usage: PushCheck <main sources dir> <AndroidManifest.xml> <expo-module.config.json> <src/capabilities.ts> <src/push/client.ts>   (src/test/push.sh)
+ * files stay plain, that the module, the config and the config plugin say what `src/push/client.ts` expects of them, and that push is gated: svelte-core is in every app, so
+ * the enabled flag the plugin writes is what every entry into this code asks first, Firebase is `compileOnly` and named by two classes only, and the manifest of svelte-core
+ * declares nothing of push (the plugin writes the service into the apps that have it).
+ * Usage: PushCheck <main sources dir> <svelte-core's src/main dir> <expo-module.config.json> <src/capabilities.ts> <src/push/client.ts> <build.gradle> <consumer-rules.pro>   (src/test/push.sh)
  */
 private var checks = 0
 private var failures = 0
@@ -579,15 +581,29 @@ private fun delivery() {
   expect("JavaScript started, heard the message and finished", listOf(runtime.names(), coldDone.get(), worker.isAlive), listOf(listOf("background"), 1, false))
 }
 
+private fun gating() {
+  // Push is on only for the boolean the config plugin writes: this code is in every app, so anything else is off.
+  expect("the flag is one meta-data", PushRules.META_ENABLED, "expo.modules.sveltepush.enabled")
+  expect("the flag is on", PushRules.enabled { mapOf<String, Any?>(PushRules.META_ENABLED to true)[it] }, true)
+  expect("no meta-data: off", PushRules.enabled { null }, false)
+  expect("false: off", PushRules.enabled { mapOf<String, Any?>(PushRules.META_ENABLED to false)[it] }, false)
+  expect("a text is not the boolean", PushRules.enabled { mapOf<String, Any?>(PushRules.META_ENABLED to "true")[it] }, false)
+  expect("a number is not the boolean", PushRules.enabled { mapOf<String, Any?>(PushRules.META_ENABLED to 1)[it] }, false)
+  expect("another entry does not turn it on", PushRules.enabled { mapOf<String, Any?>(PushRules.META_CHANNEL_ID to true)[it] }, false)
+  expect("only the flag is asked", ArrayList<String>().also { asked -> PushRules.enabled { asked.add(it); null } }, listOf(PushRules.META_ENABLED))
+}
+
 /** The source files that must not mention Android, Expo or Firebase, so that this check can compile them and nothing else has to be there. */
 private val PLAIN_FILES = listOf("PushMessage", "PushMapping", "PushEvents", "PushTaps", "PushWaits", "PushRules", "PushDelivery", "ForegroundTracker")
 
 private fun sources(args: Array<String>) {
   val main = File(args[0])
-  val manifest = File(args[1]).readText()
+  val coreMain = File(args[1])
   val moduleConfig = File(args[2]).readText()
   val capabilities = File(args[3]).readText()
   val client = File(args[4]).readText()
+  val gradle = File(args[5]).readText()
+  val consumerRules = File(args[6]).readText()
   fun source(name: String) = File(main, "$name.kt").readText()
 
   for (name in PLAIN_FILES) {
@@ -615,6 +631,7 @@ private fun sources(args: Array<String>) {
 
   // The config plugin writes the meta-data this reads, under the same names.
   fun pluginName(key: String) = Regex("\\n  $key: \"([^\"]+)\"").find(capabilities.substringAfter("export const pushMetaData = {"))?.groupValues?.get(1)
+  expect("meta-data: enabled", pluginName("enabled"), PushRules.META_ENABLED)
   expect("meta-data: icon", pluginName("icon"), PushRules.META_ICON)
   expect("meta-data: color", pluginName("color"), PushRules.META_COLOR)
   expect("meta-data: channel id", pluginName("channelId"), PushRules.META_CHANNEL_ID)
@@ -623,21 +640,45 @@ private fun sources(args: Array<String>) {
   val defaults = Regex("defaultPushChannel = \\{ id: \"([^\"]+)\", name: \"([^\"]+)\" \\}").find(capabilities)?.groupValues
   expect("the channel the plugin writes by default", listOf(defaults?.get(1), defaults?.get(2)), listOf(PushRules.DEFAULT_CHANNEL_ID, PushRules.DEFAULT_CHANNEL_NAME))
 
-  // What autolinking and the manifest need to find.
-  truth("the manifest declares the service this file defines", manifest.contains("expo.modules.sveltepush.SveltePushMessagingService") && source("SveltePushMessagingService").contains("class SveltePushMessagingService : FirebaseMessagingService()"))
-  truth("the manifest asks for POST_NOTIFICATIONS", manifest.contains("android.permission.POST_NOTIFICATIONS"))
-  truth("the service takes Firebase's event", manifest.contains("com.google.firebase.MESSAGING_EVENT"))
-  truth("expo-module.config.json lists the module", moduleConfig.contains("expo.modules.sveltepush.SveltePushModule"))
+  // The service is the plugin's, not a manifest's of svelte-core: that manifest is in every app, and a service in it would take the messages of expo-notifications or React Native Firebase.
+  truth("the plugin declares the service this file defines", capabilities.contains("expo.modules.sveltepush.SveltePushMessagingService") && source("SveltePushMessagingService").contains("class SveltePushMessagingService : FirebaseMessagingService()"))
+  truth("the plugin names Firebase's event for it", capabilities.contains("com.google.firebase.MESSAGING_EVENT"))
+  truth("the plugin asks for POST_NOTIFICATIONS", capabilities.contains("android.permission.POST_NOTIFICATIONS"))
+  val coreManifest = File(coreMain, "AndroidManifest.xml")
+  val manifestText = if (coreManifest.exists()) coreManifest.readText() else ""
+  truth("svelte-core's own manifest declares no service, no permission and nothing of Firebase or push", !Regex("firebase|MESSAGING_EVENT|POST_NOTIFICATIONS|SveltePush|<service", RegexOption.IGNORE_CASE).containsMatchIn(manifestText)) { manifestText }
+
+  // Firebase is compile-time only here, at the exact version the plugin adds to the app, and two classes name it.
+  val pluginVersion = Regex("pushFirebaseDependency = \"com\\.google\\.firebase:firebase-messaging:([\\d.]+)\"").find(capabilities)?.groupValues?.get(1)
+  truth("the plugin pins Firebase Messaging to an exact version ($pluginVersion)", pluginVersion != null && Regex("^\\d+\\.\\d+\\.\\d+$").matches(pluginVersion))
+  val firebaseLines = gradle.lines().filter { it.contains("com.google.firebase") && !it.trimStart().startsWith("//") }.map { it.trim() }
+  expect("build.gradle: Firebase appears once, as compileOnly at the plugin's version", firebaseLines, listOf("compileOnly 'com.google.firebase:firebase-messaging:$pluginVersion'"))
+  truth("build.gradle: nothing else carries Firebase (no BOM, no api, no implementation)", !Regex("(implementation|api|runtimeOnly)[^\\n]*(firebase|play-services)").containsMatchIn(gradle) && !gradle.contains("firebase-bom"))
+  truth("build.gradle hands the app's R8 the rules for those references", gradle.contains("consumerProguardFiles \"consumer-rules.pro\"") && consumerRules.contains("-dontwarn com.google.firebase.messaging.**"))
+  val namingFirebase = main.listFiles { file -> file.name.endsWith(".kt") }!!.filter { it.readText().lines().any { line -> line.startsWith("import com.google.") } }.map { it.name }.sorted()
+  expect("only the service and PushFirebase import Firebase (the module, the package, the runtime and the notifier load none)", namingFirebase, listOf("PushFirebase.kt", "SveltePushMessagingService.kt"))
+
+  // Gating: this code is in every app, so each way in asks the flag first.
+  truth("the module has the `enabled` constant", Regex("Constant\\(\"enabled\"\\) \\{ isEnabled\\(\\) \\}").containsMatchIn(module))
+  truth("the module attaches, installs and listens only when enabled", Regex("OnCreate \\{\\s+if \\(isEnabled\\(\\)\\) \\{[\\s\\S]*?PushRuntime\\.install[\\s\\S]*?PushRuntime\\.events\\.attach\\(sink\\)[\\s\\S]*?attached = true").containsMatchIn(module))
+  truth("its observers and sync calls check the attachment", module.contains("OnStartObserving(name) { if (attached)") && module.contains("OnStopObserving(name) { if (attached)") && module.contains("if (attached) PushRuntime.tapsOrNull()"))
+  for (call in listOf("permission", "requestPermission", "register", "unregister")) truth("$call rejects when push is off", Regex("AsyncFunction\\(\"$call\"\\) \\{ promise: Promise -> whenEnabled\\(promise\\)").containsMatchIn(module))
+  truth("the module's Firebase calls are PushFirebase's", module.contains("PushFirebase.token") && module.contains("PushFirebase.deleteToken") && !module.contains("FirebaseMessaging"))
+  val runtime = source("PushRuntime")
+  truth("PushRuntime.install does nothing before it has checked the flag", runtime.indexOf("PushManifest.enabled(application)") in 0 until runtime.indexOf("registerActivityLifecycleCallbacks"))
   val packageSource = source("SveltePushPackage")
   truth("autolinking finds the Package by its file name and this import", Regex("\\bimport\\s+expo\\.modules\\.core\\.interfaces\\.Package\\b").containsMatchIn(packageSource) && packageSource.contains("class SveltePushPackage : Package"))
-  truth("the Package makes both listeners", packageSource.contains("createApplicationLifecycleListeners") && packageSource.contains("createReactActivityLifecycleListeners") && packageSource.contains("PushTapListener()"))
+  truth("the Package makes both listeners, each only when enabled", packageSource.contains("createApplicationLifecycleListeners") && packageSource.contains("createReactActivityLifecycleListeners") && packageSource.contains("PushTapListener()") &&
+    Regex("if \\(!PushManifest\\.enabled\\(context\\)\\) return emptyList\\(\\)").containsMatchIn(packageSource) && Regex("if \\(!PushManifest\\.enabled\\(activityContext\\)\\) return emptyList\\(\\)").containsMatchIn(packageSource))
   val packages = main.listFiles { file -> file.name.endsWith("Package.kt") }!!.map { it.name }
-  expect("it is the only Package, so autolinking lists one", packages, listOf("SveltePushPackage.kt"))
+  expect("it is the only Package of push, so autolinking finds one registration path for it", packages, listOf("SveltePushPackage.kt"))
+  truth("nothing else registers a lifecycle listener for push", coreMain.walkTopDown().filter { it.extension == "kt" && it.parentFile.name == "sveltepush" }.none { it.name != "SveltePushPackage.kt" && it.readText().contains("ApplicationLifecycleListener {") })
+  truth("expo-module.config.json lists the module in svelte-core's project, and no project of its own", Regex("\"name\": \"svelte-core\"[\\s\\S]*\"expo\\.modules\\.sveltepush\\.SveltePushModule\"").containsMatchIn(moduleConfig) && !moduleConfig.contains("svelte-push"))
 }
 
 fun main(args: Array<String>) {
-  if (args.size != 5) {
-    System.err.println("usage: PushCheck <main sources dir> <AndroidManifest.xml> <expo-module.config.json> <src/capabilities.ts> <src/push/client.ts>")
+  if (args.size != 7) {
+    System.err.println("usage: PushCheck <main sources dir> <svelte-core's src/main dir> <expo-module.config.json> <src/capabilities.ts> <src/push/client.ts> <build.gradle> <consumer-rules.pro>")
     exitProcess(2)
   }
   mapping()
@@ -647,6 +688,7 @@ fun main(args: Array<String>) {
   taps()
   waits()
   delivery()
+  gating()
   sources(args)
   println("push host check: $checks checks, $failures failed")
   if (failures > 0) exitProcess(1)

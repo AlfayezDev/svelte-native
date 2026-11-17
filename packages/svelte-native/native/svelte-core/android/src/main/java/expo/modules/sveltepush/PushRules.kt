@@ -9,6 +9,7 @@ data class ChannelSpec(val id: String, val name: String, val description: String
  */
 object PushRules {
   /** The meta-data names the config plugin writes (`pushMetaData` in `src/capabilities.ts`; the host check reads that file and compares). */
+  const val META_ENABLED = "expo.modules.sveltepush.enabled"
   const val META_CHANNEL_ID = "expo.modules.sveltepush.channel_id"
   const val META_CHANNEL_NAME = "expo.modules.sveltepush.channel_name"
   const val META_CHANNEL_DESCRIPTION = "expo.modules.sveltepush.channel_description"
@@ -20,6 +21,13 @@ object PushRules {
   /** What `capabilities.ts` writes when the app names no channel (`defaultPushChannel`), and when meta-data is missing altogether. */
   const val DEFAULT_CHANNEL_ID = "default"
   const val DEFAULT_CHANNEL_NAME = "Notifications"
+
+  /**
+   * Whether this build has push on Android (`read` is `Bundle.get(name)`): the config plugin writes `<meta-data android:name="expo.modules.sveltepush.enabled" android:value="true" />`
+   * when `capabilities.push` names `android`, and with it Firebase Messaging's dependency and the messaging service. This code is in every app (it is part of svelte-core), so everything
+   * it does starts from this answer; an app that left push off has no Firebase classes, and nothing here may load one. Only the boolean `true` is on: a text, a number or no entry is off.
+   */
+  fun enabled(read: (String) -> Any?): Boolean = read(META_ENABLED) == true
 
   /**
    * The state JavaScript reads from Expo's answer for `POST_NOTIFICATIONS` (Android 13 and later): `granted` for a granted permission, `denied` when the system will

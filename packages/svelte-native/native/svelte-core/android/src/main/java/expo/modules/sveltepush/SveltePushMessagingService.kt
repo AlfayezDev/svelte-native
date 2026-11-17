@@ -6,7 +6,8 @@ import com.google.firebase.messaging.RemoteMessage
 import java.util.UUID
 
 /**
- * Firebase's receiver of the app's messages and token changes, declared in this library's manifest. It holds no state: the events, the waits and the foreground count
+ * Firebase's receiver of the app's messages and token changes. It is declared by the config plugin, for an app with `capabilities.push.android`, and not by svelte-core's own manifest:
+ * that manifest is in every app, and a service in it would take the messages of `expo-notifications` or React Native Firebase, and name a Firebase class that the app does not have. It holds no state: the events, the waits and the foreground count
  * are `PushRuntime`'s, because a message can start the process before there is a module, and what is decided is `PushDelivery`'s and `PushRules`'s.
  *
  * Which messages come here: every data message, and a notification message only while Firebase thinks the app is in the foreground (in the background the system shows

@@ -54,6 +54,7 @@ describe("expo-module.config.json links push's module and subscriber in svelte-c
       "expo.modules.sveltecore.SvelteFetchModule",
       "expo.modules.sveltecore.SvelteClipboardModule",
       "expo.modules.sveltepush.SveltePushModule",
+      "expo.modules.sveltelocation.SvelteLocationModule",
     ]);
     const file = "native/svelte-core/android/src/main/java/expo/modules/sveltepush/SveltePushModule.kt";
     expect(read(file)).toMatch(/^class SveltePushModule : Module\(\)/m);

@@ -67,11 +67,14 @@ export type NativePushModule = {
     addListener<Event extends keyof NativePushEvents>(event: Event, listener: (payload: NativePushEvents[Event]) => void): Subscription;
 };
 /**
- * What the client needs of `Linking` (React Native's, as `platform.ts` exports it, which is the object the router reads): the launch link, which this file wraps, and the `url`
- * event it emits for a tap with the app running.
+ * What the client needs of `Linking` (React Native's, as `platform.ts` exports it, which is the object the router reads): the launch link, which this file wraps, the `url` event
+ * it emits for a tap with the app running, and the same event's listener, for a link that arrives before there is a screen to open it (`#feedLinking`).
  */
 export type PushLinking = {
     getInitialURL: () => Promise<string | null | undefined>;
+    addEventListener(event: "url", listener: (event: {
+        url: string;
+    }) => void): Subscription;
     emit(event: "url", payload: {
         url: string;
     }): void;

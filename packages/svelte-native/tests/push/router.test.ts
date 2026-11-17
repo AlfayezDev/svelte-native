@@ -93,6 +93,34 @@ describe("a cold start by a tap", () => {
   });
 });
 
+describe("a process with no screen yet (iOS: the system started it for a background message)", () => {
+  const hidden = (hooks: object) => mountTree(++surface, { initial: "/acme/home", hooks, mounted: false }, fixture, { stubs });
+  const link = (url: string) => { for (const handler of [...pushWorld.linkHandlers]) handler({ url }); };
+
+  test("a link that brings it to the foreground before the first screen exists opens when the screen mounts, as the stack's base", async () => {
+    const app = await hidden({ push: {} });
+    expect(pushWorld.linkHandlers).toHaveLength(1); // the push client's: no router hears links yet
+    link("https://example.test/workspaces");
+    app.app.show(true);
+    await app.settled();
+    expect(pathsOf(app.router)).toEqual(["/workspaces"]);
+    expect(app.hardwareBack()).toBe(false);
+    expect(pushWorld.linkHandlers).toHaveLength(1); // the router's alone from then on
+    link("https://example.test/acme/home");
+    await app.settled();
+    expect(pathsOf(app.router)).toEqual(["/workspaces", "/acme"]);
+  });
+
+  test("a tap on a notification that brings it to the foreground opens the notification's path", async () => {
+    pushWorld.launch = message({ id: "tap", url: "/workspaces" });
+    const app = await hidden({ push: {} });
+    app.app.show(true);
+    await app.settled();
+    expect(pathsOf(app.router)).toEqual(["/workspaces"]);
+    expect(pushWorld.calls.filter((call) => call === "take")).toHaveLength(1);
+  });
+});
+
 describe("a tap with the app running", () => {
   test("opens the notification's path like any link that arrives: the screen stacks and has its back arrow", async () => {
     const app = await mount({ push: {} });

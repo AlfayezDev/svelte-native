@@ -67,11 +67,12 @@ export type NativePushModule = {
 };
 
 /**
- * What the client needs of `Linking` (React Native's, as `platform.ts` exports it, which is the object the router reads): the launch link, which this file wraps, and the `url`
- * event it emits for a tap with the app running.
+ * What the client needs of `Linking` (React Native's, as `platform.ts` exports it, which is the object the router reads): the launch link, which this file wraps, the `url` event
+ * it emits for a tap with the app running, and the same event's listener, for a link that arrives before there is a screen to open it (`#feedLinking`).
  */
 export type PushLinking = {
   getInitialURL: () => Promise<string | null | undefined>;
+  addEventListener(event: "url", listener: (event: { url: string }) => void): Subscription;
   emit(event: "url", payload: { url: string }): void;
 };
 
@@ -372,16 +373,27 @@ export class PushClient {
   }
 
   /**
-   * Makes `Linking.getInitialURL()` answer the platform's link, or else the notification's. The `opened` hook runs for the launching tap in either case, and the router's own
-   * wait for the launch link (`LAUNCH_URL_TIMEOUT_MS`) bounds a hook that is slow: its answer is opened late if the app has not navigated meanwhile.
+   * Makes `Linking.getInitialURL()` answer the platform's link, or else a link that arrived before the first read, or else the notification's. The `opened` hook runs for the
+   * launching tap in every case, and the router's own wait for the launch link (`LAUNCH_URL_TIMEOUT_MS`) bounds a hook that is slow: its answer is opened late if the app has
+   * not navigated meanwhile.
+   *
+   * A link that arrives before the first read has nobody to hear it: on iOS, a process the system started in the background for a message runs without a screen (PUSH.md,
+   * rule 2), and when a link (a universal link, the app's scheme) is what brings it to the foreground, React Native emits it as a `url` event while the router is not mounted
+   * yet, drops it for want of a listener, and `getInitialURL` answers the launch of the process, which had no link. So this file listens from the start, keeps the last such
+   * link, and stops at the first read: the router adds its own listener just before it reads (`connectHost`), so from then on the router hears every link itself.
    */
   #feedLinking(native: NativePushModule): void {
     const linking = this.#options.linking;
     const platform = linking.getInitialURL.bind(linking);
+    let early: string | null = null;
+    let listening: Subscription | null = linking.addEventListener("url", ({ url }) => { early = url; });
     linking.getInitialURL = async () => {
+      listening?.remove();
+      listening = null;
+      const arrived = early;
       const launch = this.#launchLink(native);
       const url = await platform();
-      return url || (await launch);
+      return url || arrived || (await launch);
     };
   }
 }

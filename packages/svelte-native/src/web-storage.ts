@@ -66,13 +66,21 @@ export function createStorage(backend: StorageBackend): Storage {
       return backend.keys()[Number(args[0]) >>> 0] ?? null;
     },
   };
-  const target: object = Object.create(Object.prototype, {
+  // The members live on a prototype of their own, as a browser's live on `Storage.prototype`, so the object's own properties are only what a
+  // program put there: its items (in the backend) and its symbols (on the target, ordinary properties). Every trap below then forwards a symbol
+  // to the target as it is, and the proxy's invariants hold whatever a symbol's descriptor says (issue #62: a non-configurable symbol left out of
+  // `ownKeys` made `Object.keys` and `JSON.stringify` throw).
+  const prototype: object = Object.create(Object.prototype, {
     ...Object.fromEntries(Object.entries(members).map(([name, value]) => [name, { value, writable: true, configurable: true }])),
     length: { get: () => backend.length, configurable: true },
     [Symbol.toStringTag]: { value: "Storage", configurable: true },
   });
-  /** Whether a property of the object is a member (or comes from `Object.prototype`) and so hides an item of that name. */
-  const hidden = (property: string | symbol): boolean => property in target;
+  const target: object = Object.create(prototype);
+  /**
+   * Whether a property of the object is a member (or comes from `Object.prototype`) and so hides an item of that name. The live chain, as a browser's
+   * named properties read it: a string is never an own property of the target, so this is its prototypes, whatever `Object.setPrototypeOf` made them.
+   */
+  const hidden = (property: string): boolean => property in target;
   return new Proxy(target, {
     get(self, property, receiver) {
       if (typeof property === "symbol" || hidden(property)) return Reflect.get(self, property, receiver);
@@ -89,9 +97,11 @@ export function createStorage(backend: StorageBackend): Storage {
       backend.remove(property);
       return true;
     },
-    ownKeys: () => backend.keys().filter((key) => !hidden(key)),
-    getOwnPropertyDescriptor(_self, property) {
-      if (typeof property === "symbol" || hidden(property)) return undefined;
+    // The items first, then the target's own keys, which are symbols only: a string never lands on the target (`set` and `defineProperty` store it).
+    ownKeys: (self) => [...backend.keys().filter((key) => !hidden(key)), ...Reflect.ownKeys(self)],
+    getOwnPropertyDescriptor(self, property) {
+      if (typeof property === "symbol") return Reflect.getOwnPropertyDescriptor(self, property);
+      if (hidden(property)) return undefined;
       const value = backend.get(property);
       return value === undefined ? undefined : { value, writable: true, enumerable: true, configurable: true };
     },
@@ -102,5 +112,9 @@ export function createStorage(backend: StorageBackend): Storage {
       members.setItem(property, descriptor.value as string);
       return true;
     },
+    // A browser's storage cannot be made non-extensible (WebIDL: a legacy platform object's [[PreventExtensions]] is false), so `Object.freeze`
+    // and `Object.preventExtensions` throw. Here that also keeps `ownKeys` honest: a non-extensible target must list exactly its own keys, and the
+    // items are not on it.
+    preventExtensions: () => false,
   }) as Storage;
 }

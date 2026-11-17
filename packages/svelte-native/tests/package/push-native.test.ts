@@ -189,3 +189,38 @@ describe("the config plugin makes an app one with push, and takes it away again"
     expect(await run(off, "ios", "infoPlist", plist)).toEqual({ CFBundleName: "App", UIBackgroundModes: ["remote-notification"] });
   });
 });
+
+describe("iOS: push is compiled only when it is on", () => {
+  // App Store Connect reads the binary: a reference to the push APIs without the `aps-environment` entitlement is a warning whether or not the app calls them. So an app without
+  // push must not have them compiled in, and SvelteCore (in every app) compiles push's Swift only under `SVELTE_PUSH`, which its podspec sets from the config plugin's property.
+  const directory = join(root, "native/svelte-core/ios/push");
+  const files = readdirSync(directory).filter((name) => name.endsWith(".swift"));
+
+  test("every Swift file of push is inside `#if SVELTE_PUSH`, and the push APIs appear only there", () => {
+    expect(files.length).toBeGreaterThan(5);
+    for (const name of files) {
+      const text = readFileSync(join(directory, name), "utf8");
+      const open = text.indexOf("#if SVELTE_PUSH\n");
+      expect([name, open >= 0, text.trimEnd().endsWith("#endif")]).toEqual([name, true, true]);
+      // What a build without push compiles: before the condition and after its `#else` (the outermost one, which comes last).
+      const otherwise = text.slice(0, open) + (text.includes("\n#else\n") ? text.slice(text.lastIndexOf("\n#else\n")) : "");
+      expect([name, /UserNotifications|UNUserNotificationCenter|registerForRemoteNotifications|didRegisterForRemoteNotifications|didReceiveRemoteNotification/.test(otherwise)]).toEqual([name, false]);
+    }
+  });
+
+  test("without SVELTE_PUSH the module and the app delegate subscriber that Expo's provider names are stubs: `enabled` false, nothing forwarded", () => {
+    const stub = (name: string) => { const text = readFileSync(join(directory, name), "utf8"); return text.slice(text.lastIndexOf("\n#else\n")); };
+    expect(stub("SveltePushModule.swift")).toContain("public final class SveltePushModule: Module");
+    expect(stub("SveltePushModule.swift")).toContain('Constant("enabled") { false }');
+    expect(stub("SveltePushAppDelegateSubscriber.swift")).toContain("public final class SveltePushAppDelegateSubscriber: ExpoAppDelegateSubscriber {}");
+  });
+
+  test("SvelteCore.podspec sets SVELTE_PUSH from the property the config plugin writes, and the host check compiles with it", () => {
+    const podspec = readFileSync(join(root, "native/svelte-core/ios/SvelteCore.podspec"), "utf8");
+    expect(podspec).toContain("Podfile.properties.json");
+    expect(podspec).toContain("'svelteNative.push' => 'SVELTE_PUSH'");
+    expect(podspec).toContain("'SWIFT_ACTIVE_COMPILATION_CONDITIONS' => (['$(inherited)'] + svelte_conditions).join(' ')");
+    expect(readFileSync(join(root, "native/svelte-core/test/ios/message.sh"), "utf8")).toContain("-D SVELTE_PUSH");
+  });
+});
+

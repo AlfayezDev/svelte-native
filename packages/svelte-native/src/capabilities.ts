@@ -30,7 +30,7 @@ import type { ExpoConfig } from "expo/config";
 // The `with*` functions are plain exports of that CommonJS module, which Node's loader names. `AndroidConfig` is not: Expo defines it with a getter, which the CommonJS lexer of Node before 24
 // does not see ("Named export 'AndroidConfig' not found"), so its values come from the default import, which is the module's exports in every loader (Node, Bun, the bundle); its types stay a named import.
 import type { AndroidConfig } from "expo/config-plugins.js";
-import configPlugins, { withAndroidColors, withAndroidManifest, withAppBuildGradle, withAppDelegate, withDangerousMod, withInfoPlist, withStringsXml } from "expo/config-plugins.js";
+import configPlugins, { withAndroidColors, withAndroidManifest, withAppBuildGradle, withAppDelegate, withDangerousMod, withInfoPlist, withPodfileProperties, withStringsXml } from "expo/config-plugins.js";
 import { apsEnvironmentEntitlement, checkPushConfig, findPushSecret, googleServicesPackages, otherPushLibraries, pushIsOn, pushSecretMessage, remoteNotificationMode } from "./push/config.ts";
 
 const { AndroidConfig: expoAndroid } = configPlugins;
@@ -255,6 +255,11 @@ export const postNotificationsPermission = "android.permission.POST_NOTIFICATION
 
 /** The Info.plist flag (a boolean) that turns the native code on, on iOS: svelte-core's `SveltePushEnabled` check. Written when `capabilities.push.ios` is set, and taken away without. */
 export const pushInfoPlistFlag = "SveltePushEnabled";
+/**
+ * The key of `ios/Podfile.properties.json` that compiles push's iOS code into SvelteCore (`SVELTE_PUSH`, read by `SvelteCore.podspec`). Off, none of it is compiled: App Store Connect
+ * warns about a binary that registers for remote notifications without the `aps-environment` entitlement, whether or not it ever calls the API.
+ */
+export const pushPodfileProperty = "svelteNative.push";
 
 /** What `capabilities.push` says once it has been checked. */
 export type PushSettings = {
@@ -420,6 +425,10 @@ function withPushIos(config: ExpoConfig, mode: "development" | "production"): Ex
       infoPlist: { ...config.ios?.infoPlist, [pushInfoPlistFlag]: true, UIBackgroundModes: modes.includes(remoteNotificationMode) ? modes : [...modes, remoteNotificationMode] },
     },
   };
+  config = withPodfileProperties(config, (config) => {
+    config.modResults[pushPodfileProperty] = "true";
+    return config;
+  });
   return withAppDelegate(config, (config) => {
     if (config.modResults.language !== "swift") throw new Error("Svelte native requires Expo's Swift AppDelegate");
     config.modResults.contents = applyPushAppDelegate(config.modResults.contents);
@@ -656,6 +665,10 @@ function withoutPushIos(config: ExpoConfig, context: Context): ExpoConfig {
   if (!existsSync(join(context.projectRoot, "ios"))) return config;
   config = withInfoPlist(config, (config) => {
     delete config.modResults[pushInfoPlistFlag];
+    return config;
+  });
+  config = withPodfileProperties(config, (config) => {
+    delete config.modResults[pushPodfileProperty];
     return config;
   });
   return withAppDelegate(config, (config) => {

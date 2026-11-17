@@ -1,3 +1,5 @@
+// Compiled only when push is on (`SVELTE_PUSH`, set by SvelteCore.podspec from the config plugin's `capabilities.push.ios`): an app without push has none of it in its binary.
+#if SVELTE_PUSH
 import UIKit
 
 /// Rule 2 of PUSH.md on iOS: a push that wakes the app mounts no screen. When iOS launches the app in the background for a silent push, Expo's `AppDelegate` would create
@@ -31,3 +33,4 @@ public enum SveltePushBackgroundLaunch {
     var token: NSObjectProtocol?
   }
 }
+#endif

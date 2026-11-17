@@ -1,3 +1,5 @@
+// Compiled only when push is on (`SVELTE_PUSH`, set by SvelteCore.podspec from the config plugin's `capabilities.push.ios`): an app without push has none of it in its binary.
+#if SVELTE_PUSH
 import ExpoModulesCore
 import UIKit
 import UserNotifications
@@ -110,3 +112,16 @@ public final class SveltePushModule: Module {
     }
   }
 }
+#else
+import ExpoModulesCore
+
+/// Push is off in this build, so none of its code is compiled and the app's binary references no push API (App Store Connect warns about a binary that registers for remote
+/// notifications without the `aps-environment` entitlement). The module stays, because Expo's generated module provider names it: `enabled` is false, and JavaScript calls
+/// nothing else.
+public final class SveltePushModule: Module {
+  public func definition() -> ModuleDefinition {
+    Name("SveltePush")
+    Constant("enabled") { false }
+  }
+}
+#endif

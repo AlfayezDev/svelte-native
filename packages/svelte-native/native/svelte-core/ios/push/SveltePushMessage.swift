@@ -1,3 +1,5 @@
+// Compiled only when push is on (`SVELTE_PUSH`, set by SvelteCore.podspec from the config plugin's `capabilities.push.ios`): an app without push has none of it in its binary.
+#if SVELTE_PUSH
 import CoreFoundation
 import Foundation
 
@@ -86,3 +88,4 @@ enum SveltePushPayload {
     return text
   }
 }
+#endif

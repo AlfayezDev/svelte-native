@@ -1,3 +1,5 @@
+// Compiled only when push is on (`SVELTE_PUSH`, set by SvelteCore.podspec from the config plugin's `capabilities.push.ios`): an app without push has none of it in its binary.
+#if SVELTE_PUSH
 import ExpoModulesCore
 import UIKit
 
@@ -41,3 +43,9 @@ public final class SveltePushAppDelegateSubscriber: ExpoAppDelegateSubscriber {
     SveltePushCenter.shared.didReceiveRemoteNotification(userInfo, applicationState: application.applicationState, completion: completionHandler)
   }
 }
+#else
+import ExpoModulesCore
+
+/// Push is off in this build: a subscriber that forwards nothing, because Expo's generated provider names it.
+public final class SveltePushAppDelegateSubscriber: ExpoAppDelegateSubscriber {}
+#endif

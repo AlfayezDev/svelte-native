@@ -598,6 +598,7 @@ var pushMessagingService = "expo.modules.sveltepush.SveltePushMessagingService";
 var firebaseMessagingEvent = "com.google.firebase.MESSAGING_EVENT";
 var postNotificationsPermission = "android.permission.POST_NOTIFICATIONS";
 var pushInfoPlistFlag = "SveltePushEnabled";
+var pushPodfileProperty = "svelteNative.push";
 var secretError = (secret) => new CapabilityConfigError(pushSecretMessage(secret));
 var unreadable = (error) => error.code === "ENOENT" ? "does not exist" : `cannot be read: ${error instanceof Error ? error.message : String(error)}`;
 function checkGoogleServicesFile(file, appPackage, projectRoot) {
@@ -715,6 +716,10 @@ function withPushIos(config, mode) {
       infoPlist: { ...config.ios?.infoPlist, [pushInfoPlistFlag]: true, UIBackgroundModes: modes.includes(remoteNotificationMode) ? modes : [...modes, remoteNotificationMode] }
     }
   };
+  config = (0, import_config_plugins.withPodfileProperties)(config, (config2) => {
+    config2.modResults[pushPodfileProperty] = "true";
+    return config2;
+  });
   return (0, import_config_plugins.withAppDelegate)(config, (config2) => {
     if (config2.modResults.language !== "swift") throw new Error("Svelte native requires Expo's Swift AppDelegate");
     config2.modResults.contents = applyPushAppDelegate(config2.modResults.contents);
@@ -866,6 +871,10 @@ function withoutPushIos(config, context) {
   if (!(0, import_node_fs3.existsSync)((0, import_node_path4.join)(context.projectRoot, "ios"))) return config;
   config = (0, import_config_plugins.withInfoPlist)(config, (config2) => {
     delete config2.modResults[pushInfoPlistFlag];
+    return config2;
+  });
+  config = (0, import_config_plugins.withPodfileProperties)(config, (config2) => {
+    delete config2.modResults[pushPodfileProperty];
     return config2;
   });
   return (0, import_config_plugins.withAppDelegate)(config, (config2) => {

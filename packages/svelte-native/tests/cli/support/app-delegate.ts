@@ -13,3 +13,11 @@ export function expoTemplateAppDelegate(): string {
   if (unpacked.exitCode !== 0) throw new Error(`could not read AppDelegate.swift from ${tarball}: ${unpacked.stderr.toString()}`);
   return unpacked.stdout.toString();
 }
+
+/** The `android/app/build.gradle` of the same template: what the plugin's Gradle patch (Firebase Messaging's dependency for push) is written against. */
+export function expoTemplateAppBuildGradle(): string {
+  const tarball = join(dirname(require.resolve("expo/package.json")), "template.tgz");
+  const unpacked = Bun.spawnSync(["tar", "-xzOf", tarball, "package/android/app/build.gradle"], { stdout: "pipe", stderr: "pipe" });
+  if (unpacked.exitCode !== 0) throw new Error(`could not read android/app/build.gradle from ${tarball}: ${unpacked.stderr.toString()}`);
+  return unpacked.stdout.toString();
+}

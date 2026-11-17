@@ -102,6 +102,12 @@ private fun providers() {
   expect("the GPS is off: the others answer a high request", order(LocationAccuracy.HIGH, 31, true) { it != "gps" }, listOf("fused", "network"))
   expect("the network is off, API 30: the GPS answers a balanced request", order(LocationAccuracy.BALANCED, 30, true) { it != "network" }, listOf("gps"))
   expect("the fused provider is off: the others", order(LocationAccuracy.BALANCED, 31, true) { it != "fused" }, listOf("network", "gps"))
+  // No network location (an emulator, a phone without a location service): the fused provider serves a balanced request from the network alone and never answers, so a balanced
+  // request is a high one there, in its order and in the quality it asks for.
+  expect("balanced with no network location, API 31: fused, then the GPS", order(LocationAccuracy.BALANCED, 31, true) { it != "network" }, listOf("fused", "gps"))
+  expect("balanced with no network location is served as high", LocationRules.effectiveAccuracy(LocationAccuracy.BALANCED) { it != "network" }, LocationAccuracy.HIGH)
+  expect("balanced with network location stays balanced", LocationRules.effectiveAccuracy(LocationAccuracy.BALANCED, all), LocationAccuracy.BALANCED)
+  expect("high stays high", LocationRules.effectiveAccuracy(LocationAccuracy.HIGH) { false }, LocationAccuracy.HIGH)
   expect("none is on: none, which is POSITION_UNAVAILABLE and not a wait", order(LocationAccuracy.HIGH, 31, true) { false }, emptyList<String>())
   expect("the approximate permission and only the GPS on: none", order(LocationAccuracy.HIGH, 30, false) { it == "gps" }, emptyList<String>())
   val asked = ArrayList<String>()

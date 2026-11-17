@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
+import android.location.LocationRequest
 import android.os.Build
 import android.os.CancellationSignal
 import android.os.Looper
@@ -15,6 +16,9 @@ import androidx.core.location.LocationManagerCompat
 import androidx.core.location.LocationRequestCompat
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicBoolean
+
+/** How long a one-off position may take on API 31 and later, as the platform's own `getCurrentLocation` without a request allows (30 s); the web's `timeout` usually ends it first. */
+private const val CURRENT_DURATION_MS = 30_000L
 
 /**
  * The platform's `LocationManager` behind the module: no Google library, so it answers on a phone without Google services too. One-off positions are `LocationManagerCompat.getCurrentLocation`,
@@ -42,6 +46,10 @@ internal class LocationSource(private val context: Context) {
   private fun granted(permission: String) = ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
   /** Whether the platform has the provider and it is switched on (`isProviderEnabled` throws for none the platform does not have). */
+  /** The platform's request quality for an accuracy: what a one-off position on API 31 and later asks the provider for. */
+  private fun qualityOf(accuracy: LocationAccuracy): Int =
+    if (accuracy == LocationAccuracy.HIGH) LocationRequest.QUALITY_HIGH_ACCURACY else LocationRequest.QUALITY_BALANCED_POWER_ACCURACY
+
   private fun available(manager: LocationManager, name: String): Boolean =
     try {
       LocationManagerCompat.hasProvider(manager, name) && manager.isProviderEnabled(name)
@@ -64,6 +72,7 @@ internal class LocationSource(private val context: Context) {
     if (!permitted()) return done(null, LocationFailures.unauthorized)
     val tried = providers(accuracy, manager)
     if (tried.isEmpty()) return done(null, LocationFailures.noProvider)
+    val quality = qualityOf(LocationRules.effectiveAccuracy(accuracy) { name -> available(manager, name) })
     val finished = AtomicBoolean(false)
     fun finish(fix: LocationFix?, failure: LocationFailure?) {
       if (finished.compareAndSet(false, true) && !stopped) done(fix, failure)
@@ -73,13 +82,20 @@ internal class LocationSource(private val context: Context) {
       val signal = CancellationSignal()
       pending.add(signal)
       try {
-        LocationManagerCompat.getCurrentLocation(manager, tried[index], signal, executor) { location: Location? ->
+        val answer = { location: Location? ->
           pending.remove(signal)
           when {
             location != null -> finish(fixOf(location), null)
             index + 1 < tried.size -> ask(index + 1)
             else -> finish(null, LocationFailures.notLocated(tried))
           }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+          // With the request's quality: without one the platform asks for a balanced position, which the fused provider takes from the network alone.
+          val request = LocationRequest.Builder(0L).setQuality(quality).setDurationMillis(CURRENT_DURATION_MS).build()
+          manager.getCurrentLocation(tried[index], request, signal, executor) { location -> answer(location) }
+        } else {
+          LocationManagerCompat.getCurrentLocation(manager, tried[index], signal, executor) { location: Location? -> answer(location) }
         }
       } catch (error: SecurityException) {
         pending.remove(signal)
@@ -134,7 +150,7 @@ internal class LocationSource(private val context: Context) {
       }
     }
     val request = LocationRequestCompat.Builder(LocationRules.WATCH_INTERVAL_MS)
-      .setQuality(if (accuracy == LocationAccuracy.HIGH) LocationRequestCompat.QUALITY_HIGH_ACCURACY else LocationRequestCompat.QUALITY_BALANCED_POWER_ACCURACY)
+      .setQuality(if (LocationRules.effectiveAccuracy(accuracy) { name -> available(manager, name) } == LocationAccuracy.HIGH) LocationRequestCompat.QUALITY_HIGH_ACCURACY else LocationRequestCompat.QUALITY_BALANCED_POWER_ACCURACY)
       .setMinUpdateDistanceMeters(distanceMeters)
       .build()
     val watch = ActiveWatch(listener)

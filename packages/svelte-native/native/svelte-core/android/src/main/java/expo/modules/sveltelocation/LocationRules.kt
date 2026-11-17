@@ -101,7 +101,7 @@ object LocationRules {
    * what is not is left out, so the list is "whichever is enabled", and empty when none is.
    */
   fun providers(accuracy: LocationAccuracy, sdk: Int, preciseGranted: Boolean, available: (String) -> Boolean): List<String> {
-    val order = when (accuracy) {
+    val order = when (effectiveAccuracy(accuracy, available)) {
       LocationAccuracy.HIGH -> listOf(PROVIDER_FUSED, PROVIDER_GPS, PROVIDER_NETWORK)
       LocationAccuracy.BALANCED -> listOf(PROVIDER_FUSED, PROVIDER_NETWORK, PROVIDER_GPS)
     }
@@ -109,6 +109,14 @@ object LocationRules {
       (name != PROVIDER_FUSED || sdk >= FUSED_MIN_SDK) && (name != PROVIDER_GPS || preciseGranted) && available(name)
     }
   }
+
+  /**
+   * The accuracy a request is served with. `BALANCED` is the web's `enableHighAccuracy: false`, a hint to save power and not a ban on the GPS: on a device with no network location
+   * (no network provider switched on: an emulator, a phone without a location service) the fused provider serves a balanced request from the network alone and never answers, so
+   * there it is a `HIGH` request.
+   */
+  fun effectiveAccuracy(accuracy: LocationAccuracy, available: (String) -> Boolean): LocationAccuracy =
+    if (accuracy == LocationAccuracy.BALANCED && !available(PROVIDER_NETWORK)) LocationAccuracy.HIGH else accuracy
 
   /** Whether a position taken at `timeMs` is young enough for a `maxAgeMs` (none: any age). A position from the future (the clock was set back) is young. */
   fun isYoung(timeMs: Long, nowMs: Long, maxAgeMs: Long?): Boolean = maxAgeMs == null || nowMs - timeMs <= maxAgeMs

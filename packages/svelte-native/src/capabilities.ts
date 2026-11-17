@@ -13,16 +13,24 @@
  * `location` is expo-location: `navigator.geolocation` and `navigator.permissions` use its native module (`geolocation.ts`).
  *
  * `push` is `@alfayez/svelte-native-push` (PUSH.md): Firebase Messaging on Android, APNs on iOS. The library has no plugin of its own, so the capability does what
- * the plugin of any push library does, from the identifiers in the config, and refuses what would ship a secret or make a second push library of the app.
+ * the plugin of any push library does, from the identifiers in the config, and refuses what would ship a secret or make a second push library of the app. A prebuild that keeps the
+ * native projects (no `--clean`) keeps what the last one wrote, so where push is off (or a platform is not named) the plugin takes away what is certainly its own: the `AppDelegate`
+ * wrapper (which imports the library's module, and would stop the build once the library is uninstalled), the manifest's entries and the resources under its names. It leaves what it
+ * cannot tell from the app's own: the entitlement, the background mode, the Google services file and the Gradle plugin.
  */
-import { readFileSync, statSync } from "node:fs";
-import { copyFile, mkdir } from "node:fs/promises";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { copyFile, mkdir, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import type { ExpoConfig } from "expo/config";
 // `.js` spelled out, as in `remote/plugin.ts`: Node's own module loader, which loads this file from its source in `tests/cli/remote-plugin.test.ts` ("loading"), resolves no `expo/config-plugins` without it.
-import { AndroidConfig, withAndroidColors, withAndroidManifest, withAppDelegate, withDangerousMod } from "expo/config-plugins.js";
-import { apsEnvironmentEntitlement, findPushSecret, googleServicesPackages, otherPushLibraries, pushPackage, remoteNotificationMode } from "./push/config.ts";
+// The `with*` functions are plain exports of that CommonJS module, which Node's loader names. `AndroidConfig` is not: Expo defines it with a getter, which the CommonJS lexer of Node before 24
+// does not see ("Named export 'AndroidConfig' not found"), so its values come from the default import, which is the module's exports in every loader (Node, Bun, the bundle); its types stay a named import.
+import type { AndroidConfig } from "expo/config-plugins.js";
+import configPlugins, { withAndroidColors, withAndroidManifest, withAppDelegate, withDangerousMod, withStringsXml } from "expo/config-plugins.js";
+import { apsEnvironmentEntitlement, checkPushConfig, findPushSecret, googleServicesPackages, otherPushLibraries, pushIsOn, pushPackage, pushSecretMessage, remoteNotificationMode } from "./push/config.ts";
+
+const { AndroidConfig: expoAndroid } = configPlugins;
 
 // Defined in `push/config.ts` now, which the doctor loads without Expo; they stay importable from here.
 export { findPushSecret, pushPackage };
@@ -200,8 +208,10 @@ export const defaultPushChannel = { id: "default", name: "Notifications" } as co
 /**
  * What the plugin writes into the Android manifest, which is how the native code reads it (PUSH.md): the first three are Firebase's own, read when it shows a
  * notification itself (the app in the background); the channel's id, name and description are the module's, for the channel it creates, and always written
- * (defaults for what the app leaves out). A `<meta-data android:value>` that looks like a number reads back as a number (`Bundle.getString` is then `null`), so
- * the native code reads them with `Bundle.get(name)?.toString()`.
+ * (defaults for what the app leaves out). The icon and the color are references to resources of the app (`android:resource`) and the channel's texts are references
+ * to string resources (`android:value="@string/…"`, `pushResources`): a text written into `android:value` itself is read by the resource compiler, which takes a text that
+ * looks like a number (`007`), a boolean (`true`), a color (`#fff`) or a reference (`@null`, `?what`) for one, and the native code would read another text back. A
+ * reference to a string resource reads back as the string, character for character; the native code reads them with `Bundle.get(name)?.toString()`.
  */
 export const pushMetaData = {
   icon: "com.google.firebase.messaging.default_notification_icon",
@@ -212,8 +222,17 @@ export const pushMetaData = {
   channelDescription: "expo.modules.sveltepush.channel_description",
 } as const;
 
-/** The icon's file in `res/drawable` (without its extension) and the color's name in `res/values/colors.xml`: fixed, so the manifest and the file agree. */
-export const pushResources = { icon: "svelte_push_icon", color: "svelte_push_color" } as const;
+/**
+ * The resources the capability writes into the Android project, by fixed names so that the manifest and the files agree and a later prebuild finds what an earlier one
+ * wrote: the icon's file in `res/drawable` (without its extension), the color's name in `res/values/colors.xml`, and the three texts of the channel in `res/values/strings.xml`.
+ */
+export const pushResources = {
+  icon: "svelte_push_icon",
+  color: "svelte_push_color",
+  channelId: "svelte_push_channel_id",
+  channelName: "svelte_push_channel_name",
+  channelDescription: "svelte_push_channel_description",
+} as const;
 
 /** What `capabilities.push` says once it has been checked. */
 export type PushSettings = {
@@ -221,26 +240,10 @@ export type PushSettings = {
   ios?: { mode: "development" | "production" };
 };
 
-const secretError = ({ where, what }: { where: string; what: string }) =>
-  new CapabilityConfigError(
-    `${where} is ${what}: a key that can send to every user must never be in the app or its build. Keep it in the server's environment (the FCM service account, the APNs .p8 with its key id and team id) and give the app identifiers only.`,
-  );
+const secretError = (secret: { where: string; what: string }) => new CapabilityConfigError(pushSecretMessage(secret));
 
 /** Why a file cannot be read: it is not there, or what the system said. */
 const unreadable = (error: unknown): string => ((error as NodeJS.ErrnoException).code === "ENOENT" ? "does not exist" : `cannot be read: ${error instanceof Error ? error.message : String(error)}`);
-
-/** `value` as an object of the config, or the refusal that says what the config takes there. */
-function section(value: unknown, where: string, example: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new CapabilityConfigError(`${where} takes an object: ${example}`);
-  return value as Record<string, unknown>;
-}
-
-/** A text of the config that is given: not empty, as the user or the build will read it. */
-function optionalText(value: unknown, where: string): string | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || value.trim() === "") throw new CapabilityConfigError(`${where} must be a text that is not empty.`);
-  return value;
-}
 
 /** Reads the Google services file and refuses one that is not the app's: a secret, a file that is not there or not JSON, and a Firebase project that has no Android app of this package. */
 function checkGoogleServicesFile(file: string, appPackage: string, projectRoot: string): void {
@@ -268,10 +271,9 @@ function checkGoogleServicesFile(file: string, appPackage: string, projectRoot: 
     );
 }
 
-/** Refuses an icon that is not a PNG, or not there, with the name of its option: the copy at prebuild would stop on a missing file with a bare ENOENT, and the resource compiler on another format with no word of the option. */
-function checkIcon(icon: string, projectRoot: string): void {
+/** Refuses an icon that is not there, with the name of its option: the copy at prebuild would stop on a missing file with a bare ENOENT. (That it is a PNG is `checkPushConfig`'s.) */
+function checkIconFile(icon: string, projectRoot: string): void {
   const name = `capabilities.push.android.icon ("${icon}")`;
-  if (!/\.png$/i.test(icon)) throw new CapabilityConfigError(`${name} must be a PNG file: the notification's small icon, white on a transparent background.`);
   const path = resolve(projectRoot, icon);
   let isFile: boolean;
   try {
@@ -282,64 +284,29 @@ function checkIcon(icon: string, projectRoot: string): void {
   if (!isFile) throw new CapabilityConfigError(`${name} is not a file (${path}): point it at the PNG of the notification's small icon.`);
 }
 
-function pushIosSettings(value: unknown): NonNullable<PushSettings["ios"]> {
-  const ios = section(value, "capabilities.push.ios", '`ios: { mode: "production" }`');
-  if (ios.mode !== "development" && ios.mode !== "production")
-    throw new CapabilityConfigError(
-      'capabilities.push.ios.mode must be "development" or "production": it is the aps-environment entitlement, "development" for a build signed for development and "production" for TestFlight and the App Store.',
-    );
-  return { mode: ios.mode };
-}
-
-function pushAndroidSettings(value: unknown, appPackage: string | undefined, projectRoot: string): NonNullable<PushSettings["android"]> {
-  const android = section(value, "capabilities.push.android", '`android: { googleServicesFile: "./google-services.json" }`');
-  const file = android.googleServicesFile;
-  if (typeof file !== "string" || file.trim() === "")
-    throw new CapabilityConfigError(
-      'capabilities.push.android needs googleServicesFile, the path of the Firebase project\'s google-services.json (Firebase console, Project settings, your Android app): `android: { googleServicesFile: "./google-services.json" }`. ' +
-        "Leave `android` out for an app that has no push on Android.",
-    );
-  if (!appPackage) throw new CapabilityConfigError("capabilities.push.android needs android.package in the Expo config: the Google services file is checked against it, and Firebase delivers to that package.");
-  checkGoogleServicesFile(file, appPackage, projectRoot);
-  const settings: NonNullable<PushSettings["android"]> = { googleServicesFile: file, channel: { ...defaultPushChannel } };
-  const icon = optionalText(android.icon, "capabilities.push.android.icon");
-  if (icon !== undefined) {
-    checkIcon(icon, projectRoot);
-    settings.icon = icon;
-  }
-  const color = optionalText(android.color, "capabilities.push.android.color");
-  if (color !== undefined) {
-    if (!/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color))
-      throw new CapabilityConfigError(`capabilities.push.android.color ("${color}") must be a hex color such as "#0a7f5a": the notification's accent color.`);
-    settings.color = color;
-  }
-  if (android.channel !== undefined) {
-    const channel = section(android.channel, "capabilities.push.android.channel", '`channel: { name: "Updates" }`');
-    if (typeof channel.name !== "string" || channel.name.trim() === "")
-      throw new CapabilityConfigError('capabilities.push.android.channel needs a name, as the user will read it in the app\'s notification settings: `channel: { name: "Updates" }`.');
-    const description = optionalText(channel.description, "capabilities.push.android.channel.description");
-    settings.channel = {
-      id: optionalText(channel.id, "capabilities.push.android.channel.id") ?? defaultPushChannel.id,
-      name: channel.name,
-      ...(description === undefined ? {} : { description }),
-    };
-  }
-  return settings;
-}
-
 /**
- * Checks `capabilities.push` (already known not to be off, and to hold no secret) and returns what it says. Reads the Google services file and the icon, from the
- * app's directory, so that a file that is not there stops the prebuild here, with its path, and not in a Gradle log. Throws a `CapabilityConfigError`.
+ * Checks `capabilities.push` (already known not to be off, and to hold no secret) and returns what it says. The shape is `checkPushConfig`'s, the one the doctor checks too; this reads
+ * the Google services file and the icon, from the app's directory, so that a file that is not there stops the prebuild here, with its path, and not in a Gradle log. Throws a
+ * `CapabilityConfigError`.
  */
 export function pushSettings(push: unknown, appPackage: string | undefined, projectRoot: string): PushSettings {
-  const platforms = section(push, "capabilities.push", '`push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } }`, or `push: false`');
-  if (platforms.android === undefined && platforms.ios === undefined)
-    throw new CapabilityConfigError(
-      "capabilities.push names no platform: give `android` (its google-services.json), `ios` (its aps-environment mode) or both, or turn the capability off with `push: false` and uninstall @alfayez/svelte-native-push.",
-    );
+  const checked = checkPushConfig(push);
+  if ("problem" in checked) throw new CapabilityConfigError(checked.problem);
+  const { android, ios } = checked.config;
   const settings: PushSettings = {};
-  if (platforms.android !== undefined) settings.android = pushAndroidSettings(platforms.android, appPackage, projectRoot);
-  if (platforms.ios !== undefined) settings.ios = pushIosSettings(platforms.ios);
+  if (android) {
+    if (!appPackage) throw new CapabilityConfigError("capabilities.push.android needs android.package in the Expo config: the Google services file is checked against it, and Firebase delivers to that package.");
+    checkGoogleServicesFile(android.googleServicesFile, appPackage, projectRoot);
+    if (android.icon !== undefined) checkIconFile(android.icon, projectRoot);
+    const { id, name, description } = android.channel ?? {};
+    settings.android = {
+      googleServicesFile: android.googleServicesFile,
+      ...(android.icon === undefined ? {} : { icon: android.icon }),
+      ...(android.color === undefined ? {} : { color: android.color }),
+      channel: { id: id ?? defaultPushChannel.id, name: name ?? defaultPushChannel.name, ...(description === undefined ? {} : { description }) },
+    };
+  }
+  if (ios) settings.ios = ios;
   return settings;
 }
 
@@ -356,6 +323,14 @@ const holdTail = new RegExp(`\\n${escapeText(holdClose)}\\n${escapeText(holdEnd)
 const holdImportLine = new RegExp(`^${escapeText(holdImport)}\\n`, "m");
 
 /**
+ * `AppDelegate.swift` without what `applyPushAppDelegate` wrote (the wrapper of the template's call, and the import of the module that holds it): the template's own text again. A file that has
+ * none of it is returned as it is, so this is the whole of what an app that turned push off needs, and the first half of `applyPushAppDelegate`.
+ */
+export function removePushAppDelegate(contents: string): string {
+  return contents.replace(holdHead, "").replace(holdTail, "").replace(holdImportLine, "");
+}
+
+/**
  * `AppDelegate.swift` (iOS) for an app with push: rule 2 of PUSH.md, a push that wakes the app mounts no screen. Expo's template starts React Native's surface in
  * `application(_:didFinishLaunchingWithOptions:)`, which mounts the first screen, and iOS also runs that method when it launches the app in the background for a silent push,
  * where nobody can see the screen. The template's `factory.startReactNative(...)` call is wrapped in `SveltePushBackgroundLaunch.start` (`@alfayez/svelte-native-push`),
@@ -365,7 +340,7 @@ const holdImportLine = new RegExp(`^${escapeText(holdImport)}\\n`, "m");
  * what an older version wrote. Throws when the template has no such call, since a build that lost this silently would mount a screen in the background.
  */
 export function applyPushAppDelegate(contents: string): string {
-  const stripped = contents.replace(holdHead, "").replace(holdTail, "").replace(holdImportLine, "");
+  const stripped = removePushAppDelegate(contents);
   const imports = [...stripped.matchAll(/^(?:(?:internal|public|package|private|fileprivate) |@_exported |@preconcurrency )*import [\w.]+[ \t]*$/gm)];
   const lastImport = imports.at(-1);
   const call = /^[ \t]*factory\.startReactNative\([^)]*\)[ \t]*$/m.exec(stripped);
@@ -432,17 +407,85 @@ function setMetaData(application: AndroidConfig.Manifest.ManifestApplication, na
 }
 
 /**
+ * Takes out of the application element what `applyPushManifest` wrote, and nothing else: the module's own meta-data (its names are ours), and Firebase's icon, color and channel only when
+ * they name what the capability wrote (the icon and color resources, the channel's id string; or, for the channel, the id as text beside the module's own entry, as an earlier version
+ * wrote it). An app that set one of Firebase's defaults itself keeps it, whatever the capability says.
+ */
+export function removePushManifest(application: AndroidConfig.Manifest.ManifestApplication): void {
+  const items = application["meta-data"];
+  if (items === undefined) return;
+  const content = (item: { $: Record<string, string | undefined> }) => item.$["android:value"] ?? item.$["android:resource"];
+  const channelId = items.map((item) => (item.$["android:name"] === pushMetaData.channelId ? content(item) : undefined)).find((value) => value !== undefined);
+  const ours = (item: (typeof items)[number]): boolean => {
+    switch (item.$["android:name"]) {
+      case pushMetaData.channelId:
+      case pushMetaData.channelName:
+      case pushMetaData.channelDescription:
+        return true;
+      case pushMetaData.icon:
+        return content(item) === `@drawable/${pushResources.icon}`;
+      case pushMetaData.color:
+        return content(item) === `@color/${pushResources.color}`;
+      case pushMetaData.firebaseChannel:
+        return content(item) === `@string/${pushResources.channelId}` || (channelId !== undefined && content(item) === channelId);
+      default:
+        return false;
+    }
+  };
+  application["meta-data"] = items.filter((item) => !ours(item));
+}
+
+/**
  * The manifest entries push reads: Firebase's default icon, color and channel (the first two only when the app gives them) and the module's channel, with its
- * defaults. The messaging service and `POST_NOTIFICATIONS` are static, so the library's own manifest declares them.
+ * defaults, the texts as references to the string resources of `applyPushStrings` (`pushMetaData`). What an earlier prebuild wrote is taken away first, so that a description,
+ * an icon or a color the config no longer has is not kept. The messaging service and `POST_NOTIFICATIONS` are static, so the library's own manifest declares them.
  */
 export function applyPushManifest(application: AndroidConfig.Manifest.ManifestApplication, android: NonNullable<PushSettings["android"]>): void {
+  removePushManifest(application);
   if (android.icon !== undefined) setMetaData(application, pushMetaData.icon, "resource", `@drawable/${pushResources.icon}`);
   if (android.color !== undefined) setMetaData(application, pushMetaData.color, "resource", `@color/${pushResources.color}`);
   // Without it a notification the system shows (the app in the background) goes to Firebase's own "Miscellaneous" channel, not to the app's.
-  setMetaData(application, pushMetaData.firebaseChannel, "value", android.channel.id);
-  setMetaData(application, pushMetaData.channelId, "value", android.channel.id);
-  setMetaData(application, pushMetaData.channelName, "value", android.channel.name);
-  if (android.channel.description !== undefined) setMetaData(application, pushMetaData.channelDescription, "value", android.channel.description);
+  setMetaData(application, pushMetaData.firebaseChannel, "value", `@string/${pushResources.channelId}`);
+  setMetaData(application, pushMetaData.channelId, "value", `@string/${pushResources.channelId}`);
+  setMetaData(application, pushMetaData.channelName, "value", `@string/${pushResources.channelName}`);
+  if (android.channel.description !== undefined) setMetaData(application, pushMetaData.channelDescription, "value", `@string/${pushResources.channelDescription}`);
+}
+
+/**
+ * `text` as the content of a `<string>` of `res/values/strings.xml` that the resource compiler (aapt2) reads back as exactly `text`: in double quotes (so that its spaces are kept, not trimmed
+ * and collapsed), with `\` and `"` escaped, a line break and a tab as their escapes, any other control character as `\uXXXX`, and a leading `@` or `?` escaped (it would be a reference). The
+ * string is written with `formatted="false"` (`applyPushStrings`), so a `%` in the text is a `%`. (The XML's own escaping of `&` and `<` is the writer's.)
+ */
+export function androidStringText(text: string): string {
+  const escaped = text
+    .replace(/[\\"]/g, "\\$&")
+    .replace(/^[@?]/, "\\$&")
+    .replace(/\p{Cc}/gu, (char) => (char === "\n" ? "\\n" : char === "\t" ? "\\t" : `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`));
+  return `"${escaped}"`;
+}
+
+const channelStringNames = [pushResources.channelId, pushResources.channelName, pushResources.channelDescription];
+
+/** Takes the channel's string resources out of `strings.xml`: the names are ours. */
+export function removePushStrings(strings: AndroidConfig.Resources.ResourceXML): AndroidConfig.Resources.ResourceXML {
+  for (const name of channelStringNames) expoAndroid.Strings.removeStringItem(name, strings);
+  return strings;
+}
+
+/**
+ * The channel's id, name and description as string resources, which the manifest's meta-data refer to (`pushMetaData`): a text in a resource reaches the native code exactly as the config has it
+ * (`androidStringText`), where the same text in `android:value` would be read by the resource compiler for a number, a boolean, a color or a reference. They are `translatable="false"`, which also
+ * keeps Expo from escaping and unescaping them a second time (it does so for the strings it reads and writes), and `formatted="false"`.
+ */
+export function applyPushStrings(strings: AndroidConfig.Resources.ResourceXML, channel: NonNullable<PushSettings["android"]>["channel"]): AndroidConfig.Resources.ResourceXML {
+  removePushStrings(strings);
+  const entries: [string, string | undefined][] = [[pushResources.channelId, channel.id], [pushResources.channelName, channel.name], [pushResources.channelDescription, channel.description]];
+  const items = entries.flatMap(([name, text]): AndroidConfig.Resources.ResourceItemXML[] => {
+    if (text === undefined) return [];
+    const attributes = { name, translatable: "false", formatted: "false" };
+    return [{ $: attributes, _: androidStringText(text) }];
+  });
+  return expoAndroid.Strings.setStringItem(items, strings);
 }
 
 /** Copies the notification icon into the Android project's `res/drawable`, under the fixed name the manifest names. */
@@ -452,38 +495,73 @@ export async function copyPushIcon(source: string, platformProjectRoot: string):
   await copyFile(source, join(directory, `${pushResources.icon}.png`));
 }
 
+/** Deletes the icon an earlier prebuild copied (its name is ours), for an app whose config has none now. */
+export async function removePushIcon(platformProjectRoot: string): Promise<void> {
+  await rm(join(platformProjectRoot, "app/src/main/res/drawable", `${pushResources.icon}.png`), { force: true });
+}
+
 /**
  * The Android side. Expo's own prebuild does the Firebase part when `android.googleServicesFile` is set (`AndroidConfig.GoogleServices`: it copies the file to
  * `android/app/google-services.json` and applies the `com.google.gms.google-services` Gradle plugin), so the capability sets that and writes the rest: the manifest's
- * entries, the color and the icon file.
+ * entries, the channel's strings, the color and the icon file. Without `android` (the capability is off, or the config names no Android side) it writes nothing and takes away what an
+ * earlier prebuild wrote: all of it is under names that are ours. Not `android.googleServicesFile`, the copy of the file and the Gradle plugin: nothing in the project says whose they
+ * are, and with no Firebase library left they do no harm.
  */
-function withPushAndroid(config: ExpoConfig, android: NonNullable<PushSettings["android"]>, projectRoot: string): ExpoConfig {
-  const existing = config.android?.googleServicesFile;
-  if (existing !== undefined && resolve(projectRoot, existing) !== resolve(projectRoot, android.googleServicesFile))
-    throw new CapabilityConfigError(
-      `The app config sets android.googleServicesFile ("${existing}") and capabilities.push.android.googleServicesFile is "${android.googleServicesFile}": keep one. capabilities.push.android.googleServicesFile sets android.googleServicesFile.`,
-    );
-  config = { ...config, android: { ...config.android, googleServicesFile: android.googleServicesFile } };
+function withPushAndroid(config: ExpoConfig, android: NonNullable<PushSettings["android"]> | undefined, projectRoot: string): ExpoConfig {
+  if (android) {
+    const existing = config.android?.googleServicesFile;
+    if (existing !== undefined && resolve(projectRoot, existing) !== resolve(projectRoot, android.googleServicesFile))
+      throw new CapabilityConfigError(
+        `The app config sets android.googleServicesFile ("${existing}") and capabilities.push.android.googleServicesFile is "${android.googleServicesFile}": keep one. capabilities.push.android.googleServicesFile sets android.googleServicesFile.`,
+      );
+    config = { ...config, android: { ...config.android, googleServicesFile: android.googleServicesFile } };
+  }
   config = withAndroidManifest(config, (config) => {
-    applyPushManifest(AndroidConfig.Manifest.getMainApplicationOrThrow(config.modResults), android);
+    if (android) applyPushManifest(expoAndroid.Manifest.getMainApplicationOrThrow(config.modResults), android);
+    else {
+      const application = expoAndroid.Manifest.getMainApplication(config.modResults);
+      if (application) removePushManifest(application);
+    }
     return config;
   });
-  const { color, icon } = android;
-  if (color !== undefined)
-    config = withAndroidColors(config, (config) => {
-      config.modResults = AndroidConfig.Colors.assignColorValue(config.modResults, { name: pushResources.color, value: color });
-      return config;
-    });
-  if (icon !== undefined)
-    config = withDangerousMod(config, ["android", async (config) => {
-      await copyPushIcon(resolve(config.modRequest.projectRoot, icon), config.modRequest.platformProjectRoot);
-      return config;
-    }]);
-  return config;
+  config = withStringsXml(config, (config) => {
+    config.modResults = android ? applyPushStrings(config.modResults, android.channel) : removePushStrings(config.modResults);
+    return config;
+  });
+  config = withAndroidColors(config, (config) => {
+    // Sets the color, or takes the one of an earlier prebuild away when the config has none.
+    config.modResults = expoAndroid.Colors.assignColorValue(config.modResults, { name: pushResources.color, value: android?.color });
+    return config;
+  });
+  const icon = android?.icon;
+  return withDangerousMod(config, ["android", async (config) => {
+    if (icon === undefined) await removePushIcon(config.modRequest.platformProjectRoot);
+    else await copyPushIcon(resolve(config.modRequest.projectRoot, icon), config.modRequest.platformProjectRoot);
+    return config;
+  }]);
+}
+
+/**
+ * Takes the push wrapper out of `AppDelegate.swift` (`removePushAppDelegate`) of an app that has no push on iOS (the capability is off, or names no iOS side), when it has an iOS project at all:
+ * the wrapper imports the module of `@alfayez/svelte-native-push`, so an app that uninstalled the package and prebuilt without `--clean` would otherwise stop on "No such module 'SveltePush'".
+ * The entitlement and the background mode stay: they are in `Info.plist` and the entitlements file with nothing that says the capability wrote them, and the app's own config or another
+ * library's plugin may be the one that wants them.
+ */
+function withoutPushIos(config: ExpoConfig, context: Context): ExpoConfig {
+  if (!existsSync(join(context.projectRoot, "ios"))) return config;
+  return withAppDelegate(config, (config) => {
+    if (config.modResults.language === "swift") config.modResults.contents = removePushAppDelegate(config.modResults.contents);
+    return config;
+  });
+}
+
+/** What `withPushAndroid` takes away for an app that has no push on Android, when it has an Android project at all (a project that does not exist has nothing of an earlier prebuild). */
+function withoutPushAndroid(config: ExpoConfig, context: Context): ExpoConfig {
+  return existsSync(join(context.projectRoot, "android")) ? withPushAndroid(config, undefined, context.projectRoot) : config;
 }
 
 function withPush(config: ExpoConfig, push: Capabilities["push"], context: Context): ExpoConfig {
-  const on = push !== undefined && push !== null && push !== false;
+  const on = pushIsOn(push);
   const installed = context.linked.has(pushPackage);
   if (!on) {
     if (installed)
@@ -492,7 +570,8 @@ function withPush(config: ExpoConfig, push: Capabilities["push"], context: Conte
           'turn push on in the @alfayez/svelte-native plugin, `plugins: [["@alfayez/svelte-native", { capabilities: { push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } } } }]]`, ' +
           `or uninstall ${pushPackage}.`,
       );
-    return config;
+    // The refusal above tells an app to uninstall the package: the prebuild after that, which keeps the native projects, finds what the earlier one wrote and takes it away.
+    return withoutPushAndroid(withoutPushIos(config, context), context);
   }
   const secret = findPushSecret(push, "capabilities.push");
   if (secret) throw secretError(secret);
@@ -510,7 +589,6 @@ function withPush(config: ExpoConfig, push: Capabilities["push"], context: Conte
         `Uninstall ${other}, or turn the push capability off and uninstall ${pushPackage}.`,
     );
   const settings = pushSettings(push, config.android?.package, context.projectRoot);
-  if (settings.ios) config = withPushIos(config, settings.ios.mode);
-  if (settings.android) config = withPushAndroid(config, settings.android, context.projectRoot);
-  return config;
+  config = settings.ios ? withPushIos(config, settings.ios.mode) : withoutPushIos(config, context);
+  return settings.android ? withPushAndroid(config, settings.android, context.projectRoot) : withoutPushAndroid(config, context);
 }

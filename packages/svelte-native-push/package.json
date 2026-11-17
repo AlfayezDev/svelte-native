@@ -12,6 +12,7 @@
     "LICENSE",
     "!android/build",
     "!android/.gradle",
+    "!android/src/test",
     "!ios/build",
     "!ios/Pods"
   ],

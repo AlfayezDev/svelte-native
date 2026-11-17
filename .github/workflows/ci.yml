@@ -164,6 +164,12 @@ jobs:
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bash packages/svelte-native/native/svelte-core/android/src/test/blur.sh
 
+      # The Android side of push that needs no device: the message mapping, the launch-message and opened rule, the de-duplication of taps, the events kept for a
+      # JavaScript that is not listening, the background wait and its limit, and that the module, manifest and config plugin agree with src/push/client.ts. kotlinc only.
+      - name: Push host checks
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bash packages/svelte-native-push/android/src/test/push.sh
+
   docs:
     name: Documentation site
     runs-on: ubuntu-latest

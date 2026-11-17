@@ -11,7 +11,8 @@
           "expo.modules.svelteblur.SvelteBlurModule",
           "expo.modules.sveltecore.SvelteFetchModule",
           "expo.modules.sveltecore.SvelteClipboardModule",
-          "expo.modules.sveltepush.SveltePushModule"
+          "expo.modules.sveltepush.SveltePushModule",
+          "expo.modules.sveltelocation.SvelteLocationModule"
         ]
       }
     ]

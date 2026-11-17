@@ -87,7 +87,7 @@ android {
 }
 
 // The library's native code, one Gradle project: the engine (Kotlin and the C++ of CMakeLists.txt), the update store, the blur view, the
-// web APIs (fetch and Blob, the clipboard) and push. Each keeps its Kotlin package; the namespace (R, BuildConfig) is this project's.
+// web APIs (fetch and Blob, the clipboard, location) and push. Each keeps its Kotlin package; the namespace (R, BuildConfig) is this project's.
 dependencies {
   // React Native's own dependency list carries OkHttp and Okio as `api`, at the versions its networking is built against (fetch).
   implementation 'com.facebook.react:react-android'
@@ -100,6 +100,7 @@ dependencies {
   // `tests/package/push-native.test.ts` compares), and nothing here loads a Firebase class while push is off (`PushManifest.enabled`). An exact version: a message is delivered by this library's
   // service, and an app should get the one the library was exercised on. (Google's Maven, 11 Nov 2026.)
   compileOnly 'com.google.firebase:firebase-messaging:26.0.2'
+  // Also location's: the platform's own LocationManager through LocationManagerCompat (`expo.modules.sveltelocation`), with no Google library, so it works on a phone without Google services.
   implementation "androidx.core:core-ktx:1.17.0"
   implementation "androidx.annotation:annotation:1.9.1"
   implementation "androidx.activity:activity:1.10.1"

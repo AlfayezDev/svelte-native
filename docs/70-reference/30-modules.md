@@ -136,7 +136,7 @@ Over-the-air updates, compatible with `eas update`: `isEnabled`, `updateId`, `ch
 
 ## @alfayez/svelte-native/push
 
-Push notifications on the device, with `@alfayez/svelte-native-push` installed. [Push notifications](push-notifications)
+Push notifications on the device, once `capabilities.push` turns them on. [Push notifications](push-notifications)
 
 | Export | Description |
 | --- | --- |

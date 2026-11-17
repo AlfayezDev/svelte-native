@@ -111,28 +111,29 @@ Run it after an install that went wrong, after an upgrade, and before you report
 
 ### The push section
 
-An app has push when `@alfayez/svelte-native-push` is one of its dependencies or is installed, or when its `app.json` turns `capabilities.push` on. For any other app the doctor prints no push lines at all. The section reads files and runs nothing, like the rest of the doctor:
+An app has push when its `app.json` turns `capabilities.push` on, or, for an app whose config is code, when the last prebuild turned push on (the flags it writes in the Android manifest and the iOS `Info.plist`). For any other app the doctor prints no push lines at all. The section reads files and runs nothing, like the rest of the doctor:
 
 ```
 push
-  pass  @alfayez/svelte-native-push 0.4.0-rc.8 is a dependency of the app and matches @alfayez/svelte-native 0.4.0-rc.8
   pass  no other push library (expo-notifications, @react-native-firebase/messaging) is installed
   pass  app.json turns capabilities.push on (android, ios)
   pass  google-services.json is JSON and holds no server secret (Firebase project my-app)
   pass  google-services.json has a client for the app's package "dev.example.app"
   pass  ios/App/App.entitlements has aps-environment production
   pass  ios/App/Info.plist lists remote-notification in UIBackgroundModes
+  pass  the last prebuild turned push on for android: android/app/src/main/AndroidManifest.xml (expo.modules.sveltepush.enabled)
+  pass  the last prebuild turned push on for ios: ios/…/Info.plist (SveltePushEnabled)
 ```
 
 | Check | Fails when |
 | --- | --- |
-| The package | `@alfayez/svelte-native-push` isn't installed, is a different version from the library (they're released together: install the same tag), or is installed but isn't one of the app's own dependencies (autolinking links only those). |
-| One push library | `expo-notifications` or `@react-native-firebase/messaging` is installed beside it. |
-| The capability | `app.json` lists the plugin without `capabilities.push`, which the prebuild refuses too. |
+| One push library | `expo-notifications` or `@react-native-firebase/messaging` is installed while `capabilities.push` is on. |
+| The capability | `capabilities.push` in `app.json` is what the config plugin refuses (a secret, no platform named, a malformed `android` or `ios`), with the plugin's own message; `????` when an `app.config.*` may change it. |
 | The Google services file | It's a server secret (`"type": "service_account"`, a `private_key`, a PEM key): the fix says to delete it, revoke the key, and keep it in the server's environment. Or it isn't JSON, or isn't where the config says. |
 | Its client | It has no client for the app's Android package (`android.package` in `app.json`, else `applicationId` in `android/app/build.gradle` after a prebuild). |
 | The entitlement | After a prebuild (an `ios/` folder), the app's `.entitlements` has no `aps-environment`, or has another mode from `capabilities.push.ios.mode`: the prebuild is older than the config. |
 | The background mode | After a prebuild, `Info.plist` has no `remote-notification` in `UIBackgroundModes`. |
+| The prebuild | A platform `capabilities.push` names whose native project the last prebuild wrote without push (no `expo.modules.sveltepush.enabled` in the Android manifest, or no `SveltePushEnabled` in `Info.plist`): prebuild again. |
 
 The doctor can't run `app.config.ts`. It finds the Google services file the way it can: the one `app.json` names (`capabilities.push.android.googleServicesFile`, or `android.googleServicesFile`), else a `google-services*.json` in the app's directory, else the prebuild's copy in `android/app/`. When the config is code and there is no such file, the line is `????` (it couldn't tell) with the fix. With no `ios/` folder yet, the iOS checks are `skip`.
 

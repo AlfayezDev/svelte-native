@@ -190,7 +190,7 @@ export default {
 | `remote` | `{ origin, base?, appDir? }`: the SvelteKit server your [remote functions](loading-data#remote-functions) call. An `http:` origin also allows plain HTTP to it. |
 | `androidOnDemandViewManagers` | Android: create a package's views on first use instead of at startup, by the package's class name: `{ "com.brentvatne.react.ReactVideoPackage": ["RCTVideo"] }`. Shortens startup when you link libraries with many views. |
 | `autolinkingExclude` | Packages and local modules to leave out of this build's native code. |
-| `capabilities` | What needs a permission or a service of the system, each on once you give what it needs. `{ location: 'Shows the stores near you.' }` turns on `navigator.geolocation`, with expo-location installed ([Geolocation](web-apis#geolocation)). `{ push: { … } }` turns on push notifications, with `@alfayez/svelte-native-push` installed (below). |
+| `capabilities` | What needs a permission or a service of the system, each on once you give what it needs. `{ location: 'Shows the stores near you.' }` turns on `navigator.geolocation`, with expo-location installed ([Geolocation](web-apis#geolocation)). `{ push: { … } }` turns on push notifications (below). |
 
 Run `expo prebuild` after changing the plugin's options ([Development builds](development-builds#when-to-run-expo-prebuild)).
 
@@ -237,7 +237,6 @@ At least one of `android` and `ios` is needed, and a platform that isn't named i
 
 The prebuild stops, with a message that says what to do ([Troubleshooting](troubleshooting#push-notifications)), when:
 
-- `capabilities.push` is on and `@alfayez/svelte-native-push` isn't installed or is left out of autolinking, or the package is installed and the capability is off;
 - `expo-notifications` or `@react-native-firebase/messaging` is installed beside it: an app has one push library;
 - the Google services file is missing, isn't JSON, or has no client for the app's `android.package`;
 - the config or the Google services file holds a server secret: a service account key, a PEM private key, or the path of a `.p8` file. Those belong to the server's environment;

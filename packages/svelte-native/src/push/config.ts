@@ -5,7 +5,11 @@
  * Expo installed yet.
  */
 
-/** The native code of push: an Expo module of its own, so that Firebase is in the apps that use push and in no other. */
+/**
+ * TRANSITIONAL: the name of the separate package that push's native code used to be, which no longer exists (it is part of svelte-core, and the plugin turns it on). Only the doctor
+ * (`doctor/push.ts`) and the Metro config (`metro.ts`) still import it, and they are being changed to read the module's `enabled` constant and the app's config instead; delete this
+ * constant with their last use. The config plugin does not use it.
+ */
 export const pushPackage = "@alfayez/svelte-native-push";
 
 /**
@@ -134,7 +138,7 @@ export function checkPushConfig(push: unknown): { config: PushConfig } | { probl
     const platforms = section(push, "capabilities.push", '`push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } }`, or `push: false`');
     if (platforms.android === undefined && platforms.ios === undefined)
       return refuse(
-        "capabilities.push names no platform: give `android` (its google-services.json), `ios` (its aps-environment mode) or both, or turn the capability off with `push: false` and uninstall @alfayez/svelte-native-push.",
+        "capabilities.push names no platform: give `android` (its google-services.json), `ios` (its aps-environment mode) or both, or turn the capability off with `push: false`.",
       );
     const config: PushConfig = {};
     if (platforms.android !== undefined) config.android = readAndroid(platforms.android);

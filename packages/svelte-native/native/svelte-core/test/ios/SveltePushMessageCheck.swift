@@ -1,7 +1,8 @@
 import Foundation
 
 // Host check of what push maps from the system's words to the module's: an APNs payload to a `SveltePushMessage` (`SveltePushPayload`) and a provisioning profile to the
-// `aps-environment` of the build (`SveltePushEnvironment`). Plain Foundation, no app and no phone: `message.sh` compiles it with the two Swift files as the program's `main.swift`.
+// `aps-environment` of the build (`SveltePushEnvironment`), and what turns the native code on (`SveltePushFlag`, from the Info.plist). Plain Foundation, no app and no phone: `message.sh`
+// compiles it with the three Swift files as the program's `main.swift`.
 
 var checks = 0
 func expect<T: Equatable>(_ what: String, _ actual: T, _ wanted: T) {
@@ -90,5 +91,19 @@ expect("a profile without the entitlement", SveltePushEnvironment.apsEnvironment
 expect("an environment that is neither", SveltePushEnvironment.apsEnvironment(inProfile: profile("<key>aps-environment</key><string>sandbox</string>")), nil)
 expect("bytes with no property list", SveltePushEnvironment.apsEnvironment(inProfile: Data([0x30, 0x82, 0x0a, 0xff])), nil)
 expect("a property list that is cut off", SveltePushEnvironment.apsEnvironment(inProfile: Data("<?xml version=\"1.0\"?><plist><dict>".utf8)), nil)
+
+// The flag: SvelteCore is in every app, so everything push does asks it first, and only the boolean the config plugin writes turns push on.
+func infoPlist(_ entries: String) -> [String: Any]? {
+  let list = #"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>\#(entries)</dict></plist>"#
+  return try? PropertyListSerialization.propertyList(from: Data(list.utf8), options: [], format: nil) as? [String: Any]
+}
+expect("the Info.plist key the config plugin writes", SveltePushFlag.infoPlistKey, "SveltePushEnabled")
+expect("true is on", SveltePushFlag.isOn(true), true)
+expect("false is off", SveltePushFlag.isOn(false), false)
+expect("no entry is off", SveltePushFlag.isOn(nil), false)
+expect("a text is off", SveltePushFlag.isOn("true"), false)
+expect("the property list's <true/> is on", SveltePushFlag.isOn(infoPlist("<key>SveltePushEnabled</key><true/>")?[SveltePushFlag.infoPlistKey]), true)
+expect("the property list's <false/> is off", SveltePushFlag.isOn(infoPlist("<key>SveltePushEnabled</key><false/>")?[SveltePushFlag.infoPlistKey]), false)
+expect("a property list without the key is off", SveltePushFlag.isOn(infoPlist("<key>UIBackgroundModes</key><array><string>remote-notification</string></array>")?[SveltePushFlag.infoPlistKey]), false)
 
 FileHandle.standardError.write(Data("SveltePushMessageCheck: \(checks) checks passed\n".utf8))

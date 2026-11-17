@@ -77,9 +77,15 @@ final class SveltePushCenter: NSObject, UNUserNotificationCenterDelegate {
 
   // MARK: - The module
 
-  /// A module made by an app context is the one that sends the events. A reload makes a new module while the old one is still going away, so the newest wins.
+  /// A module made by an app context is the one that sends the events. A reload makes a new module while the old one is still going away, so the newest wins, and it
+  /// starts with no listeners: the old module's `detach` finds another module attached and leaves `observed` alone, so what the old JavaScript listened to would otherwise
+  /// stand for the new one, whose events would go to nobody (a `background` event dropped that way holds the system's completion for 25 s). The new JavaScript adds its
+  /// own listeners, which delivers what is held meanwhile.
   func attach(_ module: SveltePushModule) {
-    lock.withLock { self.module = module }
+    lock.withLock {
+      self.module = module
+      observed.removeAll()
+    }
   }
 
   /// Forgets the module that is going away, and the listeners it had: the next module's JavaScript adds its own, which delivers what has been held meanwhile.

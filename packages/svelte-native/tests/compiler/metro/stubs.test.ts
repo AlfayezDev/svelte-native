@@ -3,7 +3,8 @@ import { createRequire } from "node:module";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
-import { isInPackage, stubCoreSource, stubSource, withSvelteNative } from "../../../src/metro.ts";
+import { hasPushPackage, isInPackage, stubCoreSource, stubSource, withSvelteNative } from "../../../src/metro.ts";
+import { sourceFile } from "../../../src/package-root.ts";
 import { type RealResolver, fakeConfig, resolveFrom, watchUntouched } from "../../support/metro.ts";
 import { createProject } from "../../support/project.ts";
 
@@ -145,5 +146,30 @@ describe("what a stub does", () => {
     expect(() => module()).toThrow(message);
     expect(() => new (module as unknown as new () => unknown)()).toThrow(message);
     expect(typeof module[Symbol.iterator as unknown as string]).toBe("undefined");
+  });
+});
+
+describe("an app without @alfayez/svelte-native-push bundles push's stand-in, not its client", () => {
+  // The library's own file, as Metro finds it from `push/load.ts` and from the `./push` entry.
+  const library: RealResolver = (context, moduleName) => ({ type: "sourceFile", filePath: moduleName.startsWith(".") ? join(dirname(context.originModulePath), moduleName) : `/real/${moduleName}` });
+  const fromLoad = sourceFile("push/load.ts");
+
+  test("without the package, the client resolves to the stand-in, by any import of it; nothing else moves", () => {
+    using project = createProject({}, "metro-push-");
+    const config = withSvelteNative(fakeConfig(project.directory), {});
+    expect(hasPushPackage(project.directory)).toBe(false);
+    expect(resolveFrom(config, fromLoad, "./push.svelte.ts", library)).toBe(sourceFile("push/absent.ts"));
+    expect(resolveFrom(config, sourceFile("push/index.ts"), "./push.svelte.ts", library)).toBe(sourceFile("push/absent.ts"));
+    expect(resolveFrom(config, fromLoad, "./client.ts", library)).toBe(sourceFile("push/client.ts"));
+    // A file of the app's own with the same name is the app's.
+    expect(resolveFrom(config, project.path("src/lib/a.ts"), "./push.svelte.ts", library)).toBe(project.path("src/lib/push.svelte.ts"));
+  });
+
+  test("with the package installed, the client is the client", () => {
+    using project = createProject({}, "metro-push-");
+    project.write("node_modules/@alfayez/svelte-native-push/package.json", JSON.stringify({ name: "@alfayez/svelte-native-push", version: "0.0.0" }));
+    const config = withSvelteNative(fakeConfig(project.directory), {});
+    expect(hasPushPackage(project.directory)).toBe(true);
+    expect(resolveFrom(config, fromLoad, "./push.svelte.ts", library)).toBe(sourceFile("push/push.svelte.ts"));
   });
 });

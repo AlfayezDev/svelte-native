@@ -79,4 +79,6 @@ export declare function stubSource(name: string, variant: string): string;
 /** Whether [moduleName] is [name] or a path inside it. */
 export declare const isInPackage: (moduleName: string, name: string) => boolean;
 export declare function libraryChanged(projectRoot: string, library?: string): boolean;
+/** Whether the app has `@alfayez/svelte-native-push`: resolved from the app's directory, as Expo's autolinking finds it. */
+export declare function hasPushPackage(projectRoot: string): boolean;
 export declare function withSvelteNative(config: ConfigT, options?: SvelteNativeMetroOptions): ConfigT;

@@ -32,7 +32,8 @@ const filesUnder = (directory: string): string[] =>
 
 describe("there is no package of its own for push", () => {
   test("the directory, the workspace's apps and the library's own manifest know nothing of `@alfayez/svelte-native-push`", () => {
-    expect(existsSync(join(repository, "packages/svelte-native-push"))).toBe(false);
+    // A checkout from before the move may keep the directory with only its ignored node_modules: no package.json is no package.
+    expect(existsSync(join(repository, "packages/svelte-native-push/package.json"))).toBe(false);
     for (const manifest of ["packages/svelte-native/package.json", "apps/example/package.json", "apps/qa/package.json", "package.json"]) {
       expect([manifest, readFileSync(join(repository, manifest), "utf8").includes("svelte-native-push")]).toEqual([manifest, false]);
     }

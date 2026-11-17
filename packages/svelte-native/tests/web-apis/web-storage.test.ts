@@ -162,6 +162,45 @@ describe("keys as properties, as a browser's storage has them", () => {
     expect(local[Symbol.iterator as unknown as string]).toBeUndefined();
   });
 
+  test("a symbol is an own property to reflection too, and a non-configurable one breaks nothing (#62)", () => {
+    const local = storage();
+    local.setItem("theme", "dark");
+    const mark = Symbol("mark");
+    local[mark as unknown as string] = "kept";
+    expect(Object.hasOwn(local, mark)).toBe(true);
+    expect(Object.getOwnPropertySymbols(local)).toEqual([mark]);
+    expect(Object.getOwnPropertyDescriptor(local, mark)).toEqual({ value: "kept", writable: true, enumerable: true, configurable: true });
+
+    const fixed = Symbol("fixed");
+    Object.defineProperty(local, fixed, { value: "tag" });
+    expect(Object.keys(local)).toEqual(["theme"]);
+    expect(JSON.stringify(local)).toBe('{"theme":"dark"}');
+    expect(Reflect.ownKeys(local)).toEqual(["theme", mark, fixed]);
+    expect(Object.getOwnPropertyDescriptor(local, fixed)).toEqual({ value: "tag", writable: false, enumerable: false, configurable: false });
+    expect(Reflect.deleteProperty(local, fixed)).toBe(false);
+    expect(local.getItem("theme")).toBe("dark");
+  });
+
+  test("the members are inherited, as from a browser's Storage.prototype: the object's own keys are its items and its symbols", () => {
+    const local = storage();
+    expect(Object.hasOwn(local, "getItem")).toBe(false);
+    expect(Object.hasOwn(local, "length")).toBe(false);
+    expect(Reflect.ownKeys(local)).toEqual([]);
+    expect(Object.getPrototypeOf(Object.getPrototypeOf(local))).toBe(Object.prototype);
+    // Each storage has its own members (they close over its backend), on a prototype of its own.
+    expect(Object.getPrototypeOf(local)).not.toBe(Object.getPrototypeOf(storage()));
+  });
+
+  test("it cannot be made non-extensible: Object.preventExtensions and Object.freeze throw, as for a browser's storage, and it keeps working", () => {
+    const local = storage();
+    local.setItem("a", "1");
+    expect(() => Object.preventExtensions(local)).toThrow(TypeError);
+    expect(() => Object.freeze(local)).toThrow(TypeError);
+    expect(Object.isExtensible(local)).toBe(true);
+    local.setItem("b", "2");
+    expect(Object.keys(local)).toEqual(["a", "b"]);
+  });
+
   test("defining a data property stores it; defining an accessor is a TypeError", () => {
     const local = storage();
     Object.defineProperty(local, "k", { value: 7 });

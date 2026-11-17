@@ -399,6 +399,15 @@ var FcmSender = class {
     if (response.status === 401 && this.#access?.token === access) this.#access = void 0;
     return fcmFailure(response.status, body, text, retryAfterOf(response.headers.get("retry-after")));
   }
+  /**
+   * Asks the token endpoint for an access token without sending anything: what `svelte-native doctor --server` checks the service account's key with. It resolves with the
+   * lifetime (seconds) of the token the endpoint gave, or with why there is none (`auth` for a key Google refuses: `invalid_grant`, with its description as the detail). The token
+   * is kept for the next send, and never returned.
+   */
+  async verify() {
+    const access = await this.#accessToken();
+    return typeof access === "string" ? { ok: true, expiresIn: this.#access?.lifetime ?? 0 } : access;
+  }
   /** The access token: the cached one while it has more than the margin left, else a new one that every send waiting for it shares. */
   #accessToken() {
     if (this.#access !== void 0 && this.#access.usableUntil > Date.now()) return Promise.resolve(this.#access.token);
@@ -435,7 +444,7 @@ var FcmSender = class {
     }
     if (!isRecord(body) || typeof body.access_token !== "string" || body.access_token === "") return failure("error", "The token endpoint answered without an access token.", response.status);
     const lifetime = typeof body.expires_in === "number" ? body.expires_in : ASSERTION_SECONDS;
-    this.#access = { token: body.access_token, usableUntil: Date.now() + lifetime * 1e3 - EXPIRY_MARGIN };
+    this.#access = { token: body.access_token, usableUntil: Date.now() + lifetime * 1e3 - EXPIRY_MARGIN, lifetime };
     return body.access_token;
   }
 };

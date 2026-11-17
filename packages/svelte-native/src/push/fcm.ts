@@ -126,7 +126,7 @@ export function fcmFailure(status: number, body: unknown, text: string, retryAft
 
 export class FcmSender {
   readonly #config: Config;
-  #access: { token: string; usableUntil: number } | undefined;
+  #access: { token: string; usableUntil: number; lifetime: number } | undefined;
   /** The token request in flight: sends that need a token while one is on its way wait for it, and one request serves them all. */
   #pending: Promise<string | Failure> | undefined;
 
@@ -160,6 +160,16 @@ export class FcmSender {
     // Google refused the access token: it is not used again (a revoked one would otherwise fail every send until it expired).
     if (response.status === 401 && this.#access?.token === access) this.#access = undefined;
     return fcmFailure(response.status, body, text, retryAfterOf(response.headers.get("retry-after")));
+  }
+
+  /**
+   * Asks the token endpoint for an access token without sending anything: what `svelte-native doctor --server` checks the service account's key with. It resolves with the
+   * lifetime (seconds) of the token the endpoint gave, or with why there is none (`auth` for a key Google refuses: `invalid_grant`, with its description as the detail). The token
+   * is kept for the next send, and never returned.
+   */
+  async verify(): Promise<{ ok: true; expiresIn: number } | Failure> {
+    const access = await this.#accessToken();
+    return typeof access === "string" ? { ok: true, expiresIn: this.#access?.lifetime ?? 0 } : access;
   }
 
   /** The access token: the cached one while it has more than the margin left, else a new one that every send waiting for it shares. */
@@ -200,7 +210,7 @@ export class FcmSender {
     }
     if (!isRecord(body) || typeof body.access_token !== "string" || body.access_token === "") return failure("error", "The token endpoint answered without an access token.", response.status);
     const lifetime = typeof body.expires_in === "number" ? body.expires_in : ASSERTION_SECONDS;
-    this.#access = { token: body.access_token, usableUntil: Date.now() + lifetime * 1000 - EXPIRY_MARGIN };
+    this.#access = { token: body.access_token, usableUntil: Date.now() + lifetime * 1000 - EXPIRY_MARGIN, lifetime };
     return body.access_token;
   }
 }

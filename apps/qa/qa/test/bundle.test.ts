@@ -127,9 +127,9 @@ describe("the JavaScript bundles", () => {
 			const lines = text.split("\n");
 			for (const library of smokeOnlyBundlePackages) {
 				const mentions = lines.filter((line) => line.includes(library));
-				// A package's name is in the bundle on the lines of its own stub if some code still requires it, and nowhere else; the library's own message for a
-				// build without the location capability names expo-location as text, to say what to install (`MISSING_LOCATION`, src/geolocation.ts), and is no code of it.
-				expect([library, mentions.filter((line) => !/_core\.js|is not linked in this app|var smokeModules|var MISSING_LOCATION = /.test(line))]).toEqual([library, []]);
+				// A package's name is in the bundle on the lines of its own stub if some code still requires it, and nowhere else (the library's own location code
+				// is its own native module and names no package: `MISSING_LOCATION` in src/geolocation.ts says to turn the capability on, not what to install).
+				expect([library, mentions.filter((line) => !/_core\.js|is not linked in this app|var smokeModules/.test(line))]).toEqual([library, []]);
 			}
 			for (const code of libraryCode) expect([code, text.includes(code)]).toEqual([code, false]);
 			expect(text).not.toContain("RNGetRandomValues.getRandomBase64");

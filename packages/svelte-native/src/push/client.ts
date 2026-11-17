@@ -12,13 +12,19 @@
  *   and this file feeds both without the router knowing: `getInitialURL()` is wrapped to answer the platform's link, or else the link of the notification whose tap launched
  *   the process; a tap with the app running is emitted as a `url` event, which every `addEventListener("url")` listener (the router's) hears. The `opened` hook runs first.
  *   A path of the app becomes a link `openURL` accepts by `linkOf`.
+ * - **Launches are the router's** (`launchScope`). A router reads the launch link once, when its `<Router>` mounts, and an Android Activity that is made again while the
+ *   JavaScript runtime lives (the system ended it, the user came back through a notification) starts a surface with a router of its own. So a read by a router this file has
+ *   not answered is a new launch: it asks the native module again and does not get the last launch's link back (a launch from the icon after the user left must not open
+ *   yesterday's notification), and a tap that comes while no router listens (the old surface is gone, the new one has not mounted) is kept for the next read, which is
+ *   what `Linking.getInitialURL()` does for an Intent that made the Activity.
  *
  * What it assumes of the native module, beyond PUSH.md's table (the native phases implement these):
  *
  * - The module holds its events until JavaScript has a listener for them, and this file listens to all four at start (`token`, `message`, `opened`, `background`).
  * - `takeLaunchMessage()` is called at the first read of `Linking.getInitialURL()` (the router mounting), not when this file starts: a process that began without a screen (a
  *   background message) shows its first screen later, and the tap that opened it is the launch message then. A tap is the launch message until `takeLaunchMessage()` has been
- *   called once, and an `opened` event after that.
+ *   called once, and an `opened` event after that. It is called again at the first read of each later router (above), and answers `null` when nothing launched that one: a tap
+ *   that came while no router listened is not the native module's to keep (it was an `opened` event), it is this file's.
  */
 import type { PushHooks, PushPresentation } from "./hooks.ts";
 import type { PushMessage, PushToken } from "./types.ts";
@@ -92,6 +98,11 @@ export type PushClientOptions = {
   /** Subscribes to the app returning to the foreground (`foreground.ts`). */
   onForeground: (listener: () => void) => void;
   linking: PushLinking;
+  /**
+   * What one launch belongs to: the app's root router (`push.svelte.ts` gives `rootRouter()`), or `undefined` while there is none. Reads and taps are told apart by it
+   * (see "Launches are the router's" above). Without it the client has one launch for its whole life, and every tap with the app running is emitted at once.
+   */
+  launchScope?: () => unknown;
 };
 
 /**
@@ -151,6 +162,12 @@ function invoke<Value>(listener: (value: Value) => void, value: Value): void {
 
 const report = (what: string) => (error: unknown): void => { console.error(`[Svelte push] ${what}`, error); };
 
+/** The launch scope of a client that was given none: one launch for the life of the client. */
+const WHOLE_LIFE = {};
+
+/** What one router's read of the launch link answers: the link that arrived before the first read (it wins over the notification's), and the notification's own, whose hook has run or is running. */
+type Launch = { scope: unknown; early: string | null; link: Promise<string | null> };
+
 export class PushClient {
   readonly #options: PushClientOptions;
   readonly #listeners = new Set<{ listener: (message: PushMessage) => void }>();
@@ -168,7 +185,14 @@ export class PushClient {
   /** Counts `unsubscribe`s: a `subscribe` or a save that began before one must not register or remember anything after it. */
   #generation = 0;
   #asking: Promise<PushPermission> | null = null;
-  #launch: Promise<string | null> | undefined;
+  /** The launch the last router read (`launchScope`); `undefined` until the first read. */
+  #launch: Launch | undefined;
+  /** The link of a tap that came while no router listened: the launch of the next router to read. */
+  #held: string | undefined;
+  /** The last link the platform delivered before the first read, kept for it (`#feedLinking`). */
+  #early: string | null = null;
+  /** Whether the app has had a router: an app that never does (it reads `Linking` itself) has every tap heard, as the platform's listeners are all there is. */
+  #routed = false;
 
   constructor(options: PushClientOptions) {
     this.#options = options;
@@ -370,24 +394,63 @@ export class PushClient {
     return linkOf(message.url);
   }
 
-  /** A tap with the app running: the link reaches the `url` listeners, the router's among them. */
-  async #tapped(message: PushMessage): Promise<void> {
-    const link = await this.#opened(message);
-    if (link !== null) this.#options.linking.emit("url", { url: link });
+  /** What launches belong to (`launchScope`): the app's root router, `undefined` while there is none. */
+  #scope(): unknown {
+    const scope = this.#options.launchScope;
+    return scope === undefined ? WHOLE_LIFE : scope();
   }
 
-  /** The link of the notification whose tap launched the process, taken once, at the first read of `getInitialURL`. */
-  #launchLink(native: NativePushModule): Promise<string | null> {
-    this.#launch ??= (async () => {
-      let message: PushMessage | null;
-      try {
-        message = native.takeLaunchMessage();
-      } catch (error) {
-        console.error("[Svelte push] the notification that launched the app could not be read", error);
-        return null;
-      }
-      return message === null ? null : this.#opened(message);
-    })();
+  /**
+   * Whether a router listens for links now: the root router has read the launch link, which it does just after it adds its own `url` listener (`connectHost`). Not while none
+   * exists (the Activity was ended and the one a tap makes has not started its surface), nor while the one that exists has not mounted its `<Router>` yet. Nothing has been read
+   * in a launch that has no router (and an app that never has one): then the platform's listeners are all there is, and they hear it.
+   */
+  #heard(): boolean {
+    const scope = this.#scope();
+    if (scope === undefined) return !this.#routed;
+    return this.#launch === undefined || this.#launch.scope === scope;
+  }
+
+  /** A tap with the app running: the link reaches the `url` listeners, the router's among them, or waits for the router that will read it as its launch. */
+  async #tapped(message: PushMessage): Promise<void> {
+    const link = await this.#opened(message);
+    if (link === null) return;
+    // Judged after the hook: a router may have mounted while it ran. The user's last tap is where they meant to go, so a held link is replaced by a newer one.
+    if (this.#heard()) this.#options.linking.emit("url", { url: link });
+    else this.#held = link;
+  }
+
+  /** The link of the notification whose tap launched the process, taken from the native module now: its hook has run (or runs) and the answer is the link after it. */
+  #launchMessage(native: NativePushModule): Promise<string | null> {
+    let message: PushMessage | null;
+    try {
+      message = native.takeLaunchMessage();
+    } catch (error) {
+      console.error("[Svelte push] the notification that launched the app could not be read", error);
+      return Promise.resolve(null);
+    }
+    return message === null ? Promise.resolve(null) : this.#opened(message);
+  }
+
+  /**
+   * The launch a read of `getInitialURL` belongs to. The same router's reads (concurrent, a retry after a failure, the app's own) share one: the native module is asked once and the
+   * hook runs once. The first read by another router is a new launch: the link of a tap that was held for it, else the notification the native module has now (none, when
+   * it has handed over what it had), and never the previous launch's link. A read before the app had a router belongs to the first router that reads.
+   */
+  #launchOf(native: NativePushModule): Launch {
+    const scope = this.#scope();
+    if (scope !== undefined) this.#routed = true;
+    const current = this.#launch;
+    if (current !== undefined && (scope === undefined || current.scope === scope)) return current;
+    if (current !== undefined && current.scope === undefined && this.#held === undefined) {
+      current.scope = scope;
+      return current;
+    }
+    const held = this.#held;
+    this.#held = undefined;
+    const early = this.#early;
+    this.#early = null;
+    this.#launch = { scope, early, link: held !== undefined ? Promise.resolve(held) : this.#launchMessage(native) };
     return this.#launch;
   }
 
@@ -404,15 +467,13 @@ export class PushClient {
   #feedLinking(native: NativePushModule): void {
     const linking = this.#options.linking;
     const platform = linking.getInitialURL.bind(linking);
-    let early: string | null = null;
-    let listening: Subscription | null = linking.addEventListener("url", ({ url }) => { early = url; });
+    let listening: Subscription | null = linking.addEventListener("url", ({ url }) => { this.#early = url; });
     linking.getInitialURL = async () => {
       listening?.remove();
       listening = null;
-      const arrived = early;
-      const launch = this.#launchLink(native);
+      const launch = this.#launchOf(native);
       const url = await platform();
-      return url || arrived || (await launch);
+      return url || launch.early || (await launch.link);
     };
   }
 }

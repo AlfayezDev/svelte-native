@@ -132,6 +132,36 @@ describe("getCurrentPosition", () => {
     expect(tooOld.calls).toEqual(["get", "last 30000", "current 3"]);
   });
 
+  test("maximumAge answers only with a position taken as the request asks: a Balanced one does not answer enableHighAccuracy, nor a GPS one the default (#69)", async () => {
+    const balancedThenGps = (request: { accuracy: number }) => fix(24.7, 46.7, { accuracy: request.accuracy === 4 ? 5 : 1000 });
+    const { geolocation, native, calls } = fake({ permission: GRANTED });
+    native.getCurrentPositionAsync = async (request) => { calls.push(`current ${request.accuracy}`); return balancedThenGps(request); };
+    // The issue's steps: a low-power position, then precise pickup allowing a recent fix.
+    expect((await current(geolocation, { maximumAge: 0 })).position?.coords.accuracy).toBe(1000);
+    expect((await current(geolocation, { enableHighAccuracy: true, maximumAge: 60_000 })).position?.coords.accuracy).toBe(5);
+    expect(calls).toEqual(["get", "current 3", "get", "current 4"]);
+    // The GPS position answers the next high-accuracy request from the cache, and not one without it, which takes its own.
+    expect((await current(geolocation, { enableHighAccuracy: true, maximumAge: 60_000 })).position?.coords.accuracy).toBe(5);
+    expect((await current(geolocation, { maximumAge: 60_000 })).position?.coords.accuracy).toBe(1000);
+    expect(calls.slice(4)).toEqual(["get", "get", "last 60000", "current 3"]);
+  });
+
+  test("the system's last known position, taken no one knows how, answers no request with enableHighAccuracy", async () => {
+    const young = fix(9, 9, {}, Date.now() - 1000);
+    const high = fake({ permission: GRANTED, lastKnown: young });
+    expect((await current(high.geolocation, { enableHighAccuracy: true, maximumAge: 60_000 })).position?.coords.latitude).toBe(24.7);
+    expect(high.calls).toEqual(["get", "current 4"]);
+    // With timeout 0 only a cache could answer, and the system's may not: TIMEOUT, no lookup.
+    const immediate = fake({ permission: GRANTED, lastKnown: young });
+    expect((await current(immediate.geolocation, { enableHighAccuracy: true, maximumAge: 60_000, timeout: 0 })).error?.code).toBe(3);
+    expect(immediate.calls).toEqual(["get"]);
+    // Without enableHighAccuracy it answers, and as a position without it: a later high-accuracy request does not reuse it.
+    const balanced = fake({ permission: GRANTED, lastKnown: young });
+    expect((await current(balanced.geolocation, { maximumAge: 60_000 })).position?.coords.latitude).toBe(9);
+    expect((await current(balanced.geolocation, { enableHighAccuracy: true, maximumAge: 60_000 })).position?.coords.latitude).toBe(24.7);
+    expect(balanced.calls).toEqual(["get", "last 60000", "get", "current 4"]);
+  });
+
   test("callers at the same time share one question", async () => {
     const { geolocation, calls } = fake();
     await Promise.all([current(geolocation), current(geolocation), current(geolocation)]);
@@ -172,7 +202,7 @@ describe("getCurrentPosition", () => {
   test("a timeout that expires during the cache lookup leaves no native request behind", async () => {
     const { geolocation, native, calls } = fake({ permission: GRANTED });
     native.getLastKnownPositionAsync = () => new Promise(() => {});
-    expect((await current(geolocation, { maximumAge: 60_000, timeout: 20, enableHighAccuracy: true })).error?.code).toBe(3);
+    expect((await current(geolocation, { maximumAge: 60_000, timeout: 20 })).error?.code).toBe(3);
     await settle(150);
     expect(calls.some((call) => call.startsWith("current"))).toBe(false);
   });
@@ -403,6 +433,36 @@ describe("watchPosition", () => {
     await settle();
     cleared.geolocation.clearWatch(gone);
     await settle(30);
+  });
+
+  test("maximumAge: a watch with enableHighAccuracy does not start from a Balanced position, and its own positions answer high-accuracy requests later (#69)", async () => {
+    const { geolocation, calls, emit } = fake({ permission: GRANTED });
+    await current(geolocation);
+    const seen: number[] = [];
+    const id = geolocation.watchPosition((position) => seen.push(position.coords.latitude), null, { enableHighAccuracy: true, maximumAge: 60_000 });
+    await settle();
+    // Neither the Balanced position nor a system lookup: the native watch, with the GPS.
+    expect(seen).toEqual([]);
+    expect(calls.slice(2)).toEqual(["get", "listen Expo.locationChanged", "listen Expo.locationError", `watch ${id} 4 distance 0`]);
+    emit(id, fix(7, 7));
+    expect(seen).toEqual([7]);
+    geolocation.clearWatch(id);
+    const before = calls.length;
+    expect((await current(geolocation, { enableHighAccuracy: true, maximumAge: 60_000 })).position?.coords.latitude).toBe(7);
+    expect(calls.slice(before)).toEqual(["get"]);
+  });
+
+  test("maximumAge: a GPS position answers timeout 0 with enableHighAccuracy, and is not the first position of a watch without it", async () => {
+    const { geolocation, calls } = fake({ permission: GRANTED });
+    await current(geolocation, { enableHighAccuracy: true });
+    expect((await current(geolocation, { enableHighAccuracy: true, maximumAge: 60_000, timeout: 0 })).position?.coords.latitude).toBe(24.7);
+    expect(calls).toEqual(["get", "current 4", "get"]);
+    const seen: number[] = [];
+    const id = geolocation.watchPosition((position) => seen.push(position.coords.latitude), null, { maximumAge: 60_000 });
+    await settle();
+    expect(seen).toEqual([]);
+    expect(calls.slice(3)).toEqual(["get", "last 60000", "listen Expo.locationChanged", "listen Expo.locationError", `watch ${id} 3 distance 0`]);
+    geolocation.clearWatch(id);
   });
 
   test("maximumAge: a young enough last position is the first one the watch reports", async () => {

@@ -1,7 +1,7 @@
 /**
  * The capabilities an app turns on in the config plugin (`capabilities: { location, push }`): the web APIs that need a permission of the system, and with it a native
- * library and the app's own words or identifiers. A capability is off until the config says why the app uses it, and the plugin refuses the two half-made states,
- * each of which an app would only find out about on a device or in review:
+ * library and the app's own words or identifiers. A capability is off until the config says why the app uses it, and the plugin refuses the two half-made states of a capability whose
+ * library is a package of its own (`location`; `push` has none, below), each of which an app would only find out about on a device or in review:
  *
  * - on, without its library installed: the build would have no native module, and the API would read as `undefined`;
  * - its library installed, but off: Expo would apply the library's own plugin with its default text ("Allow $(PRODUCT_NAME) to …"), which says nothing of why,
@@ -12,11 +12,14 @@
  *
  * `location` is expo-location: `navigator.geolocation` and `navigator.permissions` use its native module (`geolocation.ts`).
  *
- * `push` is `@alfayez/svelte-native-push` (PUSH.md): Firebase Messaging on Android, APNs on iOS. The library has no plugin of its own, so the capability does what
- * the plugin of any push library does, from the identifiers in the config, and refuses what would ship a secret or make a second push library of the app. A prebuild that keeps the
- * native projects (no `--clean`) keeps what the last one wrote, so where push is off (or a platform is not named) the plugin takes away what is certainly its own: the `AppDelegate`
- * wrapper (which imports the library's module, and would stop the build once the library is uninstalled), the manifest's entries and the resources under its names. It leaves what it
- * cannot tell from the app's own: the entitlement, the background mode, the Google services file and the Gradle plugin.
+ * `push` is push notifications (PUSH.md): Firebase Messaging on Android, APNs on iOS. Its native code is part of the library's one native module (svelte-core), which is in every
+ * app, so what makes an app one with push is what this plugin writes, and nothing else: on Android Firebase Messaging's dependency, the messaging service, the notification permission and
+ * the flag `expo.modules.sveltepush.enabled` that the native code asks before it does anything; on iOS the `SveltePushEnabled` Info.plist flag, the entitlement and the background mode. An
+ * app without them has no Firebase in its build, no service to take another library's messages, and native code that does nothing. The plugin does what the plugin of any push library does,
+ * from the identifiers in the config, and refuses what would ship a secret or make a second push library of the app. A prebuild that keeps the native projects (no `--clean`) keeps what the
+ * last one wrote, so where push is off (or a platform is not named) the plugin takes away what is certainly its own: the flags, the Gradle dependency, the service, the `AppDelegate`
+ * wrapper, the manifest's entries and the resources under its names, and the notification permission when the app's config does not ask for it itself. It leaves what it cannot tell from
+ * the app's own: the entitlement, the background mode, the Google services file and the Gradle plugin.
  */
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { copyFile, mkdir, rm } from "node:fs/promises";
@@ -27,13 +30,13 @@ import type { ExpoConfig } from "expo/config";
 // The `with*` functions are plain exports of that CommonJS module, which Node's loader names. `AndroidConfig` is not: Expo defines it with a getter, which the CommonJS lexer of Node before 24
 // does not see ("Named export 'AndroidConfig' not found"), so its values come from the default import, which is the module's exports in every loader (Node, Bun, the bundle); its types stay a named import.
 import type { AndroidConfig } from "expo/config-plugins.js";
-import configPlugins, { withAndroidColors, withAndroidManifest, withAppDelegate, withDangerousMod, withStringsXml } from "expo/config-plugins.js";
-import { apsEnvironmentEntitlement, checkPushConfig, findPushSecret, googleServicesPackages, otherPushLibraries, pushIsOn, pushPackage, pushSecretMessage, remoteNotificationMode } from "./push/config.ts";
+import configPlugins, { withAndroidColors, withAndroidManifest, withAppBuildGradle, withAppDelegate, withDangerousMod, withInfoPlist, withStringsXml } from "expo/config-plugins.js";
+import { apsEnvironmentEntitlement, checkPushConfig, findPushSecret, googleServicesPackages, otherPushLibraries, pushIsOn, pushSecretMessage, remoteNotificationMode } from "./push/config.ts";
 
 const { AndroidConfig: expoAndroid } = configPlugins;
 
-// Defined in `push/config.ts` now, which the doctor loads without Expo; they stay importable from here.
-export { findPushSecret, pushPackage };
+// Defined in `push/config.ts` now, which the doctor loads without Expo; it stays importable from here.
+export { findPushSecret };
 
 /** Why the app uses the location: the text iOS shows when it asks (`NSLocationWhenInUseUsageDescription`), or that and the reason for the background too. */
 export type LocationCapability =
@@ -206,7 +209,8 @@ function withLocation(config: ExpoConfig, location: Capabilities["location"], co
 export const defaultPushChannel = { id: "default", name: "Notifications" } as const;
 
 /**
- * What the plugin writes into the Android manifest, which is how the native code reads it (PUSH.md): the first three are Firebase's own, read when it shows a
+ * What the plugin writes into the Android manifest, which is how the native code reads it (PUSH.md): `enabled` is the flag that turns the native code on (svelte-core is in every app; without
+ * `<meta-data … android:value="true" />` the module, the package's listeners and the Application callbacks do nothing); the next three are Firebase's own, read when it shows a
  * notification itself (the app in the background); the channel's id, name and description are the module's, for the channel it creates, and always written
  * (defaults for what the app leaves out). The icon and the color are references to resources of the app (`android:resource`) and the channel's texts are references
  * to string resources (`android:value="@string/…"`, `pushResources`): a text written into `android:value` itself is read by the resource compiler, which takes a text that
@@ -214,6 +218,7 @@ export const defaultPushChannel = { id: "default", name: "Notifications" } as co
  * reference to a string resource reads back as the string, character for character; the native code reads them with `Bundle.get(name)?.toString()`.
  */
 export const pushMetaData = {
+  enabled: "expo.modules.sveltepush.enabled",
   icon: "com.google.firebase.messaging.default_notification_icon",
   color: "com.google.firebase.messaging.default_notification_color",
   firebaseChannel: "com.google.firebase.messaging.default_notification_channel_id",
@@ -233,6 +238,23 @@ export const pushResources = {
   channelName: "svelte_push_channel_name",
   channelDescription: "svelte_push_channel_description",
 } as const;
+
+/**
+ * The dependency of the app that makes Firebase Messaging part of its build: the plugin adds it to `android/app/build.gradle` for `capabilities.push.android` and takes it away without. Svelte-core
+ * depends on the same version `compileOnly` (`native/svelte-core/android/build.gradle`; `tests/package/push-native.test.ts` compares the two), because that project is in every app and Firebase
+ * must be in none that has no push. An exact version: a message is delivered by this library's service, and an app should get the one the library was exercised on.
+ */
+export const pushFirebaseDependency = "com.google.firebase:firebase-messaging:26.0.2";
+
+/** The messaging service of the native code, which the plugin declares in the app's manifest: svelte-core's own manifest declares none, since a service there would be in every app. */
+export const pushMessagingService = "expo.modules.sveltepush.SveltePushMessagingService";
+
+/** Firebase's action for a message, and the permission Android 13 asks for at run time. */
+export const firebaseMessagingEvent = "com.google.firebase.MESSAGING_EVENT";
+export const postNotificationsPermission = "android.permission.POST_NOTIFICATIONS";
+
+/** The Info.plist flag (a boolean) that turns the native code on, on iOS: svelte-core's `SveltePushEnabled` check. Written when `capabilities.push.ios` is set, and taken away without. */
+export const pushInfoPlistFlag = "SveltePushEnabled";
 
 /** What `capabilities.push` says once it has been checked. */
 export type PushSettings = {
@@ -314,13 +336,16 @@ const holdBegin = "    // Svelte native: push, the first screen of a launch in t
 const holdOpen = "      surface: { [self] in";
 const holdClose = "      })";
 const holdEnd = "    // Svelte native: end of the first screen of a launch in the background";
-// `internal`, as `applyAppDelegate` writes its own import: Expo's generated ExpoModulesProvider imports every module as `internal import`, and a plain import of the same module in the app target is ambiguous.
-const holdImport = "internal import SveltePush // Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
+// `internal`, as `applyAppDelegate` writes its own import (of the same module, SvelteCore, which holds `SveltePushBackgroundLaunch` now, under a comment of its own): Expo's generated
+// ExpoModulesProvider imports every module as `internal import`, and a plain import of the same module in the app target is ambiguous.
+const holdImportComment = "// Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
+const holdImport = `internal import SvelteCore ${holdImportComment}`;
 const escapeText = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** The head and the tail of the wrapper, each with the newline before it, so that taking both away leaves the template's call where it was. */
 const holdHead = new RegExp(`\\n${escapeText(holdBegin)}\\n[\\s\\S]*?${escapeText(holdOpen)}(?=\\n)`);
 const holdTail = new RegExp(`\\n${escapeText(holdClose)}\\n${escapeText(holdEnd)}(?=\\n)`);
-const holdImportLine = new RegExp(`^${escapeText(holdImport)}\\n`, "m");
+// The import of an earlier version of the capability named the module of the separate package (`SveltePush`): an AppDelegate it wrote is cleaned the same way, or it would stop the build.
+const holdImportLine = new RegExp(`^internal import (?:SvelteCore|SveltePush) ${escapeText(holdImportComment)}\\n`, "m");
 
 /**
  * `AppDelegate.swift` without what `applyPushAppDelegate` wrote (the wrapper of the template's call, and the import of the module that holds it): the template's own text again. A file that has
@@ -333,7 +358,7 @@ export function removePushAppDelegate(contents: string): string {
 /**
  * `AppDelegate.swift` (iOS) for an app with push: rule 2 of PUSH.md, a push that wakes the app mounts no screen. Expo's template starts React Native's surface in
  * `application(_:didFinishLaunchingWithOptions:)`, which mounts the first screen, and iOS also runs that method when it launches the app in the background for a silent push,
- * where nobody can see the screen. The template's `factory.startReactNative(...)` call is wrapped in `SveltePushBackgroundLaunch.start` (`@alfayez/svelte-native-push`),
+ * where nobody can see the screen. The template's `factory.startReactNative(...)` call is wrapped in `SveltePushBackgroundLaunch.start` (SvelteCore, the library's pod),
  * which makes the same call in the same place in every launch the user makes, and in a launch in the background starts only the React host (`initializeReactHost`, which
  * is what the first `startReactNative` would have done before it made the surface) and makes the call at the first `didBecomeActive`. JavaScript, `init` and the push hooks
  * run meanwhile. The template's call is not touched, only wrapped, so that taking the wrapper away gives the template back: the patch is idempotent, and a prebuild replaces
@@ -373,9 +398,11 @@ export function applyPushAppDelegate(contents: string): string {
 }
 
 /**
- * The iOS side: the `aps-environment` entitlement, and `remote-notification` among the background modes (silent pushes wake the app), added once to the modes the
- * app has. Both are written into the config's `ios` object, where Expo's Info.plist and entitlements mods read them, and where `eas build` reads the entitlement
- * to enable the Push Notifications capability of the app id. The `AppDelegate` is patched so that a push that wakes the app mounts no screen (`applyPushAppDelegate`).
+ * The iOS side: the `aps-environment` entitlement, `remote-notification` among the background modes (silent pushes wake the app), added once to the modes the
+ * app has, and the Info.plist flag `SveltePushEnabled` (`pushInfoPlistFlag`) that turns the native code on: svelte-core is in every app, and without the flag it never becomes the
+ * notification center's delegate and never forwards a remote notification. All three are written into the config's `ios` object, where Expo's Info.plist and entitlements mods read
+ * them, and where `eas build` reads the entitlement to enable the Push Notifications capability of the app id. The `AppDelegate` is patched so that a push that wakes the app mounts
+ * no screen (`applyPushAppDelegate`).
  */
 function withPushIos(config: ExpoConfig, mode: "development" | "production"): ExpoConfig {
   const existing = config.ios?.entitlements?.[apsEnvironmentEntitlement];
@@ -390,7 +417,7 @@ function withPushIos(config: ExpoConfig, mode: "development" | "production"): Ex
     ios: {
       ...config.ios,
       entitlements: { ...config.ios?.entitlements, [apsEnvironmentEntitlement]: mode },
-      infoPlist: { ...config.ios?.infoPlist, UIBackgroundModes: modes.includes(remoteNotificationMode) ? modes : [...modes, remoteNotificationMode] },
+      infoPlist: { ...config.ios?.infoPlist, [pushInfoPlistFlag]: true, UIBackgroundModes: modes.includes(remoteNotificationMode) ? modes : [...modes, remoteNotificationMode] },
     },
   };
   return withAppDelegate(config, (config) => {
@@ -407,17 +434,36 @@ function setMetaData(application: AndroidConfig.Manifest.ManifestApplication, na
 }
 
 /**
- * Takes out of the application element what `applyPushManifest` wrote, and nothing else: the module's own meta-data (its names are ours), and Firebase's icon, color and channel only when
- * they name what the capability wrote (the icon and color resources, the channel's id string; or, for the channel, the id as text beside the module's own entry, as an earlier version
- * wrote it). An app that set one of Firebase's defaults itself keeps it, whatever the capability says.
+ * Whether an earlier prebuild turned push on in this manifest: the module's `enabled` flag is there (its name is ours). It is how the plugin tells the notification permission it added from
+ * the app's own, when push goes off (`removePushPermission`).
+ */
+export function hasPushFlag(application: AndroidConfig.Manifest.ManifestApplication): boolean {
+  return (application["meta-data"] ?? []).some((item) => item.$["android:name"] === pushMetaData.enabled);
+}
+
+/**
+ * The messaging service: not exported, with Firebase's `MESSAGING_EVENT` filter. Firebase's own service has the same filter at priority -500, so this one, at the default 0, is the app's
+ * receiver of every message. It is the plugin's to declare and svelte-core's manifest has none: a service in svelte-core's would be in every app, and take the messages of `expo-notifications`
+ * or React Native Firebase there.
+ */
+function pushService(): NonNullable<AndroidConfig.Manifest.ManifestApplication["service"]>[number] {
+  return { $: { "android:name": pushMessagingService, "android:exported": "false" }, "intent-filter": [{ action: [{ $: { "android:name": firebaseMessagingEvent } }] }] };
+}
+
+/**
+ * Takes out of the application element what `applyPushManifest` wrote, and nothing else: the module's own meta-data (its names are ours), the messaging service (by its class), and
+ * Firebase's icon, color and channel only when they name what the capability wrote (the icon and color resources, the channel's id string; or, for the channel, the id as text beside the
+ * module's own entry, as an earlier version wrote it). An app that set one of Firebase's defaults itself keeps it, whatever the capability says.
  */
 export function removePushManifest(application: AndroidConfig.Manifest.ManifestApplication): void {
+  if (application.service !== undefined) application.service = application.service.filter((item) => item.$["android:name"] !== pushMessagingService);
   const items = application["meta-data"];
   if (items === undefined) return;
   const content = (item: { $: Record<string, string | undefined> }) => item.$["android:value"] ?? item.$["android:resource"];
   const channelId = items.map((item) => (item.$["android:name"] === pushMetaData.channelId ? content(item) : undefined)).find((value) => value !== undefined);
   const ours = (item: (typeof items)[number]): boolean => {
     switch (item.$["android:name"]) {
+      case pushMetaData.enabled:
       case pushMetaData.channelId:
       case pushMetaData.channelName:
       case pushMetaData.channelDescription:
@@ -436,12 +482,14 @@ export function removePushManifest(application: AndroidConfig.Manifest.ManifestA
 }
 
 /**
- * The manifest entries push reads: Firebase's default icon, color and channel (the first two only when the app gives them) and the module's channel, with its
- * defaults, the texts as references to the string resources of `applyPushStrings` (`pushMetaData`). What an earlier prebuild wrote is taken away first, so that a description,
- * an icon or a color the config no longer has is not kept. The messaging service and `POST_NOTIFICATIONS` are static, so the library's own manifest declares them.
+ * The manifest entries push needs: the `enabled` flag that turns the native code on, the messaging service, Firebase's default icon, color and channel (the first two only when the app
+ * gives them) and the module's channel, with its defaults, the texts as references to the string resources of `applyPushStrings` (`pushMetaData`). What an earlier prebuild wrote is taken
+ * away first, so that a description, an icon or a color the config no longer has is not kept. `POST_NOTIFICATIONS` is a child of the manifest, not of the application: `applyPushPermission`.
  */
 export function applyPushManifest(application: AndroidConfig.Manifest.ManifestApplication, android: NonNullable<PushSettings["android"]>): void {
   removePushManifest(application);
+  setMetaData(application, pushMetaData.enabled, "value", "true");
+  application.service = [...(application.service ?? []), pushService()];
   if (android.icon !== undefined) setMetaData(application, pushMetaData.icon, "resource", `@drawable/${pushResources.icon}`);
   if (android.color !== undefined) setMetaData(application, pushMetaData.color, "resource", `@color/${pushResources.color}`);
   // Without it a notification the system shows (the app in the background) goes to Firebase's own "Miscellaneous" channel, not to the app's.
@@ -449,6 +497,51 @@ export function applyPushManifest(application: AndroidConfig.Manifest.ManifestAp
   setMetaData(application, pushMetaData.channelId, "value", `@string/${pushResources.channelId}`);
   setMetaData(application, pushMetaData.channelName, "value", `@string/${pushResources.channelName}`);
   if (android.channel.description !== undefined) setMetaData(application, pushMetaData.channelDescription, "value", `@string/${pushResources.channelDescription}`);
+}
+
+/** The permission names an app's `android.permissions` may spell the notification permission with: Expo adds the `android.permission.` prefix to the short one. */
+const postNotificationsNames = [postNotificationsPermission, postNotificationsPermission.replace("android.permission.", "")];
+
+/** Android 13 and later ask for the notification permission at run time (`requestPermission`), and the manifest has to declare it for the question to be asked. Added once. */
+export function applyPushPermission(manifest: AndroidConfig.Manifest.AndroidManifest): void {
+  expoAndroid.Permissions.ensurePermissions(manifest, [postNotificationsPermission]);
+}
+
+/**
+ * Takes the notification permission out of the manifest of an app that turned push off, when it can tell that it is the capability's: an earlier prebuild turned push on (`hasPushFlag`,
+ * read by the caller before `removePushManifest` takes the flag away) and the app's own config does not ask for the permission itself (`android.permissions`). A permission that something
+ * else wanted anyway is asked for again by that something at the next prebuild; an app that wants it without push lists it in `android.permissions`.
+ */
+export function removePushPermission(manifest: AndroidConfig.Manifest.AndroidManifest, appPermissions: readonly string[] | undefined): void {
+  if (appPermissions?.some((name) => postNotificationsNames.includes(name))) return;
+  expoAndroid.Permissions.removePermissions(manifest, [postNotificationsPermission]);
+}
+
+const gradleComment = "// Svelte native: push, Firebase Messaging (generated, do not edit)";
+const gradleLine = `    implementation("${pushFirebaseDependency}") ${gradleComment}`;
+const gradleLines = new RegExp(`^[ \\t]*implementation\\([^\\n]*\\) ${escapeText(gradleComment)}\\n`, "gm");
+
+/** `android/app/build.gradle` without the dependency `applyPushGradle` wrote (a line that carries the comment, at whatever version an earlier plugin pinned): the template's own text again. */
+export function removePushGradle(contents: string): string {
+  return contents.replace(gradleLines, "");
+}
+
+/**
+ * `android/app/build.gradle` with Firebase Messaging in the app's `dependencies`: the first block at the left margin, which is the app module's (Expo's template has one, and the `buildscript`
+ * and `android` blocks are different words). The same line, with its comment, is what `removePushGradle` finds, so a prebuild replaces what an older one wrote and the line is never there
+ * twice. Written with parentheses and double quotes, as the template writes its own dependencies, which both Groovy and Kotlin read. Throws when there is no such block, since an app that
+ * lost this silently would have a service in its manifest and no Firebase to run it.
+ */
+export function applyPushGradle(contents: string): string {
+  const stripped = removePushGradle(contents);
+  const block = /^dependencies \{[ \t]*\n/m.exec(stripped);
+  if (!block) {
+    throw new Error(
+      "Svelte native could not find the `dependencies {` block of android/app/build.gradle. Push needs it to add Firebase Messaging to the app: the library's messaging service is compiled against Firebase and runs on the app's copy of it.",
+    );
+  }
+  const end = block.index + block[0].length;
+  return `${stripped.slice(0, end)}${gradleLine}\n${stripped.slice(end)}`;
 }
 
 /**
@@ -501,11 +594,12 @@ export async function removePushIcon(platformProjectRoot: string): Promise<void>
 }
 
 /**
- * The Android side. Expo's own prebuild does the Firebase part when `android.googleServicesFile` is set (`AndroidConfig.GoogleServices`: it copies the file to
- * `android/app/google-services.json` and applies the `com.google.gms.google-services` Gradle plugin), so the capability sets that and writes the rest: the manifest's
- * entries, the channel's strings, the color and the icon file. Without `android` (the capability is off, or the config names no Android side) it writes nothing and takes away what an
- * earlier prebuild wrote: all of it is under names that are ours. Not `android.googleServicesFile`, the copy of the file and the Gradle plugin: nothing in the project says whose they
- * are, and with no Firebase library left they do no harm.
+ * The Android side. Expo's own prebuild does the Firebase configuration when `android.googleServicesFile` is set (`AndroidConfig.GoogleServices`: it copies the file to
+ * `android/app/google-services.json` and applies the `com.google.gms.google-services` Gradle plugin), so the capability sets that and writes the rest: Firebase Messaging's dependency in
+ * `android/app/build.gradle` (`applyPushGradle`), the manifest's entries (the `enabled` flag, the messaging service, the meta-data) and the notification permission, the channel's strings, the
+ * color and the icon file. Without `android` (the capability is off, or the config names no Android side) it writes nothing and takes away what an earlier prebuild wrote: the dependency,
+ * the service, the flag and the permission it can tell is its own, and the rest, which is all under names that are ours. Not `android.googleServicesFile`, the copy of the file and the Gradle
+ * plugin: nothing in the project says whose they are, and with no Firebase library left they do no harm.
  */
 function withPushAndroid(config: ExpoConfig, android: NonNullable<PushSettings["android"]> | undefined, projectRoot: string): ExpoConfig {
   if (android) {
@@ -517,11 +611,22 @@ function withPushAndroid(config: ExpoConfig, android: NonNullable<PushSettings["
     config = { ...config, android: { ...config.android, googleServicesFile: android.googleServicesFile } };
   }
   config = withAndroidManifest(config, (config) => {
-    if (android) applyPushManifest(expoAndroid.Manifest.getMainApplicationOrThrow(config.modResults), android);
-    else {
+    if (android) {
+      applyPushManifest(expoAndroid.Manifest.getMainApplicationOrThrow(config.modResults), android);
+      applyPushPermission(config.modResults);
+    } else {
       const application = expoAndroid.Manifest.getMainApplication(config.modResults);
-      if (application) removePushManifest(application);
+      if (application) {
+        // The flag is what says the capability was on, so it is read before it is taken away.
+        const wasOn = hasPushFlag(application);
+        removePushManifest(application);
+        if (wasOn) removePushPermission(config.modResults, config.android?.permissions);
+      }
     }
+    return config;
+  });
+  config = withAppBuildGradle(config, (config) => {
+    config.modResults.contents = android ? applyPushGradle(config.modResults.contents) : removePushGradle(config.modResults.contents);
     return config;
   });
   config = withStringsXml(config, (config) => {
@@ -542,13 +647,17 @@ function withPushAndroid(config: ExpoConfig, android: NonNullable<PushSettings["
 }
 
 /**
- * Takes the push wrapper out of `AppDelegate.swift` (`removePushAppDelegate`) of an app that has no push on iOS (the capability is off, or names no iOS side), when it has an iOS project at all:
- * the wrapper imports the module of `@alfayez/svelte-native-push`, so an app that uninstalled the package and prebuilt without `--clean` would otherwise stop on "No such module 'SveltePush'".
- * The entitlement and the background mode stay: they are in `Info.plist` and the entitlements file with nothing that says the capability wrote them, and the app's own config or another
- * library's plugin may be the one that wants them.
+ * Takes what the capability wrote out of an app that has no push on iOS (the capability is off, or names no iOS side), when it has an iOS project at all: the `SveltePushEnabled` flag in
+ * `Info.plist` (the native code is in the app either way, and must do nothing without it) and the push wrapper of `AppDelegate.swift` (`removePushAppDelegate`; an app built with the
+ * separate package of an earlier version would otherwise stop on "No such module 'SveltePush'" once it is uninstalled). The entitlement and the background mode stay: they are in
+ * `Info.plist` and the entitlements file with nothing that says the capability wrote them, and the app's own config or another library's plugin may be the one that wants them.
  */
 function withoutPushIos(config: ExpoConfig, context: Context): ExpoConfig {
   if (!existsSync(join(context.projectRoot, "ios"))) return config;
+  config = withInfoPlist(config, (config) => {
+    delete config.modResults[pushInfoPlistFlag];
+    return config;
+  });
   return withAppDelegate(config, (config) => {
     if (config.modResults.language === "swift") config.modResults.contents = removePushAppDelegate(config.modResults.contents);
     return config;
@@ -561,32 +670,18 @@ function withoutPushAndroid(config: ExpoConfig, context: Context): ExpoConfig {
 }
 
 function withPush(config: ExpoConfig, push: Capabilities["push"], context: Context): ExpoConfig {
-  const on = pushIsOn(push);
-  const installed = context.linked.has(pushPackage);
-  if (!on) {
-    if (installed)
-      throw new CapabilityConfigError(
-        `${pushPackage} is installed, but the push capability is off. The package is in the build (Firebase Messaging, the notification permission, the iOS registration), and it cannot work without the app's Firebase file and entitlement: ` +
-          'turn push on in the @alfayez/svelte-native plugin, `plugins: [["@alfayez/svelte-native", { capabilities: { push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } } } }]]`, ' +
-          `or uninstall ${pushPackage}.`,
-      );
-    // The refusal above tells an app to uninstall the package: the prebuild after that, which keeps the native projects, finds what the earlier one wrote and takes it away.
+  if (!pushIsOn(push)) {
+    // The native code is in the app either way (it is part of the library's one native module), and does nothing without what the plugin writes. A prebuild that keeps the native projects
+    // finds what the earlier one wrote and takes it away.
     return withoutPushAndroid(withoutPushIos(config, context), context);
   }
   const secret = findPushSecret(push, "capabilities.push");
   if (secret) throw secretError(secret);
-  // Left out of autolinking, the package is not in the build, and the Firebase file and the entitlement would be for nothing.
-  if (context.excluded.has(pushPackage))
-    throw new CapabilityConfigError(`capabilities.push is on, but ${pushPackage} is left out of autolinking (\`autolinkingExclude\`, or \`expo.autolinking.exclude\` in package.json): take it out of that list, or turn the capability off.`);
-  if (!installed)
-    throw new CapabilityConfigError(
-      `capabilities.push needs ${pushPackage}, which is not installed: add it from the same repository and tag as @alfayez/svelte-native (the same specifier, ending in \`&path:packages/svelte-native-push\`), then prebuild again.`,
-    );
   const other = otherPushLibraries.find((name) => context.linked.has(name));
   if (other !== undefined)
     throw new CapabilityConfigError(
       `capabilities.push is on, and ${other} is installed: an app has one push library (Android delivers a message to one FirebaseMessagingService, iOS has one notification center delegate). ` +
-        `Uninstall ${other}, or turn the push capability off and uninstall ${pushPackage}.`,
+        `Uninstall ${other}, or turn the push capability off.`,
     );
   const settings = pushSettings(push, config.android?.package, context.projectRoot);
   config = settings.ios ? withPushIos(config, settings.ios.mode) : withoutPushIos(config, context);

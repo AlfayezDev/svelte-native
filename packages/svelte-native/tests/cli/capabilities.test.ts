@@ -8,7 +8,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExpoConfig } from "expo/config";
 import { AndroidConfig, compileModsAsync, withPlugins, XML, type ExportedConfig } from "expo/config-plugins";
-import { CapabilityConfigError, type PushCapability, androidStringText, applyPushAppDelegate, applyPushGradle, applyPushManifest, applyPushPermission, applyPushStrings, copyPushIcon, defaultPushChannel, findPushSecret, hasLocationFlag, locationAndroidPermissions, locationInfoPlistFlag, locationMetaData, locationSettings, locationUsageKey, postNotificationsPermission, pushFirebaseDependency, pushInfoPlistFlag, pushMessagingService, pushMetaData, pushResources, pushSettings, hasPushFlag, removePushAppDelegate, removePushGradle, removePushPermission, removePushIcon, removeLocationFlag, removeLocationPermissions, removePushManifest, removePushStrings, withCapabilities } from "../../src/capabilities.ts";
+import { CapabilityConfigError, type PushCapability, androidStringText, applyPushAppDelegate, applyPushGradle, applyPushManifest, applyPushPermission, applyPushStrings, copyPushIcon, defaultPushChannel, findPushSecret, hasLocationFlag, locationAndroidPermissions, locationCompileCondition, locationInfoPlistFlag, locationMetaData, locationPodfileProperty, locationSettings, locationUsageKey, postNotificationsPermission, pushFirebaseDependency, pushInfoPlistFlag, pushMessagingService, pushMetaData, pushResources, pushSettings, hasPushFlag, removePushAppDelegate, removePushGradle, removePushPermission, removePushIcon, removeLocationFlag, removeLocationPermissions, removePushManifest, removePushStrings, withCapabilities } from "../../src/capabilities.ts";
 import expoPlugin, { applyAppDelegate } from "../../src/expo.ts";
 import { createProject } from "../support/project.ts";
 import { expoTemplateAppBuildGradle, expoTemplateAppDelegate } from "./support/app-delegate.ts";
@@ -48,6 +48,8 @@ describe("capabilities.location", () => {
     expect(locationSettings(text)).toEqual({ whenInUse: text });
     expect(locationSettings({ whenInUse: text })).toEqual({ whenInUse: text });
     expect([locationMetaData.enabled, locationInfoPlistFlag, locationUsageKey]).toEqual(["expo.modules.sveltelocation.enabled", "SvelteLocationEnabled", "NSLocationWhenInUseUsageDescription"]);
+    // The Podfile property the podspec reads, and the compile condition it makes of it.
+    expect([locationPodfileProperty, locationCompileCondition]).toEqual(["svelteNative.location", "SVELTE_LOCATION"]);
     expect(locationAndroidPermissions).toEqual(["android.permission.ACCESS_COARSE_LOCATION", "android.permission.ACCESS_FINE_LOCATION"]);
   });
 
@@ -84,6 +86,21 @@ describe("capabilities.location", () => {
     const plist = (await compile(on(project.root))).infoPlist as Record<string, unknown>;
     expect(Object.keys(plist).filter((key) => /Always|Motion|BackgroundModes/.test(key))).toEqual([]);
     expect([plist[locationUsageKey], plist[locationInfoPlistFlag]]).toEqual([text, true]);
+  });
+
+  test("on: ios/Podfile.properties.json gets svelteNative.location as the string \"true\", beside the properties Expo's template writes; it is what compiles the iOS code in", async () => {
+    using project = app({});
+    const config = on(project.root);
+    expect(Object.keys((config.mods as any).ios)).toContain("podfileProperties");
+    // Expo's own properties stay, and applying it again changes nothing (the properties are a plain object keyed by name).
+    const template = { "expo.jsEngine": "hermes", "EX_DEV_CLIENT_NETWORK_INSPECTOR": "true" };
+    const written = await run(config, "ios", "podfileProperties", { ...template });
+    expect(written).toEqual({ ...template, [locationPodfileProperty]: "true" });
+    expect(await run(config, "ios", "podfileProperties", { ...written })).toEqual(written);
+    // A string, as Podfile properties are: the podspec compares it with "true".
+    expect(typeof written[locationPodfileProperty]).toBe("string");
+    // The plist keys do not do it alone: a build compiles the code in by this property, and the Android side has none.
+    expect(Object.keys(on(project.root, { whenInUse: text }).mods ?? {}).sort()).toEqual(["android", "ios"]);
   });
 
   test("on: Android's manifest has the enabled flag and the two permissions, each once, beside the app's own", async () => {
@@ -153,6 +170,19 @@ describe("capabilities.location", () => {
     // The usage text stays: nothing in the project says whose it is, an iOS app that asks for the location without one is stopped by the system, and one nothing asks for does no harm.
     expect(await run(config, "ios", "infoPlist", plist)).toEqual({ CFBundleName: "App", [locationUsageKey]: text, UIBackgroundModes: ["remote-notification"] });
     expect(await run(config, "ios", "infoPlist", { CFBundleName: "App" })).toEqual({ CFBundleName: "App" });
+  });
+
+  test("off, with the iOS project of an earlier prebuild: Podfile.properties.json loses svelteNative.location and keeps every other property, so the next pod install has no location code", async () => {
+    using project = uninstalled();
+    for (const location of [false, undefined] as const) {
+      const config = withCapabilities(base(project.root), { location }, { projectRoot: project.root });
+      expect(Object.keys((config.mods as any).ios)).toContain("podfileProperties");
+      expect(await run(config, "ios", "podfileProperties", { "expo.jsEngine": "hermes", [locationPodfileProperty]: "true", "svelteNative.push": "true" })).toEqual({ "expo.jsEngine": "hermes", "svelteNative.push": "true" });
+      expect(await run(config, "ios", "podfileProperties", { "expo.jsEngine": "hermes" })).toEqual({ "expo.jsEngine": "hermes" });
+    }
+    // Without an iOS project there is nothing to clean, and no mod is added for it.
+    using androidOnly = app({}, {}, { "android/app/build.gradle": "" });
+    expect(Object.keys(withCapabilities(base(androidOnly.root), undefined, { projectRoot: androidOnly.root }).mods ?? {})).toEqual(["android"]);
   });
 
   test("off: the manifest loses the flag, and its permissions when the flag shows the capability added them; the app's own meta-data and permissions stay", async () => {
@@ -715,7 +745,7 @@ describe("capabilities.push off: what an earlier prebuild wrote is taken away, a
     const mine = appConfig(project.root, { ios: { bundleIdentifier: "io.e.a", entitlements: { "aps-environment": "production" }, infoPlist: { UIBackgroundModes: ["remote-notification", "fetch"] } } });
     const config = withCapabilities(mine, { push: false }, { projectRoot: project.root });
     expect(config.ios).toEqual(mine.ios);
-    expect(Object.keys(mods(config).ios ?? {})).toEqual(["infoPlist", "appDelegate"]);
+    expect(Object.keys(mods(config).ios ?? {})).toEqual(["infoPlist", "podfileProperties", "appDelegate"]);
   });
 
   test("Info.plist loses the flag that turns the native code on, and keeps every other key, the background mode among them", async () => {
@@ -834,7 +864,7 @@ describe("capabilities.push off: what an earlier prebuild wrote is taken away, a
   test("push on for one platform takes away what an earlier prebuild wrote for the other, and writes the one that is named", async () => {
     using project = pushApp({}, { "ios/App/AppDelegate.swift": "", "android/app/build.gradle": "" });
     const androidOnly = withPush(project, { android: { googleServicesFile: "./google-services.json" } });
-    expect(Object.keys(mods(androidOnly).ios)).toEqual(["infoPlist", "appDelegate"]);
+    expect(Object.keys(mods(androidOnly).ios)).toEqual(["infoPlist", "podfileProperties", "appDelegate"]);
     expect((await run(androidOnly, "ios", "infoPlist", { [pushInfoPlistFlag]: true, CFBundleName: "App" })).CFBundleName).toBe("App");
     expect((await run(androidOnly, "ios", "appDelegate", { language: "swift", path: "AppDelegate.swift", contents: applyPushAppDelegate(template) })).contents).toBe(template);
     const iosOnly = withPush(project, { ios: { mode: "production" } });

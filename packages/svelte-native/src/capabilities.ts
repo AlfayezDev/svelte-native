@@ -6,10 +6,12 @@
  * capability is off the plugin takes away what is certainly its own.
  *
  * `location` is `navigator.geolocation` and `navigator.permissions` (`geolocation.ts`; SPEC.md, "Location"): the platform's own location service (Android's `LocationManager` with no Google library,
- * iOS's `CLLocationManager`), in the module `SvelteLocation`. The plugin writes the iOS usage text (`NSLocationWhenInUseUsageDescription`, the app's reason as the user will read it) and the Info.plist
- * flag `SvelteLocationEnabled`, and on Android the two location permissions and the meta-data flag `expo.modules.sveltelocation.enabled`, which the native code asks before it does anything.
+ * iOS's `CLLocationManager`), in the module `SvelteLocation`. The plugin writes the iOS usage text (`NSLocationWhenInUseUsageDescription`, the app's reason as the user will read it), the Info.plist
+ * flag `SvelteLocationEnabled` and the Podfile property `svelteNative.location` (which compiles the iOS code in: without it the pod has no location code and no reference to CoreLocation, as App Store
+ * Connect refuses a binary that uses the API without the usage text), and on Android the two location permissions and the meta-data flag `expo.modules.sveltelocation.enabled`, which the native code asks
+ * before it does anything.
  * Foreground location only: background location and the motion activity are not part of it (an app that needs them installs expo-location and lists its own plugin; the two do not conflict, they
- * are other modules with other events). Where it is off the plugin takes away the two flags, and the Android permissions when the flag shows an earlier prebuild added them and the app's own
+ * are other modules with other events). Where it is off the plugin takes away the flags and the Podfile property, and the Android permissions when the flag shows an earlier prebuild added them and the app's own
  * `android.permissions` does not list them; it leaves the iOS usage text, which it cannot tell from the app's own or another plugin's (an app that asks for the location with no usage text is
  * stopped by iOS, and a text that nothing asks for does no harm).
  *
@@ -29,7 +31,7 @@ import type { ExpoConfig } from "expo/config";
 // The `with*` functions are plain exports of that CommonJS module, which Node's loader names. `AndroidConfig` is not: Expo defines it with a getter, which the CommonJS lexer of Node before 24
 // does not see ("Named export 'AndroidConfig' not found"), so its values come from the default import, which is the module's exports in every loader (Node, Bun, the bundle); its types stay a named import.
 import type { AndroidConfig } from "expo/config-plugins.js";
-import configPlugins, { withAndroidColors, withAndroidManifest, withAppBuildGradle, withAppDelegate, withDangerousMod, withInfoPlist, withStringsXml } from "expo/config-plugins.js";
+import configPlugins, { withAndroidColors, withAndroidManifest, withAppBuildGradle, withAppDelegate, withDangerousMod, withInfoPlist, withPodfileProperties, withStringsXml } from "expo/config-plugins.js";
 import { apsEnvironmentEntitlement, checkPushConfig, findPushSecret, googleServicesPackages, otherPushLibraries, pushIsOn, pushSecretMessage, remoteNotificationMode } from "./push/config.ts";
 
 const { AndroidConfig: expoAndroid } = configPlugins;
@@ -78,6 +80,15 @@ export const locationMetaData = {
 
 /** The Info.plist flag (a boolean) that turns the native code on, on iOS: svelte-core's `SvelteLocationFlag`. Written when `capabilities.location` is set, and taken away without. */
 export const locationInfoPlistFlag = "SvelteLocationEnabled";
+
+/**
+ * The key the plugin writes into Expo's `ios/Podfile.properties.json` (Podfile properties are strings) when location is on for iOS, and takes away without: `SvelteCore.podspec` reads it and adds the compile
+ * condition `SVELTE_LOCATION` (`locationCompileCondition`) to the pod, and only then is the iOS location code compiled in. An app without it has no CoreLocation code, no reference to it and no link to it
+ * in its binary: App Store Connect refuses a binary that uses the API without `NSLocationWhenInUseUsageDescription`, so a native code that merely does nothing when it is off is not enough.
+ * `tests/package/location-native.test.ts` compares the podspec's text with these two.
+ */
+export const locationPodfileProperty = "svelteNative.location";
+export const locationCompileCondition = "SVELTE_LOCATION";
 
 /** The Info.plist key of the text iOS shows when the app asks for the location while it is in use: the capability's text. */
 export const locationUsageKey = "NSLocationWhenInUseUsageDescription";
@@ -191,8 +202,8 @@ export function removeLocationPermissions(manifest: AndroidConfig.Manifest.Andro
 }
 
 /**
- * The capability on: the Android manifest gets the `enabled` flag and the two permissions (`ensurePermissions` adds each once, beside the app's own), and the config's own Info.plist keys get the usage
- * text and the flag, where Expo's Info.plist mod writes them. The text may be the app's own `ios.infoPlist` entry when it says the same; another is two answers to one question.
+ * The capability on: the Android manifest gets the `enabled` flag and the two permissions (`ensurePermissions` adds each once, beside the app's own), the config's own Info.plist keys get the usage
+ * text and the flag, where Expo's Info.plist mod writes them, and `ios/Podfile.properties.json` gets `svelteNative.location` (`locationPodfileProperty`), which compiles the iOS code in. The text may be the app's own `ios.infoPlist` entry when it says the same; another is two answers to one question.
  */
 function withLocationOn(config: ExpoConfig, location: LocationCapability): ExpoConfig {
   const { whenInUse } = locationSettings(location);
@@ -202,6 +213,10 @@ function withLocationOn(config: ExpoConfig, location: LocationCapability): ExpoC
       `The app config sets ios.infoPlist.${locationUsageKey} ("${String(existing)}") and capabilities.location says "${whenInUse}": keep one. capabilities.location writes ${locationUsageKey}.`,
     );
   config = { ...config, ios: { ...config.ios, infoPlist: { ...config.ios?.infoPlist, [locationUsageKey]: whenInUse, [locationInfoPlistFlag]: true } } };
+  config = withPodfileProperties(config, (config) => {
+    config.modResults[locationPodfileProperty] = "true";
+    return config;
+  });
   return withAndroidManifest(config, (config) => {
     setMetaData(expoAndroid.Manifest.getMainApplicationOrThrow(config.modResults), locationMetaData.enabled, "value", "true");
     expoAndroid.Permissions.ensurePermissions(config.modResults, [...locationAndroidPermissions]);
@@ -211,8 +226,8 @@ function withLocationOn(config: ExpoConfig, location: LocationCapability): ExpoC
 
 /**
  * The capability off: takes away what an earlier prebuild wrote, in each platform that has a native project (a project that does not exist has nothing of an earlier prebuild, and the config comes
- * back as it was). The flags go; the Android permissions go when the flag shows the capability added them and the app does not ask for them itself (`removeLocationPermissions`); the iOS usage text
- * stays, since nothing in the project says whose it is.
+ * back as it was). The flags and the Podfile property go; the Android permissions go when the flag shows the capability added them and the app does not ask for them itself
+ * (`removeLocationPermissions`); the iOS usage text stays, since nothing in the project says whose it is.
  */
 function withoutLocation(config: ExpoConfig, context: Context): ExpoConfig {
   if (existsSync(join(context.projectRoot, "android"))) {
@@ -230,6 +245,11 @@ function withoutLocation(config: ExpoConfig, context: Context): ExpoConfig {
   if (existsSync(join(context.projectRoot, "ios"))) {
     config = withInfoPlist(config, (config) => {
       delete config.modResults[locationInfoPlistFlag];
+      return config;
+    });
+    // The property that compiles the code in: without it the pod's next install has no location code at all.
+    config = withPodfileProperties(config, (config) => {
+      delete config.modResults[locationPodfileProperty];
       return config;
     });
   }

@@ -1,7 +1,7 @@
 import ExpoModulesCore
 import Foundation
 
-/// What a call of the module answers in a build with location off (`SvelteLocationFlag`): SvelteCore is in every app, and JavaScript reads the module's `enabled` constant before it calls.
+/// What a call of the module answers in a build with location off: SvelteCore is in every app, and JavaScript reads the module's `enabled` constant before it calls. Both builds of the module use it.
 final class SvelteLocationDisabledException: Exception, @unchecked Sendable {
   init() {
     super.init(
@@ -13,6 +13,12 @@ final class SvelteLocationDisabledException: Exception, @unchecked Sendable {
 
   override var debugDescription: String { reason }
 }
+
+// The module is registered in every app (the pod's module list is the package's one `expo-module.config.json`), but its implementation exists only in an app that turned location on: the config plugin
+// writes `svelteNative.location` into ios/Podfile.properties.json, SvelteCore.podspec turns that into the compile condition `SVELTE_LOCATION`, and without it the module below is a stub that
+// answers `enabled` false and refuses every call. An app without location has no CoreLocation code, no reference to it and no link to it: App Store Connect scans the binary, and a binary that uses
+// the API without `NSLocationWhenInUseUsageDescription` is refused at upload.
+#if SVELTE_LOCATION
 
 /// The module behind `navigator.geolocation` and `navigator.permissions` (`src/geolocation.ts`; the contract is SPEC.md's "Location"): the permission, the current position, the last known one,
 /// and watches by the id JavaScript gives them, with the events `locationChanged` and `locationError`. It is a thin front for `SvelteLocationCenter` (`CLLocationManager`, no other framework:
@@ -111,3 +117,43 @@ public final class SvelteLocationModule: Module {
     }.runOnQueue(.main)
   }
 }
+
+#else
+
+/// The module of a build without location (`SVELTE_LOCATION` not set): the same name and the same functions, with `enabled` false and every call refused, so that Expo's generated provider
+/// finds the module it lists and JavaScript, which reads `enabled` first, never calls any of them. It names no CoreLocation type.
+public final class SvelteLocationModule: Module {
+  public func definition() -> ModuleDefinition {
+    Name("SvelteLocation")
+
+    Constant("enabled") { false }
+
+    Events("locationChanged", "locationError")
+
+    AsyncFunction("permission") { (promise: Promise) in
+      promise.reject(SvelteLocationDisabledException())
+    }
+
+    AsyncFunction("requestPermission") { (promise: Promise) in
+      promise.reject(SvelteLocationDisabledException())
+    }
+
+    AsyncFunction("currentPosition") { (options: [String: Any], promise: Promise) in
+      promise.reject(SvelteLocationDisabledException())
+    }
+
+    AsyncFunction("lastKnownPosition") { (options: [String: Any], promise: Promise) in
+      promise.reject(SvelteLocationDisabledException())
+    }
+
+    AsyncFunction("startWatch") { (watchId: Int, options: [String: Any], promise: Promise) in
+      promise.reject(SvelteLocationDisabledException())
+    }
+
+    AsyncFunction("stopWatch") { (watchId: Int, promise: Promise) in
+      promise.reject(SvelteLocationDisabledException())
+    }
+  }
+}
+
+#endif

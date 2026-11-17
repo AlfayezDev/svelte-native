@@ -195,7 +195,7 @@ The guide's page says this first, with a reference recipe:
 ## Packages and native code
 
 - **`@alfayez/svelte-native-push`** (new, `packages/svelte-native-push`): the native code only, an Expo module `SveltePush`. Android on Firebase Messaging, iOS on APNs and `UNUserNotificationCenter`. It is a package of its own so that Firebase is in the build of the apps that use push and of no other app, and so that installing it is what links it, as for any native library. It is released with `@alfayez/svelte-native`, at the same version.
-- **`@alfayez/svelte-native/push`**: the API above (`push`, `PushHooks`, the types), in the main package, because it works with the router and the hooks. Without the native package installed, `push` exists and `push.permission` reads `"denied"`, with one warning that says what to install.
+- **`@alfayez/svelte-native/push`**: the API above (`push`, `PushHooks`, the types), in the main package, because it works with the router and the hooks. Without the native package installed, `push` exists and `push.permission` reads `"denied"`, with one warning that says what to install. The library's Metro config bundles a stand-in of a few lines in the client's place then (`push/absent.ts`), so an app without push carries none of its code.
 - **`@alfayez/svelte-native/push/server`**: the sender, in the main package, for Node (no native code, nothing it imports runs on the device).
 
 ### The native module's contract

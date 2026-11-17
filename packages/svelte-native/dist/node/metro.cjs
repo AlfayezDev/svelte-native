@@ -28,6 +28,7 @@ __export(metro_exports, {
   QUICK_CRYPTO: () => QUICK_CRYPTO,
   RENDERER_STUBS: () => RENDERER_STUBS,
   closeWatchers: () => closeWatchers,
+  hasPushPackage: () => hasPushPackage,
   isInPackage: () => isInPackage,
   libraryChanged: () => libraryChanged,
   stubCoreSource: () => stubCoreSource,
@@ -2554,6 +2555,9 @@ function kitResolution(moduleName) {
   return void 0;
 }
 
+// src/push/config.ts
+var pushPackage = "@alfayez/svelte-native-push";
+
 // src/remote/transform.ts
 var import_node_path7 = require("node:path");
 var import_parser = require("@babel/parser");
@@ -2703,6 +2707,21 @@ function libraryChanged(projectRoot, library = (0, import_node_fs6.realpathSync)
 `);
   return true;
 }
+var realOr = (path) => {
+  try {
+    return (0, import_node_fs6.realpathSync)(path);
+  } catch {
+    return path;
+  }
+};
+function hasPushPackage(projectRoot) {
+  try {
+    (0, import_node_module5.createRequire)((0, import_node_path9.join)(projectRoot, "package.json")).resolve(`${pushPackage}/package.json`);
+    return true;
+  } catch {
+    return false;
+  }
+}
 function withSvelteNative(config, options = {}) {
   assertCustomRenderer("withSvelteNative (@alfayez/svelte-native/metro)");
   Object.assign(process.env, runesEnvironment(options.runes), asyncEnvironment(options.async));
@@ -2762,6 +2781,8 @@ function withSvelteNative(config, options = {}) {
     reportUnsupported(built2.unsupported);
     if (process.env.NODE_ENV === "development") watchers.add(watchClasses(building, built2.stylesheets));
   }
+  const pushClient = (0, import_node_fs6.realpathSync)(sourceFile("push/push.svelte.ts"));
+  const pushAbsent = hasPushPackage(config.projectRoot) ? void 0 : sourceFile("push/absent.ts");
   const stubFor = (moduleName, origin) => {
     const name = stubbed.find((candidate) => isInPackage(moduleName, candidate));
     if (name !== void 0) return stubs.get(name) ?? null;
@@ -2810,6 +2831,7 @@ function withSvelteNative(config, options = {}) {
       if (result.type === "sourceFile") {
         const stubbedFile = stubForFile(result.filePath);
         if (stubbedFile !== null) return { type: "sourceFile", filePath: stubbedFile };
+        if (pushAbsent !== void 0 && result.filePath.endsWith("push.svelte.ts") && realOr(result.filePath) === pushClient) return { type: "sourceFile", filePath: pushAbsent };
         const stub2 = Object.entries(RENDERER_STUBS).find(([suffix]) => result.filePath.endsWith(suffix));
         if (stub2) return { type: "sourceFile", filePath: sourceFile(stub2[1]) };
         if (INITIALIZE_CORE.test(result.filePath)) return { type: "sourceFile", filePath: sourceFile("init.ts") };
@@ -2839,6 +2861,7 @@ function withSvelteNative(config, options = {}) {
   QUICK_CRYPTO,
   RENDERER_STUBS,
   closeWatchers,
+  hasPushPackage,
   isInPackage,
   libraryChanged,
   stubCoreSource,

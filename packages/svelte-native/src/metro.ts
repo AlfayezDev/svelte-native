@@ -8,6 +8,7 @@ import { buildClassesSync, reportSkipped, reportUnsupported, watchClasses } from
 import { asyncEnvironment, runesEnvironment } from "./compile-options.ts";
 import { kitResolution } from "./kit/modules.ts";
 import { packageRoot, sourceFile } from "./package-root.ts";
+import { pushPackage } from "./push/config.ts";
 import { remoteResolution } from "./remote/transform.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
 import { classesTableFile, labIncludedFor, routesTableFile, variantName } from "./variant.ts";
@@ -154,6 +155,25 @@ export function libraryChanged(projectRoot: string, library: string = realpathSy
   return true;
 }
 
+/** A path with its links resolved, or the path itself when it does not exist. */
+const realOr = (path: string): string => {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+};
+
+/** Whether the app has `@alfayez/svelte-native-push`: resolved from the app's directory, as Expo's autolinking finds it. */
+export function hasPushPackage(projectRoot: string): boolean {
+  try {
+    createRequire(join(projectRoot, "package.json")).resolve(`${pushPackage}/package.json`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOptions = {}): ConfigT {
   assertCustomRenderer("withSvelteNative (@alfayez/svelte-native/metro)");
   Object.assign(process.env, runesEnvironment(options.runes), asyncEnvironment(options.async));
@@ -215,6 +235,10 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     reportUnsupported(built.unsupported);
     if (process.env.NODE_ENV === "development") watchers.add(watchClasses(building, built.stylesheets));
   }
+  // An app without `@alfayez/svelte-native-push` gets the push client's stand-in (`push/absent.ts`): `push` answers as in a build without the native module (PUSH.md), and the
+  // client, which every app would otherwise bundle (`app.ts` imports `push/load.ts`, which requires it), is not in the bundle.
+  const pushClient = realpathSync(sourceFile("push/push.svelte.ts"));
+  const pushAbsent = hasPushPackage(config.projectRoot) ? undefined : sourceFile("push/absent.ts");
   const stubFor = (moduleName: string, origin: string): string | null => {
     const name = stubbed.find((candidate) => isInPackage(moduleName, candidate));
     if (name !== undefined) return stubs.get(name) ?? null;
@@ -270,6 +294,7 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     if (result.type === "sourceFile") {
       const stubbedFile = stubForFile(result.filePath);
       if (stubbedFile !== null) return { type: "sourceFile", filePath: stubbedFile };
+      if (pushAbsent !== undefined && result.filePath.endsWith("push.svelte.ts") && realOr(result.filePath) === pushClient) return { type: "sourceFile", filePath: pushAbsent };
       const stub = Object.entries(RENDERER_STUBS).find(([suffix]) => result.filePath.endsWith(suffix));
       if (stub) return { type: "sourceFile", filePath: sourceFile(stub[1]) };
       // `init.ts` is the Fabric entry's InitializeCore. `expo/src/winter` (run before main) imports InitializeCore for the

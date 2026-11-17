@@ -2753,8 +2753,17 @@ var real = (path) => {
     return path;
   }
 };
+var spellings = /* @__PURE__ */ new Map();
+function vendorSpellings(root) {
+  let found = spellings.get(root);
+  if (found === void 0) {
+    found = [.../* @__PURE__ */ new Set([vendorDirectory(root), real(vendorDirectory(root))])];
+    spellings.set(root, found);
+  }
+  return found;
+}
 function vendoredFileAs(path, root = packageRoot) {
-  for (const directory of /* @__PURE__ */ new Set([vendorDirectory(root), real(vendorDirectory(root))])) {
+  for (const directory of vendorSpellings(root)) {
     const inside = (0, import_node_path9.relative)(directory, path);
     if (inside !== "" && !inside.startsWith("..") && !(0, import_node_path9.isAbsolute)(inside)) {
       const name = vendoredPackages.find((vendored) => inside === vendored.name || inside.startsWith(`${vendored.name}${import_node_path9.sep}`))?.name;

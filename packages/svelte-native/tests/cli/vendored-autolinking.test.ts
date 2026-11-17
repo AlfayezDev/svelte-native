@@ -226,7 +226,8 @@ describe("with the Nitro libraries deferred (Android)", () => {
       "react-native-quick-crypto": { root: "/app/node_modules/react-native-quick-crypto", name: "react-native-quick-crypto", platforms: { android: { sourceDir: "/app/node_modules/react-native-quick-crypto/android", packageImportPath: "import com.margelo.nitro.quickcrypto.QuickCryptoPackage;", packageInstance: "new QuickCryptoPackage()" } } },
     },
   });
-  const instance = (config: AutolinkingConfig, name: string) => (config.dependencies?.[name]?.platforms?.android as { packageInstance: string }).packageInstance;
+  const androidOf = (config: AutolinkingConfig, name: string) => (config.dependencies?.[name]?.platforms?.android ?? {}) as { packageInstance?: string; sourceDir?: string; libraryName?: string };
+  const instance = (config: AutolinkingConfig, name: string) => androidOf(config, name).packageInstance;
 
   test("the vendored entries are matched by the relinking as the installed ones were: MMKV is deferred, Nitro's package is gated, quick-crypto's is deferred too", () => {
     const relinked = deferNitroLibraries(linkVendored(nitroPeers(), "android"));
@@ -234,8 +235,8 @@ describe("with the Nitro libraries deferred (Android)", () => {
     expect(instance(relinked, "react-native-nitro-modules")).toBe("new NitroGate(new com.margelo.nitro.NitroModulesPackage())");
     expect(instance(relinked, "react-native-quick-crypto")).toBe('new DeferredNitroPackage("QuickCrypto")');
     // The paths are still the copy's.
-    expect((relinked.dependencies?.["react-native-mmkv"]?.platforms?.android as { sourceDir: string }).sourceDir).toBe(join(vendoredRoot("react-native-mmkv"), "android"));
-    expect((relinked.dependencies?.["react-native-nitro-modules"]?.platforms?.android as { libraryName: string }).libraryName).toBe("NitroModulesSpec");
+    expect(androidOf(relinked, "react-native-mmkv").sourceDir).toBe(join(vendoredRoot("react-native-mmkv"), "android"));
+    expect(androidOf(relinked, "react-native-nitro-modules").libraryName).toBe("NitroModulesSpec");
   });
 
   test("the same when the originals were in the config and got replaced", () => {

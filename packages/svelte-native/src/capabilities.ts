@@ -21,7 +21,7 @@ import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import type { ExpoConfig } from "expo/config";
 // `.js` spelled out, as in `remote/plugin.ts`: Node's own module loader, which loads this file from its source in `tests/cli/remote-plugin.test.ts` ("loading"), resolves no `expo/config-plugins` without it.
-import { AndroidConfig, withAndroidColors, withAndroidManifest, withDangerousMod } from "expo/config-plugins.js";
+import { AndroidConfig, withAndroidColors, withAndroidManifest, withAppDelegate, withDangerousMod } from "expo/config-plugins.js";
 
 /** Why the app uses the location: the text iOS shows when it asks (`NSLocationWhenInUseUsageDescription`), or that and the reason for the background too. */
 export type LocationCapability =
@@ -386,10 +386,62 @@ export function pushSettings(push: unknown, appPackage: string | undefined, proj
   return settings;
 }
 
+const holdBegin = "    // Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
+const holdOpen = "      surface: { [self] in";
+const holdClose = "      })";
+const holdEnd = "    // Svelte native: end of the first screen of a launch in the background";
+// `internal`, as `applyAppDelegate` writes its own import: Expo's generated ExpoModulesProvider imports every module as `internal import`, and a plain import of the same module in the app target is ambiguous.
+const holdImport = "internal import SveltePush // Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
+const escapeText = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** The head and the tail of the wrapper, each with the newline before it, so that taking both away leaves the template's call where it was. */
+const holdHead = new RegExp(`\\n${escapeText(holdBegin)}\\n[\\s\\S]*?${escapeText(holdOpen)}(?=\\n)`);
+const holdTail = new RegExp(`\\n${escapeText(holdClose)}\\n${escapeText(holdEnd)}(?=\\n)`);
+const holdImportLine = new RegExp(`^${escapeText(holdImport)}\\n`, "m");
+
+/**
+ * `AppDelegate.swift` (iOS) for an app with push: rule 2 of PUSH.md, a push that wakes the app mounts no screen. Expo's template starts React Native's surface in
+ * `application(_:didFinishLaunchingWithOptions:)`, which mounts the first screen, and iOS also runs that method when it launches the app in the background for a silent push,
+ * where nobody can see the screen. The template's `factory.startReactNative(...)` call is wrapped in `SveltePushBackgroundLaunch.start` (`@alfayez/svelte-native-push`),
+ * which makes the same call in the same place in every launch the user makes, and in a launch in the background starts only the React host (`initializeReactHost`, which
+ * is what the first `startReactNative` would have done before it made the surface) and makes the call at the first `didBecomeActive`. JavaScript, `init` and the push hooks
+ * run meanwhile. The template's call is not touched, only wrapped, so that taking the wrapper away gives the template back: the patch is idempotent, and a prebuild replaces
+ * what an older version wrote. Throws when the template has no such call, since a build that lost this silently would mount a screen in the background.
+ */
+export function applyPushAppDelegate(contents: string): string {
+  const stripped = contents.replace(holdHead, "").replace(holdTail, "").replace(holdImportLine, "");
+  const imports = [...stripped.matchAll(/^(?:(?:internal|public|package|private|fileprivate) |@_exported |@preconcurrency )*import [\w.]+[ \t]*$/gm)];
+  const lastImport = imports.at(-1);
+  const call = /^[ \t]*factory\.startReactNative\([^)]*\)[ \t]*$/m.exec(stripped);
+  const launching = /_ application: UIApplication,\s*didFinishLaunchingWithOptions launchOptions: \[UIApplication\.LaunchOptionsKey: Any\]\?/.test(stripped);
+  if (!lastImport || !call || !launching || !/withModuleName: "[^"]+",\s*in: window,\s*launchOptions: launchOptions\)/.test(call[0])) {
+    throw new Error(
+      "Svelte native could not find the imports and `factory.startReactNative(withModuleName: …, in: window, launchOptions: launchOptions)` in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift. " +
+        "Push needs the call to keep a launch in the background (a silent push) from mounting the first screen.",
+    );
+  }
+  const head = [
+    holdBegin,
+    "    SveltePushBackgroundLaunch.start(",
+    "      application,",
+    "      host: {",
+    "        factory.rootViewFactory.initializeReactHost(",
+    "          withLaunchOptions: launchOptions,",
+    "          bundleConfiguration: factory.bundleConfiguration,",
+    "          devMenuConfiguration: factory.devMenuConfiguration ?? RCTDevMenuConfiguration.default())",
+    "      },",
+    holdOpen,
+    "",
+  ].join("\n");
+  const tail = ["", holdClose, holdEnd].join("\n");
+  const callEnd = call.index + call[0].length;
+  const importEnd = lastImport.index + lastImport[0].length;
+  return `${stripped.slice(0, importEnd)}\n${holdImport}${stripped.slice(importEnd, call.index)}${head}${call[0]}${tail}${stripped.slice(callEnd)}`;
+}
+
 /**
  * The iOS side: the `aps-environment` entitlement, and `remote-notification` among the background modes (silent pushes wake the app), added once to the modes the
  * app has. Both are written into the config's `ios` object, where Expo's Info.plist and entitlements mods read them, and where `eas build` reads the entitlement
- * to enable the Push Notifications capability of the app id.
+ * to enable the Push Notifications capability of the app id. The `AppDelegate` is patched so that a push that wakes the app mounts no screen (`applyPushAppDelegate`).
  */
 function withPushIos(config: ExpoConfig, mode: "development" | "production"): ExpoConfig {
   const existing = config.ios?.entitlements?.["aps-environment"];
@@ -399,7 +451,7 @@ function withPushIos(config: ExpoConfig, mode: "development" | "production"): Ex
     );
   const existingModes = config.ios?.infoPlist?.UIBackgroundModes;
   const modes: string[] = Array.isArray(existingModes) ? existingModes : [];
-  return {
+  config = {
     ...config,
     ios: {
       ...config.ios,
@@ -407,6 +459,11 @@ function withPushIos(config: ExpoConfig, mode: "development" | "production"): Ex
       infoPlist: { ...config.ios?.infoPlist, UIBackgroundModes: modes.includes("remote-notification") ? modes : [...modes, "remote-notification"] },
     },
   };
+  return withAppDelegate(config, (config) => {
+    if (config.modResults.language !== "swift") throw new Error("Svelte native requires Expo's Swift AppDelegate");
+    config.modResults.contents = applyPushAppDelegate(config.modResults.contents);
+    return config;
+  });
 }
 
 /** A `<meta-data>` of the application element, replacing the one of that name (it holds a `value` or a `resource`, not both). */

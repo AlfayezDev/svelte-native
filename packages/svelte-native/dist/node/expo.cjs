@@ -603,6 +603,45 @@ function pushSettings(push, appPackage, projectRoot) {
   if (platforms.ios !== void 0) settings.ios = pushIosSettings(platforms.ios);
   return settings;
 }
+var holdBegin = "    // Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
+var holdOpen = "      surface: { [self] in";
+var holdClose = "      })";
+var holdEnd = "    // Svelte native: end of the first screen of a launch in the background";
+var holdImport = "internal import SveltePush // Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
+var escapeText = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var holdHead = new RegExp(`\\n${escapeText(holdBegin)}\\n[\\s\\S]*?${escapeText(holdOpen)}(?=\\n)`);
+var holdTail = new RegExp(`\\n${escapeText(holdClose)}\\n${escapeText(holdEnd)}(?=\\n)`);
+var holdImportLine = new RegExp(`^${escapeText(holdImport)}\\n`, "m");
+function applyPushAppDelegate(contents) {
+  const stripped = contents.replace(holdHead, "").replace(holdTail, "").replace(holdImportLine, "");
+  const imports = [...stripped.matchAll(/^(?:(?:internal|public|package|private|fileprivate) |@_exported |@preconcurrency )*import [\w.]+[ \t]*$/gm)];
+  const lastImport = imports.at(-1);
+  const call = /^[ \t]*factory\.startReactNative\([^)]*\)[ \t]*$/m.exec(stripped);
+  const launching = /_ application: UIApplication,\s*didFinishLaunchingWithOptions launchOptions: \[UIApplication\.LaunchOptionsKey: Any\]\?/.test(stripped);
+  if (!lastImport || !call || !launching || !/withModuleName: "[^"]+",\s*in: window,\s*launchOptions: launchOptions\)/.test(call[0])) {
+    throw new Error(
+      "Svelte native could not find the imports and `factory.startReactNative(withModuleName: …, in: window, launchOptions: launchOptions)` in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift. Push needs the call to keep a launch in the background (a silent push) from mounting the first screen."
+    );
+  }
+  const head = [
+    holdBegin,
+    "    SveltePushBackgroundLaunch.start(",
+    "      application,",
+    "      host: {",
+    "        factory.rootViewFactory.initializeReactHost(",
+    "          withLaunchOptions: launchOptions,",
+    "          bundleConfiguration: factory.bundleConfiguration,",
+    "          devMenuConfiguration: factory.devMenuConfiguration ?? RCTDevMenuConfiguration.default())",
+    "      },",
+    holdOpen,
+    ""
+  ].join("\n");
+  const tail = ["", holdClose, holdEnd].join("\n");
+  const callEnd = call.index + call[0].length;
+  const importEnd = lastImport.index + lastImport[0].length;
+  return `${stripped.slice(0, importEnd)}
+${holdImport}${stripped.slice(importEnd, call.index)}${head}${call[0]}${tail}${stripped.slice(callEnd)}`;
+}
 function withPushIos(config, mode) {
   const existing = config.ios?.entitlements?.["aps-environment"];
   if (existing !== void 0 && existing !== mode)
@@ -611,7 +650,7 @@ function withPushIos(config, mode) {
     );
   const existingModes = config.ios?.infoPlist?.UIBackgroundModes;
   const modes = Array.isArray(existingModes) ? existingModes : [];
-  return {
+  config = {
     ...config,
     ios: {
       ...config.ios,
@@ -619,6 +658,11 @@ function withPushIos(config, mode) {
       infoPlist: { ...config.ios?.infoPlist, UIBackgroundModes: modes.includes("remote-notification") ? modes : [...modes, "remote-notification"] }
     }
   };
+  return (0, import_config_plugins.withAppDelegate)(config, (config2) => {
+    if (config2.modResults.language !== "swift") throw new Error("Svelte native requires Expo's Swift AppDelegate");
+    config2.modResults.contents = applyPushAppDelegate(config2.modResults.contents);
+    return config2;
+  });
 }
 function setMetaData(application, name, attribute, content) {
   const others = (application["meta-data"] ?? []).filter((item) => item.$["android:name"] !== name);

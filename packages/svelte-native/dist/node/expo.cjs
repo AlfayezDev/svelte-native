@@ -39,9 +39,9 @@ __export(expo_exports, {
   onDemandPackageSource: () => onDemandPackageSource
 });
 module.exports = __toCommonJS(expo_exports);
-var import_promises = require("node:fs/promises");
+var import_promises2 = require("node:fs/promises");
 var import_node_path5 = require("node:path");
-var import_config_plugins2 = require("expo/config-plugins");
+var import_config_plugins3 = require("expo/config-plugins");
 
 // src/build.ts
 var import_node_fs2 = require("node:fs");
@@ -382,8 +382,10 @@ async function syncNative(root, options = {}) {
 
 // src/capabilities.ts
 var import_node_fs3 = require("node:fs");
+var import_promises = require("node:fs/promises");
 var import_node_module2 = require("node:module");
 var import_node_path4 = require("node:path");
+var import_config_plugins = require("expo/config-plugins.js");
 var CapabilityConfigError = class extends Error {
   name = "CapabilityConfigError";
 };
@@ -420,11 +422,16 @@ function listsPlugin(config, name) {
 function withCapabilities(config, capabilities, options = {}) {
   const projectRoot = options.projectRoot ?? config._internal?.projectRoot ?? process.cwd();
   const load = options.load ?? ((request) => (0, import_node_module2.createRequire)((0, import_node_path4.join)(projectRoot, "package.json"))(request));
-  const location = capabilities?.location;
-  const on = location !== void 0 && location !== null && location !== false;
   const dependencies = linkedDependencies(projectRoot);
-  const excluded = (options.excluded ?? []).includes("expo-location") || dependencies.excluded.has("expo-location");
-  const installed = dependencies.linked.has("expo-location") && !excluded;
+  const excluded = /* @__PURE__ */ new Set([...options.excluded ?? [], ...dependencies.excluded]);
+  const linked = new Set([...dependencies.linked].filter((name) => !excluded.has(name)));
+  const context = { projectRoot, load, linked, excluded };
+  return withPush(withLocation(config, capabilities?.location, context), capabilities?.push, context);
+}
+function withLocation(config, location, context) {
+  const on = location !== void 0 && location !== null && location !== false;
+  const excluded = context.excluded.has("expo-location");
+  const installed = context.linked.has("expo-location");
   if (listsPlugin(config, "expo-location")) {
     if (on)
       throw new CapabilityConfigError("The app config sets capabilities.location and also lists expo-location's own plugin: keep one. capabilities.location gives expo-location its texts; its own plugin entry takes all of its options.");
@@ -441,13 +448,13 @@ function withCapabilities(config, capabilities, options = {}) {
     throw new CapabilityConfigError("capabilities.location is on, but expo-location is left out of autolinking (`autolinkingExclude`, or `expo.autolinking.exclude` in package.json): take it out of that list, or turn the capability off.");
   const props = locationPluginProps(location);
   try {
-    load("expo-location/package.json");
+    context.load("expo-location/package.json");
   } catch {
     throw new CapabilityConfigError("capabilities.location needs expo-location, which is not installed: `npx expo install expo-location`, then prebuild again.");
   }
   let plugin;
   try {
-    plugin = load("expo-location/app.plugin.js");
+    plugin = context.load("expo-location/app.plugin.js");
   } catch (error) {
     throw new CapabilityConfigError(`expo-location's config plugin (expo-location/app.plugin.js) failed to load: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -455,9 +462,236 @@ function withCapabilities(config, capabilities, options = {}) {
   if (typeof apply !== "function") throw new CapabilityConfigError("expo-location's config plugin (expo-location/app.plugin.js) is not a function: is the installed expo-location the one this Expo SDK uses?");
   return apply(config, props);
 }
+var pushPackage = "@alfayez/svelte-native-push";
+var otherPushLibraries = ["expo-notifications", "@react-native-firebase/messaging"];
+var defaultPushChannel = { id: "default", name: "Notifications" };
+var pushMetaData = {
+  icon: "com.google.firebase.messaging.default_notification_icon",
+  color: "com.google.firebase.messaging.default_notification_color",
+  firebaseChannel: "com.google.firebase.messaging.default_notification_channel_id",
+  channelId: "expo.modules.sveltepush.channel_id",
+  channelName: "expo.modules.sveltepush.channel_name",
+  channelDescription: "expo.modules.sveltepush.channel_description"
+};
+var pushResources = { icon: "svelte_push_icon", color: "svelte_push_color" };
+var pemKey = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
+var serviceAccountJson = /"type"\s*:\s*"service_account"|"private_key"\s*:/;
+var privateKeyName = /^private[_-]?key$/i;
+function findPushSecret(value, where) {
+  if (typeof value === "string") {
+    if (serviceAccountJson.test(value)) return { where, what: "a service account key" };
+    if (pemKey.test(value)) return { where, what: "a PEM private key" };
+    if (/\.p8$/i.test(value.trim())) return { where, what: "the path of a .p8 file (an APNs key)" };
+    return void 0;
+  }
+  if (typeof value !== "object" || value === null) return void 0;
+  for (const [key, item] of Object.entries(value)) {
+    const at = Array.isArray(value) ? `${where}[${key}]` : `${where}.${key}`;
+    if (privateKeyName.test(key)) return { where: at, what: "a private key" };
+    if (key === "type" && item === "service_account") return { where, what: "a service account key" };
+    const found = findPushSecret(item, at);
+    if (found) return found;
+  }
+  return void 0;
+}
+var secretError = ({ where, what }) => new CapabilityConfigError(
+  `${where} is ${what}: a key that can send to every user must never be in the app or its build. Keep it in the server's environment (the FCM service account, the APNs .p8 with its key id and team id) and give the app identifiers only.`
+);
+var unreadable = (error) => error.code === "ENOENT" ? "does not exist" : `cannot be read: ${error instanceof Error ? error.message : String(error)}`;
+function section(value, where, example) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new CapabilityConfigError(`${where} takes an object: ${example}`);
+  return value;
+}
+function optionalText(value, where) {
+  if (value === void 0) return void 0;
+  if (typeof value !== "string" || value.trim() === "") throw new CapabilityConfigError(`${where} must be a text that is not empty.`);
+  return value;
+}
+function googleServicesPackages(parsed) {
+  const clients = parsed?.client;
+  if (!Array.isArray(clients)) return [];
+  return clients.flatMap((client) => {
+    const name = client?.client_info?.android_client_info?.package_name;
+    return typeof name === "string" ? [name] : [];
+  });
+}
+function checkGoogleServicesFile(file, appPackage, projectRoot) {
+  const name = `capabilities.push.android.googleServicesFile ("${file}")`;
+  const path = (0, import_node_path4.resolve)(projectRoot, file);
+  let text;
+  try {
+    text = (0, import_node_fs3.readFileSync)(path, "utf8");
+  } catch (error) {
+    throw new CapabilityConfigError(`${name} ${unreadable(error)} (looked for ${path}): download google-services.json from the Firebase console (Project settings, your Android app) and save it there, or point googleServicesFile at it.`);
+  }
+  const secret = findPushSecret(text, `the file of ${name}`);
+  if (secret) throw secretError(secret);
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new CapabilityConfigError(`${name} is not JSON (${error instanceof Error ? error.message : String(error)}): download google-services.json from the Firebase console again.`);
+  }
+  const packages = googleServicesPackages(parsed);
+  if (!packages.includes(appPackage))
+    throw new CapabilityConfigError(
+      `${name} has no client for the app's package "${appPackage}" (${packages.length === 0 ? "it has no Android client" : `it has ${packages.map((item) => `"${item}"`).join(", ")}`}): add an Android app with that package to the Firebase project and download google-services.json again, or fix android.package.`
+    );
+}
+function checkIcon(icon, projectRoot) {
+  const name = `capabilities.push.android.icon ("${icon}")`;
+  if (!/\.png$/i.test(icon)) throw new CapabilityConfigError(`${name} must be a PNG file: the notification's small icon, white on a transparent background.`);
+  const path = (0, import_node_path4.resolve)(projectRoot, icon);
+  let isFile;
+  try {
+    isFile = (0, import_node_fs3.statSync)(path).isFile();
+  } catch (error) {
+    throw new CapabilityConfigError(`${name} ${unreadable(error)} (looked for ${path}): point it at the PNG of the notification's small icon.`);
+  }
+  if (!isFile) throw new CapabilityConfigError(`${name} is not a file (${path}): point it at the PNG of the notification's small icon.`);
+}
+function pushIosSettings(value) {
+  const ios = section(value, "capabilities.push.ios", '`ios: { mode: "production" }`');
+  if (ios.mode !== "development" && ios.mode !== "production")
+    throw new CapabilityConfigError(
+      'capabilities.push.ios.mode must be "development" or "production": it is the aps-environment entitlement, "development" for a build signed for development and "production" for TestFlight and the App Store.'
+    );
+  return { mode: ios.mode };
+}
+function pushAndroidSettings(value, appPackage, projectRoot) {
+  const android = section(value, "capabilities.push.android", '`android: { googleServicesFile: "./google-services.json" }`');
+  const file = android.googleServicesFile;
+  if (typeof file !== "string" || file.trim() === "")
+    throw new CapabilityConfigError(
+      'capabilities.push.android needs googleServicesFile, the path of the Firebase project\'s google-services.json (Firebase console, Project settings, your Android app): `android: { googleServicesFile: "./google-services.json" }`. Leave `android` out for an app that has no push on Android.'
+    );
+  if (!appPackage) throw new CapabilityConfigError("capabilities.push.android needs android.package in the Expo config: the Google services file is checked against it, and Firebase delivers to that package.");
+  checkGoogleServicesFile(file, appPackage, projectRoot);
+  const settings = { googleServicesFile: file, channel: { ...defaultPushChannel } };
+  const icon = optionalText(android.icon, "capabilities.push.android.icon");
+  if (icon !== void 0) {
+    checkIcon(icon, projectRoot);
+    settings.icon = icon;
+  }
+  const color = optionalText(android.color, "capabilities.push.android.color");
+  if (color !== void 0) {
+    if (!/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color))
+      throw new CapabilityConfigError(`capabilities.push.android.color ("${color}") must be a hex color such as "#0a7f5a": the notification's accent color.`);
+    settings.color = color;
+  }
+  if (android.channel !== void 0) {
+    const channel = section(android.channel, "capabilities.push.android.channel", '`channel: { name: "Updates" }`');
+    if (typeof channel.name !== "string" || channel.name.trim() === "")
+      throw new CapabilityConfigError('capabilities.push.android.channel needs a name, as the user will read it in the app\'s notification settings: `channel: { name: "Updates" }`.');
+    const description = optionalText(channel.description, "capabilities.push.android.channel.description");
+    settings.channel = {
+      id: optionalText(channel.id, "capabilities.push.android.channel.id") ?? defaultPushChannel.id,
+      name: channel.name,
+      ...description === void 0 ? {} : { description }
+    };
+  }
+  return settings;
+}
+function pushSettings(push, appPackage, projectRoot) {
+  const platforms = section(push, "capabilities.push", '`push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } }`, or `push: false`');
+  if (platforms.android === void 0 && platforms.ios === void 0)
+    throw new CapabilityConfigError(
+      "capabilities.push names no platform: give `android` (its google-services.json), `ios` (its aps-environment mode) or both, or turn the capability off with `push: false` and uninstall @alfayez/svelte-native-push."
+    );
+  const settings = {};
+  if (platforms.android !== void 0) settings.android = pushAndroidSettings(platforms.android, appPackage, projectRoot);
+  if (platforms.ios !== void 0) settings.ios = pushIosSettings(platforms.ios);
+  return settings;
+}
+function withPushIos(config, mode) {
+  const existing = config.ios?.entitlements?.["aps-environment"];
+  if (existing !== void 0 && existing !== mode)
+    throw new CapabilityConfigError(
+      `The app config sets ios.entitlements["aps-environment"] ("${String(existing)}") and capabilities.push.ios.mode is "${mode}": keep one. capabilities.push.ios.mode writes the entitlement.`
+    );
+  const existingModes = config.ios?.infoPlist?.UIBackgroundModes;
+  const modes = Array.isArray(existingModes) ? existingModes : [];
+  return {
+    ...config,
+    ios: {
+      ...config.ios,
+      entitlements: { ...config.ios?.entitlements, "aps-environment": mode },
+      infoPlist: { ...config.ios?.infoPlist, UIBackgroundModes: modes.includes("remote-notification") ? modes : [...modes, "remote-notification"] }
+    }
+  };
+}
+function setMetaData(application, name, attribute, content) {
+  const others = (application["meta-data"] ?? []).filter((item) => item.$["android:name"] !== name);
+  application["meta-data"] = [...others, { $: { "android:name": name, [`android:${attribute}`]: content } }];
+}
+function applyPushManifest(application, android) {
+  if (android.icon !== void 0) setMetaData(application, pushMetaData.icon, "resource", `@drawable/${pushResources.icon}`);
+  if (android.color !== void 0) setMetaData(application, pushMetaData.color, "resource", `@color/${pushResources.color}`);
+  setMetaData(application, pushMetaData.firebaseChannel, "value", android.channel.id);
+  setMetaData(application, pushMetaData.channelId, "value", android.channel.id);
+  setMetaData(application, pushMetaData.channelName, "value", android.channel.name);
+  if (android.channel.description !== void 0) setMetaData(application, pushMetaData.channelDescription, "value", android.channel.description);
+}
+async function copyPushIcon(source, platformProjectRoot) {
+  const directory = (0, import_node_path4.join)(platformProjectRoot, "app/src/main/res/drawable");
+  await (0, import_promises.mkdir)(directory, { recursive: true });
+  await (0, import_promises.copyFile)(source, (0, import_node_path4.join)(directory, `${pushResources.icon}.png`));
+}
+function withPushAndroid(config, android, projectRoot) {
+  const existing = config.android?.googleServicesFile;
+  if (existing !== void 0 && (0, import_node_path4.resolve)(projectRoot, existing) !== (0, import_node_path4.resolve)(projectRoot, android.googleServicesFile))
+    throw new CapabilityConfigError(
+      `The app config sets android.googleServicesFile ("${existing}") and capabilities.push.android.googleServicesFile is "${android.googleServicesFile}": keep one. capabilities.push.android.googleServicesFile sets android.googleServicesFile.`
+    );
+  config = { ...config, android: { ...config.android, googleServicesFile: android.googleServicesFile } };
+  config = (0, import_config_plugins.withAndroidManifest)(config, (config2) => {
+    applyPushManifest(import_config_plugins.AndroidConfig.Manifest.getMainApplicationOrThrow(config2.modResults), android);
+    return config2;
+  });
+  const { color, icon } = android;
+  if (color !== void 0)
+    config = (0, import_config_plugins.withAndroidColors)(config, (config2) => {
+      config2.modResults = import_config_plugins.AndroidConfig.Colors.assignColorValue(config2.modResults, { name: pushResources.color, value: color });
+      return config2;
+    });
+  if (icon !== void 0)
+    config = (0, import_config_plugins.withDangerousMod)(config, ["android", async (config2) => {
+      await copyPushIcon((0, import_node_path4.resolve)(config2.modRequest.projectRoot, icon), config2.modRequest.platformProjectRoot);
+      return config2;
+    }]);
+  return config;
+}
+function withPush(config, push, context) {
+  const on = push !== void 0 && push !== null && push !== false;
+  const installed = context.linked.has(pushPackage);
+  if (!on) {
+    if (installed)
+      throw new CapabilityConfigError(
+        `${pushPackage} is installed, but the push capability is off. The package is in the build (Firebase Messaging, the notification permission, the iOS registration), and it cannot work without the app's Firebase file and entitlement: turn push on in the @alfayez/svelte-native plugin, \`plugins: [["@alfayez/svelte-native", { capabilities: { push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } } } }]]\`, or uninstall ${pushPackage}.`
+      );
+    return config;
+  }
+  const secret = findPushSecret(push, "capabilities.push");
+  if (secret) throw secretError(secret);
+  if (context.excluded.has(pushPackage))
+    throw new CapabilityConfigError(`capabilities.push is on, but ${pushPackage} is left out of autolinking (\`autolinkingExclude\`, or \`expo.autolinking.exclude\` in package.json): take it out of that list, or turn the capability off.`);
+  if (!installed)
+    throw new CapabilityConfigError(
+      `capabilities.push needs ${pushPackage}, which is not installed: add it from the same repository and tag as @alfayez/svelte-native (the same specifier, ending in \`&path:packages/svelte-native-push\`), then prebuild again.`
+    );
+  const other = otherPushLibraries.find((name) => context.linked.has(name));
+  if (other !== void 0)
+    throw new CapabilityConfigError(
+      `capabilities.push is on, and ${other} is installed: an app has one push library (Android delivers a message to one FirebaseMessagingService, iOS has one notification center delegate). Uninstall ${other}, or turn the push capability off and uninstall ${pushPackage}.`
+    );
+  const settings = pushSettings(push, config.android?.package, context.projectRoot);
+  if (settings.ios) config = withPushIos(config, settings.ios.mode);
+  if (settings.android) config = withPushAndroid(config, settings.android, context.projectRoot);
+  return config;
+}
 
 // src/remote/plugin.ts
-var import_config_plugins = require("expo/config-plugins.js");
+var import_config_plugins2 = require("expo/config-plugins.js");
 
 // src/remote/host.ts
 var RemoteConfigError = class extends Error {
@@ -517,13 +751,13 @@ var withRemoteHost = (config, remote) => {
   config.extra = remoteExtra(config.extra, remote);
   const { origin } = config.extra[EXTRA_KEY].remote;
   if (!isCleartext(origin)) return config;
-  config = (0, import_config_plugins.withAndroidManifest)(config, (config2) => {
+  config = (0, import_config_plugins2.withAndroidManifest)(config, (config2) => {
     const application = config2.modResults.manifest.application?.[0];
     if (!application) throw new Error("Svelte native could not find <application> in AndroidManifest.xml");
     allowAndroidCleartext(application);
     return config2;
   });
-  return (0, import_config_plugins.withInfoPlist)(config, (config2) => {
+  return (0, import_config_plugins2.withInfoPlist)(config, (config2) => {
     allowIosCleartext(config2.modResults, origin);
     return config2;
   });
@@ -909,22 +1143,22 @@ var withSvelteNative = (config, options) => {
   config = withCapabilities(config, options?.capabilities, { excluded: options?.autolinkingExclude });
   if (options?.remote) config = withRemoteHost(config, options.remote);
   for (const platform of ["android", "ios"]) {
-    config = (0, import_config_plugins2.withDangerousMod)(config, [platform, async (config2) => {
+    config = (0, import_config_plugins3.withDangerousMod)(config, [platform, async (config2) => {
       await syncNative(config2.modRequest.projectRoot, { variant: options?.variant });
       return config2;
     }]);
   }
-  config = (0, import_config_plugins2.withDangerousMod)(config, ["android", async (config2) => {
+  config = (0, import_config_plugins3.withDangerousMod)(config, ["android", async (config2) => {
     const applicationId = config2.android?.package;
     if (!applicationId) throw new Error("Svelte native needs android.package in the Expo config");
     const directory = (0, import_node_path5.join)(config2.modRequest.platformProjectRoot, "app/src/main/java", ...applicationId.split("."));
     const file = (0, import_node_path5.join)(directory, `${headlessPackageName}.kt`);
-    await (0, import_promises.mkdir)(directory, { recursive: true });
-    await (0, import_promises.writeFile)(file, headlessPackageSource(applicationId));
-    await (0, import_promises.writeFile)((0, import_node_path5.join)(directory, `${onDemandPackageName}.kt`), onDemandPackageSource(applicationId));
+    await (0, import_promises2.mkdir)(directory, { recursive: true });
+    await (0, import_promises2.writeFile)(file, headlessPackageSource(applicationId));
+    await (0, import_promises2.writeFile)((0, import_node_path5.join)(directory, `${onDemandPackageName}.kt`), onDemandPackageSource(applicationId));
     return config2;
   }]);
-  config = (0, import_config_plugins2.withAndroidManifest)(config, (config2) => {
+  config = (0, import_config_plugins3.withAndroidManifest)(config, (config2) => {
     const manifest = config2.modResults.manifest;
     const application = manifest.application?.[0];
     if (!application) throw new Error("Svelte native could not find <application> in AndroidManifest.xml");
@@ -938,44 +1172,44 @@ var withSvelteNative = (config, options) => {
     application.provider = providers;
     return config2;
   });
-  config = (0, import_config_plugins2.withSettingsGradle)(config, (config2) => {
+  config = (0, import_config_plugins3.withSettingsGradle)(config, (config2) => {
     config2.modResults.contents = applyHeadlessSettings(config2.modResults.contents, options?.autolinkingExclude);
     return config2;
   });
-  config = (0, import_config_plugins2.withPodfile)(config, (config2) => {
+  config = (0, import_config_plugins3.withPodfile)(config, (config2) => {
     config2.modResults.contents = applyPodfileAutolinkingExclude(config2.modResults.contents, options?.autolinkingExclude ?? []);
     return config2;
   });
   if (options?.androidProfileable) {
-    config = (0, import_config_plugins2.withAndroidManifest)(config, (config2) => {
+    config = (0, import_config_plugins3.withAndroidManifest)(config, (config2) => {
       const application = config2.modResults.manifest.application?.[0];
       if (!application) throw new Error("Svelte native could not find <application> in AndroidManifest.xml");
       application.profileable = [{ $: { "android:shell": "true" } }];
       return config2;
     });
   }
-  config = (0, import_config_plugins2.withDangerousMod)(config, ["android", async (config2) => {
+  config = (0, import_config_plugins3.withDangerousMod)(config, ["android", async (config2) => {
     const dir = (0, import_node_path5.join)(config2.modRequest.platformProjectRoot, "app", "src", "main");
-    await (0, import_promises.mkdir)(dir, { recursive: true });
-    await (0, import_promises.writeFile)((0, import_node_path5.join)(dir, "baseline-prof.txt"), baselineProfile());
+    await (0, import_promises2.mkdir)(dir, { recursive: true });
+    await (0, import_promises2.writeFile)((0, import_node_path5.join)(dir, "baseline-prof.txt"), baselineProfile());
     return config2;
   }]);
-  config = (0, import_config_plugins2.withMainActivity)(config, (config2) => {
+  config = (0, import_config_plugins3.withMainActivity)(config, (config2) => {
     if (config2.modResults.language !== "kt") throw new Error("Svelte native requires Expo's Kotlin MainActivity");
     config2.modResults.contents = applyMainActivity(config2.modResults.contents);
     return config2;
   });
-  config = (0, import_config_plugins2.withAppDelegate)(config, (config2) => {
+  config = (0, import_config_plugins3.withAppDelegate)(config, (config2) => {
     if (config2.modResults.language !== "swift") throw new Error("Svelte native requires Expo's Swift AppDelegate");
     config2.modResults.contents = applyAppDelegate(config2.modResults.contents);
     return config2;
   });
-  config = (0, import_config_plugins2.withMainApplication)(config, (config2) => {
+  config = (0, import_config_plugins3.withMainApplication)(config, (config2) => {
     if (config2.modResults.language !== "kt") throw new Error("Svelte native requires Expo's Kotlin MainApplication");
     config2.modResults.contents = applyHeadlessApplication(applyFeatureFlags(config2.modResults.contents, androidFeatureFlagsFor(options)), options?.androidOnDemandViewManagers);
     return config2;
   });
-  return (0, import_config_plugins2.withAppBuildGradle)(config, (config2) => {
+  return (0, import_config_plugins3.withAppBuildGradle)(config, (config2) => {
     if (config2.modResults.language !== "groovy") throw new Error("Svelte native requires Expo's Groovy Android template");
     if (!config2.modResults.contents.includes(bundleMarker)) {
       config2.modResults.contents += `

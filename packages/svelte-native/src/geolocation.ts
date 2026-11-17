@@ -12,6 +12,7 @@
  * position the platform cannot place in altitude, heading or speed reports `null` for them (Android reports 0 when it does not know, and it is read as unknown when its
  * accuracy is 0); and the permission is the system's, so a user who denied it can be asked again where the system still allows it (Android asks twice).
  */
+import { onForeground } from "./foreground.ts";
 
 type NativeCoords = {
   latitude: number;
@@ -547,12 +548,8 @@ export function loadGeolocation(): Geolocation {
   /* eslint-disable @typescript-eslint/no-require-imports -- required on the first read of `navigator.geolocation` */
   const registry = require("expo-modules-core") as Partial<typeof import("expo-modules-core")>;
   const native = registry.requireOptionalNativeModule?.<NativeLocationModule>("ExpoLocation") ?? null;
-  if (native === null) throw new Error(MISSING_LOCATION);
-  const onForeground = (listener: () => void) => {
-    const appState = (require("react-native/Libraries/AppState/AppState") as { default: { addEventListener(type: "change", listener: (state: string) => void): unknown } }).default;
-    appState.addEventListener("change", (state) => { if (state === "active") listener(); });
-  };
   /* eslint-enable @typescript-eslint/no-require-imports */
+  if (native === null) throw new Error(MISSING_LOCATION);
   shared = new Geolocation(native, onForeground);
   return shared;
 }

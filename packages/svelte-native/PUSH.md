@@ -100,7 +100,7 @@ type PushMessage = {
 };
 ```
 
-The hooks run where `init` runs, in a launch without a screen too, and wait for `init` to settle. The foreground hook has 900 ms to answer; one that throws or takes longer gets the default. Android gives a background message about 20 seconds; the native side waits for `background`'s promise on FCM's worker thread for at most 18 s and then lets the process go. iOS gives 30 seconds and decides itself how often to wake an app for silent pushes (it delays and drops them as it sees fit); `background` is for keeping data fresh, never for anything that must happen.
+The hooks run where `init` runs, in a launch without a screen too, and wait for `init` to settle. The foreground hook has 900 ms to answer; one that throws or takes longer gets the default. Android gives a background message about 20 seconds; the native side waits for `background`'s promise on FCM's worker thread for at most 18 s and then lets the process go. iOS gives about 30 seconds (the native side calls the system's completion at 25 s at most) and decides itself how often to wake an app for silent pushes (it delays and drops them as it sees fit); `background` is for keeping data fresh, never for anything that must happen.
 
 ### Sending: the server
 
@@ -125,7 +125,7 @@ if (!result.ok && result.reason === "gone") await deleteToken(token);
 - `timeout` (default 30 s) makes a provider that does not answer `unavailable` and drops its connection.
 - `fcm.baseUrl`, `fcm.tokenUrl`, `apns.productionUrl` and `apns.sandboxUrl` replace the endpoints (tests, proxies).
 - The one retry it does make is its own: APNs's `ExpiredProviderToken` is answered by signing a new provider token and sending once more (only when the current one is at least 20 minutes old). A 401 from FCM drops the cached access token so that the next send gets a new one.
-- `gone` and `invalid-token` tell the app to delete a token, so only the provider's own word decides them: FCM's `UNREGISTERED`, APNs's `Unregistered` and `ExpiredToken` (410), `BadDeviceToken` and `DeviceTokenNotForTopic`. A bare 404 or 410 is `error` (a wrong `project_id` answers 404 too).
+- `gone` and `invalid-token` tell the app to delete a token, so only the provider's own word decides them: FCM's `UNREGISTERED`, APNs's `Unregistered` and `ExpiredToken` (410), `BadDeviceToken` and `DeviceTokenNotForTopic`. A bare 404 or 410 is `error` (a wrong `project_id` answers 404 too). FCM's `SENDER_ID_MISMATCH` is `invalid-token` too, and it is what every token answers when the server has another Firebase project's credentials: when many tokens answer it at once, check the credentials and the tokens' `app` before deleting any.
 - `sound: null` sends no sound; a `silent` message goes to APNs at priority 5 whatever `priority` says.
 
 ```ts
@@ -186,10 +186,10 @@ The guide's page says this first, with a reference recipe:
 
 - **A queue.** Send from a job, not from the request that caused it: a send can take seconds or fail, and the user's request should not wait for it or lose it.
 - **Retries.** On `rate-limited` and `unavailable`, retry with backoff (and `retryAfter` when given), a bounded number of times. Never retry `invalid-*`, `auth` or `gone`.
-- **Tokens.** Store them per user and device, upsert on every `save`, delete on `gone` and on sign-out, and prune the ones not saved for months.
+- **Tokens.** Store them per user and device, upsert on every `save`, and delete on `gone` and on sign-out. Do not prune by the date of the last `save`: `subscribe` calls `save` only for a new or rotated token, so a device in daily use may not have saved for months.
 - **Fan-out.** Sending to many devices is many `send`s; run them concurrently with a limit (one HTTP/2 connection carries many). FCM topics and APNs broadcast are out of v1.
 - **Rate limits.** FCM and APNs throttle a sender that sends too much too fast, and a device that gets too many messages.
-- **Idempotency.** A retried job may send twice; `collapseKey` makes the second replace the first instead of showing two.
+- **Idempotency.** A retried job may send twice. On iOS, `collapseKey` (`apns-collapse-id`) shows the two as one; on Android it only keeps an older copy that is not delivered yet from being delivered, and a notification already shown stays. Where showing a message twice matters, give it an id in `data` that the app checks.
 - **Watching it.** Log every result's `reason`; a rise in `auth` or `invalid-message` is a bug, not noise.
 
 ## Packages and native code
@@ -240,14 +240,14 @@ The native side keeps the events that come before JavaScript listens (a message 
 
 `capabilities.push`, beside `location`, following the same rule: on without its library, or its library installed while off, stops the prebuild.
 
-- **Android:** sets the config's `android.googleServicesFile`, so that Expo's own prebuild copies the file into `android/app` and applies the `com.google.gms.google-services` Gradle plugin; copies the icon into `res/drawable` and the color into a color resource, with the manifest's `com.google.firebase.messaging.default_notification_icon` and `_color`; writes the channel as meta-data of ours and as `default_notification_channel_id` (else the notifications the system shows go to Firebase's "Miscellaneous" channel). The messaging service and `POST_NOTIFICATIONS` are static, so they are in the native package's own manifest (Firebase's own service is at priority -500; ours, at the default 0, gets the messages).
+- **Android:** sets the config's `android.googleServicesFile`, so that Expo's own prebuild copies the file into `android/app` and applies the `com.google.gms.google-services` Gradle plugin; copies the icon into `res/drawable` and the color into a color resource, with the manifest's `com.google.firebase.messaging.default_notification_icon` and `_color`; writes the channel (`{ id?, name, description? }`, default id `default` and name `Notifications`) as meta-data of ours and as `default_notification_channel_id` (else the notifications the system shows go to Firebase's "Miscellaneous" channel). The messaging service and `POST_NOTIFICATIONS` are static, so they are in the native package's own manifest (Firebase's own service is at priority -500; ours, at the default 0, gets the messages).
 - **iOS:** the `aps-environment` entitlement from `mode`, and `remote-notification` in `UIBackgroundModes`.
 - **It refuses** (each with a message that says what to do):
-  - `push` on without `@alfayez/svelte-native-push` installed, or the package installed with `push` off;
+  - `push` on without `@alfayez/svelte-native-push` installed, or left out of autolinking, or the package installed with `push` off;
   - `expo-notifications` or `@react-native-firebase/messaging` installed beside it (Android delivers to one `FirebaseMessagingService`, iOS has one notification center delegate);
   - a `googleServicesFile` that is missing, or has no client for the app's `android.package`;
   - anything in the config or in the Google services file that is a server secret: a service account (`"type": "service_account"`, a `private_key`), a PEM private key, or a `.p8` file;
-  - and the malformed: `push` naming no platform, `android` without `googleServicesFile`, no `android.package`, an icon that is not a PNG or is missing, a color that is not hex, a channel without a name, an invalid `ios.mode`, and the app's own `android.googleServicesFile` or `aps-environment` saying something different from `push`.
+  - and the malformed: `push` naming no platform, `android` without `googleServicesFile`, no `android.package`, an icon that is not a PNG or is missing, a color that is not `#RGB`, `#ARGB`, `#RRGGBB` or `#AARRGGBB`, a channel without a name, an invalid `ios.mode`, and the app's own `android.googleServicesFile` or `aps-environment` saying something different from `push`.
 
 ## `svelte-native doctor`
 
@@ -272,11 +272,11 @@ Taken (say if any should change):
 2. iOS goes to APNs directly, without the Firebase SDK on iOS.
 3. v1 shows notifications and does not schedule them.
 4. The sender is in the library; the infrastructure around it is the app's, and the guide says so.
+5. A message in the foreground is shown (banner, sound and badge) unless the `foreground` hook says otherwise; iOS's own default is not to show it.
 
 Open:
 
 1. The native package's name: `@alfayez/svelte-native-push`.
-2. The default foreground presentation: shown (as written above), or not shown unless the hook says so (iOS's own default).
 
 ## Phases
 

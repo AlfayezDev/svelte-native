@@ -114,7 +114,7 @@ export function storedPermission(storage: Storage | undefined): PushPermission |
 
 /** Why `push` does nothing in a build: the native module is missing. */
 export const MISSING_PUSH =
-  "[Svelte push] push is not part of this app's build: install @alfayez/svelte-native-push (npx expo install @alfayez/svelte-native-push), turn on `capabilities: { push: { … } }` in the @alfayez/svelte-native plugin of the app config, and rebuild the native app. Until then `push.permission` reads \"denied\" and `push.subscribe` resolves with null";
+  "[Svelte push] push is not part of this app's build: install @alfayez/svelte-native-push from the same git tag as @alfayez/svelte-native (its README shows the command), turn on `capabilities: { push: { … } }` in the @alfayez/svelte-native plugin of the app config, and rebuild the native app. Until then `push.permission` reads \"denied\" and `push.subscribe` resolves with null";
 
 /** The default presentation of a message in the foreground: shown as it is in the background. */
 const SHOWN: Required<PushPresentation> = { banner: true, sound: true, badge: true };

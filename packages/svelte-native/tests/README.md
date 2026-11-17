@@ -16,7 +16,7 @@ The root of `tests/` holds directories, `tsconfig.json` (the type check of the h
 | `navigation/` | The route tree, the router, screens, tabs, toolbar, `router.prepare`, restoring the navigation state; the stand-in app's tree |
 | `kit/` | SvelteKit on the device: `$app/*`, Metro's resolution of it, the remote functions (against a SvelteKit server of the fixture app), `updated` |
 | `web-apis/` | `fetch`, `Blob`, `FormData`, `crypto` and storage, `navigator`, geolocation, `matchMedia`, window size, colour scheme, lazy globals |
-| `push/` | The push sender for a server (`/push/server`), against local stand-ins for FCM, Google's token endpoint and APNs (HTTP/2): the tokens, the message mapping, every provider answer, the connection |
+| `push/` | Push notifications: on the device, the client against a stand-in of the native module `SveltePush`, the `push` state and its hooks in the library's bundle, and a tapped notification through the real router; for a server, the sender (`/push/server`) against local stand-ins for FCM, Google's token endpoint and APNs (HTTP/2): the tokens, the message mapping, every provider answer, the connection |
 | `updates/` | The over-the-air updates client, its launch hook and the protocol |
 | `compiler/` | The lowering of the primitives and HTML, class resolution and the Tailwind table, Metro's integration, the transformer's options (runes, async mode), worklets, the file watcher |
 | `cli/` | `svelte-native` commands: sync, init, doctor, the Expo headless config, variants, capabilities |
@@ -69,7 +69,7 @@ In `packages/svelte-native`:
 | `async-run.ts`, `async-mode-setup.ts` | Which async-mode run this is, and the preload that makes it |
 | `fixtures/` | `hello.svelte`, the route and tree pages, and `stand-in-app/`, an app of this package's own that the navigation and compiler tests build |
 
-Areas have helpers of their own in `<area>/support/` (`foreign/support/harness.ts`, `gestures/support/`, `navigation/support/world.ts`, `kit/support/kit.ts` and `remote-harness.ts`, `web-apis/support/match-media-harness.ts`, `updates/support/`, ...); they are built on these.
+Areas have helpers of their own in `<area>/support/` (`foreign/support/harness.ts`, `gestures/support/`, `navigation/support/world.ts`, `kit/support/kit.ts` and `remote-harness.ts`, `web-apis/support/match-media-harness.ts`, `push/support/world.ts`, `updates/support/`, ...); they are built on these.
 
 ## Rules
 

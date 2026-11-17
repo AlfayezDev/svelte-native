@@ -75,6 +75,11 @@
       "types": "./dist/types/routes-table.d.ts",
       "default": "./dist/node/routes.js"
     },
+    "./push": {
+      "svelte-native-source": "./src/push/index.ts",
+      "types": "./dist/types/push/index.d.ts",
+      "default": "./src/push/index.ts"
+    },
     "./updates": {
       "svelte-native-source": "./src/updates/index.ts",
       "types": "./dist/types/updates/index.d.ts",

@@ -8,12 +8,15 @@
  *   stays up meanwhile). It runs in a launch without a screen too (a background task), since that launch evaluates the same entry.
  * - `handleError` and `transport` are the remote functions' (`remote/config.ts` watches them here, so an app that uses no remote function
  *   loads nothing of SvelteKit for them).
+ * - `push` is the app's answer to push notifications (`push/hooks.ts`). The push client is loaded at start in a build that has the native module, and when the file registers
+ *   with `push` (`push/load.ts`), so the hooks run in a launch without a screen (a background message) too; an app with neither evaluates none of that.
  *
  * A hot update of the file registers its new exports; `init` does not run again, unless it failed (development shows the failure on the
  * screen, and the fix or the screen's Reload runs it again; an edit made while it is still in flight runs once it has failed). In a release
  * build a failed `init` is a fatal error, as a throw at the top of the entry would be.
  */
 import { mark } from "./boot-marks.ts";
+import type { PushHooks } from "./push/hooks.ts";
 
 /** What `src/hooks.mobile.ts` may export. Every export is optional. */
 export type MobileHooks = {
@@ -26,6 +29,11 @@ export type MobileHooks = {
   handleError?(input: { kind: "app" | "framework" | "unknown"; error: unknown; event: unknown }): unknown;
   /** The `transport` export of SvelteKit's universal hooks (`src/hooks.ts`): the custom types the server and the app pass between them. */
   transport?: Record<string, { encode(value: unknown): unknown; decode(data: unknown): unknown }>;
+  /**
+   * What the app does with push notifications (`@alfayez/svelte-native/push`): how a message that arrives in the foreground is shown (`foreground`), what a data message
+   * does while the app is in the background (`background`), and whether a tapped notification opens its link (`opened`).
+   */
+  push?: PushHooks;
 };
 
 let current: MobileHooks = {};

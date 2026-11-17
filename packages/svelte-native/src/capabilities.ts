@@ -22,7 +22,7 @@ import { join, resolve } from "node:path";
 import type { ExpoConfig } from "expo/config";
 // `.js` spelled out, as in `remote/plugin.ts`: Node's own module loader, which loads this file from its source in `tests/cli/remote-plugin.test.ts` ("loading"), resolves no `expo/config-plugins` without it.
 import { AndroidConfig, withAndroidColors, withAndroidManifest, withAppDelegate, withDangerousMod } from "expo/config-plugins.js";
-import { apsEnvironmentEntitlement, findPushSecret, googleServicesPackages, otherPushLibraries, pushPackage, remoteNotificationMode } from "./push/config.ts";
+import { apsEnvironmentEntitlement, checkPushConfig, findPushSecret, googleServicesPackages, otherPushLibraries, pushIsOn, pushPackage, pushSecretMessage, remoteNotificationMode } from "./push/config.ts";
 
 // Defined in `push/config.ts` now, which the doctor loads without Expo; they stay importable from here.
 export { findPushSecret, pushPackage };
@@ -221,26 +221,10 @@ export type PushSettings = {
   ios?: { mode: "development" | "production" };
 };
 
-const secretError = ({ where, what }: { where: string; what: string }) =>
-  new CapabilityConfigError(
-    `${where} is ${what}: a key that can send to every user must never be in the app or its build. Keep it in the server's environment (the FCM service account, the APNs .p8 with its key id and team id) and give the app identifiers only.`,
-  );
+const secretError = (secret: { where: string; what: string }) => new CapabilityConfigError(pushSecretMessage(secret));
 
 /** Why a file cannot be read: it is not there, or what the system said. */
 const unreadable = (error: unknown): string => ((error as NodeJS.ErrnoException).code === "ENOENT" ? "does not exist" : `cannot be read: ${error instanceof Error ? error.message : String(error)}`);
-
-/** `value` as an object of the config, or the refusal that says what the config takes there. */
-function section(value: unknown, where: string, example: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new CapabilityConfigError(`${where} takes an object: ${example}`);
-  return value as Record<string, unknown>;
-}
-
-/** A text of the config that is given: not empty, as the user or the build will read it. */
-function optionalText(value: unknown, where: string): string | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || value.trim() === "") throw new CapabilityConfigError(`${where} must be a text that is not empty.`);
-  return value;
-}
 
 /** Reads the Google services file and refuses one that is not the app's: a secret, a file that is not there or not JSON, and a Firebase project that has no Android app of this package. */
 function checkGoogleServicesFile(file: string, appPackage: string, projectRoot: string): void {
@@ -268,10 +252,9 @@ function checkGoogleServicesFile(file: string, appPackage: string, projectRoot: 
     );
 }
 
-/** Refuses an icon that is not a PNG, or not there, with the name of its option: the copy at prebuild would stop on a missing file with a bare ENOENT, and the resource compiler on another format with no word of the option. */
-function checkIcon(icon: string, projectRoot: string): void {
+/** Refuses an icon that is not there, with the name of its option: the copy at prebuild would stop on a missing file with a bare ENOENT. (That it is a PNG is `checkPushConfig`'s.) */
+function checkIconFile(icon: string, projectRoot: string): void {
   const name = `capabilities.push.android.icon ("${icon}")`;
-  if (!/\.png$/i.test(icon)) throw new CapabilityConfigError(`${name} must be a PNG file: the notification's small icon, white on a transparent background.`);
   const path = resolve(projectRoot, icon);
   let isFile: boolean;
   try {
@@ -282,64 +265,29 @@ function checkIcon(icon: string, projectRoot: string): void {
   if (!isFile) throw new CapabilityConfigError(`${name} is not a file (${path}): point it at the PNG of the notification's small icon.`);
 }
 
-function pushIosSettings(value: unknown): NonNullable<PushSettings["ios"]> {
-  const ios = section(value, "capabilities.push.ios", '`ios: { mode: "production" }`');
-  if (ios.mode !== "development" && ios.mode !== "production")
-    throw new CapabilityConfigError(
-      'capabilities.push.ios.mode must be "development" or "production": it is the aps-environment entitlement, "development" for a build signed for development and "production" for TestFlight and the App Store.',
-    );
-  return { mode: ios.mode };
-}
-
-function pushAndroidSettings(value: unknown, appPackage: string | undefined, projectRoot: string): NonNullable<PushSettings["android"]> {
-  const android = section(value, "capabilities.push.android", '`android: { googleServicesFile: "./google-services.json" }`');
-  const file = android.googleServicesFile;
-  if (typeof file !== "string" || file.trim() === "")
-    throw new CapabilityConfigError(
-      'capabilities.push.android needs googleServicesFile, the path of the Firebase project\'s google-services.json (Firebase console, Project settings, your Android app): `android: { googleServicesFile: "./google-services.json" }`. ' +
-        "Leave `android` out for an app that has no push on Android.",
-    );
-  if (!appPackage) throw new CapabilityConfigError("capabilities.push.android needs android.package in the Expo config: the Google services file is checked against it, and Firebase delivers to that package.");
-  checkGoogleServicesFile(file, appPackage, projectRoot);
-  const settings: NonNullable<PushSettings["android"]> = { googleServicesFile: file, channel: { ...defaultPushChannel } };
-  const icon = optionalText(android.icon, "capabilities.push.android.icon");
-  if (icon !== undefined) {
-    checkIcon(icon, projectRoot);
-    settings.icon = icon;
-  }
-  const color = optionalText(android.color, "capabilities.push.android.color");
-  if (color !== undefined) {
-    if (!/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color))
-      throw new CapabilityConfigError(`capabilities.push.android.color ("${color}") must be a hex color such as "#0a7f5a": the notification's accent color.`);
-    settings.color = color;
-  }
-  if (android.channel !== undefined) {
-    const channel = section(android.channel, "capabilities.push.android.channel", '`channel: { name: "Updates" }`');
-    if (typeof channel.name !== "string" || channel.name.trim() === "")
-      throw new CapabilityConfigError('capabilities.push.android.channel needs a name, as the user will read it in the app\'s notification settings: `channel: { name: "Updates" }`.');
-    const description = optionalText(channel.description, "capabilities.push.android.channel.description");
-    settings.channel = {
-      id: optionalText(channel.id, "capabilities.push.android.channel.id") ?? defaultPushChannel.id,
-      name: channel.name,
-      ...(description === undefined ? {} : { description }),
-    };
-  }
-  return settings;
-}
-
 /**
- * Checks `capabilities.push` (already known not to be off, and to hold no secret) and returns what it says. Reads the Google services file and the icon, from the
- * app's directory, so that a file that is not there stops the prebuild here, with its path, and not in a Gradle log. Throws a `CapabilityConfigError`.
+ * Checks `capabilities.push` (already known not to be off, and to hold no secret) and returns what it says. The shape is `checkPushConfig`'s, the one the doctor checks too; this reads
+ * the Google services file and the icon, from the app's directory, so that a file that is not there stops the prebuild here, with its path, and not in a Gradle log. Throws a
+ * `CapabilityConfigError`.
  */
 export function pushSettings(push: unknown, appPackage: string | undefined, projectRoot: string): PushSettings {
-  const platforms = section(push, "capabilities.push", '`push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } }`, or `push: false`');
-  if (platforms.android === undefined && platforms.ios === undefined)
-    throw new CapabilityConfigError(
-      "capabilities.push names no platform: give `android` (its google-services.json), `ios` (its aps-environment mode) or both, or turn the capability off with `push: false` and uninstall @alfayez/svelte-native-push.",
-    );
+  const checked = checkPushConfig(push);
+  if ("problem" in checked) throw new CapabilityConfigError(checked.problem);
+  const { android, ios } = checked.config;
   const settings: PushSettings = {};
-  if (platforms.android !== undefined) settings.android = pushAndroidSettings(platforms.android, appPackage, projectRoot);
-  if (platforms.ios !== undefined) settings.ios = pushIosSettings(platforms.ios);
+  if (android) {
+    if (!appPackage) throw new CapabilityConfigError("capabilities.push.android needs android.package in the Expo config: the Google services file is checked against it, and Firebase delivers to that package.");
+    checkGoogleServicesFile(android.googleServicesFile, appPackage, projectRoot);
+    if (android.icon !== undefined) checkIconFile(android.icon, projectRoot);
+    const { id, name, description } = android.channel ?? {};
+    settings.android = {
+      googleServicesFile: android.googleServicesFile,
+      ...(android.icon === undefined ? {} : { icon: android.icon }),
+      ...(android.color === undefined ? {} : { color: android.color }),
+      channel: { id: id ?? defaultPushChannel.id, name: name ?? defaultPushChannel.name, ...(description === undefined ? {} : { description }) },
+    };
+  }
+  if (ios) settings.ios = ios;
   return settings;
 }
 
@@ -483,7 +431,7 @@ function withPushAndroid(config: ExpoConfig, android: NonNullable<PushSettings["
 }
 
 function withPush(config: ExpoConfig, push: Capabilities["push"], context: Context): ExpoConfig {
-  const on = push !== undefined && push !== null && push !== false;
+  const on = pushIsOn(push);
   const installed = context.linked.has(pushPackage);
   if (!on) {
     if (installed)

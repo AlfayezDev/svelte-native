@@ -3,11 +3,12 @@
  * It runs nothing and writes nothing, and it cannot run `app.config.ts`, so where the app's config is code it says it could not tell (`unknown`) instead of guessing. An app that
  * has nothing to do with push gets no line at all.
  *
- * What the config plugin refuses at prebuild (`capabilities.ts`), the doctor says before the prebuild, with the plugin's own logic (`push/config.ts`); and what the prebuild wrote
+ * What the config plugin refuses at prebuild (`capabilities.ts`), the doctor says before the prebuild, with the plugin's own logic (`push/config.ts`: the secrets, and the shape of `capabilities.push`,
+ * which it checks with the plugin's own function and reports with the plugin's own message); and what the prebuild wrote
  * (`ios/`, `android/`) it reads back, to catch a prebuild that is older than the config.
  */
 import { join } from "node:path";
-import { apsEnvironmentEntitlement, findPushSecret, googleServicesPackages, otherPushLibraries, pushPackage, remoteNotificationMode } from "../push/config.ts";
+import { apsEnvironmentEntitlement, checkPushConfig, findPushSecret, googleServicesPackages, otherPushLibraries, pushIsOn, pushPackage, pushSecretMessage, remoteNotificationMode } from "../push/config.ts";
 import type { Check, Context } from "./checks.ts";
 import { appJson, codeConfig } from "./integration.ts";
 import { findPackage, readerFor, type Reader } from "./resolve.ts";
@@ -33,19 +34,20 @@ export function plistStrings(plist: string, key: string): string[] | undefined {
 }
 
 /**
- * What the app's own files say of push: the library's plugin options in `app.json`. `conclusive` is whether a miss in `app.json` is an answer: with an `app.config.*` beside it
- * (code, which gets `app.json` as its base and may add the plugin or its options) it is not.
+ * What the app's own files say of push: the library's plugin options in `app.json`. `push` is `capabilities.push` as an object when the capability is on (what the platform checks read from;
+ * `{}` for a value that is not an object, which `capabilityCheck` fails), and `value` is what `app.json` holds there, for the plugin's own check of it. `conclusive` is whether a miss in
+ * `app.json` is an answer: with an `app.config.*` beside it (code, which gets `app.json` as its base and may add the plugin or its options) it is not.
  */
-type Config = { file: string; push: Record<string, unknown> | undefined; androidPackage: string | undefined; googleServicesFile: string | undefined; conclusive: boolean };
+type Config = { file: string; push: Record<string, unknown> | undefined; value: unknown; androidPackage: string | undefined; googleServicesFile: string | undefined; conclusive: boolean };
 
 function readConfig(context: Context, library: string): { config: Config | undefined; code: string | undefined } {
   const json = appJson(context.appRoot, library);
   const code = codeConfig(context.appRoot);
   if (!json) return { config: undefined, code };
   const capabilities = record(json.plugin?.capabilities);
-  const push = capabilities.push === undefined || capabilities.push === false || capabilities.push === null ? undefined : record(capabilities.push);
+  const push = pushIsOn(capabilities.push) ? record(capabilities.push) : undefined;
   const android = record(json.expo.android);
-  return { config: { file: json.file, push, androidPackage: text(android.package), googleServicesFile: text(android.googleServicesFile), conclusive: code === undefined }, code };
+  return { config: { file: json.file, push, value: capabilities.push, androidPackage: text(android.package), googleServicesFile: text(android.googleServicesFile), conclusive: code === undefined }, code };
 }
 
 /** The package, when the library is installed: its checks come first, as they are the ones that stop the build. */
@@ -85,12 +87,35 @@ function otherLibraries(context: Context, dependencies: Record<string, unknown>)
   }));
 }
 
-/** Whether `capabilities.push` is on in `app.json`, which is the one place the doctor can read it from. */
+/**
+ * Whether `capabilities.push` is on in `app.json`, which is the one place the doctor can read it from, and whether the plugin would take it: it refuses a secret in it, and a value that is
+ * not an object, that names no platform, or whose `android` or `ios` is malformed (`checkPushConfig`, the plugin's own function), each with the message it stops the prebuild with.
+ */
 function capabilityCheck(config: Config | undefined, library: string): Check[] {
   if (!config) return [];
   if (config.push) {
+    const secret = findPushSecret(config.value, "capabilities.push");
+    if (secret) {
+      return [{
+        group,
+        status: "fail",
+        message: `${config.file} turns capabilities.push on, and the config plugin refuses it: ${pushSecretMessage(secret)}`,
+        fix: "take it out of the config (and out of the repository's history), revoke the key if it was ever committed, and give it to the server's environment (FCM_SERVICE_ACCOUNT, APNS_KEY, APNS_KEY_ID, APNS_TEAM_ID); the app's config holds identifiers only",
+      }];
+    }
+    const checked = checkPushConfig(config.value);
+    if ("problem" in checked) {
+      // An `app.config.*` gets `app.json` as its base and may change `capabilities`: what the file says is then the plugin's input only if the code leaves it alone.
+      const code = config.conclusive ? "" : ", unless the app's config code changes it";
+      return [{
+        group,
+        status: config.conclusive ? "fail" : "unknown",
+        message: `${config.file} turns capabilities.push on, and the config plugin refuses it${code}: ${checked.problem}`,
+        fix: `change capabilities.push in ${config.file} as the message says (PUSH.md, "The config"), or turn it off with \`push: false\` and remove ${pushPackage}`,
+      }];
+    }
     const platforms = ["android", "ios"].filter((name) => config.push?.[name] !== undefined);
-    return [{ group, status: "pass", message: `${config.file} turns capabilities.push on${platforms.length > 0 ? ` (${platforms.join(", ")})` : ""}` }];
+    return [{ group, status: "pass", message: `${config.file} turns capabilities.push on (${platforms.join(", ")})` }];
   }
   if (!config.conclusive) return [];
   return [{

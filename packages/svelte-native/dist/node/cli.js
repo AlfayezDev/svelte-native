@@ -1779,7 +1779,68 @@ function googleServicesPackages(parsed) {
     return typeof name === "string" ? [name] : [];
   });
 }
-var pushPackage, otherPushLibraries, apsEnvironmentEntitlement, remoteNotificationMode, pemKey, serviceAccountJson, privateKeyName;
+function section(value, where, example) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return refuse(`${where} takes an object: ${example}`);
+  return value;
+}
+function optionalText(value, where) {
+  if (value === void 0) return void 0;
+  if (typeof value !== "string" || value.trim() === "") return refuse(`${where} must be a text that is not empty.`);
+  return value;
+}
+function readIos(value) {
+  const ios = section(value, "capabilities.push.ios", '`ios: { mode: "production" }`');
+  if (ios.mode !== "development" && ios.mode !== "production")
+    return refuse(
+      'capabilities.push.ios.mode must be "development" or "production": it is the aps-environment entitlement, "development" for a build signed for development and "production" for TestFlight and the App Store.'
+    );
+  return { mode: ios.mode };
+}
+function readAndroid(value) {
+  const android = section(value, "capabilities.push.android", '`android: { googleServicesFile: "./google-services.json" }`');
+  const file = android.googleServicesFile;
+  if (typeof file !== "string" || file.trim() === "")
+    return refuse(
+      'capabilities.push.android needs googleServicesFile, the path of the Firebase project\'s google-services.json (Firebase console, Project settings, your Android app): `android: { googleServicesFile: "./google-services.json" }`. Leave `android` out for an app that has no push on Android.'
+    );
+  const settings = { googleServicesFile: file };
+  const icon = optionalText(android.icon, "capabilities.push.android.icon");
+  if (icon !== void 0) {
+    if (!/\.png$/i.test(icon)) return refuse(`capabilities.push.android.icon ("${icon}") must be a PNG file: the notification's small icon, white on a transparent background.`);
+    settings.icon = icon;
+  }
+  const color = optionalText(android.color, "capabilities.push.android.color");
+  if (color !== void 0) {
+    if (!/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color)) return refuse(`capabilities.push.android.color ("${color}") must be a hex color such as "#0a7f5a": the notification's accent color.`);
+    settings.color = color;
+  }
+  if (android.channel !== void 0) {
+    const channel = section(android.channel, "capabilities.push.android.channel", '`channel: { name: "Updates" }`');
+    if (typeof channel.name !== "string" || channel.name.trim() === "")
+      return refuse('capabilities.push.android.channel needs a name, as the user will read it in the app\'s notification settings: `channel: { name: "Updates" }`.');
+    const id = optionalText(channel.id, "capabilities.push.android.channel.id");
+    const description = optionalText(channel.description, "capabilities.push.android.channel.description");
+    settings.channel = { ...id === void 0 ? {} : { id }, name: channel.name, ...description === void 0 ? {} : { description } };
+  }
+  return settings;
+}
+function checkPushConfig(push) {
+  try {
+    const platforms = section(push, "capabilities.push", '`push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } }`, or `push: false`');
+    if (platforms.android === void 0 && platforms.ios === void 0)
+      return refuse(
+        "capabilities.push names no platform: give `android` (its google-services.json), `ios` (its aps-environment mode) or both, or turn the capability off with `push: false` and uninstall @alfayez/svelte-native-push."
+      );
+    const config = {};
+    if (platforms.android !== void 0) config.android = readAndroid(platforms.android);
+    if (platforms.ios !== void 0) config.ios = readIos(platforms.ios);
+    return { config };
+  } catch (error) {
+    if (error instanceof Refusal) return { problem: error.message };
+    throw error;
+  }
+}
+var pushPackage, otherPushLibraries, apsEnvironmentEntitlement, remoteNotificationMode, pemKey, serviceAccountJson, privateKeyName, pushSecretMessage, Refusal, refuse, pushIsOn;
 var init_config = __esm({
   "src/push/config.ts"() {
     "use strict";
@@ -1790,6 +1851,13 @@ var init_config = __esm({
     pemKey = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
     serviceAccountJson = /"type"\s*:\s*"service_account"|"private_key"\s*:/;
     privateKeyName = /^private[_-]?key$/i;
+    pushSecretMessage = ({ where, what }) => `${where} is ${what}: a key that can send to every user must never be in the app or its build. Keep it in the server's environment (the FCM service account, the APNs .p8 with its key id and team id) and give the app identifiers only.`;
+    Refusal = class extends Error {
+    };
+    refuse = (message) => {
+      throw new Refusal(message);
+    };
+    pushIsOn = (push) => push !== void 0 && push !== null && push !== false;
   }
 });
 
@@ -1807,9 +1875,9 @@ function readConfig(context, library2) {
   const code = codeConfig(context.appRoot);
   if (!json) return { config: void 0, code };
   const capabilities = record2(json.plugin?.capabilities);
-  const push = capabilities.push === void 0 || capabilities.push === false || capabilities.push === null ? void 0 : record2(capabilities.push);
+  const push = pushIsOn(capabilities.push) ? record2(capabilities.push) : void 0;
   const android = record2(json.expo.android);
-  return { config: { file: json.file, push, androidPackage: text(android.package), googleServicesFile: text(android.googleServicesFile), conclusive: code === void 0 }, code };
+  return { config: { file: json.file, push, value: capabilities.push, androidPackage: text(android.package), googleServicesFile: text(android.googleServicesFile), conclusive: code === void 0 }, code };
 }
 function packageChecks(context, library2, dependencies) {
   const installed = findPackage(pushPackage, context.appRoot);
@@ -1848,8 +1916,27 @@ function otherLibraries(context, dependencies) {
 function capabilityCheck(config, library2) {
   if (!config) return [];
   if (config.push) {
+    const secret = findPushSecret(config.value, "capabilities.push");
+    if (secret) {
+      return [{
+        group,
+        status: "fail",
+        message: `${config.file} turns capabilities.push on, and the config plugin refuses it: ${pushSecretMessage(secret)}`,
+        fix: "take it out of the config (and out of the repository's history), revoke the key if it was ever committed, and give it to the server's environment (FCM_SERVICE_ACCOUNT, APNS_KEY, APNS_KEY_ID, APNS_TEAM_ID); the app's config holds identifiers only"
+      }];
+    }
+    const checked = checkPushConfig(config.value);
+    if ("problem" in checked) {
+      const code = config.conclusive ? "" : ", unless the app's config code changes it";
+      return [{
+        group,
+        status: config.conclusive ? "fail" : "unknown",
+        message: `${config.file} turns capabilities.push on, and the config plugin refuses it${code}: ${checked.problem}`,
+        fix: `change capabilities.push in ${config.file} as the message says (PUSH.md, "The config"), or turn it off with \`push: false\` and remove ${pushPackage}`
+      }];
+    }
     const platforms = ["android", "ios"].filter((name) => config.push?.[name] !== void 0);
-    return [{ group, status: "pass", message: `${config.file} turns capabilities.push on${platforms.length > 0 ? ` (${platforms.join(", ")})` : ""}` }];
+    return [{ group, status: "pass", message: `${config.file} turns capabilities.push on (${platforms.join(", ")})` }];
   }
   if (!config.conclusive) return [];
   return [{

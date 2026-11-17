@@ -628,8 +628,10 @@ function applyPushAppDelegate(contents) {
     "    SveltePushBackgroundLaunch.start(",
     "      application,",
     "      host: {",
+    // `-initializeReactHostWithLaunchOptions:bundleConfiguration:devMenuConfiguration:` reaches Swift as `initializeReactHost(launchOptions:…)`
+    // (the compiler of Xcode 26.5 says so; `withLaunchOptions:` does not compile).
     "        factory.rootViewFactory.initializeReactHost(",
-    "          withLaunchOptions: launchOptions,",
+    "          launchOptions: launchOptions,",
     "          bundleConfiguration: factory.bundleConfiguration,",
     "          devMenuConfiguration: factory.devMenuConfiguration ?? RCTDevMenuConfiguration.default())",
     "      },",

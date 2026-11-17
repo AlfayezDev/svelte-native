@@ -39,6 +39,8 @@ pnpm android
 
 Libraries that have been loaded this way include `expo-notifications`, `expo-location`, `expo-secure-store`, `expo-web-browser`, `expo-file-system`, `@react-native-async-storage/async-storage` and `react-native-mmkv`.
 
+Push notifications from your own server have a library of their own, which sends straight to Firebase and APNs: see [Push notifications](push-notifications). It and `expo-notifications` (or `@react-native-firebase/messaging`) exclude each other, and the prebuild stops when it finds both. Choose `expo-notifications` when you want Expo's push service.
+
 ## Functions work, hooks don't
 
 There is no React in a Svelte Native app, so a library's React hooks can't run. Its plain functions can. For example, `expo-location`'s `getCurrentPositionAsync()` works, and its `useForegroundPermissions()` hook doesn't. Most Expo libraries offer both, and the hook is a thin wrapper around a function you can call yourself:

@@ -14,7 +14,8 @@ internal const val LOG_TAG = "SveltePush"
  * What lives as long as the process does, which is longer than the Expo module: the events with their kept backlog, the waits of the message that is being delivered,
  * the tap rule and the foreground count. Four things reach it, and any of them may come first: the `Application` (a lifecycle listener of the package, at
  * `Application.onCreate`), the Firebase service (a message can start the process), an Activity (a tap) and the module (JavaScript, which Expo creates lazily). Each
- * of them calls [install], which does its work once.
+ * of them calls [install], which does its work once, and only when push is on in this build (`PushManifest.enabled`): this code is in every app, so an app that left push off never
+ * gets a listener, a ledger or a callback from it.
  */
 internal object PushRuntime {
   val events = PushEvents(log = { Log.w(LOG_TAG, it) })
@@ -25,7 +26,7 @@ internal object PushRuntime {
   @Volatile
   private var taps: PushTaps? = null
 
-  /** The tap rule, or null before [install]. */
+  /** The tap rule, or null before [install], and for ever in a build with push off. */
   fun tapsOrNull(): PushTaps? = taps
 
   /**
@@ -35,6 +36,7 @@ internal object PushRuntime {
   @Synchronized
   fun install(application: Application) {
     if (taps != null) return
+    if (!PushManifest.enabled(application)) return
     // A tap that is read twice (the two readers of `readLaunchTap`) is the normal case on a cold start, so the ledger's refusal is a debug line, not a warning.
     taps = PushTaps(events, TapLedger(PreferencesTapStore(application)), { Log.d(LOG_TAG, it) })
     application.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {

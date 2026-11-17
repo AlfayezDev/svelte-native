@@ -1829,7 +1829,7 @@ function checkPushConfig(push) {
     const platforms = section(push, "capabilities.push", '`push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } }`, or `push: false`');
     if (platforms.android === void 0 && platforms.ios === void 0)
       return refuse(
-        "capabilities.push names no platform: give `android` (its google-services.json), `ios` (its aps-environment mode) or both, or turn the capability off with `push: false` and uninstall @alfayez/svelte-native-push."
+        "capabilities.push names no platform: give `android` (its google-services.json), `ios` (its aps-environment mode) or both, or turn the capability off with `push: false`."
       );
     const config = {};
     if (platforms.android !== void 0) config.android = readAndroid(platforms.android);

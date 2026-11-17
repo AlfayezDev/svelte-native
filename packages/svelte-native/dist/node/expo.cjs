@@ -398,7 +398,6 @@ var import_node_path4 = require("node:path");
 var import_config_plugins = __toESM(require("expo/config-plugins.js"), 1);
 
 // src/push/config.ts
-var pushPackage = "@alfayez/svelte-native-push";
 var otherPushLibraries = ["expo-notifications", "@react-native-firebase/messaging"];
 var apsEnvironmentEntitlement = "aps-environment";
 var remoteNotificationMode = "remote-notification";
@@ -486,7 +485,7 @@ function checkPushConfig(push) {
     const platforms = section(push, "capabilities.push", '`push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } }`, or `push: false`');
     if (platforms.android === void 0 && platforms.ios === void 0)
       return refuse(
-        "capabilities.push names no platform: give `android` (its google-services.json), `ios` (its aps-environment mode) or both, or turn the capability off with `push: false` and uninstall @alfayez/svelte-native-push."
+        "capabilities.push names no platform: give `android` (its google-services.json), `ios` (its aps-environment mode) or both, or turn the capability off with `push: false`."
       );
     const config = {};
     if (platforms.android !== void 0) config.android = readAndroid(platforms.android);
@@ -579,6 +578,7 @@ function withLocation(config, location, context) {
 }
 var defaultPushChannel = { id: "default", name: "Notifications" };
 var pushMetaData = {
+  enabled: "expo.modules.sveltepush.enabled",
   icon: "com.google.firebase.messaging.default_notification_icon",
   color: "com.google.firebase.messaging.default_notification_color",
   firebaseChannel: "com.google.firebase.messaging.default_notification_channel_id",
@@ -593,6 +593,11 @@ var pushResources = {
   channelName: "svelte_push_channel_name",
   channelDescription: "svelte_push_channel_description"
 };
+var pushFirebaseDependency = "com.google.firebase:firebase-messaging:26.0.2";
+var pushMessagingService = "expo.modules.sveltepush.SveltePushMessagingService";
+var firebaseMessagingEvent = "com.google.firebase.MESSAGING_EVENT";
+var postNotificationsPermission = "android.permission.POST_NOTIFICATIONS";
+var pushInfoPlistFlag = "SveltePushEnabled";
 var secretError = (secret) => new CapabilityConfigError(pushSecretMessage(secret));
 var unreadable = (error) => error.code === "ENOENT" ? "does not exist" : `cannot be read: ${error instanceof Error ? error.message : String(error)}`;
 function checkGoogleServicesFile(file, appPackage, projectRoot) {
@@ -653,11 +658,12 @@ var holdBegin = "    // Svelte native: push, the first screen of a launch in the
 var holdOpen = "      surface: { [self] in";
 var holdClose = "      })";
 var holdEnd = "    // Svelte native: end of the first screen of a launch in the background";
-var holdImport = "internal import SveltePush // Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
+var holdImportComment = "// Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
+var holdImport = `internal import SvelteCore ${holdImportComment}`;
 var escapeText = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 var holdHead = new RegExp(`\\n${escapeText(holdBegin)}\\n[\\s\\S]*?${escapeText(holdOpen)}(?=\\n)`);
 var holdTail = new RegExp(`\\n${escapeText(holdClose)}\\n${escapeText(holdEnd)}(?=\\n)`);
-var holdImportLine = new RegExp(`^${escapeText(holdImport)}\\n`, "m");
+var holdImportLine = new RegExp(`^internal import (?:SvelteCore|SveltePush) ${escapeText(holdImportComment)}\\n`, "m");
 function removePushAppDelegate(contents) {
   return contents.replace(holdHead, "").replace(holdTail, "").replace(holdImportLine, "");
 }
@@ -706,7 +712,7 @@ function withPushIos(config, mode) {
     ios: {
       ...config.ios,
       entitlements: { ...config.ios?.entitlements, [apsEnvironmentEntitlement]: mode },
-      infoPlist: { ...config.ios?.infoPlist, UIBackgroundModes: modes.includes(remoteNotificationMode) ? modes : [...modes, remoteNotificationMode] }
+      infoPlist: { ...config.ios?.infoPlist, [pushInfoPlistFlag]: true, UIBackgroundModes: modes.includes(remoteNotificationMode) ? modes : [...modes, remoteNotificationMode] }
     }
   };
   return (0, import_config_plugins.withAppDelegate)(config, (config2) => {
@@ -719,13 +725,21 @@ function setMetaData(application, name, attribute, content) {
   const others = (application["meta-data"] ?? []).filter((item) => item.$["android:name"] !== name);
   application["meta-data"] = [...others, { $: { "android:name": name, [`android:${attribute}`]: content } }];
 }
+function hasPushFlag(application) {
+  return (application["meta-data"] ?? []).some((item) => item.$["android:name"] === pushMetaData.enabled);
+}
+function pushService() {
+  return { $: { "android:name": pushMessagingService, "android:exported": "false" }, "intent-filter": [{ action: [{ $: { "android:name": firebaseMessagingEvent } }] }] };
+}
 function removePushManifest(application) {
+  if (application.service !== void 0) application.service = application.service.filter((item) => item.$["android:name"] !== pushMessagingService);
   const items = application["meta-data"];
   if (items === void 0) return;
   const content = (item) => item.$["android:value"] ?? item.$["android:resource"];
   const channelId = items.map((item) => item.$["android:name"] === pushMetaData.channelId ? content(item) : void 0).find((value) => value !== void 0);
   const ours = (item) => {
     switch (item.$["android:name"]) {
+      case pushMetaData.enabled:
       case pushMetaData.channelId:
       case pushMetaData.channelName:
       case pushMetaData.channelDescription:
@@ -744,12 +758,40 @@ function removePushManifest(application) {
 }
 function applyPushManifest(application, android) {
   removePushManifest(application);
+  setMetaData(application, pushMetaData.enabled, "value", "true");
+  application.service = [...application.service ?? [], pushService()];
   if (android.icon !== void 0) setMetaData(application, pushMetaData.icon, "resource", `@drawable/${pushResources.icon}`);
   if (android.color !== void 0) setMetaData(application, pushMetaData.color, "resource", `@color/${pushResources.color}`);
   setMetaData(application, pushMetaData.firebaseChannel, "value", `@string/${pushResources.channelId}`);
   setMetaData(application, pushMetaData.channelId, "value", `@string/${pushResources.channelId}`);
   setMetaData(application, pushMetaData.channelName, "value", `@string/${pushResources.channelName}`);
   if (android.channel.description !== void 0) setMetaData(application, pushMetaData.channelDescription, "value", `@string/${pushResources.channelDescription}`);
+}
+var postNotificationsNames = [postNotificationsPermission, postNotificationsPermission.replace("android.permission.", "")];
+function applyPushPermission(manifest) {
+  expoAndroid.Permissions.ensurePermissions(manifest, [postNotificationsPermission]);
+}
+function removePushPermission(manifest, appPermissions) {
+  if (appPermissions?.some((name) => postNotificationsNames.includes(name))) return;
+  expoAndroid.Permissions.removePermissions(manifest, [postNotificationsPermission]);
+}
+var gradleComment = "// Svelte native: push, Firebase Messaging (generated, do not edit)";
+var gradleLine = `    implementation("${pushFirebaseDependency}") ${gradleComment}`;
+var gradleLines = new RegExp(`^[ \\t]*implementation\\([^\\n]*\\) ${escapeText(gradleComment)}\\n`, "gm");
+function removePushGradle(contents) {
+  return contents.replace(gradleLines, "");
+}
+function applyPushGradle(contents) {
+  const stripped = removePushGradle(contents);
+  const block = /^dependencies \{[ \t]*\n/m.exec(stripped);
+  if (!block) {
+    throw new Error(
+      "Svelte native could not find the `dependencies {` block of android/app/build.gradle. Push needs it to add Firebase Messaging to the app: the library's messaging service is compiled against Firebase and runs on the app's copy of it."
+    );
+  }
+  const end = block.index + block[0].length;
+  return `${stripped.slice(0, end)}${gradleLine}
+${stripped.slice(end)}`;
 }
 function androidStringText(text) {
   const escaped = text.replace(/[\\"]/g, "\\$&").replace(/^[@?]/, "\\$&").replace(new RegExp("\\p{Cc}", "gu"), (char) => char === "\n" ? "\\n" : char === "	" ? "\\t" : `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`);
@@ -788,11 +830,21 @@ function withPushAndroid(config, android, projectRoot) {
     config = { ...config, android: { ...config.android, googleServicesFile: android.googleServicesFile } };
   }
   config = (0, import_config_plugins.withAndroidManifest)(config, (config2) => {
-    if (android) applyPushManifest(expoAndroid.Manifest.getMainApplicationOrThrow(config2.modResults), android);
-    else {
+    if (android) {
+      applyPushManifest(expoAndroid.Manifest.getMainApplicationOrThrow(config2.modResults), android);
+      applyPushPermission(config2.modResults);
+    } else {
       const application = expoAndroid.Manifest.getMainApplication(config2.modResults);
-      if (application) removePushManifest(application);
+      if (application) {
+        const wasOn = hasPushFlag(application);
+        removePushManifest(application);
+        if (wasOn) removePushPermission(config2.modResults, config2.android?.permissions);
+      }
     }
+    return config2;
+  });
+  config = (0, import_config_plugins.withAppBuildGradle)(config, (config2) => {
+    config2.modResults.contents = android ? applyPushGradle(config2.modResults.contents) : removePushGradle(config2.modResults.contents);
     return config2;
   });
   config = (0, import_config_plugins.withStringsXml)(config, (config2) => {
@@ -812,6 +864,10 @@ function withPushAndroid(config, android, projectRoot) {
 }
 function withoutPushIos(config, context) {
   if (!(0, import_node_fs3.existsSync)((0, import_node_path4.join)(context.projectRoot, "ios"))) return config;
+  config = (0, import_config_plugins.withInfoPlist)(config, (config2) => {
+    delete config2.modResults[pushInfoPlistFlag];
+    return config2;
+  });
   return (0, import_config_plugins.withAppDelegate)(config, (config2) => {
     if (config2.modResults.language === "swift") config2.modResults.contents = removePushAppDelegate(config2.modResults.contents);
     return config2;
@@ -821,27 +877,15 @@ function withoutPushAndroid(config, context) {
   return (0, import_node_fs3.existsSync)((0, import_node_path4.join)(context.projectRoot, "android")) ? withPushAndroid(config, void 0, context.projectRoot) : config;
 }
 function withPush(config, push, context) {
-  const on = pushIsOn(push);
-  const installed = context.linked.has(pushPackage);
-  if (!on) {
-    if (installed)
-      throw new CapabilityConfigError(
-        `${pushPackage} is installed, but the push capability is off. The package is in the build (Firebase Messaging, the notification permission, the iOS registration), and it cannot work without the app's Firebase file and entitlement: turn push on in the @alfayez/svelte-native plugin, \`plugins: [["@alfayez/svelte-native", { capabilities: { push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } } } }]]\`, or uninstall ${pushPackage}.`
-      );
+  if (!pushIsOn(push)) {
     return withoutPushAndroid(withoutPushIos(config, context), context);
   }
   const secret = findPushSecret(push, "capabilities.push");
   if (secret) throw secretError(secret);
-  if (context.excluded.has(pushPackage))
-    throw new CapabilityConfigError(`capabilities.push is on, but ${pushPackage} is left out of autolinking (\`autolinkingExclude\`, or \`expo.autolinking.exclude\` in package.json): take it out of that list, or turn the capability off.`);
-  if (!installed)
-    throw new CapabilityConfigError(
-      `capabilities.push needs ${pushPackage}, which is not installed: add it from the same repository and tag as @alfayez/svelte-native (the same specifier, ending in \`&path:packages/svelte-native-push\`), then prebuild again.`
-    );
   const other = otherPushLibraries.find((name) => context.linked.has(name));
   if (other !== void 0)
     throw new CapabilityConfigError(
-      `capabilities.push is on, and ${other} is installed: an app has one push library (Android delivers a message to one FirebaseMessagingService, iOS has one notification center delegate). Uninstall ${other}, or turn the push capability off and uninstall ${pushPackage}.`
+      `capabilities.push is on, and ${other} is installed: an app has one push library (Android delivers a message to one FirebaseMessagingService, iOS has one notification center delegate). Uninstall ${other}, or turn the push capability off.`
     );
   const settings = pushSettings(push, config.android?.package, context.projectRoot);
   config = settings.ios ? withPushIos(config, settings.ios.mode) : withoutPushIos(config, context);

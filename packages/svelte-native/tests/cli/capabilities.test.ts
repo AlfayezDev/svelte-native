@@ -1,6 +1,6 @@
 // The `capabilities` option of the Expo config plugin (`src/capabilities.ts`): a capability gives its library's plugin the app's texts (`location`) or writes the
-// entries its library needs (`push`), and the half-made states (on without the library, the library without the capability, the capability and the library's own
-// plugin entry both) stop the prebuild.
+// entries its native code needs (`push`: svelte-core's, which is in every app, so what the plugin writes is what turns it on), and the half-made states (on without the library,
+// the library without the capability, the capability and the library's own plugin entry both) stop the prebuild.
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -8,12 +8,12 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExpoConfig } from "expo/config";
 import { AndroidConfig, compileModsAsync, withPlugins, XML, type ExportedConfig } from "expo/config-plugins";
-import { CapabilityConfigError, type PushCapability, androidStringText, applyPushAppDelegate, applyPushManifest, applyPushStrings, copyPushIcon, defaultPushChannel, findPushSecret, locationPluginProps, pushMetaData, pushPackage, pushResources, pushSettings, removePushAppDelegate, removePushIcon, removePushManifest, removePushStrings, withCapabilities } from "../../src/capabilities.ts";
+import { CapabilityConfigError, type PushCapability, androidStringText, applyPushAppDelegate, applyPushGradle, applyPushManifest, applyPushPermission, applyPushStrings, copyPushIcon, defaultPushChannel, findPushSecret, locationPluginProps, postNotificationsPermission, pushFirebaseDependency, pushInfoPlistFlag, pushMessagingService, pushMetaData, pushResources, pushSettings, hasPushFlag, removePushAppDelegate, removePushGradle, removePushPermission, removePushIcon, removePushManifest, removePushStrings, withCapabilities } from "../../src/capabilities.ts";
 import expoPlugin, { applyAppDelegate } from "../../src/expo.ts";
 import { createProject } from "../support/project.ts";
-import { expoTemplateAppDelegate } from "./support/app-delegate.ts";
+import { expoTemplateAppBuildGradle, expoTemplateAppDelegate } from "./support/app-delegate.ts";
 import { findHostJars } from "../support/host-tools.ts";
-import { libraryVersion, peerRange } from "../support/versions.ts";
+import { peerRange } from "../support/versions.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /** An app whose package.json lists `dependencies`, in a directory that is removed when the test's block ends. */
@@ -141,8 +141,8 @@ describe("capabilities.location", () => {
   });
 });
 
-/** An app with the push package installed (unless `dependencies` says otherwise), a Google services file for `io.e.a` and an icon, in a directory that is removed when the test's block ends. */
-const pushApp = (dependencies: Record<string, string> = { [pushPackage]: libraryVersion }, files: Record<string, string> = {}, manifest: Record<string, unknown> = {}) => {
+/** An app with a Google services file for `io.e.a` and an icon (and the `dependencies` it is given: push has no package of its own), in a directory that is removed when the test's block ends. */
+const pushApp = (dependencies: Record<string, string> = {}, files: Record<string, string> = {}, manifest: Record<string, unknown> = {}) => {
   const project = createProject(
     { "package.json": JSON.stringify({ name: "app", dependencies, ...manifest }), "google-services.json": googleServices("io.e.a"), "assets/notify.png": "not really a png", ...files },
     "svelte-native-capabilities-",
@@ -207,15 +207,15 @@ describe("capabilities.push", () => {
     using project = pushApp();
     const config = withPush(project, { android: { googleServicesFile: "./google-services.json" } });
     expect(config.android).toEqual({ package: "io.e.a", googleServicesFile: "./google-services.json" });
-    // What `@expo/prebuild-config` runs on every prebuild (`AndroidConfig.GoogleServices`: the class path, the plugin, the copy of the file) reads that key; the capability writes no Gradle of its own.
+    // What `@expo/prebuild-config` runs on every prebuild (`AndroidConfig.GoogleServices`: the class path, the plugin, the copy of the file) reads that key; the capability's own Gradle mod is Firebase Messaging's dependency alone.
     expect(AndroidConfig.GoogleServices.getGoogleServicesFilePath(config)).toBe("./google-services.json");
     expect(AndroidConfig.GoogleServices.setClassPath(config, "buildscript {\n  dependencies {\n  }\n}")).toContain("classpath 'com.google.gms:google-services:");
     expect(AndroidConfig.GoogleServices.applyPlugin(config, "android {}\n")).toContain("apply plugin: 'com.google.gms.google-services'");
-    expect(Object.keys(mods(config).android).filter((mod) => /gradle/i.test(mod))).toEqual([]);
+    expect(Object.keys(mods(config).android).filter((mod) => /gradle/i.test(mod))).toEqual(["appBuildGradle"]);
   });
 
   test("Android: the app's own android.googleServicesFile of the same file is one answer, another file is two", () => {
-    using project = pushApp({ [pushPackage]: libraryVersion }, { "other.json": googleServices("io.e.a") });
+    using project = pushApp({}, { "other.json": googleServices("io.e.a") });
     const android = (googleServicesFile: string) => appConfig(project.root, { android: { package: "io.e.a", googleServicesFile } });
     expect(withPush(project, { android: { googleServicesFile: "google-services.json" } }, android("./google-services.json")).android?.googleServicesFile).toBe("google-services.json");
     const error = thrown(() => withPush(project, { android: { googleServicesFile: "./other.json" } }, android("./google-services.json")));
@@ -230,6 +230,7 @@ describe("capabilities.push", () => {
     const { manifest, strings } = await compile(withPush(project, fullPush));
     // The texts are references (`android:value="@string/…"`), not the texts: the resource compiler would read a text that looks like a number, a color or a reference for one.
     expect(metaData(manifest)).toEqual({
+      "expo.modules.sveltepush.enabled": "true",
       "com.google.firebase.messaging.default_notification_icon": "@drawable/svelte_push_icon",
       "com.google.firebase.messaging.default_notification_color": "@color/svelte_push_color",
       "com.google.firebase.messaging.default_notification_channel_id": "@string/svelte_push_channel_id",
@@ -242,7 +243,7 @@ describe("capabilities.push", () => {
     const orders = withPush(project, { android: { googleServicesFile: "./google-services.json", channel: { id: "orders", name: "Orders" } } });
     const own = await compile(orders);
     expect(metaData(own.manifest)).toEqual({
-      [pushMetaData.firebaseChannel]: "@string/svelte_push_channel_id", [pushMetaData.channelId]: "@string/svelte_push_channel_id", [pushMetaData.channelName]: "@string/svelte_push_channel_name",
+      [pushMetaData.enabled]: "true", [pushMetaData.firebaseChannel]: "@string/svelte_push_channel_id", [pushMetaData.channelId]: "@string/svelte_push_channel_id", [pushMetaData.channelName]: "@string/svelte_push_channel_name",
     });
     expect(stringResources(own.strings)).toEqual({ svelte_push_channel_id: '"orders"', svelte_push_channel_name: '"Orders"' });
   });
@@ -251,6 +252,7 @@ describe("capabilities.push", () => {
     using project = pushApp();
     const { manifest, strings } = await compile(withPush(project, { android: { googleServicesFile: "./google-services.json" } }));
     expect(metaData(manifest)).toEqual({
+      [pushMetaData.enabled]: "true",
       [pushMetaData.firebaseChannel]: "@string/svelte_push_channel_id",
       [pushMetaData.channelId]: "@string/svelte_push_channel_id",
       [pushMetaData.channelName]: "@string/svelte_push_channel_name",
@@ -269,7 +271,7 @@ describe("capabilities.push", () => {
     // An application with no entries at all gets its own.
     const bare: AndroidConfig.Manifest.ManifestApplication = { $: { "android:name": ".MainApplication" } };
     applyPushManifest(bare, { googleServicesFile: "g.json", color: "#fff", channel: { id: "default", name: "Updates" } });
-    expect((bare["meta-data"] ?? []).map((item) => item.$["android:name"])).toEqual([pushMetaData.color, pushMetaData.firebaseChannel, pushMetaData.channelId, pushMetaData.channelName]);
+    expect((bare["meta-data"] ?? []).map((item) => item.$["android:name"])).toEqual([pushMetaData.enabled, pushMetaData.color, pushMetaData.firebaseChannel, pushMetaData.channelId, pushMetaData.channelName]);
   });
 
   test("Android: the color becomes a color resource, and without one colors.xml is not touched", async () => {
@@ -281,7 +283,7 @@ describe("capabilities.push", () => {
   });
 
   test("Android: the icon is copied into res/drawable under its fixed name by a dangerous mod, and a config without one takes the earlier prebuild's copy away", async () => {
-    using project = pushApp({ [pushPackage]: libraryVersion }, { "assets/notify.png": "the icon's bytes" });
+    using project = pushApp({}, { "assets/notify.png": "the icon's bytes" });
     const target = mkdtempSync(join(tmpdir(), "svelte-native-push-icon-"));
     const icon = join(target, "app/src/main/res/drawable/svelte_push_icon.png");
     const runDangerous = async (config: ExportedConfig) => mods(config).android.dangerous({ ...config, modRequest: { projectRoot: project.root, platformProjectRoot: target, platform: "android", modName: "dangerous", introspect: false }, modResults: {} });
@@ -309,28 +311,113 @@ describe("capabilities.push", () => {
     expect(Object.keys(androidOnly.mods ?? {})).toEqual(["android"]);
     const iosOnly = withPush(project, { ios: { mode: "development" } });
     expect(iosOnly.android).toEqual({ package: "io.e.a" });
-    // The one iOS mod is the AppDelegate patch (the first screen of a launch in the background); the Info.plist and the entitlements are the config's own keys.
+    // The one iOS mod is the AppDelegate patch (the first screen of a launch in the background); the Info.plist (the flag and the background mode) and the entitlements are the config's own keys.
     expect(Object.keys(mods(iosOnly))).toEqual(["ios"]);
     expect(Object.keys(mods(iosOnly).ios)).toEqual(["appDelegate"]);
   });
 
-  test("the Expo plugin passes the capability on: its entries land in the config, and a package left out of autolinking stops it", () => {
+  test("the Expo plugin passes the capability on: its entries land in the config, with no library to install and nothing to leave out of autolinking", () => {
     using project = pushApp();
     const config = withPlugins(appConfig(project.root), [[expoPlugin, { capabilities: { push: fullPush } }]]);
     expect([config.android?.googleServicesFile, config.ios?.entitlements, config.ios?.infoPlist?.UIBackgroundModes]).toEqual(["./google-services.json", { "aps-environment": "production" }, ["remote-notification"]]);
-    const error = thrown(() => withPlugins(appConfig(project.root), [[expoPlugin, { capabilities: { push: fullPush }, autolinkingExclude: [pushPackage] }]]));
-    expect(error.message).toContain("left out of autolinking");
+    expect(config.ios?.infoPlist?.[pushInfoPlistFlag]).toBe(true);
   });
 
-  test("off, and the package not installed or left out of autolinking: nothing changes", () => {
+  test("off, with no native project to clean: nothing changes, whatever the app depends on", () => {
     const config = appConfig("");
     using bare = pushApp({ expo: peerRange("expo") });
     for (const push of [undefined, false] as const) expect(withCapabilities(config, { push }, { projectRoot: bare.root })).toBe(config);
     expect(withCapabilities(config, undefined, { projectRoot: bare.root })).toBe(config);
-    using excluded = pushApp({ [pushPackage]: libraryVersion });
-    expect(withCapabilities(config, undefined, { projectRoot: excluded.root, excluded: [pushPackage] })).toBe(config);
-    using inManifest = pushApp({ [pushPackage]: libraryVersion }, {}, { expo: { autolinking: { android: { exclude: [pushPackage] } } } });
-    expect(withCapabilities(config, { push: false }, { projectRoot: inManifest.root })).toBe(config);
+    // The package of an earlier version is not looked for: an app that still lists it is neither refused nor changed.
+    using old = pushApp({ "@alfayez/svelte-native-push": "0.4.0-rc.8" });
+    expect(withCapabilities(config, { push: false }, { projectRoot: old.root })).toBe(config);
+    expect(withCapabilities(config, undefined, { projectRoot: old.root })).toBe(config);
+  });
+});
+
+describe("capabilities.push on Android: Firebase Messaging, the service, the permission and the flag are the plugin's, because svelte-core is in every app", () => {
+  const gradle = expoTemplateAppBuildGradle();
+  const line = `    implementation("${pushFirebaseDependency}") // Svelte native: push, Firebase Messaging (generated, do not edit)\n`;
+
+  test("the dependency is Firebase Messaging at the exact version svelte-core compiles against, and nothing else (no BOM)", () => {
+    expect(pushFirebaseDependency).toMatch(/^com\.google\.firebase:firebase-messaging:\d+\.\d+\.\d+$/);
+    expect(pushFirebaseDependency).toBe("com.google.firebase:firebase-messaging:26.0.2");
+  });
+
+  test("it goes first into the dependencies block of the template's app build.gradle, which is otherwise as it was", () => {
+    const once = applyPushGradle(gradle);
+    expect(once).toContain(`\ndependencies {\n${line}    // The version of react-native is set by the React Native Gradle Plugin\n`);
+    expect(once.replace(line, "")).toBe(gradle);
+    expect(once.split("\n").filter((text) => text.includes("firebase-messaging"))).toHaveLength(1);
+  });
+
+  test("applying it again changes nothing, a line of an older version is replaced and not kept beside it, and taking it away gives the template back", () => {
+    const once = applyPushGradle(gradle);
+    expect(applyPushGradle(once)).toBe(once);
+    const older = once.replace(pushFirebaseDependency, "com.google.firebase:firebase-messaging:25.0.0");
+    expect(older).not.toBe(once);
+    expect(applyPushGradle(older)).toBe(once);
+    expect(removePushGradle(once)).toBe(gradle);
+    expect(removePushGradle(older)).toBe(gradle);
+    expect(removePushGradle(gradle)).toBe(gradle);
+  });
+
+  test("only the line that carries the plugin's comment is taken away: the app's own Firebase dependency, at its own version, stays", () => {
+    const mine = gradle.replace("dependencies {\n", 'dependencies {\n    implementation("com.google.firebase:firebase-messaging:24.1.0")\n    implementation platform("com.google.firebase:firebase-bom:33.0.0")\n');
+    expect(removePushGradle(applyPushGradle(mine))).toBe(mine);
+  });
+
+  test("a file with no dependencies block at the left margin stops the prebuild, and says what it looked for", () => {
+    const error = thrown(() => applyPushGradle("android {\n  dependencies {\n  }\n}\n"));
+    expect(error.message).toStartWith("Svelte native could not find the `dependencies {` block of android/app/build.gradle.");
+  });
+
+  test("the plugin's Gradle mod writes it for an app with push on Android, and takes it away for one without", async () => {
+    using project = pushApp();
+    const run = (config: ExportedConfig, contents: string) =>
+      (mods(config).android.appBuildGradle as (config: object) => Promise<{ modResults: { contents: string } }>)({ modRequest: {}, modResults: { language: "groovy", path: "build.gradle", contents } });
+    const on = withPush(project, { android: { googleServicesFile: "./google-services.json" } });
+    expect((await run(on, gradle)).modResults.contents).toBe(applyPushGradle(gradle));
+    // Push on for iOS alone is no push on Android: the mod that exists (only where there is a project to clean) takes the line away.
+    using withProject = pushApp({}, { "android/app/build.gradle": "" });
+    const iosOnly = withPush(withProject, { ios: { mode: "production" } });
+    expect((await run(iosOnly, applyPushGradle(gradle))).modResults.contents).toBe(gradle);
+    expect(withPush(project, { ios: { mode: "production" } }).mods?.android).toBeUndefined();
+  });
+
+  test("the manifest has the enabled flag, the messaging service (not exported, with Firebase's event) and POST_NOTIFICATIONS, each once, beside what the app has", async () => {
+    using project = pushApp();
+    const { manifest } = await compile(withPush(project, { android: { googleServicesFile: "./google-services.json" } }));
+    const application = manifest.application[0] as AndroidConfig.Manifest.ManifestApplication;
+    expect(metaData(manifest)[pushMetaData.enabled]).toBe("true");
+    expect(pushMetaData.enabled).toBe("expo.modules.sveltepush.enabled");
+    expect(application.service).toEqual([
+      { $: { "android:name": "expo.modules.sveltepush.SveltePushMessagingService", "android:exported": "false" }, "intent-filter": [{ action: [{ $: { "android:name": "com.google.firebase.MESSAGING_EVENT" } }] }] },
+    ]);
+    // The service takes Firebase's event at the default priority, which beats Firebase's own service (-500): there is no `android:priority` to lower it.
+    expect(JSON.stringify(application.service)).not.toContain("priority");
+    const permissions = ((manifest as unknown as { "uses-permission"?: { $: Record<string, string> }[] })["uses-permission"] ?? []).map((item) => item.$["android:name"]);
+    expect(permissions.filter((name) => name === "android.permission.POST_NOTIFICATIONS")).toHaveLength(1);
+    expect(pushMessagingService).toBe("expo.modules.sveltepush.SveltePushMessagingService");
+  });
+
+  test("an app that already has the permission (its own config, or the template's) is not given a second", () => {
+    const manifest = { manifest: { "uses-permission": [{ $: { "android:name": postNotificationsPermission } }], application: [] } } as unknown as AndroidConfig.Manifest.AndroidManifest;
+    applyPushPermission(manifest);
+    applyPushPermission(manifest);
+    expect(manifest.manifest["uses-permission"]).toHaveLength(1);
+    const bare = { manifest: { application: [] } } as unknown as AndroidConfig.Manifest.AndroidManifest;
+    applyPushPermission(bare);
+    expect(bare.manifest["uses-permission"]).toEqual([{ $: { "android:name": postNotificationsPermission } }]);
+    removePushPermission(bare, undefined);
+    expect(bare.manifest["uses-permission"]).toEqual([]);
+    removePushPermission(bare, undefined);
+  });
+
+  test("the flag is how the plugin tells its permission from the app's: it is there only after push was on", () => {
+    expect(hasPushFlag({ $: { "android:name": ".MainApplication" }, "meta-data": [{ $: { "android:name": pushMetaData.enabled, "android:value": "true" } }] })).toBe(true);
+    expect(hasPushFlag({ $: { "android:name": ".MainApplication" }, "meta-data": [{ $: { "android:name": pushMetaData.channelId, "android:value": "x" } }] })).toBe(false);
+    expect(hasPushFlag({ $: { "android:name": ".MainApplication" } })).toBe(false);
   });
 });
 
@@ -350,16 +437,19 @@ describe("capabilities.push on iOS: a push that wakes the app mounts no screen",
     expect(once.indexOf("window = UIWindow(frame: UIScreen.main.bounds)")).toBeLessThan(once.indexOf("SveltePushBackgroundLaunch.start("));
     expect(once.indexOf("end of the first screen of a launch in the background")).toBeLessThan(once.indexOf("#endif"));
     expect(once.indexOf("#endif")).toBeLessThan(once.indexOf("return super.application(application, didFinishLaunchingWithOptions: launchOptions)"));
-    expect(once).toMatch(/^internal import SveltePush \/\/ Svelte native: push, /m);
-    expect(once.indexOf("import SveltePush")).toBeGreaterThan(once.indexOf("import ReactAppDependencyProvider"));
-    expect(once.indexOf("import SveltePush")).toBeLessThan(once.indexOf("@main"));
+    // `SveltePushBackgroundLaunch` is in the SvelteCore pod now, and the import is `internal` as the navigation patch's own import of the same module is (Expo's generated provider imports
+    // every module that way, and a plain import of the same module in the app target is ambiguous): one line, with a comment that tells it from the navigation patch's.
+    expect(once).toMatch(/^internal import SvelteCore \/\/ Svelte native: push, the first screen of a launch in the background \(generated, do not edit\)$/m);
+    expect(once.match(/^.*import .*$/gm)?.filter((line) => line.includes("SveltePush") || /import SvelteCore/.test(line))).toEqual(["internal import SvelteCore // Svelte native: push, the first screen of a launch in the background (generated, do not edit)"]);
+    expect(once.indexOf("import SvelteCore")).toBeGreaterThan(once.indexOf("import ReactAppDependencyProvider"));
+    expect(once.indexOf("import SvelteCore")).toBeLessThan(once.indexOf("@main"));
   });
 
   test("taking the wrapper away gives the template back, and applying again changes nothing", () => {
     const once = applyPushAppDelegate(template);
-    expect(once.replace(/\n {4}\/\/ Svelte native: push, the first screen[\s\S]*?surface: \{ \[self\] in(?=\n)/, "").replace(/\n {6}\}\)\n {4}\/\/ Svelte native: end of the first screen of a launch in the background(?=\n)/, "").replace(/^internal import SveltePush.*\n/m, "")).toBe(template);
+    expect(once.replace(/\n {4}\/\/ Svelte native: push, the first screen[\s\S]*?surface: \{ \[self\] in(?=\n)/, "").replace(/\n {6}\}\)\n {4}\/\/ Svelte native: end of the first screen of a launch in the background(?=\n)/, "").replace(/^internal import SvelteCore .*push.*\n/m, "")).toBe(template);
     expect(applyPushAppDelegate(once)).toBe(once);
-    expect(once.match(/import SveltePush/g)).toHaveLength(1);
+    expect(once.match(/import SvelteCore/g)).toHaveLength(1);
     expect(once.match(/SveltePushBackgroundLaunch\.start\(/g)).toHaveLength(1);
     expect(once.match(/factory\.startReactNative\(/g)).toHaveLength(1);
   });
@@ -369,6 +459,14 @@ describe("capabilities.push on iOS: a push that wakes the app mounts no screen",
     const older = once.replace("bundleConfiguration: factory.bundleConfiguration,", "bundleConfiguration: RCTBundleConfiguration.default(),");
     expect(older).not.toBe(once);
     expect(applyPushAppDelegate(older)).toBe(once);
+  });
+
+  test("an AppDelegate that the separate package's version of the plugin patched is cleaned and patched again: its import of the module `SveltePush` goes, SvelteCore's takes its place", () => {
+    const once = applyPushAppDelegate(template);
+    const earlier = once.replace("internal import SvelteCore // Svelte native: push,", "internal import SveltePush // Svelte native: push,");
+    expect(earlier).toContain("internal import SveltePush // Svelte native: push,");
+    expect(applyPushAppDelegate(earlier)).toBe(once);
+    expect(removePushAppDelegate(earlier)).toBe(template);
   });
 
   test("it goes with the navigation patch, in either order, and each leaves the other's text alone", () => {
@@ -433,7 +531,8 @@ describe("capabilities.push: the channel's texts reach the native code exactly",
     using project = pushApp();
     for (const text of misread) {
       const { manifest, strings } = await compile(withPush(project, { android: { googleServicesFile: "./google-services.json", channel: { id: text, name: text, description: text } } }));
-      expect(Object.values(metaData(manifest)).every((value) => /^@string\//.test(String(value))), text).toBe(true);
+      expect(Object.entries(metaData(manifest)).filter(([name]) => name !== pushMetaData.enabled).every(([, value]) => /^@string\//.test(String(value))), text).toBe(true);
+      expect(metaData(manifest)[pushMetaData.enabled]).toBe("true");
       expect(stringResources(strings), text).toEqual({ svelte_push_channel_id: androidStringText(text), svelte_push_channel_name: androidStringText(text), svelte_push_channel_description: androidStringText(text) });
     }
   });
@@ -464,6 +563,7 @@ describe("capabilities.push: the channel's texts reach the native code exactly",
     applyPushStrings(strings, now.channel);
     expect(metaData({ application: [application] })).toEqual({
       "com.example.key": "1",
+      [pushMetaData.enabled]: "true",
       [pushMetaData.firebaseChannel]: "@string/svelte_push_channel_id",
       [pushMetaData.channelId]: "@string/svelte_push_channel_id",
       [pushMetaData.channelName]: "@string/svelte_push_channel_name",
@@ -472,7 +572,8 @@ describe("capabilities.push: the channel's texts reach the native code exactly",
     // Twice is once: an entry of each name.
     applyPushManifest(application, now);
     applyPushStrings(strings, now.channel);
-    expect((application["meta-data"] ?? []).length).toBe(4);
+    expect((application["meta-data"] ?? []).length).toBe(5);
+    expect((application.service ?? []).length).toBe(1);
     expect((strings.resources.string ?? []).length).toBe(3);
   });
 });
@@ -480,6 +581,7 @@ describe("capabilities.push: the channel's texts reach the native code exactly",
 describe("capabilities.push off: what an earlier prebuild wrote is taken away, and only that", () => {
   const template = expoTemplateAppDelegate();
   const ours: NonNullable<AndroidConfig.Manifest.ManifestApplication["meta-data"]> = [
+    { $: { "android:name": pushMetaData.enabled, "android:value": "true" } },
     { $: { "android:name": pushMetaData.icon, "android:resource": "@drawable/svelte_push_icon" } },
     { $: { "android:name": pushMetaData.color, "android:resource": "@color/svelte_push_color" } },
     { $: { "android:name": pushMetaData.firebaseChannel, "android:value": "@string/svelte_push_channel_id" } },
@@ -490,16 +592,19 @@ describe("capabilities.push off: what an earlier prebuild wrote is taken away, a
   const own = [{ $: { "android:name": "com.example.key", "android:value": "1" } }];
   /** The channel's three string resources, as an earlier prebuild left them. */
   const channelStringsOf = (text: string) => [pushResources.channelId, pushResources.channelName, pushResources.channelDescription].map((name) => ({ $: { name, translatable: "false", formatted: "false" }, _: androidStringText(text) }));
-  /** An app that uninstalled the push package and turned the capability off, with the native projects of its last prebuild (`ios/`, `android/`). */
+  /** An app that turned the capability off, with the native projects of its last prebuild (`ios/`, `android/`). */
   const uninstalled = (files: Record<string, string> = {}) => pushApp({}, { "ios/App/AppDelegate.swift": "", "android/app/build.gradle": "", ...files });
   const off = (project: { root: string }, push: unknown = false, options: { excluded?: string[] } = {}) => withCapabilities(appConfig(project.root), { push: push as PushCapability }, { projectRoot: project.root, ...options });
-  const run = async (config: ExportedConfig, platform: "ios" | "android", mod: string, modResults: object) => {
+  /** Runs one mod of the config on `modResults`, with `extra` beside them (what Expo's mod runner adds to the config the mod receives: the app's own `android` and `ios` keys). */
+  const run = async (config: ExportedConfig, platform: "ios" | "android", mod: string, modResults: object, extra: object = {}) => {
     const apply = mods(config)[platform]?.[mod] as ((config: object) => Promise<{ modResults: any }>) | undefined;
     if (apply === undefined) throw new Error(`the config has no ${platform} ${mod} mod`);
-    return (await apply({ modRequest: { projectRoot: "", platformProjectRoot: "", platform, modName: mod, introspect: false }, modResults })).modResults;
+    return (await apply({ ...extra, modRequest: { projectRoot: "", platformProjectRoot: "", platform, modName: mod, introspect: false }, modResults })).modResults;
   };
   const entries = (result: any) => result.manifest.application[0]["meta-data"];
-  const mainApplication = (items?: object[]) => ({ manifest: { application: [{ $: { "android:name": ".MainApplication" }, ...(items === undefined ? {} : { "meta-data": items }) }] } });
+  const mainApplication = (items?: object[], more: object = {}) => ({ manifest: { application: [{ $: { "android:name": ".MainApplication" }, ...(items === undefined ? {} : { "meta-data": items }), ...more }] } });
+  const service = { $: { "android:name": pushMessagingService, "android:exported": "false" }, "intent-filter": [{ action: [{ $: { "android:name": "com.google.firebase.MESSAGING_EVENT" } }] }] };
+  const permission = (name: string) => ({ $: { "android:name": name } });
 
   test("the AppDelegate loses the wrapper and its import, and is the template's again; the navigation patch beside it stays", async () => {
     using project = uninstalled();
@@ -519,7 +624,19 @@ describe("capabilities.push off: what an earlier prebuild wrote is taken away, a
     const mine = appConfig(project.root, { ios: { bundleIdentifier: "io.e.a", entitlements: { "aps-environment": "production" }, infoPlist: { UIBackgroundModes: ["remote-notification", "fetch"] } } });
     const config = withCapabilities(mine, { push: false }, { projectRoot: project.root });
     expect(config.ios).toEqual(mine.ios);
-    expect(Object.keys(mods(config).ios ?? {})).toEqual(["appDelegate"]);
+    expect(Object.keys(mods(config).ios ?? {})).toEqual(["infoPlist", "appDelegate"]);
+  });
+
+  test("Info.plist loses the flag that turns the native code on, and keeps every other key, the background mode among them", async () => {
+    using project = uninstalled();
+    const config = off(project);
+    const plist = await run(config, "ios", "infoPlist", { CFBundleName: "App", UIBackgroundModes: ["remote-notification"], [pushInfoPlistFlag]: true });
+    expect(plist).toEqual({ CFBundleName: "App", UIBackgroundModes: ["remote-notification"] });
+    expect(await run(config, "ios", "infoPlist", { CFBundleName: "App" })).toEqual({ CFBundleName: "App" });
+    // The flag is on while the capability is on for iOS, in the config's own Info.plist keys (Expo writes them), and only then.
+    expect(pushInfoPlistFlag).toBe("SveltePushEnabled");
+    expect(withPush(project, { ios: { mode: "production" } }).ios?.infoPlist?.[pushInfoPlistFlag]).toBe(true);
+    expect(withPush(project, { android: { googleServicesFile: "./google-services.json" } }).ios?.infoPlist).toBeUndefined();
   });
 
   test("the manifest loses the entries of the capability, and keeps the app's own, Firebase's defaults among them when they name something else", async () => {
@@ -544,6 +661,37 @@ describe("capabilities.push off: what an earlier prebuild wrote is taken away, a
     expect(application["meta-data"]).toBeUndefined();
   });
 
+  test("the messaging service goes by its class, with the other services of the app; the app's own service for Firebase's event is another", async () => {
+    using project = uninstalled();
+    const config = off(project);
+    const others = [{ $: { "android:name": "com.example.SyncService" } }, { $: { "android:name": "com.example.OwnMessaging", "android:exported": "false" }, "intent-filter": service["intent-filter"] }];
+    const result = await run(config, "android", "manifest", mainApplication([...ours, ...own], { service: [service, ...others] }));
+    expect(result.manifest.application[0].service).toEqual(others);
+    expect(entries(result)).toEqual(own);
+    // No service of ours: the others are as they were (and an application with none has none).
+    expect((await run(config, "android", "manifest", mainApplication(own, { service: others }))).manifest.application[0].service).toEqual(others);
+    expect((await run(config, "android", "manifest", mainApplication(own))).manifest.application[0].service).toBeUndefined();
+  });
+
+  test("POST_NOTIFICATIONS goes when the flag shows an earlier prebuild turned push on and the app's config does not ask for it itself; otherwise it stays", async () => {
+    using project = uninstalled();
+    const named = postNotificationsPermission;
+    const manifestWith = (items: object[] | undefined, permissions: string[]) => ({ manifest: { "uses-permission": permissions.map(permission), application: [{ $: { "android:name": ".MainApplication" }, ...(items === undefined ? {} : { "meta-data": items }) }] } });
+    const names = (result: any) => (result.manifest["uses-permission"] ?? []).map((item: any) => item.$["android:name"]);
+    const config = off(project);
+    // Ours: the flag was there, the config is silent about the permission.
+    expect(names(await run(config, "android", "manifest", manifestWith(ours, ["android.permission.INTERNET", named])))).toEqual(["android.permission.INTERNET"]);
+    // Not shown to be ours: no flag (an earlier prebuild did not turn push on), so the app's own permission stays.
+    expect(names(await run(config, "android", "manifest", manifestWith(own, ["android.permission.INTERNET", named])))).toEqual(["android.permission.INTERNET", named]);
+    expect(names(await run(config, "android", "manifest", manifestWith(undefined, [named])))).toEqual([named]);
+    // The app's own config asks for it (the full name or Expo's short one): it stays, with the flag gone.
+    for (const mine of [named, "POST_NOTIFICATIONS"]) {
+      const asked = withCapabilities(appConfig(project.root, { android: { package: "io.e.a", permissions: [mine] } }), { push: false }, { projectRoot: project.root });
+      const result = await run(asked, "android", "manifest", manifestWith(ours, [named]), { android: asked.android });
+      expect([mine, names(result), entries(result)]).toEqual([mine, [named], []]);
+    }
+  });
+
   test("strings.xml and colors.xml lose the capability's names and keep the others; the icon's file goes", async () => {
     using project = uninstalled();
     const config = off(project);
@@ -564,12 +712,15 @@ describe("capabilities.push off: what an earlier prebuild wrote is taken away, a
     }
   });
 
-  test("the Google services file and the Gradle plugin are not touched: the config's android.googleServicesFile stays whatever it was, and no Gradle mod is added", () => {
+  test("the Google services file and the Gradle plugin are not touched: the config's android.googleServicesFile stays whatever it was, and the one Gradle mod takes only Firebase Messaging's line away", async () => {
     using project = uninstalled();
     const mine = appConfig(project.root, { android: { package: "io.e.a", googleServicesFile: "./mine.json" } });
     const config = withCapabilities(mine, { push: false }, { projectRoot: project.root });
     expect(config.android).toEqual(mine.android);
-    expect(Object.keys(mods(config).android).filter((mod) => /gradle/i.test(mod))).toEqual([]);
+    expect(Object.keys(mods(config).android).filter((mod) => /gradle/i.test(mod))).toEqual(["appBuildGradle"]);
+    const gradle = "apply plugin: 'com.google.gms.google-services'\n\ndependencies {\n    implementation(\"com.facebook.react:react-android\")\n}\n";
+    expect((await run(config, "android", "appBuildGradle", { language: "groovy", contents: applyPushGradle(gradle) })).contents).toBe(gradle);
+    expect((await run(config, "android", "appBuildGradle", { language: "groovy", contents: gradle })).contents).toBe(gradle);
   });
 
   test("an app that has no native project has nothing to take away: the config is returned as it is, and a project of one platform is cleaned for that platform alone", () => {
@@ -581,22 +732,22 @@ describe("capabilities.push off: what an earlier prebuild wrote is taken away, a
     expect(Object.keys(off(iosOnly).mods ?? {})).toEqual(["ios"]);
     using androidOnly = pushApp({}, { "android/app/build.gradle": "" });
     expect(Object.keys(off(androidOnly).mods ?? {})).toEqual(["android"]);
-    expect(Object.keys(mods(off(androidOnly)).android).sort()).toEqual(["colors", "dangerous", "manifest", "strings"]);
+    expect(Object.keys(mods(off(androidOnly)).android).sort()).toEqual(["appBuildGradle", "colors", "dangerous", "manifest", "strings"]);
   });
 
-  test("the library left out of autolinking is as good as uninstalled: its wrapper would stop the build too; installed, the refusal comes first", () => {
-    using project = pushApp({ [pushPackage]: libraryVersion }, { "ios/App/AppDelegate.swift": "" });
-    expect(Object.keys(off(project, false, { excluded: [pushPackage] }).mods ?? {})).toEqual(["ios"]);
-    expect(thrown(() => off(project)).message).toContain("is installed, but the push capability is off");
+  test("the separate package of an earlier version, still installed, is neither refused nor looked for: the capability off cleans the project as it does without it", () => {
+    using project = pushApp({ "@alfayez/svelte-native-push": "0.4.0-rc.8" }, { "ios/App/AppDelegate.swift": "" });
+    expect(Object.keys(off(project).mods ?? {})).toEqual(["ios"]);
   });
 
   test("push on for one platform takes away what an earlier prebuild wrote for the other, and writes the one that is named", async () => {
-    using project = pushApp({ [pushPackage]: libraryVersion }, { "ios/App/AppDelegate.swift": "", "android/app/build.gradle": "" });
+    using project = pushApp({}, { "ios/App/AppDelegate.swift": "", "android/app/build.gradle": "" });
     const androidOnly = withPush(project, { android: { googleServicesFile: "./google-services.json" } });
-    expect(Object.keys(mods(androidOnly).ios)).toEqual(["appDelegate"]);
+    expect(Object.keys(mods(androidOnly).ios)).toEqual(["infoPlist", "appDelegate"]);
+    expect((await run(androidOnly, "ios", "infoPlist", { [pushInfoPlistFlag]: true, CFBundleName: "App" })).CFBundleName).toBe("App");
     expect((await run(androidOnly, "ios", "appDelegate", { language: "swift", path: "AppDelegate.swift", contents: applyPushAppDelegate(template) })).contents).toBe(template);
     const iosOnly = withPush(project, { ios: { mode: "production" } });
-    expect(Object.keys(mods(iosOnly).android).sort()).toEqual(["colors", "dangerous", "manifest", "strings"]);
+    expect(Object.keys(mods(iosOnly).android).sort()).toEqual(["appBuildGradle", "colors", "dangerous", "manifest", "strings"]);
     expect(entries(await run(iosOnly, "android", "manifest", mainApplication([...ours, ...own])))).toEqual(own);
     expect((await run(iosOnly, "ios", "appDelegate", { language: "swift", path: "AppDelegate.swift", contents: template })).contents).toBe(applyPushAppDelegate(template));
   });
@@ -609,39 +760,9 @@ describe("capabilities.push refusals", () => {
     return error.message;
   };
 
-  test("on without @alfayez/svelte-native-push: the prebuild stops and says how to install it", () => {
-    using project = pushApp({ expo: peerRange("expo") });
-    const error = thrown(() => withPush(project, fullPush));
-    expect([error.name, error.message]).toEqual([
-      "CapabilityConfigError",
-      "capabilities.push needs @alfayez/svelte-native-push, which is not installed: add it from the same repository and tag as @alfayez/svelte-native (the same specifier, ending in `&path:packages/svelte-native-push`), then prebuild again.",
-    ]);
-  });
-
-  test("on, while the package is left out of autolinking: refused, since its Firebase file and entitlement would be for nothing", () => {
-    using project = pushApp();
-    expect(refused(() => withPush(project, fullPush, undefined, { excluded: [pushPackage] }))).toContain("@alfayez/svelte-native-push is left out of autolinking");
-    using inManifest = pushApp({ [pushPackage]: libraryVersion }, {}, { expo: { autolinking: { exclude: [pushPackage] } } });
-    expect(refused(() => withPush(inManifest, fullPush))).toContain("left out of autolinking");
-    using notInstalled = pushApp({}, {}, { expo: { autolinking: { ios: { exclude: [pushPackage] } } } });
-    expect(refused(() => withPush(notInstalled, fullPush))).toContain("left out of autolinking");
-  });
-
-  test("the package installed, the capability off: the prebuild stops instead of linking Firebase without its file", () => {
-    using project = pushApp();
-    for (const push of [undefined, false] as const) {
-      const message = refused(() => withCapabilities(appConfig(project.root), { push }, { projectRoot: project.root }));
-      expect(message).toContain("@alfayez/svelte-native-push is installed, but the push capability is off");
-      expect(message).toContain('push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } }');
-      expect(message).toContain("or uninstall @alfayez/svelte-native-push");
-    }
-    expect(refused(() => withCapabilities(appConfig(project.root), {}, { projectRoot: project.root }))).toContain("the push capability is off");
-    expect(refused(() => withCapabilities(appConfig(project.root), undefined, { projectRoot: project.root }))).toContain("the push capability is off");
-  });
-
   test("another push library beside it: one push library per app", () => {
     for (const other of ["expo-notifications", "@react-native-firebase/messaging"]) {
-      using project = pushApp({ [pushPackage]: libraryVersion, [other]: "1.0.0" });
+      using project = pushApp({ [other]: "1.0.0" });
       const message = refused(() => withPush(project, fullPush));
       expect(message).toContain(`capabilities.push is on, and ${other} is installed: an app has one push library`);
       expect(message).toContain(`Uninstall ${other}, or turn the push capability off`);
@@ -654,7 +775,7 @@ describe("capabilities.push refusals", () => {
   });
 
   test("a Google services file that is not there, is not JSON, or has no client for the app's package", () => {
-    using project = pushApp({ [pushPackage]: libraryVersion }, { "bad.json": "{ nope", "other.json": googleServices("io.e.other", "io.e.third"), "empty.json": "{}", "array.json": "[]" });
+    using project = pushApp({}, { "bad.json": "{ nope", "other.json": googleServices("io.e.other", "io.e.third"), "empty.json": "{}", "array.json": "[]" });
     const android = (googleServicesFile: string) => ({ android: { googleServicesFile } });
     const missing = refused(() => withPush(project, android("./missing/google-services.json")));
     expect(missing).toStartWith('capabilities.push.android.googleServicesFile ("./missing/google-services.json") does not exist (looked for ');
@@ -668,7 +789,7 @@ describe("capabilities.push refusals", () => {
     );
     for (const file of ["./empty.json", "./array.json"]) expect(refused(() => withPush(project, android(file)))).toContain('has no client for the app\'s package "io.e.a" (it has no Android client)');
     // The package is the app's android.package, and the file may list others beside it.
-    using several = pushApp({ [pushPackage]: libraryVersion }, { "google-services.json": googleServices("io.e.other", "io.e.a") });
+    using several = pushApp({}, { "google-services.json": googleServices("io.e.other", "io.e.a") });
     expect(withPush(several, android("./google-services.json")).android?.googleServicesFile).toBe("./google-services.json");
     const noPackage = appConfig(project.root, { android: {} });
     expect(refused(() => withPush(project, android("./google-services.json"), noPackage))).toContain("capabilities.push.android needs android.package in the Expo config");
@@ -698,9 +819,9 @@ describe("capabilities.push refusals", () => {
       expect(message).toContain("a key that can send to every user must never be in the app or its build. Keep it in the server's environment");
       expect(message).not.toContain("TOPSECRETKEYBODY");
     }
-    // It is found before the package is: a secret never waits for a missing library.
-    using bare = pushApp({});
-    expect(refused(() => withPush(bare, { ...fullPush, serviceAccount }))).toContain("is a service account key");
+    // A secret is refused before anything else is looked at: not even the other push libraries.
+    using other = pushApp({ "expo-notifications": "1.0.0" });
+    expect(refused(() => withPush(other, { ...fullPush, serviceAccount }))).toContain("is a service account key");
   });
 
   test("a server secret in the Google services file the config points at", () => {
@@ -710,7 +831,7 @@ describe("capabilities.push refusals", () => {
       "key.pem": pem,
       "client-with-key.json": JSON.stringify({ client: [{ client_info: { android_client_info: { package_name: "io.e.a" } } }], private_key: "abc" }),
     };
-    using project = pushApp({ [pushPackage]: libraryVersion }, files);
+    using project = pushApp({}, files);
     for (const [file, what] of [["service-account.json", "a service account key"], ["key.pem", "a PEM private key"], ["client-with-key.json", "a service account key"]]) {
       const message = refused(() => withPush(project, { android: { googleServicesFile: `./${file}` } }));
       expect(message).toStartWith(`the file of capabilities.push.android.googleServicesFile ("./${file}") is ${what}: a key that can send to every user must never be in the app or its build.`);
@@ -741,7 +862,7 @@ describe("capabilities.push refusals", () => {
   });
 
   test("an icon that is not a PNG or not there, a color that is not hex, a channel with no name", () => {
-    using project = pushApp({ [pushPackage]: libraryVersion }, { "assets/icon.jpg": "jpg", "assets/dir.png/keep": "" });
+    using project = pushApp({}, { "assets/icon.jpg": "jpg", "assets/dir.png/keep": "" });
     const android = (more: object) => ({ android: { googleServicesFile: "./google-services.json", ...more } });
     expect(refused(() => withPush(project, android({ icon: "./assets/icon.jpg" })))).toBe('capabilities.push.android.icon ("./assets/icon.jpg") must be a PNG file: the notification\'s small icon, white on a transparent background.');
     expect(refused(() => withPush(project, android({ icon: "./assets/gone.png" })))).toStartWith('capabilities.push.android.icon ("./assets/gone.png") does not exist (looked for ');

@@ -10,7 +10,8 @@
           "expo.modules.svelteupdates.SvelteUpdatesModule",
           "expo.modules.svelteblur.SvelteBlurModule",
           "expo.modules.sveltecore.SvelteFetchModule",
-          "expo.modules.sveltecore.SvelteClipboardModule"
+          "expo.modules.sveltecore.SvelteClipboardModule",
+          "expo.modules.sveltepush.SveltePushModule"
         ]
       }
     ]
@@ -18,8 +19,8 @@
   "apple": {
     "podspecPath": ["native/svelte-core/ios/SvelteCore.podspec"],
     "swiftModuleName": ["SvelteCore"],
-    "modules": ["SvelteInsetsModule", "SvelteNavigationModule", "SvelteUpdatesModule", "SvelteBlurModule", "SvelteFetchModule", "SvelteClipboardModule"],
-    "appDelegateSubscribers": ["SvelteCaptureSubscriber"],
+    "modules": ["SvelteInsetsModule", "SvelteNavigationModule", "SvelteUpdatesModule", "SvelteBlurModule", "SvelteFetchModule", "SvelteClipboardModule", "SveltePushModule"],
+    "appDelegateSubscribers": ["SvelteCaptureSubscriber", "SveltePushAppDelegateSubscriber"],
     "reactDelegateHandlers": ["SvelteUpdatesReactDelegateHandler"]
   }
 }

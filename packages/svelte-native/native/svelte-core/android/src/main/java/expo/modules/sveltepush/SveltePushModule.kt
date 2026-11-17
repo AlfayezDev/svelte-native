@@ -6,7 +6,6 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
-import com.google.firebase.messaging.FirebaseMessaging
 import expo.modules.interfaces.permissions.PermissionsResponse
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.CodedException
@@ -15,11 +14,15 @@ import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
+private const val ERR_DISABLED = "ERR_PUSH_DISABLED"
 private const val ERR_PERMISSIONS = "ERR_PUSH_PERMISSIONS"
 private const val ERR_FIREBASE = "ERR_PUSH_FIREBASE_NOT_INITIALIZED"
 private const val ERR_REGISTER = "ERR_PUSH_REGISTER"
 private const val ERR_UNREGISTER = "ERR_PUSH_UNREGISTER"
 private const val ERR_SHOW = "ERR_PUSH_SHOW"
+
+private const val DISABLED_MESSAGE =
+  "Push is off in this build: turn it on with capabilities.push.android in the @alfayez/svelte-native config plugin, and build again (the module's `enabled` constant says which)"
 
 /** The events of the contract (PUSH.md, "The native module's contract"); JavaScript listens to all four when push starts. */
 private val EVENTS = arrayOf("token", "message", "opened", "background")
@@ -28,6 +31,11 @@ private val EVENTS = arrayOf("token", "message", "opened", "background")
  * The module behind `@alfayez/svelte-native/push` (`src/push/client.ts`; the contract is PUSH.md's "The native module's contract"): the permission, the FCM token,
  * answering a foreground message's `show`, the message a tap launched the process with, and the events. It is a thin skin: everything that has to outlive the module
  * (the events and their backlog, the waits, the tap rule) is `PushRuntime`'s and everything that can be decided without Android is plain Kotlin, checked on the host.
+ *
+ * The module is in every app, since it is part of svelte-core, and `enabled` (a constant) says whether push is on in this build: the config plugin turns it on for
+ * `capabilities.push.android` (`PushManifest.enabled`) and adds Firebase Messaging with it. Off, the module attaches nothing, reads nothing and loads no Firebase class; its
+ * asynchronous calls reject with `ERR_PUSH_DISABLED`, `takeLaunchMessage` answers `null` and `backgroundDone` does nothing. JavaScript does not call any of them (it reads `enabled`).
+ * The calls that name Firebase are `PushFirebase`'s, which this class reaches only from `register` and `unregister`.
  */
 class SveltePushModule : Module() {
   /** This module's way into JavaScript. A reload makes a new module with a sink of its own, which `PushEvents.detach` tells apart. */
@@ -36,40 +44,69 @@ class SveltePushModule : Module() {
   private val context: Context
     get() = appContext.reactContext?.applicationContext ?: throw Exceptions.ReactContextLost()
 
+  /** Whether this module attached itself to `PushRuntime`, so that it detaches exactly then (the React context may be gone by `OnDestroy`). */
+  private var attached = false
+
+  /** Whether push is on in this build. Not cached here: without a context it is false, and a later call asks again (`PushManifest` caches the answer it could read). */
+  private fun isEnabled(): Boolean {
+    val application = appContext.reactContext?.applicationContext ?: return false
+    return PushManifest.enabled(application)
+  }
+
+  /** Runs [action] when push is on, and rejects [promise] with `ERR_PUSH_DISABLED` when it is off. */
+  private inline fun whenEnabled(promise: Promise, action: () -> Unit) {
+    if (!isEnabled()) {
+      promise.reject(ERR_DISABLED, DISABLED_MESSAGE, null)
+      return
+    }
+    action()
+  }
+
   /** Android 13 added the permission, and an app that targets an older API does not get to ask for it (the system asks by itself at its first channel). */
   private fun asksAtRunTime(): Boolean = Build.VERSION.SDK_INT >= 33 && context.applicationInfo.targetSdkVersion >= 33
 
   override fun definition() = ModuleDefinition {
     Name("SveltePush")
 
+    // Whether push is on in this build (the config plugin's `capabilities.push.android`): the one thing JavaScript may ask of an app that has none.
+    Constant("enabled") { isEnabled() }
+
     Events(*EVENTS)
 
     OnCreate {
-      (context as? Application)?.let { PushRuntime.install(it) }
-      PushRuntime.events.attach(sink)
+      if (isEnabled()) {
+        (context as? Application)?.let { PushRuntime.install(it) }
+        PushRuntime.events.attach(sink)
+        attached = true
+      }
     }
 
-    OnDestroy { PushRuntime.events.detach(sink) }
+    OnDestroy {
+      if (attached) {
+        PushRuntime.events.detach(sink)
+        attached = false
+      }
+    }
 
     // The events that came while nobody listened (a message that started the process) go out when the first listener of their name is added, and a name whose last
     // listener left keeps what comes next.
     for (name in EVENTS) {
-      OnStartObserving(name) { PushRuntime.events.observe(name) }
-      OnStopObserving(name) { PushRuntime.events.unobserve(name) }
+      OnStartObserving(name) { if (attached) PushRuntime.events.observe(name) }
+      OnStopObserving(name) { if (attached) PushRuntime.events.unobserve(name) }
     }
 
-    AsyncFunction("permission") { promise: Promise -> readPermission(promise) }
+    AsyncFunction("permission") { promise: Promise -> whenEnabled(promise) { readPermission(promise) } }
 
     // Asked from the main thread: the question is a dialog of the current Activity.
-    AsyncFunction("requestPermission") { promise: Promise -> requestPermission(promise) }.runOnQueue(Queues.MAIN)
+    AsyncFunction("requestPermission") { promise: Promise -> whenEnabled(promise) { requestPermission(promise) } }.runOnQueue(Queues.MAIN)
 
-    AsyncFunction("register") { promise: Promise -> register(promise) }
+    AsyncFunction("register") { promise: Promise -> whenEnabled(promise) { register(promise) } }
 
-    AsyncFunction("unregister") { promise: Promise -> unregister(promise) }
+    AsyncFunction("unregister") { promise: Promise -> whenEnabled(promise) { unregister(promise) } }
 
     AsyncFunction("show") { message: Map<String, Any?>, presentation: Map<String, Any?> -> show(message, presentation) }
 
-    Function("takeLaunchMessage") { PushRuntime.tapsOrNull()?.takeLaunch()?.toMap() }
+    Function("takeLaunchMessage") { if (attached) PushRuntime.tapsOrNull()?.takeLaunch()?.toMap() else null }
 
     Function("backgroundDone") { id: String -> backgroundDone(id) }
   }
@@ -122,17 +159,13 @@ class SveltePushModule : Module() {
     return PushRules.permission(response.status.status, response.canAskAgain, notificationsEnabled)
   }
 
-  // `getToken` is deprecated since Firebase 25.1 for `register()`, and it answers an error only for an app that opted into the new registration with the meta-data
-  // `firebase_messaging_installation_id_enabled`, which this library does not set: the contract names `getToken` and `deleteToken` (PUSH.md).
-  @Suppress("DEPRECATION")
   private fun register(promise: Promise) {
     val packageName = context.packageName
     try {
       PushNotifier.ensureChannel(context)
-      FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-        val token = if (task.isSuccessful) task.result else null
+      PushFirebase.token { token, failure ->
         if (token.isNullOrEmpty()) {
-          promise.reject(ERR_REGISTER, "Firebase did not give a token: ${task.exception?.message ?: "no reason given"}", task.exception)
+          promise.reject(ERR_REGISTER, "Firebase did not give a token: ${failure?.message ?: "no reason given"}", failure)
         } else {
           promise.resolve(PushToken(token, packageName).toMap())
         }
@@ -143,14 +176,13 @@ class SveltePushModule : Module() {
     }
   }
 
-  @Suppress("DEPRECATION")
   private fun unregister(promise: Promise) {
     try {
-      FirebaseMessaging.getInstance().deleteToken().addOnCompleteListener { task ->
-        if (task.isSuccessful) {
+      PushFirebase.deleteToken { ok, failure ->
+        if (ok) {
           promise.resolve()
         } else {
-          promise.reject(ERR_UNREGISTER, "Firebase could not delete the token: ${task.exception?.message ?: "no reason given"}", task.exception)
+          promise.reject(ERR_UNREGISTER, "Firebase could not delete the token: ${failure?.message ?: "no reason given"}", failure)
         }
       }
     } catch (error: IllegalStateException) {
@@ -163,6 +195,7 @@ class SveltePushModule : Module() {
    * when it has it, so a message is shown once, and an answer that comes after the default (or twice) finds nobody waiting and does nothing.
    */
   private fun show(message: Map<String, Any?>, presentation: Map<String, Any?>) {
+    if (!attached) throw CodedException(ERR_DISABLED, DISABLED_MESSAGE, null)
     val id = message["id"] as? String ?: throw CodedException(ERR_SHOW, "show takes the message of the `message` event, and this one has no id", null)
     if (!PushRuntime.shows.answer(id, Presentation.from(presentation))) {
       Log.d(LOG_TAG, "the answer for message $id came after the default was shown, or twice: nothing to do")
@@ -170,6 +203,7 @@ class SveltePushModule : Module() {
   }
 
   private fun backgroundDone(id: String) {
+    if (!attached) return
     if (!PushRuntime.waits.done(id)) {
       Log.w(LOG_TAG, "backgroundDone($id): nothing waits for it (the wait ran out, or the id is not one this module gave)")
     }

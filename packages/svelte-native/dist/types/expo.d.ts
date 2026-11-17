@@ -55,7 +55,7 @@ export type SvelteNativeOptions = {
     /**
      * The web APIs that need a permission of the system, each turned on by saying why the app uses it. `location` (with expo-location installed) is
      * `navigator.geolocation`: `{ location: "Shows the stores near you." }`, the text iOS shows when it asks, or `{ location: { whenInUse, background } }` for the
-     * background too. `push` (with `@alfayez/svelte-native-push` installed) is push notifications, from the app's identifiers: `{ push: { android: { googleServicesFile },
+     * background too. `push` is push notifications (its native code is part of the library), from the app's identifiers: `{ push: { android: { googleServicesFile },
      * ios: { mode } } }`, and never a server key. A capability on without its library, and a library installed without its capability, stop the prebuild (`capabilities.ts`).
      */
     capabilities?: Capabilities;

@@ -36,11 +36,7 @@ plugins: [["@alfayez/svelte-native", {
 }]]
 ```
 
-and the native package, from the same tag as the library (see "Packages"):
-
-```sh
-pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native-push"
-```
+and a prebuild and a new build of the native app. There is nothing to install: push is part of `@alfayez/svelte-native` (see "Packages").
 
 ### Turning it on
 
@@ -194,8 +190,10 @@ The guide's page says this first, with a reference recipe:
 
 ## Packages and native code
 
-- **`@alfayez/svelte-native-push`** (new, `packages/svelte-native-push`): the native code only, an Expo module `SveltePush`. Android on Firebase Messaging, iOS on APNs and `UNUserNotificationCenter`. It is a package of its own so that Firebase is in the build of the apps that use push and of no other app, and so that installing it is what links it, as for any native library. It is released with `@alfayez/svelte-native`, at the same version.
-- **`@alfayez/svelte-native/push`**: the API above (`push`, `PushHooks`, the types), in the main package, because it works with the router and the hooks. Without the native package installed, `push` exists and `push.permission` reads `"denied"`, with one warning that says what to install. The library's Metro config bundles a stand-in of a few lines in the client's place then (`push/absent.ts`), so an app without push carries none of its code.
+Push is part of `@alfayez/svelte-native`, with nothing else to install (the owner's decision, 17 November: one package, `@alfayez/svelte-native/push`).
+
+- **The native code** is the Expo module `SveltePush`, in the library's one native module (`native/svelte-core`): Android on Firebase Messaging, iOS on APNs and `UNUserNotificationCenter`. Every app links svelte-core, so push is off in it until the config plugin turns it on: on Android svelte-core compiles against Firebase Messaging (`compileOnly`, the pinned version) and the plugin adds Firebase, the messaging service, `POST_NOTIFICATIONS` and the flag `expo.modules.sveltepush.enabled` to the app only when `capabilities.push` names Android; on iOS (no Firebase) the plugin writes `SveltePushEnabled` in `Info.plist`. With a flag off the module's `enabled` is `false` and nothing of push runs: no service takes FCM's messages, no delegate is set on the notification center, so an app with `expo-notifications` or React Native Firebase is not touched, and an app without push has no Firebase in its build.
+- **`@alfayez/svelte-native/push`**: the API above (`push`, `PushHooks`, the types), because it works with the router and the hooks. With push off for the platform, `push` exists and `push.permission` reads `"denied"`, with one warning that says how to turn it on; the library's Metro config bundles a stand-in of a few lines in the client's place then (`push/absent.ts`, chosen per platform from the app's config as Expo reads it), so an app without push carries none of its code.
 - **`@alfayez/svelte-native/push/server`**: the sender, in the main package, for Node (no native code, nothing it imports runs on the device).
 
 ### The native module's contract
@@ -220,7 +218,7 @@ The native side keeps the events that come before JavaScript listens (a message 
 
 ### Android
 
-- `SveltePushMessagingService` (a `FirebaseMessagingService`) in the native package's own manifest (the app's, merged). `onNewToken` emits `token`; `onMessageReceived` emits `message` in the foreground or `background` otherwise, and waits for the hook (18 s at most) on FCM's worker thread, which keeps the process alive meanwhile. A notification message that Firebase hands to `onMessageReceived` while this side finds the app away (Firebase's own check is a little different) is shown at once, and runs no hook.
+- `SveltePushMessagingService` (a `FirebaseMessagingService`), which the config plugin adds to the app's manifest when push is on for Android. `onNewToken` emits `token`; `onMessageReceived` emits `message` in the foreground or `background` otherwise, and waits for the hook (18 s at most) on FCM's worker thread, which keeps the process alive meanwhile. A notification message that Firebase hands to `onMessageReceived` while this side finds the app away (Firebase's own check is a little different) is shown at once, and runs no hook.
 - **Foreground** is decided by the count of started Activities of the process (`Application.ActivityLifecycleCallbacks`, registered at `Application.onCreate`), with a one second gap for an Activity that is made again (a rotation). It is exact from the first Activity and zero in a process a message started. `ProcessLifecycleOwner` would say the same and need a library of its own.
 - A process started by a message has no Activity, so no surface starts and no screen mounts: rule 2 holds already (the React host starts from `Application.onCreate`, and `init` runs). The events that come before JavaScript exists (Expo registers its modules lazily, so even the module may not) belong to the process, not to the module: they are kept, at most 64 a name, and delivered in order when the first listener of the name is added; only the newest `token` is kept.
 - A notification the system shows (the app in the background) puts the message's `data` and Firebase's `google.message_id` in the launch intent's extras; one the module shows itself carries the whole message in its `PendingIntent`. Firebase removes the notification's own title and body from those extras, so a tap on a notification the system showed has an `id`, a `url` and `data`, and no `title` or `body`. Expo's `ReactActivityLifecycleListener` (`SveltePushPackage`, which autolinking finds by its name and its `Package` import; the app's `MainActivity` delegate wrapper calls it) reads the extras in `onCreate` and `onNewIntent`: the launch message for `takeLaunchMessage`, or `opened`. The process's `ActivityLifecycleCallbacks` reads the creation intent too, inside `Activity.onCreate` and before React's delegate starts the surface, so that a cold start's tap is the launch message before JavaScript can ask for it; the second read of it is refused (below). A tap is delivered once: an Activity that is made again or restored, and an intent that is read again, are told apart by the message id, kept in a small ledger in `SharedPreferences`.
@@ -243,11 +241,10 @@ The native side keeps the events that come before JavaScript listens (a message 
 
 `capabilities.push`, beside `location`, following the same rule: on without its library, or its library installed while off, stops the prebuild.
 
-- **Android:** sets the config's `android.googleServicesFile`, so that Expo's own prebuild copies the file into `android/app` and applies the `com.google.gms.google-services` Gradle plugin; copies the icon into `res/drawable` and the color into a color resource, with the manifest's `com.google.firebase.messaging.default_notification_icon` and `_color`; writes the channel (`{ id?, name, description? }`, default id `default` and name `Notifications`) as string resources (`svelte_push_channel_id`, `_name` and `_description` in `res/values/strings.xml`, quoted so that any text reaches the app as written) that the module's meta-data and `default_notification_channel_id` refer to (`@string/…`; else the notifications the system shows go to Firebase's "Miscellaneous" channel). A text written into `android:value` itself would be read by the resource compiler as a number (`007` is 7), a boolean, a color (`#fff`) or a reference (`?what` stops the build). The messaging service and `POST_NOTIFICATIONS` are static, so they are in the native package's own manifest (Firebase's own service is at priority -500; ours, at the default 0, gets the messages).
+- **Android:** sets the config's `android.googleServicesFile`, so that Expo's own prebuild copies the file into `android/app` and applies the `com.google.gms.google-services` Gradle plugin; copies the icon into `res/drawable` and the color into a color resource, with the manifest's `com.google.firebase.messaging.default_notification_icon` and `_color`; writes the channel (`{ id?, name, description? }`, default id `default` and name `Notifications`) as string resources (`svelte_push_channel_id`, `_name` and `_description` in `res/values/strings.xml`, quoted so that any text reaches the app as written) that the module's meta-data and `default_notification_channel_id` refer to (`@string/…`; else the notifications the system shows go to Firebase's "Miscellaneous" channel). A text written into `android:value` itself would be read by the resource compiler as a number (`007` is 7), a boolean, a color (`#fff`) or a reference (`?what` stops the build). It adds Firebase Messaging to the app's dependencies, and the messaging service, `POST_NOTIFICATIONS` and the enabling flag to the app's manifest (Firebase's own service is at priority -500; ours, at the default 0, gets the messages); none of them is in svelte-core's own manifest, which every app merges.
 - **iOS:** the `aps-environment` entitlement from `mode`, and `remote-notification` in `UIBackgroundModes`.
 - **Off again:** where push is off, or a platform is not named, a prebuild that keeps `ios/` and `android/` takes away what the capability wrote and can tell is its own: the `AppDelegate.swift` wrapper and its import (so that uninstalling the package does not stop the build with "No such module 'SveltePush'"), the module's manifest entries, Firebase's icon, color and channel meta-data when they name the capability's resources, the channel strings, the color and the icon. It leaves the `aps-environment` entitlement, the `remote-notification` background mode and `android.googleServicesFile` (its copy and the Gradle plugin), which the app or another library may want: remove those by hand, or prebuild with `--clean`.
 - **It refuses** (each with a message that says what to do):
-  - `push` on without `@alfayez/svelte-native-push` installed, or left out of autolinking, or the package installed with `push` off;
   - `expo-notifications` or `@react-native-firebase/messaging` installed beside it (Android delivers to one `FirebaseMessagingService`, iOS has one notification center delegate);
   - a `googleServicesFile` that is missing, or has no client for the app's `android.package`;
   - anything in the config or in the Google services file that is a server secret: a service account (`"type": "service_account"`, a `private_key`), a PEM private key, or a `.p8` file;
@@ -260,7 +257,7 @@ The existing `doctor` gains a push section, shown when the app has push (the pac
 ## Testing
 
 - **Unit:** the config transforms and every refusal; the JavaScript API against a stand-in of the native module (as the geolocation tests do); the sender against local mock servers (APNs over cleartext HTTP/2, FCM and Google's token endpoint over HTTP/1.1), every `reason` included, and the package test that installs the packed library and sends with plain Node.
-- **Native host checks:** the Kotlin parts that need no device (the extras ↔ message mapping, the launch message and `opened`, the de-duplication of taps, the kept events, the background wait with its limit, the foreground wait for `show`), `packages/svelte-native-push/android/src/test/push.sh`, run by the engine-host job of CI; it also reads the module, the manifest and the config plugin against `src/push/client.ts`.
+- **Native host checks:** the Kotlin parts that need no device (the extras ↔ message mapping, the launch message and `opened`, the de-duplication of taps, the kept events, the background wait with its limit, the foreground wait for `show`), `native/svelte-core/android/src/test/push.sh`, run with svelte-core's other host checks (`run.sh`, the engine-host job of CI); it also reads the module, the manifest and the config plugin against `src/push/client.ts`.
 - **Devices** (`native-qa push`, gates `push.*` in `gates.json`): the harness sends through the sender with the test project's credentials and checks the token reaches `save`, a foreground message, a background data message running the hook with no screen mounted, a tap from a killed app opening the route, a tap from a running app, a token rotation, and the denied path. On the OVH emulator (its image has Google Play services) and the Samsung A16. The killed-app tap is informational on the Samsung (its battery management may hold a message for an app the user swiped away), and the background message is informational on iOS.
 - **iOS:** the simulator, until the QA app is signed with a paid team. `xcrun simctl push` delivers an alert to a running app, which covers the delegate, the event, the mapping, the foreground hook and the presentation answer (checked 17 November: the example app with push on, Release, iPhone 17 simulator, iOS 26.5: the foreground hook received the title, body, `url` and data). The simulator does not deliver a silent push, neither to an app in the background nor by launching one that is not running, so the background hook and rule 2 on iOS are checked on a device only: the iPhone's `push.*` gates read "not measured" until then.
 
@@ -272,15 +269,12 @@ Scheduled local notifications (v1 shows a notification now, which it needs for t
 
 Taken (say if any should change):
 
-1. Our own native package, not a wrapper of `expo-notifications`; `expo-notifications` stays the choice for apps that want Expo's service, and the two exclude each other.
+1. Our own native code, in the library (not a wrapper of `expo-notifications`, and not a package of its own); `expo-notifications` and React Native Firebase stay the choice for apps that want Expo's or Firebase's service, and they and `capabilities.push` exclude each other.
 2. iOS goes to APNs directly, without the Firebase SDK on iOS.
 3. v1 shows notifications and does not schedule them.
 4. The sender is in the library; the infrastructure around it is the app's, and the guide says so.
 5. A message in the foreground is shown (banner, sound and badge) unless the `foreground` hook says otherwise; iOS's own default is not to show it.
-
-Open:
-
-1. The native package's name: `@alfayez/svelte-native-push`.
+6. Push is part of `@alfayez/svelte-native`, off until `capabilities.push` turns it on (17 November), not a package of its own.
 
 ## Phases
 

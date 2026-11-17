@@ -4,9 +4,9 @@ title: Push notifications
 
 A Svelte Native app can get push notifications three ways. They differ in who delivers a message, where the keys that can send to every user are kept, and how much you build around a send.
 
-| | [Standalone](#standalone-alfayezsvelte-native-push) | [Firebase](#with-firebase-react-native-firebasemessaging) | [Expo](#with-expo-expo-notifications) |
+| | [Standalone](#standalone-alfayezsvelte-nativepush) | [Firebase](#with-firebase-react-native-firebasemessaging) | [Expo](#with-expo-expo-notifications) |
 | --- | --- | --- | --- |
-| Library in the app | `@alfayez/svelte-native-push` | `@react-native-firebase/messaging` | `expo-notifications` |
+| Library in the app | `@alfayez/svelte-native/push`, part of this library | `@react-native-firebase/messaging` | `expo-notifications` |
 | Your server sends with | `createPush` from this library | `firebase-admin` | `expo-server-sdk` |
 | The path of a message | your server → FCM (Android) or APNs (iOS) | your server → FCM, which hands iOS messages to APNs | your server → Expo's push service → FCM or APNs |
 | The sending keys are kept | on your server | on your server (FCM), and in Firebase (the APNs key) | at Expo, in your EAS project |
@@ -22,9 +22,9 @@ An app has one push library. The three exclude each other: Android delivers to o
 - **Firebase** when the app uses Firebase already (Analytics, Crashlytics), or you want Firebase's topics and its console's campaigns.
 - **Expo** when you'd rather not handle the providers at all: Expo keeps the keys and talks to Apple and Google, and you send one kind of token from your server. It needs an EAS project.
 
-## Standalone: `@alfayez/svelte-native-push`
+## Standalone: `@alfayez/svelte-native/push`
 
-Your server sends straight to Firebase Cloud Messaging (FCM) on Android and the Apple Push Notification service (APNs) on iOS, with your own credentials. There is no relay in between. The library does the device's side: the permission, the token, receiving a message, showing it, a tap on it, and a message that arrives while the app is closed. For your server it has a sender that sends one message to one device and tells you what happened.
+Push is part of `@alfayez/svelte-native`: there is nothing to install. You turn it on in the config, and your server sends straight to Firebase Cloud Messaging (FCM) on Android and the Apple Push Notification service (APNs) on iOS, with your own credentials. There is no relay in between. The library does the device's side: the permission, the token, receiving a message, showing it, a tap on it, and a message that arrives while the app is closed. For your server it has a sender that sends one message to one device and tells you what happened.
 
 > **important** **You need a job queue.** The sender doesn't queue, retry or fan out, so these are yours to run: a queue that sends from a job and not from the user's request, retries with backoff for the answers that ask for one, a table of tokens that you clean up from the answers, and sending to many devices with a concurrency limit. Postgres (with a job table or pg-boss), Redis (BullMQ) or a cloud queue all work. [What your app owns](#what-your-app-owns) has the list and a worked recipe. If you don't want to run this, use [Expo's push service](#with-expo-expo-notifications), which does most of it for you.
 
@@ -42,15 +42,9 @@ On Android, create a Firebase project, add your app to it with its Android packa
 
 On iOS, you need a paid Apple Developer team: a Personal Team can't sign the push entitlement. Create an APNs authentication key (a `.p8` file) and keep it, with its key id and your team id, on the server. iOS goes to APNs directly, so there is no Firebase on iOS.
 
-#### The package and the config
+#### The config
 
-Push's native code is a package of its own, so that Firebase is in the build of the apps that use push and of no other. Install it from the same repository and tag as the library:
-
-```sh
-pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native-push"
-```
-
-Then turn the capability on in the plugin's options, with the identifiers of the platforms you serve:
+Turn the capability on in the plugin's options, with the identifiers of the platforms you serve:
 
 ```ts
 /// file: app.config.ts
@@ -83,9 +77,9 @@ export default {
 
 Then prebuild and build the native app again ([Development builds](development-builds#when-to-run-expo-prebuild)). Push is native code, so an over-the-air update can't add it to a build that doesn't have it.
 
-The plugin does what the plugin of any push library does, from those identifiers: on Android it sets up Firebase's Gradle step, the notification icon, color and channel; on iOS it writes the `aps-environment` entitlement and the `remote-notification` background mode, and changes `AppDelegate.swift` so that a push that wakes the app doesn't mount a screen. It stops the prebuild for a half-made setup (the package without `capabilities.push`, `capabilities.push` without the package, a second push library, a Google services file that has no client for your `android.package`) and for anything that is a server secret: a service account, a PEM private key, a `.p8` path. [Troubleshooting](troubleshooting#push-notifications) lists the messages.
+The plugin does what the plugin of any push library does, from those identifiers: on Android it sets up Firebase's Gradle step, the notification icon, color and channel; on iOS it writes the `aps-environment` entitlement and the `remote-notification` background mode, and changes `AppDelegate.swift` so that a push that wakes the app doesn't mount a screen. Firebase Messaging joins the Android build only then: an app with push off has none of Firebase in it, and doesn't bundle push's JavaScript either. The plugin stops the prebuild for a half-made setup (a second push library, a Google services file that has no client for your `android.package`) and for anything that is a server secret: a service account, a PEM private key, a `.p8` path. [Troubleshooting](troubleshooting#push-notifications) lists the messages.
 
-A build without the package still runs. `push.permission` reads `'denied'`, `push.subscribe` resolves with `null`, and the console has one warning that says what to install.
+With push off, `push` still works and does nothing: `push.permission` reads `'denied'`, `push.subscribe` resolves with `null`, and the console has one warning that says how to turn it on.
 
 ### On the device
 
@@ -473,7 +467,7 @@ export default {
 };
 ```
 
-Leave `capabilities.push` out of the `@alfayez/svelte-native` plugin's options, and don't install `@alfayez/svelte-native-push`. Firebase's plugins don't write the iOS push entitlement or the background mode, so the config sets them: `'aps-environment'` is `'development'` for a build signed for development. Then prebuild and build again.
+Leave `capabilities.push` out of the `@alfayez/svelte-native` plugin's options. Firebase's plugins don't write the iOS push entitlement or the background mode, so the config sets them: `'aps-environment'` is `'development'` for a build signed for development. Then prebuild and build again.
 
 ### Receiving with Firebase
 
@@ -619,7 +613,7 @@ export default {
 };
 ```
 
-Leave `capabilities.push` off, and don't install `@alfayez/svelte-native-push`. Expo's plugin writes the push entitlement and the background mode itself. Then prebuild and build again.
+Leave `capabilities.push` off. Expo's plugin writes the push entitlement and the background mode itself. Then prebuild and build again.
 
 ### Receiving with Expo notifications
 

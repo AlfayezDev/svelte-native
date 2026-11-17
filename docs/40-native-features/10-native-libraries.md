@@ -39,7 +39,7 @@ pnpm android
 
 Libraries that have been loaded this way include `expo-notifications`, `expo-location`, `expo-secure-store`, `expo-web-browser`, `expo-file-system`, `@react-native-async-storage/async-storage` and `react-native-mmkv`.
 
-For push notifications, [Push notifications](push-notifications) compares the three ways and sets each one up: the library's own package, which sends straight to Firebase and APNs from your server; [React Native Firebase](push-notifications#with-firebase-react-native-firebasemessaging); and [`expo-notifications`](push-notifications#with-expo-expo-notifications) with Expo's push service. An app uses one of them: the prebuild stops when it finds the library's own beside one of the others.
+For push notifications, [Push notifications](push-notifications) compares the three ways and sets each one up: the library's own `@alfayez/svelte-native/push`, which your server sends to through Firebase and APNs directly; [React Native Firebase](push-notifications#with-firebase-react-native-firebasemessaging); and [`expo-notifications`](push-notifications#with-expo-expo-notifications) with Expo's push service. An app uses one of them: the prebuild stops when `capabilities.push` is on beside one of the others.
 
 ## Functions work, hooks don't
 

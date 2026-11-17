@@ -57,6 +57,7 @@ internal class LocationSource(private val context: Context) {
    * with the position or the reason there is none. API 29 and earlier answer a request with a position of the last ten seconds when there is one (`LocationManagerCompat.getCurrentLocation`
    * does, and the platform's own, from API 30, does much the same).
    */
+  @SuppressLint("MissingPermission")
   fun current(accuracy: LocationAccuracy, done: (LocationFix?, LocationFailure?) -> Unit) {
     val manager = manager
     if (manager == null) return done(null, LocationFailures.noProvider)

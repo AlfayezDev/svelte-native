@@ -36,7 +36,11 @@ plugins: [["@alfayez/svelte-native", {
 }]]
 ```
 
-and the native package: `npx expo install @alfayez/svelte-native-push` (see "Packages").
+and the native package, from the same tag as the library (see "Packages"):
+
+```sh
+pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native-push"
+```
 
 ### Turning it on
 
@@ -114,7 +118,15 @@ const result = await push.send(token, { title: "Order ready", body: "Pickup at g
 if (!result.ok && result.reason === "gone") await deleteToken(token);
 ```
 
-`send(token, message)` sends one message to one device and resolves with what happened. It never queues, retries or waits; it never throws for a provider's answer (only for a programming error: a token or message that is not of the type).
+`send(token, message)` sends one message to one device and resolves with what happened. It never queues, retries or waits; it never throws for a provider's answer. It throws a `TypeError` only for a programming error: a token or message that is not of the type, a notification with neither `title` nor `body`, a `silent` message with `title`, `body`, `badge`, `sound` or `channel`, `url` also given in `data`, a `data.aps` or a non-ASCII collapse id on APNs, or a send to a provider that is not configured.
+
+- A provider with none of its options set (SvelteKit's `env.X` may be `undefined`) is not configured: the module loads without secrets, and the first send to it throws. A provider that is set but wrong (JSON that does not parse, a key of the wrong type or curve, two of the three APNs values) throws at `createPush`, without quoting the secret. A `.p8` with literal `\n` is accepted.
+- `close()` waits for the sends in flight and ends the APNs connections; a send after it is `unavailable`.
+- `timeout` (default 30 s) makes a provider that does not answer `unavailable` and drops its connection.
+- `fcm.baseUrl`, `fcm.tokenUrl`, `apns.productionUrl` and `apns.sandboxUrl` replace the endpoints (tests, proxies).
+- The one retry it does make is its own: APNs's `ExpiredProviderToken` is answered by signing a new provider token and sending once more (only when the current one is at least 20 minutes old). A 401 from FCM drops the cached access token so that the next send gets a new one.
+- `gone` and `invalid-token` tell the app to delete a token, so only the provider's own word decides them: FCM's `UNREGISTERED`, APNs's `Unregistered` and `ExpiredToken` (410), `BadDeviceToken` and `DeviceTokenNotForTopic`. A bare 404 or 410 is `error` (a wrong `project_id` answers 404 too).
+- `sound: null` sends no sound; a `silent` message goes to APNs at priority 5 whatever `priority` says.
 
 ```ts
 type PushSend = {
@@ -220,13 +232,14 @@ What the JavaScript side calls, the same on both platforms:
 
 `capabilities.push`, beside `location`, following the same rule: on without its library, or its library installed while off, stops the prebuild.
 
-- **Android:** applies the `com.google.gms.google-services` Gradle plugin, copies `googleServicesFile` into `android/app`, declares the messaging service, writes the icon and color into the manifest and the `POST_NOTIFICATIONS` permission.
+- **Android:** sets the config's `android.googleServicesFile`, so that Expo's own prebuild copies the file into `android/app` and applies the `com.google.gms.google-services` Gradle plugin; copies the icon into `res/drawable` and the color into a color resource, with the manifest's `com.google.firebase.messaging.default_notification_icon` and `_color`; writes the channel as meta-data of ours and as `default_notification_channel_id` (else the notifications the system shows go to Firebase's "Miscellaneous" channel). The messaging service and `POST_NOTIFICATIONS` are static, so they are in the native package's own manifest (Firebase's own service is at priority -500; ours, at the default 0, gets the messages).
 - **iOS:** the `aps-environment` entitlement from `mode`, and `remote-notification` in `UIBackgroundModes`.
 - **It refuses** (each with a message that says what to do):
   - `push` on without `@alfayez/svelte-native-push` installed, or the package installed with `push` off;
   - `expo-notifications` or `@react-native-firebase/messaging` installed beside it (Android delivers to one `FirebaseMessagingService`, iOS has one notification center delegate);
   - a `googleServicesFile` that is missing, or has no client for the app's `android.package`;
-  - anything in the config that is a server secret: a service account (`"type": "service_account"`, a `private_key`), a PEM private key, or a `.p8` file.
+  - anything in the config or in the Google services file that is a server secret: a service account (`"type": "service_account"`, a `private_key`), a PEM private key, or a `.p8` file;
+  - and the malformed: `push` naming no platform, `android` without `googleServicesFile`, no `android.package`, an icon that is not a PNG or is missing, a color that is not hex, a channel without a name, an invalid `ios.mode`, and the app's own `android.googleServicesFile` or `aps-environment` saying something different from `push`.
 
 ## `svelte-native doctor`
 
@@ -234,7 +247,7 @@ The existing `doctor` gains a push section: the Firebase file and its package; t
 
 ## Testing
 
-- **Unit:** the config transforms and every refusal; the JavaScript API against a stand-in of the native module (as the geolocation tests do); the sender against local mock FCM and APNs servers (HTTP/2), every `reason` included.
+- **Unit:** the config transforms and every refusal; the JavaScript API against a stand-in of the native module (as the geolocation tests do); the sender against local mock servers (APNs over cleartext HTTP/2, FCM and Google's token endpoint over HTTP/1.1), every `reason` included, and the package test that installs the packed library and sends with plain Node.
 - **Native host checks:** the Kotlin parts that need no device (the extras ↔ message mapping, the background wait).
 - **Devices** (`native-qa push`, gates `push.*` in `gates.json`): the harness sends through the sender with the test project's credentials and checks the token reaches `save`, a foreground message, a background data message running the hook with no screen mounted, a tap from a killed app opening the route, a tap from a running app, a token rotation, and the denied path. On the OVH emulator (its image has Google Play services) and the Samsung A16. The killed-app tap is informational on the Samsung (its battery management may hold a message for an app the user swiped away), and the background message is informational on iOS.
 - **iOS:** the simulator (`xcrun simctl push` delivers a payload to the app: the hooks, taps and rule 2) until the QA app is signed with a paid team; then the same gates on the iPhone. Until then the iPhone's `push.*` gates read "not measured".

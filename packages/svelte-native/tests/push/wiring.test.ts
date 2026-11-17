@@ -133,8 +133,8 @@ describe("push.permission and push.token", () => {
     expect(on("message", () => {})).toBeInstanceOf(Function);
   });
 
-  test("in a build without the module: denied from the start, null from subscribe, and one warning that says what to install", async () => {
-    pushWorld = world({ module: false });
+  test("in a build without push (the module is there, with `enabled` false): denied from the start, null from subscribe, and one warning that says how to turn it on", async () => {
+    pushWorld = world({ module: "off" });
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     try {
       const m = await loadLibrary();
@@ -145,7 +145,7 @@ describe("push.permission and push.token", () => {
       // A missing module is not the user's answer: nothing is stored for the build that has it later.
       expect(localStorage.getItem("svelte-native.push.permission")).toBeNull();
       expect(warn.mock.calls).toHaveLength(1);
-      expect(String(warn.mock.calls[0]?.[0])).toContain("@alfayez/svelte-native-push");
+      expect(String(warn.mock.calls[0]?.[0])).toContain("is not on in this app's build");
       expect(String(warn.mock.calls[0]?.[0])).toContain("capabilities");
     } finally {
       warn.mockRestore();
@@ -185,8 +185,8 @@ describe("what loads push", () => {
     expect(pushWorld.calls.filter((call) => call === "take")).toHaveLength(1);
   });
 
-  test("a build without the native module wraps nothing and loads nothing of the client, with hooks that have no push", async () => {
-    pushWorld = world({ module: false });
+  test("a build without push wraps nothing and loads nothing of the client, with hooks that have no push; no module at all is the same", async () => {
+    pushWorld = world({ module: "off" });
     pushWorld.launch = message({ url: "/orders/42" });
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     try {
@@ -204,8 +204,8 @@ describe("what loads push", () => {
     }
   });
 
-  test("a hooks file with `push` loads the client in a build without the module, which says so once and wraps nothing", async () => {
-    pushWorld = world({ module: false });
+  test("a hooks file with `push` loads the client in a build without push, which says so once and wraps nothing", async () => {
+    pushWorld = world({ module: "off" });
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     try {
       const m = await loadHooksOnly();

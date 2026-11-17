@@ -1,6 +1,6 @@
 /**
- * `push` in an app that does not have `@alfayez/svelte-native-push`. The library's Metro config resolves `push.svelte.ts` to this file then (`metro.ts`), so the client and its
- * hooks are not in the bundle of an app without push. It answers as the client does in a build without the native module (PUSH.md): `permission` reads `"denied"`,
+ * `push` in an app whose config has push off for the platform being bundled. The library's Metro config resolves `push.svelte.ts` to this file then (`metro.ts`), so the client and
+ * its hooks are not in the bundle of an app without push. It answers as the client does in a build without the native module (PUSH.md): `permission` reads `"denied"`,
  * `subscribe` resolves with `null`, and one warning says what to install. It warns when it loads, as the client does: when the app imports `push`, or when its hooks file
  * exports `push` (`load.ts`).
  */

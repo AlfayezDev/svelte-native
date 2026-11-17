@@ -8,7 +8,7 @@ import { buildClassesSync, reportSkipped, reportUnsupported, watchClasses } from
 import { asyncEnvironment, runesEnvironment } from "./compile-options.ts";
 import { kitResolution } from "./kit/modules.ts";
 import { packageRoot, sourceFile } from "./package-root.ts";
-import { pushPackage } from "./push/config.ts";
+import { checkPushConfig, pushIsOn } from "./push/config.ts";
 import { remoteResolution } from "./remote/transform.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
 import { classesTableFile, labIncludedFor, routesTableFile, variantName } from "./variant.ts";
@@ -164,14 +164,27 @@ const realOr = (path: string): string => {
   }
 };
 
-/** Whether the app has `@alfayez/svelte-native-push`: resolved from the app's directory, as Expo's autolinking finds it. */
-export function hasPushPackage(projectRoot: string): boolean {
+/** The names an app's config gives the library's config plugin. */
+const PLUGIN_NAMES = new Set(["@alfayez/svelte-native", "@alfayez/svelte-native/app.plugin", "@alfayez/svelte-native/expo"]);
+
+/**
+ * The platforms `capabilities.push` names in the app's config, read as Expo reads it (`getConfig` from `expo/config`, which runs `app.config.*` and does not apply plugins). `undefined`
+ * when the config cannot be read or its push settings are malformed (the prebuild refuses those): then the client is bundled, and the native module's `enabled` decides on the device.
+ */
+export function pushPlatforms(projectRoot: string): { android: boolean; ios: boolean } | undefined {
+  let plugins: unknown;
   try {
-    createRequire(join(projectRoot, "package.json")).resolve(`${pushPackage}/package.json`);
-    return true;
+    const { getConfig } = require("expo/config") as typeof import("expo/config");
+    plugins = getConfig(projectRoot, { skipSDKVersionRequirement: true }).exp.plugins;
   } catch {
-    return false;
+    return undefined;
   }
+  const entry = (Array.isArray(plugins) ? plugins : []).find((plugin: unknown) => PLUGIN_NAMES.has(String(Array.isArray(plugin) ? plugin[0] : plugin)));
+  const options: unknown = Array.isArray(entry) ? entry[1] : undefined;
+  const push: unknown = typeof options === "object" && options !== null ? (options as { capabilities?: { push?: unknown } }).capabilities?.push : undefined;
+  if (!pushIsOn(push)) return { android: false, ios: false };
+  const checked = checkPushConfig(push);
+  return "config" in checked ? { android: checked.config.android !== undefined, ios: checked.config.ios !== undefined } : undefined;
 }
 
 export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOptions = {}): ConfigT {
@@ -235,10 +248,12 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     reportUnsupported(built.unsupported);
     if (process.env.NODE_ENV === "development") watchers.add(watchClasses(building, built.stylesheets));
   }
-  // An app without `@alfayez/svelte-native-push` gets the push client's stand-in (`push/absent.ts`): `push` answers as in a build without the native module (PUSH.md), and the
-  // client, which every app would otherwise bundle (`app.ts` imports `push/load.ts`, which requires it), is not in the bundle.
+  // A platform whose push is off in the app's config gets the push client's stand-in (`push/absent.ts`): `push` answers as in a build without push (PUSH.md), and the client,
+  // which every app would otherwise bundle (`app.ts` imports `push/load.ts`, which requires it), is not in the bundle. A config that cannot be read keeps the client.
   const pushClient = realpathSync(sourceFile("push/push.svelte.ts"));
-  const pushAbsent = hasPushPackage(config.projectRoot) ? undefined : sourceFile("push/absent.ts");
+  const pushOn = pushPlatforms(config.projectRoot);
+  const pushAbsent = sourceFile("push/absent.ts");
+  const pushOff = (platform: string | null): boolean => pushOn !== undefined && (platform === "ios" ? !pushOn.ios : platform === "android" ? !pushOn.android : !pushOn.android && !pushOn.ios);
   const stubFor = (moduleName: string, origin: string): string | null => {
     const name = stubbed.find((candidate) => isInPackage(moduleName, candidate));
     if (name !== undefined) return stubs.get(name) ?? null;
@@ -294,7 +309,7 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     if (result.type === "sourceFile") {
       const stubbedFile = stubForFile(result.filePath);
       if (stubbedFile !== null) return { type: "sourceFile", filePath: stubbedFile };
-      if (pushAbsent !== undefined && result.filePath.endsWith("push.svelte.ts") && realOr(result.filePath) === pushClient) return { type: "sourceFile", filePath: pushAbsent };
+      if (result.filePath.endsWith("push.svelte.ts") && pushOff(platform) && realOr(result.filePath) === pushClient) return { type: "sourceFile", filePath: pushAbsent };
       const stub = Object.entries(RENDERER_STUBS).find(([suffix]) => result.filePath.endsWith(suffix));
       if (stub) return { type: "sourceFile", filePath: sourceFile(stub[1]) };
       // `init.ts` is the Fabric entry's InitializeCore. `expo/src/winter` (run before main) imports InitializeCore for the

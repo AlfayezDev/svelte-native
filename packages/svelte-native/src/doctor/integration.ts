@@ -56,3 +56,23 @@ export function expoPluginFinding(appRoot: string, library: string): Finding {
   }
   return json ? { state: "absent", file: json } : { state: "no-file" };
 }
+
+const record = (value: unknown): Record<string, unknown> => (typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
+
+/**
+ * What `app.json` says, for the checks that need more than the plugin's name: its `expo` object (the file's top level when it has no `expo`, as Expo reads it), and the
+ * options the app gives the library's plugin there (`undefined` when `app.json` does not list it; `{}` when it lists it by name alone). `undefined` when there is no
+ * `app.json`, or it is not JSON. An `app.config.*` is code, so what it adds is not here: `codeConfig` says whether there is one.
+ */
+export function appJson(appRoot: string, library: string): { file: string; expo: Record<string, unknown>; plugin: Record<string, unknown> | undefined } | undefined {
+  const file = firstExisting(appRoot, ["app.json"]);
+  const parsed = file ? readJson(join(appRoot, file)) : undefined;
+  if (!file || !parsed) return undefined;
+  const expo = record(parsed.expo ?? parsed);
+  const names = [library, `${library}/app.plugin`];
+  const entry = (Array.isArray(expo.plugins) ? expo.plugins : []).find((candidate) => names.includes(pluginName(candidate) ?? ""));
+  return { file, expo, plugin: entry === undefined ? undefined : record(Array.isArray(entry) ? entry[1] : undefined) };
+}
+
+/** The app's `app.config.*` (code the doctor does not run), if it has one. */
+export const codeConfig = (appRoot: string): string | undefined => firstExisting(appRoot, APP_CONFIG_FILES);

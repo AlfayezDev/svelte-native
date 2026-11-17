@@ -4,13 +4,14 @@ import { declaredPatches } from "./declared.ts";
 import { expoPluginFinding, metroFinding, type Finding } from "./integration.ts";
 import { missingFromPackage } from "./hunks.ts";
 import { patchFiles, patchKey, patchSpecs } from "./patches.ts";
+import { pushChecks } from "./push.ts";
 import { nodeAdvice, requirements } from "./requirements.ts";
 import { findPackage, readerFor, readJson, type InstalledPackage } from "./resolve.ts";
 import { satisfies } from "./semver.ts";
 
 export type Status = "pass" | "fail" | "skip" | "unknown";
 export type Check = {
-  group: "environment" | "svelte" | "peer dependencies" | "patches" | "build integration";
+  group: "environment" | "svelte" | "peer dependencies" | "patches" | "build integration" | "push" | "push server";
   status: Status;
   message: string;
   /** More lines under the message (what exactly is missing). */
@@ -251,5 +252,6 @@ export function runChecks(context: Context): Check[] {
     ...patches(context, name, optional),
     library(context, name, text(own.version) ?? "?", appPackage),
     ...integration(context, name),
+    ...pushChecks(context, { name, version: text(own.version) ?? "?" }, appPackage),
   ];
 }

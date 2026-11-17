@@ -22,6 +22,10 @@ import { join, resolve } from "node:path";
 import type { ExpoConfig } from "expo/config";
 // `.js` spelled out, as in `remote/plugin.ts`: Node's own module loader, which loads this file from its source in `tests/cli/remote-plugin.test.ts` ("loading"), resolves no `expo/config-plugins` without it.
 import { AndroidConfig, withAndroidColors, withAndroidManifest, withAppDelegate, withDangerousMod } from "expo/config-plugins.js";
+import { apsEnvironmentEntitlement, findPushSecret, googleServicesPackages, otherPushLibraries, pushPackage, remoteNotificationMode } from "./push/config.ts";
+
+// Defined in `push/config.ts` now, which the doctor loads without Expo; they stay importable from here.
+export { findPushSecret, pushPackage };
 
 /** Why the app uses the location: the text iOS shows when it asks (`NSLocationWhenInUseUsageDescription`), or that and the reason for the background too. */
 export type LocationCapability =
@@ -190,15 +194,6 @@ function withLocation(config: ExpoConfig, location: Capabilities["location"], co
   return apply(config, props);
 }
 
-/** The native code of push: an Expo module of its own, so that Firebase is in the apps that use push and in no other. */
-export const pushPackage = "@alfayez/svelte-native-push";
-
-/**
- * The push libraries of other makers. Android delivers every message to one `FirebaseMessagingService` and iOS has one notification center delegate, so a second
- * library would take messages from the first, or the first would take them from it: an app has one push library.
- */
-const otherPushLibraries = ["expo-notifications", "@react-native-firebase/messaging"];
-
 /** Where the notifications go when the app names no channel, and what the user reads in the app's notification settings. */
 export const defaultPushChannel = { id: "default", name: "Notifications" } as const;
 
@@ -226,34 +221,6 @@ export type PushSettings = {
   ios?: { mode: "development" | "production" };
 };
 
-const pemKey = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
-const serviceAccountJson = /"type"\s*:\s*"service_account"|"private_key"\s*:/;
-const privateKeyName = /^private[_-]?key$/i;
-
-/**
- * The first server secret in `value`, and where it is (`where` names the value): a service account (an object with `"type": "service_account"`, or any `private_key`
- * in it, or JSON text that has either), a PEM private key, or the path of a `.p8` file (the APNs key). Push needs the identifiers of the app in its build
- * (`google-services.json`, the `aps-environment` mode), and none of these: a key that can send to every user is the server's, never the app's.
- */
-export function findPushSecret(value: unknown, where: string): { where: string; what: string } | undefined {
-  if (typeof value === "string") {
-    // A service account's JSON holds a PEM key too: it is the more telling name.
-    if (serviceAccountJson.test(value)) return { where, what: "a service account key" };
-    if (pemKey.test(value)) return { where, what: "a PEM private key" };
-    if (/\.p8$/i.test(value.trim())) return { where, what: "the path of a .p8 file (an APNs key)" };
-    return undefined;
-  }
-  if (typeof value !== "object" || value === null) return undefined;
-  for (const [key, item] of Object.entries(value)) {
-    const at = Array.isArray(value) ? `${where}[${key}]` : `${where}.${key}`;
-    if (privateKeyName.test(key)) return { where: at, what: "a private key" };
-    if (key === "type" && item === "service_account") return { where, what: "a service account key" };
-    const found = findPushSecret(item, at);
-    if (found) return found;
-  }
-  return undefined;
-}
-
 const secretError = ({ where, what }: { where: string; what: string }) =>
   new CapabilityConfigError(
     `${where} is ${what}: a key that can send to every user must never be in the app or its build. Keep it in the server's environment (the FCM service account, the APNs .p8 with its key id and team id) and give the app identifiers only.`,
@@ -273,16 +240,6 @@ function optionalText(value: unknown, where: string): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string" || value.trim() === "") throw new CapabilityConfigError(`${where} must be a text that is not empty.`);
   return value;
-}
-
-/** The package names of the Firebase clients in a `google-services.json`: `client[].client_info.android_client_info.package_name`. */
-function googleServicesPackages(parsed: unknown): string[] {
-  const clients = (parsed as { client?: unknown } | null)?.client;
-  if (!Array.isArray(clients)) return [];
-  return clients.flatMap((client: { client_info?: { android_client_info?: { package_name?: unknown } } } | null) => {
-    const name = client?.client_info?.android_client_info?.package_name;
-    return typeof name === "string" ? [name] : [];
-  });
 }
 
 /** Reads the Google services file and refuses one that is not the app's: a secret, a file that is not there or not JSON, and a Firebase project that has no Android app of this package. */
@@ -446,7 +403,7 @@ export function applyPushAppDelegate(contents: string): string {
  * to enable the Push Notifications capability of the app id. The `AppDelegate` is patched so that a push that wakes the app mounts no screen (`applyPushAppDelegate`).
  */
 function withPushIos(config: ExpoConfig, mode: "development" | "production"): ExpoConfig {
-  const existing = config.ios?.entitlements?.["aps-environment"];
+  const existing = config.ios?.entitlements?.[apsEnvironmentEntitlement];
   if (existing !== undefined && existing !== mode)
     throw new CapabilityConfigError(
       `The app config sets ios.entitlements["aps-environment"] ("${String(existing)}") and capabilities.push.ios.mode is "${mode}": keep one. capabilities.push.ios.mode writes the entitlement.`,
@@ -457,8 +414,8 @@ function withPushIos(config: ExpoConfig, mode: "development" | "production"): Ex
     ...config,
     ios: {
       ...config.ios,
-      entitlements: { ...config.ios?.entitlements, "aps-environment": mode },
-      infoPlist: { ...config.ios?.infoPlist, UIBackgroundModes: modes.includes("remote-notification") ? modes : [...modes, "remote-notification"] },
+      entitlements: { ...config.ios?.entitlements, [apsEnvironmentEntitlement]: mode },
+      infoPlist: { ...config.ios?.infoPlist, UIBackgroundModes: modes.includes(remoteNotificationMode) ? modes : [...modes, remoteNotificationMode] },
     },
   };
   return withAppDelegate(config, (config) => {

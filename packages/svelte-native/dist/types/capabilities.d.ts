@@ -1,5 +1,7 @@
 import type { ExpoConfig } from "expo/config";
 import { AndroidConfig } from "expo/config-plugins.js";
+import { findPushSecret, pushPackage } from "./push/config.js";
+export { findPushSecret, pushPackage };
 /** Why the app uses the location: the text iOS shows when it asks (`NSLocationWhenInUseUsageDescription`), or that and the reason for the background too. */
 export type LocationCapability = string | {
     /** While the app is in use: `NSLocationWhenInUseUsageDescription`. */
@@ -63,8 +65,6 @@ type CapabilityOptions = {
  * cannot be built as it stands.
  */
 export declare function withCapabilities(config: ExpoConfig, capabilities: Capabilities | undefined, options?: CapabilityOptions): ExpoConfig;
-/** The native code of push: an Expo module of its own, so that Firebase is in the apps that use push and in no other. */
-export declare const pushPackage = "@alfayez/svelte-native-push";
 /** Where the notifications go when the app names no channel, and what the user reads in the app's notification settings. */
 export declare const defaultPushChannel: {
     readonly id: "default";
@@ -106,15 +106,6 @@ export type PushSettings = {
     };
 };
 /**
- * The first server secret in `value`, and where it is (`where` names the value): a service account (an object with `"type": "service_account"`, or any `private_key`
- * in it, or JSON text that has either), a PEM private key, or the path of a `.p8` file (the APNs key). Push needs the identifiers of the app in its build
- * (`google-services.json`, the `aps-environment` mode), and none of these: a key that can send to every user is the server's, never the app's.
- */
-export declare function findPushSecret(value: unknown, where: string): {
-    where: string;
-    what: string;
-} | undefined;
-/**
  * Checks `capabilities.push` (already known not to be off, and to hold no secret) and returns what it says. Reads the Google services file and the icon, from the
  * app's directory, so that a file that is not there stops the prebuild here, with its path, and not in a Gradle log. Throws a `CapabilityConfigError`.
  */
@@ -136,4 +127,3 @@ export declare function applyPushAppDelegate(contents: string): string;
 export declare function applyPushManifest(application: AndroidConfig.Manifest.ManifestApplication, android: NonNullable<PushSettings["android"]>): void;
 /** Copies the notification icon into the Android project's `res/drawable`, under the fixed name the manifest names. */
 export declare function copyPushIcon(source: string, platformProjectRoot: string): Promise<void>;
-export {};

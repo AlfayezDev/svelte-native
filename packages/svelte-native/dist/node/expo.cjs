@@ -386,6 +386,42 @@ var import_promises = require("node:fs/promises");
 var import_node_module2 = require("node:module");
 var import_node_path4 = require("node:path");
 var import_config_plugins = require("expo/config-plugins.js");
+
+// src/push/config.ts
+var pushPackage = "@alfayez/svelte-native-push";
+var otherPushLibraries = ["expo-notifications", "@react-native-firebase/messaging"];
+var apsEnvironmentEntitlement = "aps-environment";
+var remoteNotificationMode = "remote-notification";
+var pemKey = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
+var serviceAccountJson = /"type"\s*:\s*"service_account"|"private_key"\s*:/;
+var privateKeyName = /^private[_-]?key$/i;
+function findPushSecret(value, where) {
+  if (typeof value === "string") {
+    if (serviceAccountJson.test(value)) return { where, what: "a service account key" };
+    if (pemKey.test(value)) return { where, what: "a PEM private key" };
+    if (/\.p8$/i.test(value.trim())) return { where, what: "the path of a .p8 file (an APNs key)" };
+    return void 0;
+  }
+  if (typeof value !== "object" || value === null) return void 0;
+  for (const [key, item] of Object.entries(value)) {
+    const at = Array.isArray(value) ? `${where}[${key}]` : `${where}.${key}`;
+    if (privateKeyName.test(key)) return { where: at, what: "a private key" };
+    if (key === "type" && item === "service_account") return { where, what: "a service account key" };
+    const found = findPushSecret(item, at);
+    if (found) return found;
+  }
+  return void 0;
+}
+function googleServicesPackages(parsed) {
+  const clients = parsed?.client;
+  if (!Array.isArray(clients)) return [];
+  return clients.flatMap((client) => {
+    const name = client?.client_info?.android_client_info?.package_name;
+    return typeof name === "string" ? [name] : [];
+  });
+}
+
+// src/capabilities.ts
 var CapabilityConfigError = class extends Error {
   name = "CapabilityConfigError";
 };
@@ -462,8 +498,6 @@ function withLocation(config, location, context) {
   if (typeof apply !== "function") throw new CapabilityConfigError("expo-location's config plugin (expo-location/app.plugin.js) is not a function: is the installed expo-location the one this Expo SDK uses?");
   return apply(config, props);
 }
-var pushPackage = "@alfayez/svelte-native-push";
-var otherPushLibraries = ["expo-notifications", "@react-native-firebase/messaging"];
 var defaultPushChannel = { id: "default", name: "Notifications" };
 var pushMetaData = {
   icon: "com.google.firebase.messaging.default_notification_icon",
@@ -474,26 +508,6 @@ var pushMetaData = {
   channelDescription: "expo.modules.sveltepush.channel_description"
 };
 var pushResources = { icon: "svelte_push_icon", color: "svelte_push_color" };
-var pemKey = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
-var serviceAccountJson = /"type"\s*:\s*"service_account"|"private_key"\s*:/;
-var privateKeyName = /^private[_-]?key$/i;
-function findPushSecret(value, where) {
-  if (typeof value === "string") {
-    if (serviceAccountJson.test(value)) return { where, what: "a service account key" };
-    if (pemKey.test(value)) return { where, what: "a PEM private key" };
-    if (/\.p8$/i.test(value.trim())) return { where, what: "the path of a .p8 file (an APNs key)" };
-    return void 0;
-  }
-  if (typeof value !== "object" || value === null) return void 0;
-  for (const [key, item] of Object.entries(value)) {
-    const at = Array.isArray(value) ? `${where}[${key}]` : `${where}.${key}`;
-    if (privateKeyName.test(key)) return { where: at, what: "a private key" };
-    if (key === "type" && item === "service_account") return { where, what: "a service account key" };
-    const found = findPushSecret(item, at);
-    if (found) return found;
-  }
-  return void 0;
-}
 var secretError = ({ where, what }) => new CapabilityConfigError(
   `${where} is ${what}: a key that can send to every user must never be in the app or its build. Keep it in the server's environment (the FCM service account, the APNs .p8 with its key id and team id) and give the app identifiers only.`
 );
@@ -506,14 +520,6 @@ function optionalText(value, where) {
   if (value === void 0) return void 0;
   if (typeof value !== "string" || value.trim() === "") throw new CapabilityConfigError(`${where} must be a text that is not empty.`);
   return value;
-}
-function googleServicesPackages(parsed) {
-  const clients = parsed?.client;
-  if (!Array.isArray(clients)) return [];
-  return clients.flatMap((client) => {
-    const name = client?.client_info?.android_client_info?.package_name;
-    return typeof name === "string" ? [name] : [];
-  });
 }
 function checkGoogleServicesFile(file, appPackage, projectRoot) {
   const name = `capabilities.push.android.googleServicesFile ("${file}")`;
@@ -645,7 +651,7 @@ function applyPushAppDelegate(contents) {
 ${holdImport}${stripped.slice(importEnd, call.index)}${head}${call[0]}${tail}${stripped.slice(callEnd)}`;
 }
 function withPushIos(config, mode) {
-  const existing = config.ios?.entitlements?.["aps-environment"];
+  const existing = config.ios?.entitlements?.[apsEnvironmentEntitlement];
   if (existing !== void 0 && existing !== mode)
     throw new CapabilityConfigError(
       `The app config sets ios.entitlements["aps-environment"] ("${String(existing)}") and capabilities.push.ios.mode is "${mode}": keep one. capabilities.push.ios.mode writes the entitlement.`
@@ -656,8 +662,8 @@ function withPushIos(config, mode) {
     ...config,
     ios: {
       ...config.ios,
-      entitlements: { ...config.ios?.entitlements, "aps-environment": mode },
-      infoPlist: { ...config.ios?.infoPlist, UIBackgroundModes: modes.includes("remote-notification") ? modes : [...modes, "remote-notification"] }
+      entitlements: { ...config.ios?.entitlements, [apsEnvironmentEntitlement]: mode },
+      infoPlist: { ...config.ios?.infoPlist, UIBackgroundModes: modes.includes(remoteNotificationMode) ? modes : [...modes, remoteNotificationMode] }
     }
   };
   return (0, import_config_plugins.withAppDelegate)(config, (config2) => {

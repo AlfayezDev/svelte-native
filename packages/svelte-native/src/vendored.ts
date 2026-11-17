@@ -81,12 +81,23 @@ const real = (path: string): string => {
   }
 };
 
+/** The two ways `vendor/` is named: as given and with its links resolved (Metro asks for `react-native` imports by the thousand, so the resolution is made once per package root). */
+const spellings = new Map<string, readonly string[]>();
+function vendorSpellings(root: string): readonly string[] {
+  let found = spellings.get(root);
+  if (found === undefined) {
+    found = [...new Set([vendorDirectory(root), real(vendorDirectory(root))])];
+    spellings.set(root, found);
+  }
+  return found;
+}
+
 /**
  * Where a file is, relative to `node_modules`, as if it were an installed package: a file of `vendor/react-native-mmkv/` is `react-native-mmkv/…`. `undefined` for a file
  * that is not in a vendored package. Metro gives the real path of a file, and a project may name it through the link into the package, so both are tried.
  */
 export function vendoredFileAs(path: string, root: string = packageRoot): string | undefined {
-  for (const directory of new Set([vendorDirectory(root), real(vendorDirectory(root))])) {
+  for (const directory of vendorSpellings(root)) {
     const inside = relative(directory, path);
     if (inside !== "" && !inside.startsWith("..") && !isAbsolute(inside)) {
       const name = vendoredPackages.find((vendored) => inside === vendored.name || inside.startsWith(`${vendored.name}${sep}`))?.name;

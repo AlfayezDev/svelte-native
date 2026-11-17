@@ -34,7 +34,7 @@ An original must not be linked beside a copy.
 
 ## Tests
 
-`tests/package/vendor-script.test.ts` (the script's layout against a fixture tarball, no network; the copies against their `VENDOR.md`), `tests/cli/vendored-autolinking.test.ts` (the entries against the reference, replacement, refusal, both commands, the plugin), `tests/cli/expo-headless.test.ts` (the Podfile block), `tests/compiler/metro/vendored.test.ts` (the aliases and the shim), `tests/cli/doctor.test.ts`, `tests/package/packaging.test.ts` (the packed package holds both copies with their `LICENSE` and `VENDOR.md`, and neither is a peer).
+`tests/package/vendor-script.test.ts` (the script's layout against a fixture tarball, no network; the copies against their `VENDOR.md`), `tests/cli/vendored-autolinking.test.ts` (the entries against the reference, replacement, refusal, both commands, the plugin), `tests/cli/expo-headless.test.ts` (the Podfile block), `tests/compiler/metro/vendored.test.ts` (the aliases and the shim), `tests/package/vendored-types.test.ts` (an app with neither package type-checks `@alfayez/svelte-native/mmkv`), `tests/cli/doctor.test.ts`, `tests/package/packaging.test.ts` (the packed package holds both copies with their `LICENSE` and `VENDOR.md`, and neither is a peer).
 
 ## Notes for the QA harness
 

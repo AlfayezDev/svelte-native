@@ -40,15 +40,17 @@ object PushMapping {
 
   /**
    * A message Firebase delivered. `title` and `body` are the notification block's, when the message has one. The sender's `url` is split off the data, and the id is
-   * FCM's, or a new one (`newId`) for a message that has none, so that a tap and `show` still have something to know it by.
+   * FCM's, or a new one (`newId`) for a message that has none, so that a tap and `show` still have something to know it by. `channelId` is the notification block's
+   * `channel_id`, for the notification this module shows when it is the one that shows it.
    */
-  fun fromRemote(messageId: String?, title: String?, body: String?, data: Map<String, String>, newId: () -> String): PushMessage {
+  fun fromRemote(messageId: String?, title: String?, body: String?, data: Map<String, String>, newId: () -> String, channelId: String? = null): PushMessage {
     return PushMessage(
       id = usableId(messageId) ?: newId(),
       title = blankToNull(title),
       body = blankToNull(body),
       url = blankToNull(data[URL_KEY]),
       data = data.filterKeys { it != URL_KEY },
+      channelId = blankToNull(channelId),
     )
   }
 

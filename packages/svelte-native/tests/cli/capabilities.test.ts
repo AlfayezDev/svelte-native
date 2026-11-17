@@ -1,6 +1,6 @@
-// The `capabilities` option of the Expo config plugin (`src/capabilities.ts`): a capability gives its library's plugin the app's texts (`location`) or writes the
-// entries its native code needs (`push`: svelte-core's, which is in every app, so what the plugin writes is what turns it on), and the half-made states (on without the library,
-// the library without the capability, the capability and the library's own plugin entry both) stop the prebuild.
+// The `capabilities` option of the Expo config plugin (`src/capabilities.ts`): a capability writes the entries its native code needs (`location` and `push`: svelte-core's, which is in every
+// app, so what the plugin writes is what turns it on and what it takes away turns it off again), and a config that cannot be built as it stands (an empty reason, a secret, two
+// answers to one question) stops the prebuild. Neither capability has a library to install or to refuse.
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -8,7 +8,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExpoConfig } from "expo/config";
 import { AndroidConfig, compileModsAsync, withPlugins, XML, type ExportedConfig } from "expo/config-plugins";
-import { CapabilityConfigError, type PushCapability, androidStringText, applyPushAppDelegate, applyPushGradle, applyPushManifest, applyPushPermission, applyPushStrings, copyPushIcon, defaultPushChannel, findPushSecret, locationPluginProps, postNotificationsPermission, pushFirebaseDependency, pushInfoPlistFlag, pushMessagingService, pushPodfileProperty, pushMetaData, pushResources, pushSettings, hasPushFlag, removePushAppDelegate, removePushGradle, removePushPermission, removePushIcon, removePushManifest, removePushStrings, withCapabilities } from "../../src/capabilities.ts";
+import { CapabilityConfigError, type PushCapability, androidStringText, applyPushAppDelegate, applyPushGradle, applyPushManifest, applyPushPermission, applyPushStrings, copyPushIcon, defaultPushChannel, findPushSecret, postNotificationsPermission, pushFirebaseDependency, pushInfoPlistFlag, pushMessagingService, pushPodfileProperty, pushMetaData, pushResources, pushSettings, hasPushFlag, removePushAppDelegate, removePushGradle, removePushPermission, removePushIcon, removePushManifest, removePushStrings, withCapabilities, hasLocationFlag, locationAndroidPermissions, locationCompileCondition, locationInfoPlistFlag, locationMetaData, locationPodfileProperty, locationSettings, locationUsageKey, removeLocationFlag, removeLocationPermissions } from "../../src/capabilities.ts";
 import expoPlugin, { applyAppDelegate } from "../../src/expo.ts";
 import { createProject } from "../support/project.ts";
 import { expoTemplateAppBuildGradle, expoTemplateAppDelegate } from "./support/app-delegate.ts";
@@ -16,128 +16,249 @@ import { findHostJars } from "../support/host-tools.ts";
 import { peerRange } from "../support/versions.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/** An app whose package.json lists `dependencies`, in a directory that is removed when the test's block ends. */
-const app = (dependencies: Record<string, string>, manifest: Record<string, unknown> = {}) => {
-  const project = createProject({ "package.json": JSON.stringify({ name: "app", dependencies, ...manifest }) }, "svelte-native-capabilities-");
+/** An app whose package.json lists `dependencies`, with the `files` it has (the native projects of an earlier prebuild, say), in a directory that is removed when the test's block ends. */
+const app = (dependencies: Record<string, string>, manifest: Record<string, unknown> = {}, files: Record<string, string> = {}) => {
+  const project = createProject({ ...files, "package.json": JSON.stringify({ name: "app", dependencies, ...manifest }) }, "svelte-native-capabilities-");
   return { root: project.directory, [Symbol.dispose]: () => project.remove() };
 };
-const expoLocation = { "expo-location": peerRange("expo-location") };
+const expoLocation = { "expo-location": "~57.0.22" };
 
 const thrown = (call: () => unknown): Error => { try { call(); } catch (error) { return error as Error; } throw new Error("did not throw"); };
 
-/** A stand-in for expo-location's config plugin: records the props it was applied with. */
-function fakePlugin() {
-  const applied: Record<string, unknown>[] = [];
-  const plugin = (config: any, props: Record<string, unknown>) => { applied.push(props); return { ...config, applied: true }; };
-  return { applied, load: (request: string) => (request === "expo-location/package.json" ? { name: "expo-location" } : (expect(request).toBe("expo-location/app.plugin.js"), plugin)) };
-}
-
 describe("capabilities.location", () => {
-  test("a string is the while-in-use text; nothing of the background unless it is asked for", () => {
-    expect(locationPluginProps("Shows the stores near you.")).toEqual({
-      locationWhenInUsePermission: "Shows the stores near you.",
-      locationAlwaysAndWhenInUsePermission: false,
-      locationAlwaysPermission: false,
-      isIosBackgroundLocationEnabled: false,
-      isAndroidBackgroundLocationEnabled: false,
-    });
-    expect(locationPluginProps({ whenInUse: "Shows the stores near you.", background: "Tells you when you reach the store." })).toEqual({
-      locationWhenInUsePermission: "Shows the stores near you.",
-      locationAlwaysAndWhenInUsePermission: "Tells you when you reach the store.",
-      locationAlwaysPermission: "Tells you when you reach the store.",
-      isIosBackgroundLocationEnabled: true,
-      isAndroidBackgroundLocationEnabled: true,
-    });
+  const text = "Shows the stores near you.";
+  const base = (root: string, extra: Partial<ExpoConfig> = {}): ExpoConfig => ({ name: "app", slug: "app", _internal: { projectRoot: root }, android: { package: "io.e.a" }, ios: { bundleIdentifier: "io.e.a" }, ...extra });
+  const on = (root: string, location: unknown = text, extra: Partial<ExpoConfig> = {}) => withCapabilities(base(root, extra), { location: location as any }, { projectRoot: root });
+  /** Runs one mod of the config on `modResults`, with `extra` beside them (the app's own `android` and `ios` keys, which Expo's mod runner adds to the config a mod receives). */
+  const run = async (config: ExportedConfig, platform: "ios" | "android", mod: string, modResults: object, extra: object = {}) => {
+    const apply = (config.mods as Record<string, Record<string, (config: object) => Promise<{ modResults: any }>>>)[platform]?.[mod];
+    if (apply === undefined) throw new Error(`the config has no ${platform} ${mod} mod`);
+    return (await apply({ ...extra, modRequest: { projectRoot: "", platformProjectRoot: "", platform, modName: mod, introspect: false }, modResults })).modResults;
+  };
+  const permissionNames = (manifest: any): string[] => (manifest.manifest["uses-permission"] ?? []).map((item: any) => item.$["android:name"]);
+  const flagItem = { $: { "android:name": locationMetaData.enabled, "android:value": "true" } };
+  const own = { $: { "android:name": "com.example.key", "android:value": "1" } };
+  const manifestOf = (items: object[] | undefined, permissions: string[] = []) => ({
+    manifest: { "uses-permission": permissions.map((name) => ({ $: { "android:name": name } })), application: [{ $: { "android:name": ".MainApplication" }, ...(items === undefined ? {} : { "meta-data": items }) }] },
+  });
+  /** An app that turned the capability off, with the native projects of its last prebuild (`ios/`, `android/`). */
+  const uninstalled = (dependencies: Record<string, string> = {}) => app(dependencies, {}, { "ios/App/AppDelegate.swift": "", "android/app/build.gradle": "" });
+
+  test("a string is the while-in-use text, and `{ whenInUse }` says the same; the names the native code and the plugin share are fixed", () => {
+    expect(locationSettings(text)).toEqual({ whenInUse: text });
+    expect(locationSettings({ whenInUse: text })).toEqual({ whenInUse: text });
+    expect([locationMetaData.enabled, locationInfoPlistFlag, locationUsageKey]).toEqual(["expo.modules.sveltelocation.enabled", "SvelteLocationEnabled", "NSLocationWhenInUseUsageDescription"]);
+    // The Podfile property the podspec reads, and the compile condition it makes of it.
+    expect([locationPodfileProperty, locationCompileCondition]).toEqual(["svelteNative.location", "SVELTE_LOCATION"]);
+    expect(locationAndroidPermissions).toEqual(["android.permission.ACCESS_COARSE_LOCATION", "android.permission.ACCESS_FINE_LOCATION"]);
   });
 
   test("an empty text is refused: it is what the user reads when the app asks", () => {
-    for (const location of ["", "  ", { whenInUse: "" }, { whenInUse: "ok", background: " " }, { whenInUse: "ok", motion: "" }] as any[]) expect(thrown(() => locationPluginProps(location))).toBeInstanceOf(CapabilityConfigError);
-  });
-
-  test("a motion text is passed as expo-location's NSMotionUsageDescription; without one, expo-location writes its own", () => {
-    expect(locationPluginProps({ whenInUse: "Shows the stores near you.", motion: "Counts your steps." }).motionUsagePermission).toBe("Counts your steps.");
-    expect("motionUsagePermission" in locationPluginProps("Shows the stores near you.")).toBe(false);
-  });
-
-  test("on, while expo-location is left out of autolinking: refused, since its plugin would silently do nothing", () => {
-    using project = app(expoLocation);
-    expect(thrown(() => withCapabilities({ name: "app" }, { location: "Shows the stores near you." }, { projectRoot: project.root, load: fakePlugin().load, excluded: ["expo-location"] })).message)
-      .toContain("expo-location is left out of autolinking");
-    using inManifest = app(expoLocation, { expo: { autolinking: { ios: { exclude: ["expo-location"] } } } });
-    expect(thrown(() => withCapabilities({ name: "app" }, { location: "Shows the stores near you." }, { projectRoot: inManifest.root, load: fakePlugin().load })).message).toContain("left out of autolinking");
-    // Off, the package.json's exclusion is honored like the plugin's: nothing to say.
-    const config = { name: "app" };
-    expect(withCapabilities(config, { location: false }, { projectRoot: inManifest.root })).toBe(config);
-  });
-
-  test("an expo-location whose plugin fails to load is reported as that, not as missing", () => {
-    using project = app(expoLocation);
-    const load = (request: string) => { if (request.endsWith("package.json")) return {}; throw new Error("Cannot find module '@expo/image-utils'"); };
-    expect(thrown(() => withCapabilities({ name: "app" }, { location: "Shows the stores near you." }, { projectRoot: project.root, load })).message).toBe("expo-location's config plugin (expo-location/app.plugin.js) failed to load: Cannot find module '@expo/image-utils'");
-  });
-
-  test("on, with expo-location installed: its plugin is applied with the texts", () => {
-    using project = app(expoLocation);
-    const { applied, load } = fakePlugin();
-    const result = withCapabilities({ name: "app" }, { location: "Shows the stores near you." }, { projectRoot: project.root, load }) as any;
-    expect(result.applied).toBe(true);
-    expect(applied).toEqual([locationPluginProps("Shows the stores near you.")]);
-  });
-
-  test("on, without expo-location: the prebuild stops and says what to install", () => {
-    using project = app({});
-    const error = thrown(() => withCapabilities({ name: "app" }, { location: "Shows the stores near you." }, { projectRoot: project.root, load: () => { throw new Error("Cannot find module"); } }));
-    expect([error.name, error.message]).toEqual(["CapabilityConfigError", "capabilities.location needs expo-location, which is not installed: `npx expo install expo-location`, then prebuild again."]);
-  });
-
-  test("expo-location installed, the capability off: the prebuild stops instead of shipping Expo's default text", () => {
-    using project = app(expoLocation);
-    const error = thrown(() => withCapabilities({ name: "app" }, undefined, { projectRoot: project.root, load: fakePlugin().load }));
-    expect(error).toBeInstanceOf(CapabilityConfigError);
-    expect(error.message).toContain("expo-location is installed, but the location capability is off");
-    expect(error.message).toContain('capabilities: { location: "Shows the stores near you." }');
-    expect(thrown(() => withCapabilities({ name: "app" }, {}, { projectRoot: project.root })).message).toContain("the location capability is off");
-    expect(thrown(() => withCapabilities({ name: "app" }, { location: false }, { projectRoot: project.root })).message).toContain("the location capability is off");
-  });
-
-  test("off, and expo-location not installed or left out of autolinking: nothing changes", () => {
-    using bare = app({ expo: peerRange("expo") });
-    const config = { name: "app" };
-    expect(withCapabilities(config, undefined, { projectRoot: bare.root })).toBe(config);
-    using excluded = app(expoLocation);
-    expect(withCapabilities(config, undefined, { projectRoot: excluded.root, excluded: ["expo-location"] })).toBe(config);
-  });
-
-  test("expo-location's own plugin entry configures it: no capability is needed, and both at once are refused", () => {
-    using project = app(expoLocation);
-    for (const entry of ["expo-location", ["expo-location", { locationWhenInUsePermission: "Shows the stores near you." }]]) {
-      const config = { name: "app", plugins: [entry] };
-      expect(withCapabilities(config, undefined, { projectRoot: project.root })).toBe(config);
-      const error = thrown(() => withCapabilities(config, { location: "Shows the stores near you." }, { projectRoot: project.root, load: fakePlugin().load }));
-      expect([error.name, error.message.startsWith("The app config sets capabilities.location and also lists expo-location's own plugin")]).toEqual(["CapabilityConfigError", true]);
+    for (const location of ["", "  ", { whenInUse: "" }, { whenInUse: " " }, {}, { whenInUse: 5 }, 5, true, null] as any[]) {
+      const error = thrown(() => locationSettings(location));
+      expect([error.name, error.message.startsWith("capabilities.location needs the reason the app uses the location")]).toEqual(["CapabilityConfigError", true]);
     }
   });
 
-  test("the real expo-location plugin writes the texts into Info.plist, and none for the background unless asked", async () => {
+  test("background and motion are not options of the capability any more: refused, and the message says what to do instead", () => {
+    for (const key of ["background", "motion"]) {
+      const error = thrown(() => locationSettings({ whenInUse: text, [key]: "Tells you when you reach the store." }));
+      expect(error).toBeInstanceOf(CapabilityConfigError);
+      expect(error.message).toContain(`capabilities.location.${key} is not an option any more`);
+      expect(error.message).toContain("is not part of capabilities.location");
+      // What to do: expo-location with its own plugin, which does not conflict.
+      expect(error.message).toContain("installs expo-location and lists its own plugin");
+      expect(error.message).toContain("they are other modules with other events");
+      // Through the plugin too, and before anything is written.
+      using project = app({});
+      expect(thrown(() => on(project.root, { whenInUse: text, [key]: "x" })).message).toContain(`capabilities.location.${key} is not an option any more`);
+    }
+    expect(thrown(() => locationSettings({ whenInUse: text, background: undefined })).message).toContain("capabilities.location.background");
+  });
+
+  test("on: the usage text and the flag are the config's own Info.plist keys, beside the app's other ones", async () => {
+    using project = app({});
+    const config = on(project.root, text, base(project.root, { ios: { bundleIdentifier: "io.e.a", infoPlist: { CFBundleDisplayName: "Stores", UIBackgroundModes: ["fetch"] } } }));
+    expect(config.ios?.infoPlist).toEqual({ CFBundleDisplayName: "Stores", UIBackgroundModes: ["fetch"], [locationUsageKey]: text, [locationInfoPlistFlag]: true });
+    // `{ whenInUse }` is the same thing, and the flag is a boolean (the native code reads only the boolean true).
+    expect(on(project.root, { whenInUse: text }).ios?.infoPlist).toEqual({ [locationUsageKey]: text, [locationInfoPlistFlag]: true });
+    // Foreground location only: no background mode, no always-usage text, no motion text.
+    const plist = (await compile(on(project.root))).infoPlist as Record<string, unknown>;
+    expect(Object.keys(plist).filter((key) => /Always|Motion|BackgroundModes/.test(key))).toEqual([]);
+    expect([plist[locationUsageKey], plist[locationInfoPlistFlag]]).toEqual([text, true]);
+  });
+
+  test("on: ios/Podfile.properties.json gets svelteNative.location as the string \"true\", beside the properties Expo's template writes; it is what compiles the iOS code in", async () => {
+    using project = app({});
+    const config = on(project.root);
+    expect(Object.keys((config.mods as any).ios)).toContain("podfileProperties");
+    // Expo's own properties stay, and applying it again changes nothing (the properties are a plain object keyed by name).
+    const template = { "expo.jsEngine": "hermes", "EX_DEV_CLIENT_NETWORK_INSPECTOR": "true" };
+    const written = await run(config, "ios", "podfileProperties", { ...template });
+    expect(written).toEqual({ ...template, [locationPodfileProperty]: "true" });
+    expect(await run(config, "ios", "podfileProperties", { ...written })).toEqual(written);
+    // A string, as Podfile properties are: the podspec compares it with "true".
+    expect(typeof written[locationPodfileProperty]).toBe("string");
+    // The plist keys do not do it alone: a build compiles the code in by this property, and the Android side has none.
+    expect(Object.keys(on(project.root, { whenInUse: text }).mods ?? {}).sort()).toEqual(["android", "ios"]);
+  });
+
+  test("on: Android's manifest has the enabled flag and the two permissions, each once, beside the app's own", async () => {
+    using project = app({});
+    const { manifest } = await compile(on(project.root));
+    const names = permissionNames({ manifest });
+    for (const permission of locationAndroidPermissions) expect([permission, names.filter((name) => name === permission).length]).toEqual([permission, 1]);
+    expect(names).toContain("android.permission.INTERNET");
+    expect(metaData(manifest)[locationMetaData.enabled]).toBe("true");
+    expect(metaData(manifest)).not.toHaveProperty("expo.modules.sveltepush.enabled");
+    // Not twice: the app asks for one of them itself (Expo accepts the short name), and the plugin is applied once more over the same manifest.
+    const asked = (await compile(on(project.root, text, base(project.root, { android: { package: "io.e.a", permissions: ["ACCESS_FINE_LOCATION"] } })))).manifest;
+    expect(permissionNames({ manifest: asked }).filter((name) => name.endsWith("LOCATION")).sort()).toEqual([...locationAndroidPermissions].sort());
+    const again = await run(on(project.root), "android", "manifest", manifestOf([flagItem, own], [...locationAndroidPermissions]));
+    expect(again.manifest.application[0]["meta-data"]).toEqual([own, flagItem]);
+    expect(permissionNames(again)).toEqual([...locationAndroidPermissions]);
+  });
+
+  test("on without a library: nothing is installed, and an expo-location that is (or is left out of autolinking, or has its own plugin entry) is no reason to refuse", () => {
+    using bare = app({});
+    expect(() => on(bare.root)).not.toThrow();
+    using installed = app(expoLocation);
+    expect(() => on(installed.root)).not.toThrow();
+    using leftOut = app(expoLocation, { expo: { autolinking: { ios: { exclude: ["expo-location"] } } } });
+    expect(() => on(leftOut.root)).not.toThrow();
+    expect(() => withCapabilities(base(installed.root), { location: text }, { projectRoot: installed.root, excluded: ["expo-location"] })).not.toThrow();
+    // Its own plugin, with its own texts: another module with other events, so both may be there. The app's explicit choice of text is the one Expo's plugin writes last (`location.test.ts` below).
+    for (const entry of ["expo-location", ["expo-location", { locationWhenInUsePermission: "Theirs." }]]) expect(() => on(installed.root, text, base(installed.root, { plugins: [entry] }))).not.toThrow();
+  });
+
+  test("off: an installed expo-location is no one's business, and with no native project to clean the config comes back as it was", () => {
+    const config = { name: "app" };
+    using bare = app({ expo: "~57.0.27" });
+    using installed = app(expoLocation);
+    for (const root of [bare.root, installed.root]) {
+      for (const location of [undefined, false] as const) expect(withCapabilities(config, { location }, { projectRoot: root })).toBe(config);
+      expect(withCapabilities(config, undefined, { projectRoot: root })).toBe(config);
+      expect(withCapabilities(config, {}, { projectRoot: root, excluded: ["expo-location"] })).toBe(config);
+      expect(withCapabilities({ name: "app", plugins: ["expo-location"] }, undefined, { projectRoot: root })).toEqual({ name: "app", plugins: ["expo-location"] });
+    }
+  });
+
+  test("the app's own ios.infoPlist usage text: the same is one answer, another is two", () => {
+    using project = app({});
+    const same = base(project.root, { ios: { bundleIdentifier: "io.e.a", infoPlist: { [locationUsageKey]: text } } });
+    expect(withCapabilities(same, { location: text }, { projectRoot: project.root }).ios?.infoPlist?.[locationUsageKey]).toBe(text);
+    const other = base(project.root, { ios: { bundleIdentifier: "io.e.a", infoPlist: { [locationUsageKey]: "Another text." } } });
+    const error = thrown(() => withCapabilities(other, { location: text }, { projectRoot: project.root }));
+    expect([error.name, error.message]).toEqual(["CapabilityConfigError", `The app config sets ios.infoPlist.${locationUsageKey} ("Another text.") and capabilities.location says "${text}": keep one. capabilities.location writes ${locationUsageKey}.`]);
+  });
+
+  test("the Expo plugin passes the capability on: the entries land in the config, with no library to install and nothing to leave out of autolinking", () => {
+    using project = app({});
+    const config = withPlugins(base(project.root), [[expoPlugin, { capabilities: { location: text } }]]);
+    expect(config.ios?.infoPlist).toEqual({ [locationUsageKey]: text, [locationInfoPlistFlag]: true });
+    const refused = thrown(() => withPlugins(base(project.root), [[expoPlugin, { capabilities: { location: { whenInUse: text, background: "x" } } }]]));
+    expect(refused).toBeInstanceOf(CapabilityConfigError);
+  });
+
+  test("off, with the projects of an earlier prebuild: the Info.plist loses the flag, and keeps every other key, the usage text and the background mode among them", async () => {
+    using project = uninstalled();
+    const config = withCapabilities(base(project.root), { location: false }, { projectRoot: project.root });
+    expect(Object.keys(config.mods ?? {}).sort()).toEqual(["android", "ios"]);
+    // (Push is off too, so its AppDelegate clean-up is there beside the Info.plist one.)
+    expect(Object.keys((config.mods as any).ios)).toContain("infoPlist");
+    const plist = { CFBundleName: "App", [locationUsageKey]: text, UIBackgroundModes: ["remote-notification"], [locationInfoPlistFlag]: true };
+    // The usage text stays: nothing in the project says whose it is, an iOS app that asks for the location without one is stopped by the system, and one nothing asks for does no harm.
+    expect(await run(config, "ios", "infoPlist", plist)).toEqual({ CFBundleName: "App", [locationUsageKey]: text, UIBackgroundModes: ["remote-notification"] });
+    expect(await run(config, "ios", "infoPlist", { CFBundleName: "App" })).toEqual({ CFBundleName: "App" });
+  });
+
+  test("off, with the iOS project of an earlier prebuild: Podfile.properties.json loses svelteNative.location and keeps every other property, so the next pod install has no location code", async () => {
+    using project = uninstalled();
+    for (const location of [false, undefined] as const) {
+      const config = withCapabilities(base(project.root), { location }, { projectRoot: project.root });
+      expect(Object.keys((config.mods as any).ios)).toContain("podfileProperties");
+      expect(await run(config, "ios", "podfileProperties", { "expo.jsEngine": "hermes", [locationPodfileProperty]: "true", "ios.deploymentTarget": "16.4" })).toEqual({ "expo.jsEngine": "hermes", "ios.deploymentTarget": "16.4" });
+      expect(await run(config, "ios", "podfileProperties", { "expo.jsEngine": "hermes" })).toEqual({ "expo.jsEngine": "hermes" });
+    }
+    // Without an iOS project there is nothing to clean, and no mod is added for it.
+    using androidOnly = app({}, {}, { "android/app/build.gradle": "" });
+    expect(Object.keys(withCapabilities(base(androidOnly.root), undefined, { projectRoot: androidOnly.root }).mods ?? {})).toEqual(["android"]);
+  });
+
+  test("off: the manifest loses the flag, and its permissions when the flag shows the capability added them; the app's own meta-data and permissions stay", async () => {
+    using project = uninstalled();
+    const config = withCapabilities(base(project.root), undefined, { projectRoot: project.root });
+    const permissions = [...locationAndroidPermissions, "android.permission.INTERNET"];
+    const gone = await run(config, "android", "manifest", manifestOf([flagItem, own], permissions));
+    expect(gone.manifest.application[0]["meta-data"]).toEqual([own]);
+    expect(permissionNames(gone)).toEqual(["android.permission.INTERNET"]);
+    // No flag: the permissions are the app's, or another library's, and stay.
+    const kept = await run(config, "android", "manifest", manifestOf([own], permissions));
+    expect(kept.manifest.application[0]["meta-data"]).toEqual([own]);
+    expect(permissionNames(kept)).toEqual(permissions);
+    // The app's own config asks for one of them: that one stays, in either spelling, and the other goes.
+    for (const spelled of ["ACCESS_FINE_LOCATION", "android.permission.ACCESS_FINE_LOCATION"]) {
+      const partly = await run(config, "android", "manifest", manifestOf([flagItem], permissions), { android: { permissions: [spelled] } });
+      expect(permissionNames(partly)).toEqual(["android.permission.ACCESS_FINE_LOCATION", "android.permission.INTERNET"]);
+    }
+    const both = await run(config, "android", "manifest", manifestOf([flagItem], permissions), { android: { permissions: ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"] } });
+    expect(permissionNames(both)).toEqual(permissions);
+    // A manifest without the main application is left alone, and does not stop the prebuild; one without meta-data has no flag.
+    expect((await run(config, "android", "manifest", { manifest: {} })).manifest).toEqual({});
+    expect(await run(config, "android", "manifest", manifestOf(undefined, permissions))).toEqual(manifestOf(undefined, permissions));
+  });
+
+  test("the flag helpers: the flag is ours by its name, the permissions go only to the ones the app does not list, and a push flag is not a location one", () => {
+    const application: any = { $: { "android:name": ".MainApplication" }, "meta-data": [own, flagItem, { $: { "android:name": "expo.modules.sveltepush.enabled", "android:value": "true" } }] };
+    expect(hasLocationFlag(application)).toBe(true);
+    removeLocationFlag(application);
+    expect(hasLocationFlag(application)).toBe(false);
+    expect(application["meta-data"].map((item: any) => item.$["android:name"])).toEqual(["com.example.key", "expo.modules.sveltepush.enabled"]);
+    const manifest: any = manifestOf([], [...locationAndroidPermissions, "android.permission.CAMERA"]);
+    removeLocationPermissions(manifest, undefined);
+    expect(permissionNames(manifest)).toEqual(["android.permission.CAMERA"]);
+    removeLocationPermissions(manifest, []);
+    expect(permissionNames(manifest)).toEqual(["android.permission.CAMERA"]);
+  });
+
+  test("a platform whose native project does not exist is not touched when the capability is off, and the one that does is cleaned alone", () => {
+    using iosOnly = app({}, {}, { "ios/App/AppDelegate.swift": "" });
+    expect(Object.keys(withCapabilities(base(iosOnly.root), undefined, { projectRoot: iosOnly.root }).mods ?? {})).toEqual(["ios"]);
+    using androidOnly = app({}, {}, { "android/app/build.gradle": "" });
+    expect(Object.keys(withCapabilities(base(androidOnly.root), undefined, { projectRoot: androidOnly.root }).mods ?? {})).toEqual(["android"]);
+  });
+
+  test("push and location are independent: each on, off or both, and neither takes the other's entries away", async () => {
+    using project = uninstalled();
+    const both = withCapabilities(base(project.root), { location: text, push: { ios: { mode: "production" } } }, { projectRoot: project.root });
+    expect(both.ios?.infoPlist).toMatchObject({ [locationUsageKey]: text, [locationInfoPlistFlag]: true, SveltePushEnabled: true });
+    const locationOff = withCapabilities(base(project.root), { push: { ios: { mode: "production" } } }, { projectRoot: project.root });
+    // Push is on for iOS, so its flag is written; the location flag is taken away by a mod of its own, and the push one stays.
+    expect(await run(locationOff, "ios", "infoPlist", { [locationInfoPlistFlag]: true, SveltePushEnabled: true })).toEqual({ SveltePushEnabled: true });
+    const pushOff = withCapabilities(base(project.root), { location: text }, { projectRoot: project.root });
+    expect(await run(pushOff, "ios", "infoPlist", { [locationInfoPlistFlag]: true, SveltePushEnabled: true })).toEqual({ [locationInfoPlistFlag]: true });
+  });
+
+  // An app may install expo-location for its own reasons (background location, geofencing): it is another module with other events, and Expo applies its plugin to every app that has it. The real one,
+  // as the optional library the QA app's smoke variant installs, beside ours: Expo's own application of it (no texts) must not take the capability's text, and an explicit entry may.
+  const resolvable = (() => { try { createRequire(resolve(import.meta.dirname, "../../package.json")).resolve("expo-location/app.plugin.js"); return true; } catch { return false; } })();
+  test.skipIf(!resolvable)("the real expo-location plugin beside the capability: Expo's own default application keeps the capability's text, and its own entry with a text is the app's explicit choice", async () => {
     using project = app(expoLocation);
-    // The optional peer, installed with the library's development dependencies.
     const library = createRequire(resolve(import.meta.dirname, "../../package.json"));
-    const { compileModsAsync } = library("expo/config-plugins") as typeof import("expo/config-plugins");
-    const plist = async (location: any) => {
-      const base = { name: "app", slug: "app", _internal: { projectRoot: project.root }, ios: { infoPlist: { NSLocationAlwaysUsageDescription: "stale" } } };
-      const config = withCapabilities(base as any, { location }, { projectRoot: project.root, load: (request) => library(request) }) as any;
-      // Expo's run-once record: the auto plugin Expo applies for an installed expo-location now does nothing.
-      expect(Object.keys(config._internal.pluginHistory ?? {})).toContain("expo-location");
-      const compiled = await compileModsAsync(config, { projectRoot: project.root, introspect: true, platforms: ["ios"], assertMissingModProviders: false });
-      return (compiled.ios?.infoPlist ?? {}) as Record<string, unknown>;
+    const plugin = (library("expo-location/app.plugin.js") as { default?: unknown }).default ?? library("expo-location/app.plugin.js");
+    const plist = async (plugins: any[]) => {
+      const config = withPlugins(base(project.root), plugins);
+      const compiled = await compileModsAsync(config, { projectRoot: project.root, introspect: true, platforms: ["ios", "android"], assertMissingModProviders: false });
+      return { plist: (compiled.ios?.infoPlist ?? {}) as Record<string, unknown>, manifest: compiled._internal?.modResults.android.manifest.manifest };
     };
-    const plain = await plist("Shows the stores near you.");
-    expect(plain.NSLocationWhenInUseUsageDescription).toBe("Shows the stores near you.");
-    expect(["NSLocationAlwaysAndWhenInUseUsageDescription" in plain, "NSLocationAlwaysUsageDescription" in plain, "UIBackgroundModes" in plain]).toEqual([false, false, false]);
-    // CoreMotion is linked with expo-location: the motion key is always there, expo-location's text unless the app gives one.
-    expect(String(plain.NSMotionUsageDescription)).toContain("motion activity");
-    const full = await plist({ whenInUse: "Shows the stores near you.", background: "Tells you when you reach the store.", motion: "Counts your steps." });
-    expect([full.NSLocationAlwaysAndWhenInUseUsageDescription, full.NSMotionUsageDescription, full.UIBackgroundModes]).toEqual(["Tells you when you reach the store.", "Counts your steps.", ["location"]]);
+    const ours = [expoPlugin, { capabilities: { location: text } }];
+    for (const order of [[ours, plugin], [plugin, ours]]) {
+      const { plist: result, manifest } = await plist(order);
+      expect([result[locationUsageKey], result[locationInfoPlistFlag]]).toEqual([text, true]);
+      expect(permissionNames({ manifest }).filter((name) => /ACCESS_(FINE|COARSE)_LOCATION/.test(name)).sort()).toEqual([...locationAndroidPermissions].sort());
+      expect(metaData(manifest)[locationMetaData.enabled]).toBe("true");
+    }
+    expect((await plist([ours, [plugin, { locationWhenInUsePermission: "Theirs." }]])).plist[locationUsageKey]).toBe("Theirs.");
   });
 });
 

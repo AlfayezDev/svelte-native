@@ -1,4 +1,4 @@
-// `navigator.geolocation` and `navigator.permissions` (`src/geolocation.ts`) against a stand-in for expo-location's native module that records what it was asked.
+// `navigator.geolocation` and `navigator.permissions` (`src/geolocation.ts`) against a stand-in for the library's SvelteLocation native module that records what it was asked.
 import { describe, expect, test } from "bun:test";
 import { Geolocation, GeolocationCoordinates, GeolocationPosition, GeolocationPositionError, Permissions, PermissionStatus, permissionState, type NativeLocationModule } from "../../src/geolocation.ts";
 
@@ -18,15 +18,17 @@ function fake(options: { permission?: Permission; answer?: Permission; position?
   let permission = options.permission ?? UNDETERMINED;
   const listeners = new Map<number, { event: string; listener: (event: any) => void }>();
   let nextListener = 0;
-  const native: NativeLocationModule & { permission: Permission } = {
-    get permission() { return permission; },
-    set permission(value) { permission = value; },
-    getForegroundPermissionsAsync: async () => { calls.push("get"); return permission; },
-    requestForegroundPermissionsAsync: async () => { calls.push("request"); permission = options.answer ?? GRANTED; return permission; },
-    getCurrentPositionAsync: async (request) => { calls.push(`current ${request.accuracy}`); return (options.position ?? (async () => fix(24.7, 46.7)))(); },
-    getLastKnownPositionAsync: async (request) => { calls.push(`last ${request.maxAge}`); return options.lastKnown ?? null; },
-    watchPositionImplAsync: async (id, request) => { calls.push(`watch ${id} ${request.accuracy} distance ${request.distanceInterval}`); await options.watch?.(id); },
-    removeWatchAsync: async (id) => { calls.push(`remove ${id}`); },
+  // `state` is the system's permission, which a test changes as the user would (the module's own `permission` reads it).
+  const native: NativeLocationModule & { state: Permission } = {
+    enabled: true,
+    get state() { return permission; },
+    set state(value) { permission = value; },
+    permission: async () => { calls.push("get"); return permission; },
+    requestPermission: async () => { calls.push("request"); permission = options.answer ?? GRANTED; return permission; },
+    currentPosition: async (request) => { calls.push(`current ${request.accuracy}`); return (options.position ?? (async () => fix(24.7, 46.7)))(); },
+    lastKnownPosition: async (request) => { calls.push(`last ${request.maxAge}`); return options.lastKnown ?? null; },
+    startWatch: async (id, request) => { calls.push(`watch ${id} ${request.accuracy} distance ${request.distanceInterval}`); await options.watch?.(id); },
+    stopWatch: async (id) => { calls.push(`remove ${id}`); },
     addListener: (event, listener) => {
       calls.push(`listen ${event}`);
       const key = nextListener++;
@@ -35,8 +37,8 @@ function fake(options: { permission?: Permission; answer?: Permission; position?
     },
   };
   const dispatch = (name: string, payload: any) => { for (const { event, listener } of [...listeners.values()]) if (event === name) listener(payload); };
-  const emit = (watchId: number, location: any) => dispatch("Expo.locationChanged", { watchId, location });
-  const emitError = (watchId: number, reason: string) => dispatch("Expo.locationError", { watchId, reason });
+  const emit = (watchId: number, location: any) => dispatch("locationChanged", { watchId, location });
+  const emitError = (watchId: number, reason: string) => dispatch("locationError", { watchId, reason });
   let foreground: (() => void) | undefined;
   const geolocation = new Geolocation(native, (listener) => { foreground = listener; });
   return { native, calls, emit, emitError, geolocation, listeners, foreground: () => foreground?.() };
@@ -58,9 +60,9 @@ describe("getCurrentPosition", () => {
     expect(Object.prototype.toString.call(position)).toBe("[object GeolocationPosition]");
     expect(JSON.parse(JSON.stringify(position))).toEqual({ coords: { accuracy: 5, latitude: 24.7, longitude: 46.7, altitude: 612, altitudeAccuracy: 3, heading: 90, speed: 1.5 }, timestamp: position!.timestamp });
     // Balanced by default, the GPS only when asked for.
-    expect(calls).toEqual(["get", "request", "current 3"]);
+    expect(calls).toEqual(["get", "request", "current balanced"]);
     await current(geolocation, { enableHighAccuracy: true });
-    expect(calls.slice(3)).toEqual(["get", "current 4"]);
+    expect(calls.slice(3)).toEqual(["get", "current high"]);
   });
 
   test("calls back later, never in the call itself", async () => {
@@ -94,12 +96,12 @@ describe("getCurrentPosition", () => {
     const coded = (code: string, message: string) => Object.assign(new Error(message), { code });
     const unauthorized = fake({ permission: GRANTED, position: async () => { throw coded("ERR_LOCATION_UNAUTHORIZED", "Not authorized to use location services"); } });
     expect((await current(unauthorized.geolocation)).error?.code).toBe(1);
-    // iOS's: `DeniedForegroundLocationPermission`.
-    const deniedOnIos = fake({ permission: GRANTED, position: async () => { throw coded("ERR_DENIED_FOREGROUND_LOCATION_PERMISSION", "Location permission was denied"); } });
-    expect((await current(deniedOnIos.geolocation)).error?.code).toBe(1);
-    const off = fake({ permission: GRANTED, position: async () => { throw coded("ERR_CURRENT_LOCATION_IS_UNAVAILABLE", "Current location is unavailable. Make sure that location services are enabled"); } });
+    const off = fake({ permission: GRANTED, position: async () => { throw coded("ERR_LOCATION_UNAVAILABLE", "Current location is unavailable. Make sure that location services are enabled"); } });
     const { error } = await current(off.geolocation);
     expect([error?.code, error?.message]).toEqual([2, "Current location is unavailable. Make sure that location services are enabled"]);
+    // A rejection with no code of ours (a module that failed some other way) is a position that could not be had, not a refused permission.
+    const other = fake({ permission: GRANTED, position: async () => { throw coded("ERR_SOMETHING_DENIED_ELSEWHERE", "no"); } });
+    expect((await current(other.geolocation)).error?.code).toBe(2);
   });
 
   test("timeout: TIMEOUT when no position comes in time, counted from the permission; 0 answers only from the cache", async () => {
@@ -119,38 +121,38 @@ describe("getCurrentPosition", () => {
     const old = fix(9, 9, {}, Date.now() - 60_000);
     const { geolocation, calls } = fake({ permission: GRANTED, lastKnown: old });
     const first = (await current(geolocation)).position!;
-    expect(calls).toEqual(["get", "current 3"]);
+    expect(calls).toEqual(["get", "current balanced"]);
     const cached = (await current(geolocation, { maximumAge: 10_000, timeout: 0 })).position!;
     expect([cached.coords.latitude, cached.timestamp]).toEqual([first.coords.latitude, first.timestamp]);
-    expect(calls).toEqual(["get", "current 3", "get"]);
+    expect(calls).toEqual(["get", "current balanced", "get"]);
     // Too old: the system's last known position (a minute old) is asked for, used when the age allows it, else a new one is taken.
     const fresh = fake({ permission: GRANTED, lastKnown: old });
     expect((await current(fresh.geolocation, { maximumAge: 120_000 })).position?.coords.latitude).toBe(9);
     expect(fresh.calls).toEqual(["get", "last 120000", ]);
     const tooOld = fake({ permission: GRANTED, lastKnown: old });
     expect((await current(tooOld.geolocation, { maximumAge: 30_000 })).position?.coords.latitude).toBe(24.7);
-    expect(tooOld.calls).toEqual(["get", "last 30000", "current 3"]);
+    expect(tooOld.calls).toEqual(["get", "last 30000", "current balanced"]);
   });
 
   test("maximumAge answers only with a position taken as the request asks: a Balanced one does not answer enableHighAccuracy, nor a GPS one the default (#69)", async () => {
-    const balancedThenGps = (request: { accuracy: number }) => fix(24.7, 46.7, { accuracy: request.accuracy === 4 ? 5 : 1000 });
+    const balancedThenGps = (request: { accuracy: string }) => fix(24.7, 46.7, { accuracy: request.accuracy === "high" ? 5 : 1000 });
     const { geolocation, native, calls } = fake({ permission: GRANTED });
-    native.getCurrentPositionAsync = async (request) => { calls.push(`current ${request.accuracy}`); return balancedThenGps(request); };
+    native.currentPosition = async (request) => { calls.push(`current ${request.accuracy}`); return balancedThenGps(request); };
     // The issue's steps: a low-power position, then precise pickup allowing a recent fix.
     expect((await current(geolocation, { maximumAge: 0 })).position?.coords.accuracy).toBe(1000);
     expect((await current(geolocation, { enableHighAccuracy: true, maximumAge: 60_000 })).position?.coords.accuracy).toBe(5);
-    expect(calls).toEqual(["get", "current 3", "get", "current 4"]);
+    expect(calls).toEqual(["get", "current balanced", "get", "current high"]);
     // The GPS position answers the next high-accuracy request from the cache, and not one without it, which takes its own.
     expect((await current(geolocation, { enableHighAccuracy: true, maximumAge: 60_000 })).position?.coords.accuracy).toBe(5);
     expect((await current(geolocation, { maximumAge: 60_000 })).position?.coords.accuracy).toBe(1000);
-    expect(calls.slice(4)).toEqual(["get", "get", "last 60000", "current 3"]);
+    expect(calls.slice(4)).toEqual(["get", "get", "last 60000", "current balanced"]);
   });
 
   test("the system's last known position, taken no one knows how, answers no request with enableHighAccuracy", async () => {
     const young = fix(9, 9, {}, Date.now() - 1000);
     const high = fake({ permission: GRANTED, lastKnown: young });
     expect((await current(high.geolocation, { enableHighAccuracy: true, maximumAge: 60_000 })).position?.coords.latitude).toBe(24.7);
-    expect(high.calls).toEqual(["get", "current 4"]);
+    expect(high.calls).toEqual(["get", "current high"]);
     // With timeout 0 only a cache could answer, and the system's may not: TIMEOUT, no lookup.
     const immediate = fake({ permission: GRANTED, lastKnown: young });
     expect((await current(immediate.geolocation, { enableHighAccuracy: true, maximumAge: 60_000, timeout: 0 })).error?.code).toBe(3);
@@ -159,7 +161,7 @@ describe("getCurrentPosition", () => {
     const balanced = fake({ permission: GRANTED, lastKnown: young });
     expect((await current(balanced.geolocation, { maximumAge: 60_000 })).position?.coords.latitude).toBe(9);
     expect((await current(balanced.geolocation, { enableHighAccuracy: true, maximumAge: 60_000 })).position?.coords.latitude).toBe(24.7);
-    expect(balanced.calls).toEqual(["get", "last 60000", "get", "current 4"]);
+    expect(balanced.calls).toEqual(["get", "last 60000", "get", "current high"]);
   });
 
   test("callers at the same time share one question", async () => {
@@ -170,23 +172,23 @@ describe("getCurrentPosition", () => {
 
   test("a question that fails at once is not kept: the next call asks again", async () => {
     const { geolocation, native } = fake({ permission: GRANTED });
-    const working = native.getForegroundPermissionsAsync;
-    native.getForegroundPermissionsAsync = (() => { throw new Error("the module went away"); }) as any;
+    const working = native.permission;
+    native.permission = (() => { throw new Error("the module went away"); }) as any;
     expect((await current(geolocation)).error?.code).toBe(2);
-    native.getForegroundPermissionsAsync = working;
+    native.permission = working;
     expect((await current(geolocation)).position).toBeInstanceOf(GeolocationPosition);
   });
 
   test("the timeout covers the system's last known position too, which may never answer", async () => {
     const { geolocation, native } = fake({ permission: GRANTED });
-    native.getLastKnownPositionAsync = () => new Promise(() => {});
+    native.lastKnownPosition = () => new Promise(() => {});
     expect((await current(geolocation, { maximumAge: 60_000, timeout: 40 })).error?.code).toBe(3);
   });
 
   test("timeout 0: the system's cache answers only within the lookup's bound; one that never answers, or answers later, is TIMEOUT, called back once", async () => {
     const { geolocation, native } = fake({ permission: GRANTED });
     let answer!: (location: unknown) => void;
-    native.getLastKnownPositionAsync = () => new Promise((resolve) => { answer = resolve; });
+    native.lastKnownPosition = () => new Promise((resolve) => { answer = resolve; });
     const results: string[] = [];
     geolocation.getCurrentPosition(() => results.push("position"), (error) => results.push(`error ${error.code}`), { maximumAge: 60_000, timeout: 0 });
     await settle(150);
@@ -195,13 +197,13 @@ describe("getCurrentPosition", () => {
     await settle(10);
     expect(results).toEqual(["error 3"]);
     // A cache that answers within the bound is the answer.
-    native.getLastKnownPositionAsync = async () => { await settle(10); return fix(2, 2, {}, Date.now() - 1000); };
+    native.lastKnownPosition = async () => { await settle(10); return fix(2, 2, {}, Date.now() - 1000); };
     expect((await current(geolocation, { maximumAge: 60_000, timeout: 0 })).position?.coords.latitude).toBe(2);
   });
 
   test("a timeout that expires during the cache lookup leaves no native request behind", async () => {
     const { geolocation, native, calls } = fake({ permission: GRANTED });
-    native.getLastKnownPositionAsync = () => new Promise(() => {});
+    native.lastKnownPosition = () => new Promise(() => {});
     expect((await current(geolocation, { maximumAge: 60_000, timeout: 20 })).error?.code).toBe(3);
     await settle(150);
     expect(calls.some((call) => call.startsWith("current"))).toBe(false);
@@ -209,9 +211,9 @@ describe("getCurrentPosition", () => {
 
   test("a cache lookup that never answers gives way to a current position when there is no timeout", async () => {
     const { geolocation, native, calls } = fake({ permission: GRANTED });
-    native.getLastKnownPositionAsync = () => new Promise(() => {});
+    native.lastKnownPosition = () => new Promise(() => {});
     expect((await current(geolocation, { maximumAge: 60_000 })).position?.coords.latitude).toBe(24.7);
-    expect(calls).toContain("current 3");
+    expect(calls).toContain("current balanced");
   });
 
   test("the success callback is required, and the classes cannot be constructed, as on the web", () => {
@@ -229,11 +231,11 @@ describe("watchPosition", () => {
     const { geolocation, calls, emit, listeners } = fake({ permission: GRANTED });
     const seen: number[] = [];
     const id = geolocation.watchPosition((position) => seen.push(position.coords.latitude));
-    // Far from expo-location's own ids, which count from 1.
-    expect(id).toBeGreaterThanOrEqual(1_000_000);
+    // The web's ids are positive; the module's watches are this file's alone (no other library's ids to keep away from), so they count from 1.
+    expect(id).toBe(1);
     await settle();
     // Every position: distance filter 0 (Android's default would skip all under 50 to 100 m).
-    expect(calls).toEqual(["get", "listen Expo.locationChanged", "listen Expo.locationError", `watch ${id} 3 distance 0`]);
+    expect(calls).toEqual(["get", "listen locationChanged", "listen locationError", `watch ${id} balanced distance 0`]);
     emit(id, fix(1, 1));
     emit(id + 1, fix(2, 2));
     emit(id, fix(3, 3));
@@ -259,7 +261,7 @@ describe("watchPosition", () => {
     const a = geolocation.watchPosition(() => {});
     const b = geolocation.watchPosition(() => {});
     await settle();
-    expect(calls.filter((call) => call.startsWith("listen"))).toEqual(["listen Expo.locationChanged", "listen Expo.locationError"]);
+    expect(calls.filter((call) => call.startsWith("listen"))).toEqual(["listen locationChanged", "listen locationError"]);
     geolocation.clearWatch(a);
     expect(calls.includes("unlisten")).toBe(false);
     geolocation.clearWatch(b);
@@ -283,11 +285,11 @@ describe("watchPosition", () => {
     const id = geolocation.watchPosition(() => { calledBack++; geolocation.clearWatch(id); }, null, { maximumAge: 5000 });
     await settle();
     expect(calledBack).toBe(1);
-    expect(calls.filter((call) => call.startsWith("watch") || call.startsWith("remove"))).toEqual([`watch ${id} 3 distance 0`, `remove ${id}`]);
+    expect(calls.filter((call) => call.startsWith("watch") || call.startsWith("remove"))).toEqual([`watch ${id} balanced distance 0`, `remove ${id}`]);
     expect(listeners.size).toBe(0);
   });
 
-  test("iOS's watch error: POSITION_UNAVAILABLE with the reason, the watch going on; a permission taken away ends it with PERMISSION_DENIED", async () => {
+  test("a watch's error event (iOS's, and Android's when the provider the watch runs on is switched off): POSITION_UNAVAILABLE with the reason, the watch going on; a permission taken away ends it with PERMISSION_DENIED", async () => {
     const { geolocation, native, emitError, emit } = fake({ permission: GRANTED });
     const events: string[] = [];
     const id = geolocation.watchPosition((position) => events.push(`position ${position.coords.latitude}`), (error) => events.push(`error ${error.code} ${error.message}`));
@@ -295,7 +297,7 @@ describe("watchPosition", () => {
     emitError(id, "The operation couldn't be completed. (kCLErrorDomain error 0.)");
     await settle();
     emit(id, fix(1, 1));
-    native.permission = DENIED;
+    native.state = DENIED;
     emitError(id, "denied");
     await settle();
     emit(id, fix(2, 2));
@@ -349,11 +351,11 @@ describe("watchPosition", () => {
     await settle();
     expect(errors).toEqual([1]);
     expect(denied.calls.some((call) => call.startsWith("watch"))).toBe(false);
-    const failing = fake({ permission: GRANTED, watch: async () => { throw Object.assign(new Error("Location request failed due to unsatisfied device settings"), { code: "ERR_LOCATION_SETTINGS_UNSATISFIED" }); } });
+    const failing = fake({ permission: GRANTED, watch: async () => { throw Object.assign(new Error("Location is unavailable. Make sure that location services are enabled"), { code: "ERR_LOCATION_UNAVAILABLE" }); } });
     const failures: [number, string][] = [];
     const id = failing.geolocation.watchPosition(() => {}, (error) => failures.push([error.code, error.message]));
     await settle();
-    expect(failures).toEqual([[2, "Location request failed due to unsatisfied device settings"]]);
+    expect(failures).toEqual([[2, "Location is unavailable. Make sure that location services are enabled"]]);
     expect(failing.calls.slice(-3)).toEqual([`remove ${id}`, "unlisten", "unlisten"]);
   });
 
@@ -387,11 +389,11 @@ describe("watchPosition", () => {
 
   test("a cache lookup that never answers holds the watch up no longer than its timeout: it starts, reports TIMEOUT, and goes on", async () => {
     const { geolocation, native, calls, emit } = fake({ permission: GRANTED });
-    native.getLastKnownPositionAsync = () => new Promise(() => {});
+    native.lastKnownPosition = () => new Promise(() => {});
     const events: string[] = [];
     const id = geolocation.watchPosition((position) => events.push(`position ${position.coords.latitude}`), (error) => events.push(`error ${error.code}`), { maximumAge: 60_000, timeout: 20 });
     await settle(100);
-    expect(calls).toContain(`watch ${id} 3 distance 0`);
+    expect(calls).toContain(`watch ${id} balanced distance 0`);
     expect(events).toEqual(["error 3"]);
     emit(id, fix(1, 1));
     expect(events).toEqual(["error 3", "position 1"]);
@@ -401,14 +403,14 @@ describe("watchPosition", () => {
     // Without a timeout the watch starts at once too.
     const late = geolocation.watchPosition(() => {}, null, { maximumAge: 60_000 });
     await settle();
-    expect(calls).toContain(`watch ${late} 3 distance 0`);
+    expect(calls).toContain(`watch ${late} balanced distance 0`);
     geolocation.clearWatch(late);
   });
 
   test("a cached position that comes after a macrotask still reaches a watch with timeout 0, but not one that has had a position, nor one cleared", async () => {
     const slow = (ms: number) => async () => { await settle(ms); return fix(5, 5, {}, Date.now() - 1000); };
     const zero = fake({ permission: GRANTED });
-    zero.native.getLastKnownPositionAsync = slow(5);
+    zero.native.lastKnownPosition = slow(5);
     const events: string[] = [];
     const id = zero.geolocation.watchPosition((position) => events.push(`position ${position.coords.latitude}`), (error) => events.push(`error ${error.code}`), { maximumAge: 60_000, timeout: 0 });
     // Waited for, not slept for: on a busy machine a timer of a few milliseconds is late.
@@ -418,7 +420,7 @@ describe("watchPosition", () => {
     zero.geolocation.clearWatch(id);
     // The watch's own position came first: the cache is not used.
     const fixed = fake({ permission: GRANTED });
-    fixed.native.getLastKnownPositionAsync = slow(20);
+    fixed.native.lastKnownPosition = slow(20);
     const seen: number[] = [];
     const first = fixed.geolocation.watchPosition((position) => seen.push(position.coords.latitude), null, { maximumAge: 60_000 });
     await settle();
@@ -428,7 +430,7 @@ describe("watchPosition", () => {
     fixed.geolocation.clearWatch(first);
     // Cleared while the lookup was on its way.
     const cleared = fake({ permission: GRANTED });
-    cleared.native.getLastKnownPositionAsync = slow(10);
+    cleared.native.lastKnownPosition = slow(10);
     const gone = cleared.geolocation.watchPosition(() => { throw new Error("no callback expected"); }, null, { maximumAge: 60_000 });
     await settle();
     cleared.geolocation.clearWatch(gone);
@@ -443,7 +445,7 @@ describe("watchPosition", () => {
     await settle();
     // Neither the Balanced position nor a system lookup: the native watch, with the GPS.
     expect(seen).toEqual([]);
-    expect(calls.slice(2)).toEqual(["get", "listen Expo.locationChanged", "listen Expo.locationError", `watch ${id} 4 distance 0`]);
+    expect(calls.slice(2)).toEqual(["get", "listen locationChanged", "listen locationError", `watch ${id} high distance 0`]);
     emit(id, fix(7, 7));
     expect(seen).toEqual([7]);
     geolocation.clearWatch(id);
@@ -456,12 +458,12 @@ describe("watchPosition", () => {
     const { geolocation, calls } = fake({ permission: GRANTED });
     await current(geolocation, { enableHighAccuracy: true });
     expect((await current(geolocation, { enableHighAccuracy: true, maximumAge: 60_000, timeout: 0 })).position?.coords.latitude).toBe(24.7);
-    expect(calls).toEqual(["get", "current 4", "get"]);
+    expect(calls).toEqual(["get", "current high", "get"]);
     const seen: number[] = [];
     const id = geolocation.watchPosition((position) => seen.push(position.coords.latitude), null, { maximumAge: 60_000 });
     await settle();
     expect(seen).toEqual([]);
-    expect(calls.slice(3)).toEqual(["get", "last 60000", "listen Expo.locationChanged", "listen Expo.locationError", `watch ${id} 3 distance 0`]);
+    expect(calls.slice(3)).toEqual(["get", "last 60000", "listen locationChanged", "listen locationError", `watch ${id} balanced distance 0`]);
     geolocation.clearWatch(id);
   });
 
@@ -492,7 +494,7 @@ describe("navigator.permissions", () => {
     await current(geolocation);
     expect(changes).toEqual(["onchange granted", "listener granted"]);
     // Taken away in the settings while the app was in the background.
-    native.permission = DENIED;
+    native.state = DENIED;
     status.removeEventListener("change", listener);
     foreground();
     await settle();

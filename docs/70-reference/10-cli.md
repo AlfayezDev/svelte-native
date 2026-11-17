@@ -1,6 +1,6 @@
 ---
 title: Command line
-description: The svelte-native command, with init, doctor, android, ios, dev, build, sync and css.
+description: The svelte-native command, with init, doctor, push, android, ios, dev, build, sync and css.
 ---
 
 Svelte Native's command line is `svelte-native`. Run it from your app's directory, through pnpm:
@@ -64,6 +64,7 @@ Run `init` again whenever you like. In a project that's set up it prints `Nothin
 
 ```sh
 pnpm exec svelte-native doctor [--json]
+pnpm exec svelte-native doctor --server [--app <bundle id>] [--json]
 ```
 
 Checks that the app is set up as Svelte Native needs, and changes nothing. It prints one line per check, grouped:
@@ -104,9 +105,121 @@ build integration
 | `skip` | Nothing to check, such as an optional library you haven't installed. |
 | `????` | It couldn't tell, such as a Metro config that applies the library from another file. |
 
-It checks Node and pnpm; that Svelte is the custom-renderer build; the versions of the peer dependencies; that each patch is applied to the installed package (not just declared); and that Metro and Expo are wired up. It exits with status 1 when a check failed, and 0 otherwise. `--json` prints the same checks as JSON.
+It checks Node and pnpm; that Svelte is the custom-renderer build; the versions of the peer dependencies; that each patch is applied to the installed package (not just declared); that Metro and Expo are wired up; and, for an app that has push, its push setup (below). It exits with status 1 when a check failed, and 0 otherwise. `--json` prints the same checks as JSON.
 
 Run it after an install that went wrong, after an upgrade, and before you report a bug. [Troubleshooting](troubleshooting) explains the failures you're likely to see.
+
+### The push section
+
+An app has push when `@alfayez/svelte-native-push` is one of its dependencies or is installed, or when its `app.json` turns `capabilities.push` on. For any other app the doctor prints no push lines at all. The section reads files and runs nothing, like the rest of the doctor:
+
+```
+push
+  pass  @alfayez/svelte-native-push 0.4.0-rc.8 is a dependency of the app and matches @alfayez/svelte-native 0.4.0-rc.8
+  pass  no other push library (expo-notifications, @react-native-firebase/messaging) is installed
+  pass  app.json turns capabilities.push on (android, ios)
+  pass  google-services.json is JSON and holds no server secret (Firebase project my-app)
+  pass  google-services.json has a client for the app's package "dev.example.app"
+  pass  ios/App/App.entitlements has aps-environment production
+  pass  ios/App/Info.plist lists remote-notification in UIBackgroundModes
+```
+
+| Check | Fails when |
+| --- | --- |
+| The package | `@alfayez/svelte-native-push` isn't installed, is a different version from the library (they're released together: install the same tag), or is installed but isn't one of the app's own dependencies (autolinking links only those). |
+| One push library | `expo-notifications` or `@react-native-firebase/messaging` is installed beside it. |
+| The capability | `app.json` lists the plugin without `capabilities.push`, which the prebuild refuses too. |
+| The Google services file | It's a server secret (`"type": "service_account"`, a `private_key`, a PEM key): the fix says to delete it, revoke the key, and keep it in the server's environment. Or it isn't JSON, or isn't where the config says. |
+| Its client | It has no client for the app's Android package (`android.package` in `app.json`, else `applicationId` in `android/app/build.gradle` after a prebuild). |
+| The entitlement | After a prebuild (an `ios/` folder), the app's `.entitlements` has no `aps-environment`, or has another mode from `capabilities.push.ios.mode`: the prebuild is older than the config. |
+| The background mode | After a prebuild, `Info.plist` has no `remote-notification` in `UIBackgroundModes`. |
+
+The doctor can't run `app.config.ts`. It finds the Google services file the way it can: the one `app.json` names (`capabilities.push.android.googleServicesFile`, or `android.googleServicesFile`), else a `google-services*.json` in the app's directory, else the prebuild's copy in `android/app/`. When the config is code and there is no such file, the line is `????` (it couldn't tell) with the fix. With no `ios/` folder yet, the iOS checks are `skip`.
+
+### doctor --server
+
+```sh
+pnpm exec svelte-native doctor --server [--app <bundle id>] [--json]
+```
+
+Checks the push sender's environment on the machine you run it on, which is normally the server (or a shell with the server's variables). It checks only that, not the app: run it without `--server` for the app. It reads the variables `createPush` is given in the guide's example, and then makes one real request to each provider you've set up:
+
+| Variable | What it is |
+| --- | --- |
+| `FCM_SERVICE_ACCOUNT` | The service account key's JSON, or the path of its file. It needs `project_id`, `client_email` and an RSA `private_key`. |
+| `APNS_KEY` | The `.p8` key's PEM, or the path of its file. A PEM with its line breaks written as `\n` is accepted. It must be a P-256 key. |
+| `APNS_KEY_ID` | The key's id: 10 letters and digits. |
+| `APNS_TEAM_ID` | The Apple Developer team's id: 10 letters and digits. |
+| `FCM_BASE_URL`, `FCM_TOKEN_URL`, `APNS_PRODUCTION_URL`, `APNS_SANDBOX_URL` | Optional. Replace the provider's endpoint, as the sender's `baseUrl`, `tokenUrl`, `productionUrl` and `sandboxUrl` options do (tests and proxies). |
+
+```
+svelte-native doctor --server
+
+push server
+  pass  FCM_SERVICE_ACCOUNT is a service account key for project my-app (push@my-app.iam.gserviceaccount.com) with a private key that loads as RSA
+        read from the variable's text
+  pass  oauth2.googleapis.com gave an access token for push@my-app.iam.gserviceaccount.com (valid 3599 s): Google accepts the key
+  pass  APNS_KEY loads as a P-256 key; key id ABC123DEFG, team id TEAM123456
+        read from the variable's text
+  pass  api.sandbox.push.apple.com accepted the credentials: it signed in the provider token and then answered BadDeviceToken to a device token that cannot exist
+```
+
+- **FCM:** the variable must parse as a service account key and its private key must load. Then the doctor makes the OAuth token request that every send starts with, to the key's `token_uri`. Google's refusal says why: `invalid_grant` is a key that was deleted or disabled, a service account that is gone, or a clock that is off, and the fix names which.
+- **APNs:** the three variables must be set together and the key must load as an ES256 key. APNs has no token endpoint, so the doctor signs a provider token and sends one request to the sandbox host (`api.sandbox.push.apple.com`) with a device token that can't exist. `BadDeviceToken` means APNs accepted the credentials (it read the provider token before it judged the device). `InvalidProviderToken`, `ExpiredProviderToken` and the other 403s mean it didn't, and the fix says what to check. Nothing is delivered.
+- `--app` is the app's bundle id, which is the request's APNs topic. Without it the topic is a placeholder, and if APNs answers `TopicDisallowed` or `BadTopic` the line is `????`, because it didn't get as far as the credentials. With `--app`, the same answer is a failure.
+- A provider whose variables are unset is `skip`. If neither is set, the doctor fails: a server that can't send is not fine. A provider that can't be reached is a failure. A rate limit is `????`.
+- A variable that is a path loads, but the sender in your server's code takes the contents, not the path (`createPush({ fcm: { serviceAccount: env.FCM_SERVICE_ACCOUNT } })`). The line says so: the server's own variable must hold the text.
+- Nothing is written, and no key or token is printed in full. A line names a project, an email, an id or a host, and a variable that doesn't load is named, never quoted.
+
+The exit status is 1 when a check failed, and 2 for an argument it doesn't know. `--json` prints `{ ok, server: true, checks }`.
+
+## push
+
+```sh
+pnpm exec svelte-native push send --token <token> [options]
+```
+
+Sends one message to one device with the server's credentials, to try a device before the server's own code does it. It's `createPush(...).send(...)` from `@alfayez/svelte-native/push/server` and nothing else, and it prints what the provider answered. It needs no routes, and writes nothing into the app. Run it from any directory, with the variables of `doctor --server` set (the sender's endpoints included).
+
+```sh
+export FCM_SERVICE_ACCOUNT=./secrets/firebase-service-account.json
+svelte-native push send --token '{"provider":"fcm","token":"…","app":"dev.example.app"}' \
+  --title "Order ready" --body "Pickup at gate 3" --url /orders/42
+```
+
+```
+sent to fcm (dev.example.app): 0:1700000000%31bd1c96
+```
+
+The credentials come from the environment and never from the command line, so no key lands in a shell history. An FCM token needs `FCM_SERVICE_ACCOUNT`; an APNs token needs `APNS_KEY`, `APNS_KEY_ID` and `APNS_TEAM_ID`. They're read as `doctor --server` reads them, a path or the text. The variables of the other provider aren't looked at.
+
+| Option | Description |
+| --- | --- |
+| `--token <token>` | The device. Either the JSON of a `PushToken` exactly as `push.subscribe`'s `save` received it, or a raw token string with the three options below. |
+| `--provider fcm\|apns` | A raw token's provider. |
+| `--app <id>` | A raw token's app: the Android package, or the iOS bundle id (the APNs topic). |
+| `--environment development\|production` | A raw APNs token's environment, which picks the APNs host. It's needed for an APNs token: the other host answers `BadDeviceToken`. |
+| `--title <text>`, `--body <text>` | The notification's text. It needs one of them, unless it is `--silent`. |
+| `--url <link>` | The link a tap opens: a path of the app (`/orders/42`) or a full link. |
+| `--data <key=value>` | A data entry. Repeat it for more. Strings only. |
+| `--silent` | A data message: nothing is shown, the app's `background` hook gets it. It takes no title, body, badge, sound or channel. |
+| `--badge <n>` | iOS: the badge number. |
+| `--sound default\|none` | `none` sends no sound. |
+| `--channel <id>` | Android: the notification channel's id. |
+| `--collapse-key <key>` | A newer message with the same key replaces the older one. |
+| `--priority high\|normal` | The provider's priority. |
+| `--ttl <seconds>` | How long the provider keeps the message for a device that is offline. |
+| `--json` | Print the result as JSON: `{ "ok": true, "id": … }`, or `{ "ok": false, "reason": …, "detail": …, "status": … }`. |
+
+A flag takes its value as `--title "Order ready"` or `--title="Order ready"`; a value that starts with `--` needs the second form.
+
+On a failure it prints the result's `reason` and `detail` with what to do about it (`gone`: delete the token; `auth`: run `doctor --server`; `rate-limited`: when to retry). The reasons are the sender's.
+
+| Exit status | Meaning |
+| --- | --- |
+| 0 | The provider accepted the message. |
+| 1 | The provider didn't: the result's `reason` says why (`gone`, `invalid-token`, `invalid-message`, `rate-limited`, `unavailable`, `auth` or `error`). |
+| 2 | Nothing was sent, because the command or its environment isn't usable: an argument is wrong, the sender refuses the message (a notification with neither title nor body, a `--silent` message with a title, `url` also given in `--data`), or the credentials aren't set or don't load. |
 
 ## android
 

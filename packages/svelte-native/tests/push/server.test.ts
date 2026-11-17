@@ -389,7 +389,11 @@ describe("FCM: every answer", () => {
 
   const cases: [string, Reply, Omit<Failure, "ok">][] = [
     ["UNREGISTERED (404)", { status: 404, json: error(404, "NOT_FOUND", "Requested entity was not found.", "UNREGISTERED") }, { reason: "gone", status: 404, detail: "Requested entity was not found." }],
-    ["a 404 that names no FCM error", { status: 404, json: error(404, "NOT_FOUND", "Requested entity was not found.") }, { reason: "gone", status: 404, detail: "Requested entity was not found." }],
+    ["UNREGISTERED as the top-level status of a 404", { status: 404, json: error(404, "UNREGISTERED", "Requested entity was not found.") }, { reason: "gone", status: 404, detail: "Requested entity was not found." }],
+    // A 404 that does not say the token is unregistered is a wrong project id or endpoint, and `gone` would have the app delete every token it has.
+    ["a 404 NOT_FOUND that does not say UNREGISTERED is an error, not a token that is gone", { status: 404, json: error(404, "NOT_FOUND", "Requested entity was not found.") }, { reason: "error", status: 404, detail: "FCM answered 404 (Requested entity was not found.): the endpoint or the project was not found; check the service account's `project_id` and `fcm.baseUrl`." }],
+    ["a 404 with another FCM error code", { status: 404, json: error(404, "NOT_FOUND", "Requested entity was not found.", "UNSPECIFIED_ERROR") }, { reason: "error", status: 404, detail: "FCM answered 404 (Requested entity was not found.): the endpoint or the project was not found; check the service account's `project_id` and `fcm.baseUrl`." }],
+    ["a 404 that is a page (a wrong path)", { status: 404, text: "<html>Not Found</html>" }, { reason: "error", status: 404, detail: "FCM answered 404 (<html>Not Found</html>): the endpoint or the project was not found; check the service account's `project_id` and `fcm.baseUrl`." }],
     ["INVALID_ARGUMENT about the message", { status: 400, json: error(400, "INVALID_ARGUMENT", "Android message is too big", "INVALID_ARGUMENT") }, { reason: "invalid-message", status: 400, detail: "Android message is too big" }],
     ["INVALID_ARGUMENT about the registration token (its field)", { status: 400, json: error(400, "INVALID_ARGUMENT", "Request contains an invalid argument.", "INVALID_ARGUMENT", [badToken]) }, { reason: "invalid-token", status: 400, detail: "Request contains an invalid argument." }],
     ["INVALID_ARGUMENT about the registration token (its message)", { status: 400, json: error(400, "INVALID_ARGUMENT", "The registration token is not a valid FCM registration token", "INVALID_ARGUMENT") }, { reason: "invalid-token", status: 400, detail: "The registration token is not a valid FCM registration token" }],
@@ -624,6 +628,10 @@ describe("APNs: every answer", () => {
   const cases: [string, Reply, Omit<Failure, "ok">][] = [
     ["410 Unregistered", { status: 410, json: { reason: "Unregistered", timestamp: 1700000000000 } }, { reason: "gone", status: 410, detail: "Unregistered" }],
     ["410 ExpiredToken", { status: 410, json: { reason: "ExpiredToken" } }, { reason: "gone", status: 410, detail: "ExpiredToken" }],
+    // `gone` and `invalid-token` are decided by APNs's reason, never by the status alone.
+    ["a 410 with no reason (a proxy's)", { status: 410 }, { reason: "error", status: 410, detail: "HTTP 410" }],
+    ["a 410 with another reason", { status: 410, json: { reason: "Elsewhere" } }, { reason: "error", status: 410, detail: "Elsewhere" }],
+    ["a 400 with no reason", { status: 400 }, { reason: "invalid-message", status: 400, detail: "HTTP 400" }],
     ["400 BadDeviceToken", { status: 400, json: { reason: "BadDeviceToken" } }, { reason: "invalid-token", status: 400, detail: "BadDeviceToken" }],
     ["400 DeviceTokenNotForTopic", { status: 400, json: { reason: "DeviceTokenNotForTopic" } }, { reason: "invalid-token", status: 400, detail: "DeviceTokenNotForTopic" }],
     ["400 BadCollapseId", { status: 400, json: { reason: "BadCollapseId" } }, { reason: "invalid-message", status: 400, detail: "BadCollapseId" }],

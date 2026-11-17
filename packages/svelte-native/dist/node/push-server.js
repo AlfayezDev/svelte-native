@@ -118,7 +118,7 @@ function apnsRequest(token, message) {
 function apnsFailure(status, reason, retryAfter) {
   const detail = reason ?? `HTTP ${status}`;
   if (reason === "BadDeviceToken" || reason === "DeviceTokenNotForTopic") return failure("invalid-token", detail, status);
-  if (status === 410) return failure("gone", detail, status);
+  if (status === 410 && (reason === "Unregistered" || reason === "ExpiredToken")) return failure("gone", detail, status);
   if (status === 401 || status === 403) return failure("auth", detail, status);
   if (status === 429) return failure("rate-limited", detail, status, retryAfter);
   if (status >= 500) return failure("unavailable", detail, status, retryAfter);
@@ -359,7 +359,7 @@ function fcmFailure(status, body, text, retryAfter) {
     case "PERMISSION_DENIED":
       return failure("auth", detail, status);
   }
-  if (status === 404) return failure("gone", detail, status);
+  if (status === 404) return failure("error", `FCM answered 404 (${detail}): the endpoint or the project was not found; check the service account's \`project_id\` and \`fcm.baseUrl\`.`, status);
   if (status === 429) return failure("rate-limited", detail, status, retryAfter);
   if (status >= 500) return failure("unavailable", detail, status, retryAfter);
   if (status === 401 || status === 403) return failure("auth", detail, status);

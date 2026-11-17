@@ -133,6 +133,8 @@ final class SveltePushCenter: NSObject, UNUserNotificationCenterDelegate {
   /// Becomes the notification center's delegate. There is one delegate, and so one push library in an app (the config plugin refuses a second one it knows of); one that
   /// is replaced is named in the log, since the library that set it would otherwise stop receiving taps without a word.
   func install() {
+    // SvelteCore is in every app: a build that did not turn push on keeps the notification center's delegate for whoever set it (the subscriber asks too; this is the last guard).
+    guard SveltePushFlag.isEnabled else { return }
     let center = UNUserNotificationCenter.current()
     if let current = center.delegate, current !== self {
       NSLog("[SveltePush] replacing the notification center delegate %@: an app has one push library", String(describing: type(of: current)))

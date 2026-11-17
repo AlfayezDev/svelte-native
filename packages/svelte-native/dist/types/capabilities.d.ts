@@ -120,6 +120,16 @@ export declare function findPushSecret(value: unknown, where: string): {
  */
 export declare function pushSettings(push: unknown, appPackage: string | undefined, projectRoot: string): PushSettings;
 /**
+ * `AppDelegate.swift` (iOS) for an app with push: rule 2 of PUSH.md, a push that wakes the app mounts no screen. Expo's template starts React Native's surface in
+ * `application(_:didFinishLaunchingWithOptions:)`, which mounts the first screen, and iOS also runs that method when it launches the app in the background for a silent push,
+ * where nobody can see the screen. The template's `factory.startReactNative(...)` call is wrapped in `SveltePushBackgroundLaunch.start` (`@alfayez/svelte-native-push`),
+ * which makes the same call in the same place in every launch the user makes, and in a launch in the background starts only the React host (`initializeReactHost`, which
+ * is what the first `startReactNative` would have done before it made the surface) and makes the call at the first `didBecomeActive`. JavaScript, `init` and the push hooks
+ * run meanwhile. The template's call is not touched, only wrapped, so that taking the wrapper away gives the template back: the patch is idempotent, and a prebuild replaces
+ * what an older version wrote. Throws when the template has no such call, since a build that lost this silently would mount a screen in the background.
+ */
+export declare function applyPushAppDelegate(contents: string): string;
+/**
  * The manifest entries push reads: Firebase's default icon, color and channel (the first two only when the app gives them) and the module's channel, with its
  * defaults. The messaging service and `POST_NOTIFICATIONS` are static, so the library's own manifest declares them.
  */

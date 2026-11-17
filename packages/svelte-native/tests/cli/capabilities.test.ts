@@ -8,9 +8,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExpoConfig } from "expo/config";
 import { AndroidConfig, compileModsAsync, withPlugins, type ExportedConfig } from "expo/config-plugins";
-import { CapabilityConfigError, type PushCapability, applyPushManifest, copyPushIcon, defaultPushChannel, findPushSecret, locationPluginProps, pushMetaData, pushPackage, pushResources, pushSettings, withCapabilities } from "../../src/capabilities.ts";
-import expoPlugin from "../../src/expo.ts";
+import { CapabilityConfigError, type PushCapability, applyPushAppDelegate, applyPushManifest, copyPushIcon, defaultPushChannel, findPushSecret, locationPluginProps, pushMetaData, pushPackage, pushResources, pushSettings, withCapabilities } from "../../src/capabilities.ts";
+import expoPlugin, { applyAppDelegate } from "../../src/expo.ts";
 import { createProject } from "../support/project.ts";
+import { expoTemplateAppDelegate } from "./support/app-delegate.ts";
 import { libraryVersion, peerRange } from "../support/versions.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -289,7 +290,9 @@ describe("capabilities.push", () => {
     expect(Object.keys(androidOnly.mods ?? {})).toEqual(["android"]);
     const iosOnly = withPush(project, { ios: { mode: "development" } });
     expect(iosOnly.android).toEqual({ package: "io.e.a" });
-    expect(iosOnly.mods).toBeUndefined();
+    // The one iOS mod is the AppDelegate patch (the first screen of a launch in the background); the Info.plist and the entitlements are the config's own keys.
+    expect(Object.keys(mods(iosOnly))).toEqual(["ios"]);
+    expect(Object.keys(mods(iosOnly).ios)).toEqual(["appDelegate"]);
   });
 
   test("the Expo plugin passes the capability on: its entries land in the config, and a package left out of autolinking stops it", () => {
@@ -309,6 +312,80 @@ describe("capabilities.push", () => {
     expect(withCapabilities(config, undefined, { projectRoot: excluded.root, excluded: [pushPackage] })).toBe(config);
     using inManifest = pushApp({ [pushPackage]: libraryVersion }, {}, { expo: { autolinking: { android: { exclude: [pushPackage] } } } });
     expect(withCapabilities(config, { push: false }, { projectRoot: inManifest.root })).toBe(config);
+  });
+});
+
+describe("capabilities.push on iOS: a push that wakes the app mounts no screen", () => {
+  const template = expoTemplateAppDelegate();
+  /** The call the wrapper holds, as Expo's template writes it. */
+  const call = '    factory.startReactNative(\n      withModuleName: "main",\n      in: window,\n      launchOptions: launchOptions)';
+
+  test("the template's startReactNative call is wrapped and not changed: it runs in its place in a launch in the foreground, and when the app is active in one in the background", () => {
+    const once = applyPushAppDelegate(template);
+    // The call stands between the helper's two halves, character for character.
+    expect(once).toContain(`      surface: { [self] in\n${call}\n      })\n    // Svelte native: end of the first screen of a launch in the background\n`);
+    // The host is what the first startReactNative would start before it made the surface: the factory's own root view factory, with the bundle and dev menu the factory would pass.
+    expect(once).toContain("factory.rootViewFactory.initializeReactHost(\n          withLaunchOptions: launchOptions,\n          bundleConfiguration: factory.bundleConfiguration,\n          devMenuConfiguration: factory.devMenuConfiguration ?? RCTDevMenuConfiguration.default())");
+    expect(once).toContain("SveltePushBackgroundLaunch.start(\n      application,\n      host: {");
+    // After the window is made, before the template's last line, inside the `#if` that guards them both, and with the import of the module that holds the helper.
+    expect(once.indexOf("window = UIWindow(frame: UIScreen.main.bounds)")).toBeLessThan(once.indexOf("SveltePushBackgroundLaunch.start("));
+    expect(once.indexOf("end of the first screen of a launch in the background")).toBeLessThan(once.indexOf("#endif"));
+    expect(once.indexOf("#endif")).toBeLessThan(once.indexOf("return super.application(application, didFinishLaunchingWithOptions: launchOptions)"));
+    expect(once).toMatch(/^internal import SveltePush \/\/ Svelte native: push, /m);
+    expect(once.indexOf("import SveltePush")).toBeGreaterThan(once.indexOf("import ReactAppDependencyProvider"));
+    expect(once.indexOf("import SveltePush")).toBeLessThan(once.indexOf("@main"));
+  });
+
+  test("taking the wrapper away gives the template back, and applying again changes nothing", () => {
+    const once = applyPushAppDelegate(template);
+    expect(once.replace(/\n {4}\/\/ Svelte native: push, the first screen[\s\S]*?surface: \{ \[self\] in(?=\n)/, "").replace(/\n {6}\}\)\n {4}\/\/ Svelte native: end of the first screen of a launch in the background(?=\n)/, "").replace(/^internal import SveltePush.*\n/m, "")).toBe(template);
+    expect(applyPushAppDelegate(once)).toBe(once);
+    expect(once.match(/import SveltePush/g)).toHaveLength(1);
+    expect(once.match(/SveltePushBackgroundLaunch\.start\(/g)).toHaveLength(1);
+    expect(once.match(/factory\.startReactNative\(/g)).toHaveLength(1);
+  });
+
+  test("what an older version wrote is replaced and not kept beside the new wrapper", () => {
+    const once = applyPushAppDelegate(template);
+    const older = once.replace("bundleConfiguration: factory.bundleConfiguration,", "bundleConfiguration: RCTBundleConfiguration.default(),");
+    expect(older).not.toBe(once);
+    expect(applyPushAppDelegate(older)).toBe(once);
+  });
+
+  test("it goes with the navigation patch, in either order, and each leaves the other's text alone", () => {
+    const navigationFirst = applyPushAppDelegate(applyAppDelegate(template));
+    const pushFirst = applyAppDelegate(applyPushAppDelegate(template));
+    expect(navigationFirst).toContain("SvelteNavigationRestoration.shouldSave(coder)");
+    expect(navigationFirst).toContain("SveltePushBackgroundLaunch.start(");
+    // The two blocks sit in different places (the property section, the launch), so the order the mods run in does not matter.
+    expect(applyPushAppDelegate(navigationFirst)).toBe(navigationFirst);
+    expect(applyAppDelegate(pushFirst)).toBe(pushFirst);
+    expect(navigationFirst.replace(/^internal import Svelte(?:Core|Push) .*\n/gm, "").replace(/\n {2}\/\/ Svelte native: navigation state restoration[\s\S]*?end of navigation state restoration/, "").replace(/\n {4}\/\/ Svelte native: push, the first screen[\s\S]*?surface: \{ \[self\] in(?=\n)/, "").replace(/\n {6}\}\)\n {4}\/\/ Svelte native: end of the first screen of a launch in the background(?=\n)/, "")).toBe(template);
+    expect(pushFirst.split("\n").length).toBe(navigationFirst.split("\n").length);
+  });
+
+  test("a template without the call, or with a call it was not written for, stops the prebuild and says what it looked for", () => {
+    for (const changed of [
+      template.replace("factory.startReactNative(", "factory.start("),
+      template.replace("launchOptions: launchOptions)\n#endif", "launchOptions: nil)\n#endif"),
+      template.replace('withModuleName: "main",', "withModuleName: moduleName(),"),
+      template.replace("_ application: UIApplication,\n    didFinishLaunchingWithOptions", "_ app: UIApplication,\n    didFinishLaunchingWithOptions"),
+      "import UIKit\n@main class AppDelegate: UIResponder {}",
+    ]) {
+      const error = thrown(() => applyPushAppDelegate(changed));
+      expect(error.message).toStartWith("Svelte native could not find the imports and `factory.startReactNative(withModuleName: …, in: window, launchOptions: launchOptions)` in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift.");
+      expect(error.message).toContain("Push needs the call");
+    }
+  });
+
+  test("the plugin applies it to the AppDelegate of an app with push on iOS, and to no other: a Kotlin or Objective-C delegate stops, and an app without push on iOS has no such mod", async () => {
+    using project = pushApp();
+    const run = (config: ExportedConfig, modResults: object) => (mods(config).ios.appDelegate as (config: object) => Promise<{ modResults: { contents: string } }>)({ modRequest: {}, modResults });
+    const patched = await run(withPush(project, { ios: { mode: "production" } }), { language: "swift", path: "AppDelegate.swift", contents: template });
+    expect(patched.modResults.contents).toBe(applyPushAppDelegate(template));
+    const refused = await run(withPush(project, { ios: { mode: "production" } }), { language: "objc", path: "AppDelegate.mm", contents: "" }).catch((error: Error) => error);
+    expect((refused as Error).message).toBe("Svelte native requires Expo's Swift AppDelegate");
+    expect(withPush(project, { android: { googleServicesFile: "./google-services.json" } }).mods?.ios).toBeUndefined();
   });
 });
 

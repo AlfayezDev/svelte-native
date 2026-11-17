@@ -52,10 +52,15 @@ function fake(options: Options = {}) {
   const storage = options.storage ?? createStorage(memoryBackend());
   const emitted: string[] = [];
   const platformURL = options.platformURL ?? null;
+  // The `url` listeners the platform's links reach (React Native's emitter); `emit` is the client's own, for a tap, and records it instead.
+  const urlListeners = new Set<(event: { url: string }) => void>();
   const linking: PushLinking = {
     getInitialURL: typeof platformURL === "function" ? platformURL : async () => platformURL,
+    addEventListener: (_event, listener) => { urlListeners.add(listener); return { remove: () => { urlListeners.delete(listener); } }; },
     emit: (_event, payload) => { calls.push(`url ${payload.url}`); emitted.push(payload.url); },
   };
+  /** A link the platform delivers as a `url` event. */
+  const arrive = (url: string) => { for (const listener of [...urlListeners]) listener({ url }); };
   let returnToForeground: (() => void) | undefined;
   const client = new PushClient({
     native: options.module === false ? null : native,
@@ -69,8 +74,8 @@ function fake(options: Options = {}) {
   client.start();
   const dispatch = (event: string, payload: unknown) => { for (const { event: name, listener } of [...listeners.values()]) if (name === event) listener(payload); };
   return {
-    client, native, state, calls, storage, emitted, linking, listeners,
-    dispatch,
+    client, native, state, calls, storage, emitted, linking, listeners, urlListeners,
+    dispatch, arrive,
     setPermission: (value: PushPermission) => { permission = value; },
     setToken: (value: PushToken) => { token = value; },
     setHooks: (value: PushHooks | undefined) => { hooks = value; },
@@ -278,7 +283,7 @@ describe("subscribe", () => {
     const { native } = fake({ permission: "granted" });
     const bare = new PushClient({
       native, state: { permission: "prompt", token: null }, hooks: () => undefined, storage: () => undefined, onForeground: () => {},
-      linking: { getInitialURL: async () => null, emit: () => {} },
+      linking: { getInitialURL: async () => null, addEventListener: () => ({ remove() {} }), emit: () => {} },
     });
     const saved: string[] = [];
     const save = (token: PushToken) => { saved.push(token.token); };
@@ -812,9 +817,50 @@ describe("the tap that launched the app, through Linking.getInitialURL", () => {
   test("a build without the module leaves Linking as it was", async () => {
     logs();
     const original = async () => "myapp://x";
-    const linking: PushLinking = { getInitialURL: original, emit: () => {} };
+    let listened = 0;
+    const linking: PushLinking = { getInitialURL: original, addEventListener: () => { listened++; return { remove() {} }; }, emit: () => {} };
     new PushClient({ native: null, state: { permission: "prompt", token: null }, hooks: () => undefined, storage: () => undefined, onForeground: () => {}, linking }).start();
     expect(linking.getInitialURL).toBe(original);
+    expect(listened).toBe(0);
+  });
+});
+
+describe("a link that arrives before the first read of getInitialURL", () => {
+  // iOS: a process the system started for a background message has no screen, and a link that brings it to the foreground is a `url` event no router hears yet.
+  test("is the launch link when the platform has none, and wins over the notification's; the opened hook still runs for the tap", async () => {
+    const seen: string[] = [];
+    const { linking, arrive } = fake({ launch: message({ id: "launch", url: "/orders/42" }), hooks: { opened: (arrived) => { seen.push(arrived.id); } } });
+    arrive("myapp://settings");
+    expect(await linking.getInitialURL()).toBe("myapp://settings");
+    expect(seen).toEqual(["launch"]);
+    const alone = fake();
+    alone.arrive("https://example.test/orders/7");
+    expect(await alone.linking.getInitialURL()).toBe("https://example.test/orders/7");
+  });
+
+  test("the last one is kept, and the platform's own launch link wins over it", async () => {
+    const twice = fake();
+    twice.arrive("myapp://first");
+    twice.arrive("myapp://second");
+    expect(await twice.linking.getInitialURL()).toBe("myapp://second");
+    const platform = fake({ platformURL: "myapp://launched" });
+    platform.arrive("myapp://later");
+    expect(await platform.linking.getInitialURL()).toBe("myapp://launched");
+  });
+
+  test("the listening stops at the first read: a link after it is the router's, and a second read answers the same", async () => {
+    const { linking, arrive, urlListeners } = fake();
+    expect(urlListeners.size).toBe(1);
+    arrive("myapp://early");
+    const first = linking.getInitialURL();
+    expect(urlListeners.size).toBe(0); // at once, before the read settles: the router's listener, added just before its read, hears what comes next
+    arrive("myapp://late");
+    expect([await first, await linking.getInitialURL()]).toEqual(["myapp://early", "myapp://early"]);
+  });
+
+  test("no link before the read leaves the launch as it was", async () => {
+    expect(await fake({ launch: message({ url: "/orders/42" }) }).linking.getInitialURL()).toBe("https://app.invalid/orders/42");
+    expect(await fake().linking.getInitialURL()).toBeNull();
   });
 });
 

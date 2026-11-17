@@ -15,6 +15,11 @@ export type PushWorld = {
   calls: string[];
   /** `Linking.getInitialURL`'s answer. */
   initialURL: string | null;
+  /**
+   * The `url` listeners of the bundle's `Linking`, the push client's and the router's. Its own, not the navigation tests' `__linkHandlers`, which `mountTree` empties after the
+   * bundle has loaded: the push client listens from the bundle's start, as it does from the app's.
+   */
+  linkHandlers: ((event: { url: string }) => void)[];
   /** The `getInitialURL` the stand-in for `Linking` was made with: what it still is when nothing wrapped it. */
   originalGetInitialURL: (() => Promise<string | null>) | undefined;
   permission: PushPermission;
@@ -31,7 +36,7 @@ export const message = (patch: Partial<PushMessage> = {}): PushMessage => ({ id:
 export function world(options: { module?: false } = {}): PushWorld {
   const listeners: { event: string; listener: (payload: unknown) => void }[] = [];
   const state: PushWorld = {
-    native: null, lookups: [], appState: [], calls: [], initialURL: null, originalGetInitialURL: undefined, permission: "prompt", holdPermission: undefined, launch: null, token: TOKEN,
+    native: null, lookups: [], appState: [], calls: [], initialURL: null, linkHandlers: [], originalGetInitialURL: undefined, permission: "prompt", holdPermission: undefined, launch: null, token: TOKEN,
     dispatch: (event, payload) => { for (const { event: name, listener } of [...listeners]) if (name === event) listener(payload); },
   };
   state.native = options.module === false ? null : {
@@ -62,7 +67,8 @@ export const pushStubs: Record<string, string> = {
       return null;
     };`,
   "react-native/Libraries/AppState/AppState": "export default { currentState: 'active', addEventListener: (type, handler) => { globalThis.__pushWorld.appState.push(handler); return { remove() {} }; } };",
-  "react-native/Libraries/Linking/Linking": `const handlers = (globalThis.__linkHandlers ??= []);
+  "react-native/Libraries/Linking/Linking": `const handlers = (globalThis.__pushWorld.linkHandlers = []);
+    globalThis.__linkHandlers ??= []; // what the navigation harness empties before each mount
     const getInitialURL = () => Promise.resolve(globalThis.__pushWorld.initialURL);
     globalThis.__pushWorld.originalGetInitialURL = getInitialURL;
     export default {

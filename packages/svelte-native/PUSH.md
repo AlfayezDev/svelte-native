@@ -10,7 +10,7 @@ What it does not do is the infrastructure around a send. The sender sends one me
 
 Three rules shape the rest:
 
-1. **A tapped notification is a link.** Its `url` opens a screen the way any link to the app does, from a cold start or a running app, through the router's existing link path. Nothing new to learn, and the router does not change.
+1. **A tapped notification is a link.** Its `url` opens a screen the way any link to the app does, from a cold start or a running app, through the router's existing link path: `Linking.getInitialURL()` answers with the launch message's link, and a tap while the app runs reaches the `url` listeners. Nothing new to learn, and the router does not change. A path (`/orders/42`) becomes `https://app.invalid/orders/42`, which the router reads by its path (an app that reads `Linking` itself sees that host); a full link is kept as it is.
 2. **A push that wakes the app mounts no screen.** The background hook and `init` run; the first screen waits until the user opens the app.
 3. **Secrets never go in the app.** The app's config holds identifiers only. The keys that can send to every user (the FCM service account, the APNs key) live in the server's environment, and the config plugin refuses a build that contains one.
 
@@ -55,8 +55,8 @@ pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packa
 {/if}
 ```
 
-- `push.permission` is `"granted"`, `"denied"` or `"prompt"`, reactive, and read again when the app returns to the foreground (the user may change it in the settings).
-- `push.subscribe({ save })` asks for the permission when it is `"prompt"`, registers with FCM or APNs, and calls `save(token)` with a `PushToken`. Call it on every start where the user is signed in: it asks only once, and it calls `save` when the token is new, changed since the last successful `save`, or rotated by the system while the app runs. It resolves with the token, or `null` when the permission is denied.
+- `push.permission` is `"granted"`, `"denied"` or `"prompt"`, reactive, and read again when the app returns to the foreground (the user may change it in the settings). It starts from the last value the system reported (kept in `localStorage`), so a user who already answered never sees `"prompt"` for a moment; only an app that has never asked starts at `"prompt"`.
+- `push.subscribe({ save })` asks for the permission when it is `"prompt"`, registers with FCM or APNs, and calls `save(token)` with a `PushToken`. Call it on every start where the user is signed in: it asks only once, and it calls `save` when the token is new, changed since the last successful `save`, or rotated by the system while the app runs. It resolves with the token, or `null` when the permission is denied, and rejects with `save`'s error when `save` fails (the token is then not remembered, so the next `subscribe` saves again).
 - `push.unsubscribe()` deletes the device's token with the provider and forgets the saved one (sign-out). The app removes it from its server.
 - `push.token` is the current `PushToken` or `null`.
 - `push.on("message", (message) => …)` in a component: the messages that arrive while the app is in the foreground (after the foreground hook decided how to show them), for example to refresh a list. It returns the function that stops listening, so `$effect(() => push.on("message", refresh))` works.
@@ -100,7 +100,7 @@ type PushMessage = {
 };
 ```
 
-The hooks run where `init` runs: in a launch without a screen too. Android gives a background message about 20 seconds; the native side waits for `background`'s promise on FCM's worker thread for at most 18 s and then lets the process go. iOS gives 30 seconds and decides itself how often to wake an app for silent pushes (it delays and drops them as it sees fit); `background` is for keeping data fresh, never for anything that must happen.
+The hooks run where `init` runs, in a launch without a screen too, and wait for `init` to settle. The foreground hook has 900 ms to answer; one that throws or takes longer gets the default. Android gives a background message about 20 seconds; the native side waits for `background`'s promise on FCM's worker thread for at most 18 s and then lets the process go. iOS gives 30 seconds and decides itself how often to wake an app for silent pushes (it delays and drops them as it sees fit); `background` is for keeping data fresh, never for anything that must happen.
 
 ### Sending: the server
 
@@ -208,12 +208,15 @@ What the JavaScript side calls, the same on both platforms:
 | `requestPermission(): Promise<…>` | asks (Android 13+: `POST_NOTIFICATIONS`; iOS: alert, sound, badge) |
 | `register(): Promise<PushToken>` | FCM's token / APNs's device token, as hex |
 | `unregister(): Promise<void>` | `FirebaseMessaging.deleteToken()` / `unregisterForRemoteNotifications()` |
-| `show(message, presentation): Promise<void>` | shows a notification now (the foreground hook's answer on Android; iOS presents through `willPresent`) |
-| `takeLaunchMessage(): PushMessage \| null` | the message whose tap launched the process, once |
-| event `token` | the provider rotated the token |
-| event `message` | a message in the foreground, before it shows (the native side waits for the foreground hook's answer, at most 1 s, then shows it by default) |
-| event `opened` | a tap with the app running |
-| event `background` with a completion id; `backgroundDone(id)` | a data message in the background; the native side holds the process until `backgroundDone` or its limit |
+| `show(message, { banner, sound, badge }): Promise<void>` | the foreground hook's answer for a `message` event: `message` is that event's payload, matched by `message.id`; all three booleans are given (JavaScript fills the defaults, `true`). Android shows the notification; iOS answers `willPresent`. Idempotent per id. JavaScript answers within 900 ms |
+| `takeLaunchMessage(): PushMessage \| null` (synchronous) | the message whose tap launched the process. JavaScript calls it once, at the first `Linking.getInitialURL()` (the router's mount), not at start: until that call a tap is the launch message, after it a tap is an `opened` event. So a process that started without a screen (a background message) and shows it later still opens the tap's link |
+| `backgroundDone(id: string): void` (synchronous) | the background hook settled (or threw, or there is none): let the process go |
+| event `token`: `PushToken` | the provider rotated the token |
+| event `message`: `PushMessage` | a message in the foreground, before it shows: the native side waits for `show` at most 1 s, then shows it with all three `true` |
+| event `opened`: `PushMessage` | a tap with the app running |
+| event `background`: `{ id, message: PushMessage }` | a data message in the background; `id` is a completion id of the native side's (not `message.id`). The native side holds the process until `backgroundDone(id)` or its limit |
+
+The native side keeps the events that come before JavaScript listens (a message that started the process) and delivers them when the first listener is added; JavaScript adds all four at start. The JavaScript side is loaded at start when the build has the native module (`requireOptionalNativeModule("SveltePush")`) or the hooks export `push`; an app without the package pays nothing.
 
 ### Android
 

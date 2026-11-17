@@ -29,6 +29,8 @@ android {
     // When the embedded bundle was built: the Gradle run that packages it is the run that evaluates this line. The update store compares
     // it with each update's `createdAt` to decide whether an update is newer than the bundle inside the app.
     buildConfigField "long", "BUILD_TIME_MS", "${System.currentTimeMillis()}L"
+    // What the app's R8 is told about this library: Firebase Messaging is compile-time only here (below), so push's two classes that name it are not resolvable in an app without push.
+    consumerProguardFiles "consumer-rules.pro"
 
     externalNativeBuild {
       cmake {
@@ -84,8 +86,8 @@ android {
   }
 }
 
-// The library's native code, one Gradle project: the engine (Kotlin and the C++ of CMakeLists.txt), the update store, the blur view, and the
-// web APIs (fetch and Blob, the clipboard). Each keeps its Kotlin package; the namespace (R, BuildConfig) is this project's.
+// The library's native code, one Gradle project: the engine (Kotlin and the C++ of CMakeLists.txt), the update store, the blur view, the
+// web APIs (fetch and Blob, the clipboard) and push. Each keeps its Kotlin package; the namespace (R, BuildConfig) is this project's.
 dependencies {
   // React Native's own dependency list carries OkHttp and Okio as `api`, at the versions its networking is built against (fetch).
   implementation 'com.facebook.react:react-android'
@@ -93,6 +95,11 @@ dependencies {
   // the engine loads its classes when gestures are first enabled (`EngineGestures`; `EngineScroll` names one interface).
   compileOnly project(':react-native-gesture-handler')
   compileOnly 'com.facebook.fbjni:fbjni:0.5.1'
+  // Push on Android (PUSH.md): the messaging service and the token calls. Compile time only, because this project is in every app and Firebase must be in none that has no push: the
+  // config plugin adds the same dependency, at this version, to the app of `capabilities.push.android` (`pushFirebaseDependency` in `src/capabilities.ts`, which
+  // `tests/package/push-native.test.ts` compares), and nothing here loads a Firebase class while push is off (`PushManifest.enabled`). An exact version: a message is delivered by this library's
+  // service, and an app should get the one the library was exercised on. (Google's Maven, 11 Nov 2026.)
+  compileOnly 'com.google.firebase:firebase-messaging:26.0.2'
   implementation "androidx.core:core-ktx:1.17.0"
   implementation "androidx.annotation:annotation:1.9.1"
   implementation "androidx.activity:activity:1.10.1"

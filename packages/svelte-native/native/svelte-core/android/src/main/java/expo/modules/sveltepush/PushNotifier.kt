@@ -4,10 +4,8 @@ import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.content.res.Resources
 import android.os.Build
-import android.os.Bundle
 import android.util.Log
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
@@ -23,29 +21,6 @@ import androidx.core.content.ContextCompat
 internal object PushNotifier {
   private var channel: ChannelSpec? = null
   private var channelCreated = false
-  private var meta: Bundle? = null
-  private var metaRead = false
-
-  /** The application's `<meta-data>`, read once: it cannot change while the process lives. */
-  @Synchronized
-  @Suppress("DEPRECATION")
-  private fun metaData(context: Context): Bundle? {
-    if (metaRead) return meta
-    try {
-      val manager = context.packageManager
-      val info =
-        if (Build.VERSION.SDK_INT >= 33) {
-          manager.getApplicationInfo(context.packageName, PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong()))
-        } else {
-          manager.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
-        }
-      meta = info.metaData
-    } catch (error: PackageManager.NameNotFoundException) {
-      Log.w(LOG_TAG, "the application's own manifest could not be read, so the channel, icon and color are the defaults: $error")
-    }
-    metaRead = true
-    return meta
-  }
 
   /**
    * Creates the channel from the config, once per process, and returns its id. Called wherever the channel has to exist before something else: asking for the
@@ -56,7 +31,7 @@ internal object PushNotifier {
   @Synchronized
   @Suppress("DEPRECATION")
   fun ensureChannel(context: Context): String {
-    val spec = channel ?: PushRules.channel { name -> metaData(context)?.get(name) }.also { channel = it }
+    val spec = channel ?: PushRules.channel { name -> PushManifest.metaData(context)?.get(name) }.also { channel = it }
     if (!channelCreated) {
       val builder = NotificationChannelCompat.Builder(spec.id, NotificationManagerCompat.IMPORTANCE_HIGH).setName(spec.name)
       spec.description?.let { builder.setDescription(it) }
@@ -68,14 +43,14 @@ internal object PushNotifier {
 
   /** The small icon: the manifest's Firebase default (a white silhouette the config plugin copied), else the application icon, else the system's. */
   private fun smallIcon(context: Context): Int {
-    val configured = metaData(context)?.getInt(PushRules.META_ICON, 0) ?: 0
+    val configured = PushManifest.metaData(context)?.getInt(PushRules.META_ICON, 0) ?: 0
     if (configured != 0) return configured
     return context.applicationInfo.icon.takeIf { it != 0 } ?: android.R.drawable.sym_def_app_icon
   }
 
   /** The accent color, or null when the manifest names none or names a resource that is not there (logged: the notification is shown without it). */
   private fun accentColor(context: Context): Int? {
-    val resource = metaData(context)?.getInt(PushRules.META_COLOR, 0) ?: 0
+    val resource = PushManifest.metaData(context)?.getInt(PushRules.META_COLOR, 0) ?: 0
     if (resource == 0) return null
     return try {
       ContextCompat.getColor(context, resource)

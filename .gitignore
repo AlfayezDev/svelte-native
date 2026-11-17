@@ -24,6 +24,13 @@ android/
 # The library's own native modules are source, not generated projects (their build outputs stay ignored below)
 !/packages/svelte-native/native/*/android/
 !/packages/svelte-native/native/*/ios/
+# The push package's native code is source as well
+!/packages/svelte-native-push/android/
+!/packages/svelte-native-push/ios/
+/packages/svelte-native-push/android/build/
+/packages/svelte-native-push/android/.gradle/
+/packages/svelte-native-push/ios/build/
+/packages/svelte-native-push/ios/Pods/
 /packages/svelte-native/native/*/android/.cxx/
 /packages/svelte-native/native/*/android/.gradle/
 # The generated Android project of the other variant (native-qa build --variant parks it here); anchored: the parity references

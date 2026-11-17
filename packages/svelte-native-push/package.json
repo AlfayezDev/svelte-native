@@ -1,0 +1,26 @@
+{
+  "name": "@alfayez/svelte-native-push",
+  "version": "0.4.0-rc.8",
+  "private": true,
+  "description": "The native code of push notifications for Svelte Native: Firebase Messaging on Android, APNs on iOS. An Expo module, linked by autolinking; it goes with `capabilities.push` of @alfayez/svelte-native.",
+  "license": "MIT",
+  "files": [
+    "android",
+    "ios",
+    "expo-module.config.json",
+    "README.md",
+    "LICENSE",
+    "!android/build",
+    "!android/.gradle",
+    "!ios/build",
+    "!ios/Pods"
+  ],
+  "peerDependencies": {
+    "@alfayez/svelte-native": "0.4.0-rc.8",
+    "expo": "~57.0.27",
+    "react-native": "0.86.3"
+  },
+  "devDependencies": {
+    "@alfayez/svelte-native": "workspace:*"
+  }
+}

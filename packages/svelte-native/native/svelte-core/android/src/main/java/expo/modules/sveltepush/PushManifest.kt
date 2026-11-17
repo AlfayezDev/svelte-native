@@ -43,6 +43,7 @@ internal object PushManifest {
    * Whether push is on in this build (`PushRules.enabled`). Every entry into this code asks first and does nothing when it is off: no listener, no ledger, no channel, and no class of
    * Firebase, which an app without push does not have.
    */
+  @Suppress("DEPRECATION")
   fun enabled(context: Context): Boolean {
     enabledAnswer?.let { return it }
     val answer = PushRules.enabled { name -> metaData(context)?.get(name) }

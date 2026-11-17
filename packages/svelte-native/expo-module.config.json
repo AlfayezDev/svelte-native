@@ -20,7 +20,7 @@
   "apple": {
     "podspecPath": ["native/svelte-core/ios/SvelteCore.podspec"],
     "swiftModuleName": ["SvelteCore"],
-    "modules": ["SvelteInsetsModule", "SvelteNavigationModule", "SvelteUpdatesModule", "SvelteBlurModule", "SvelteFetchModule", "SvelteClipboardModule", "SveltePushModule"],
+    "modules": ["SvelteInsetsModule", "SvelteNavigationModule", "SvelteUpdatesModule", "SvelteBlurModule", "SvelteFetchModule", "SvelteClipboardModule", "SveltePushModule", "SvelteLocationModule"],
     "appDelegateSubscribers": ["SvelteCaptureSubscriber", "SveltePushAppDelegateSubscriber"],
     "reactDelegateHandlers": ["SvelteUpdatesReactDelegateHandler"]
   }

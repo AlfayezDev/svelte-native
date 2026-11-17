@@ -65,7 +65,7 @@ describe("expo-module.config.json links push's module and subscriber in svelte-c
   test("iOS: SveltePushModule and SveltePushAppDelegateSubscriber are in the SvelteCore pod's lists, and their Swift is a folder of the pod", () => {
     expect(config.apple.swiftModuleName).toEqual(["SvelteCore"]);
     expect(config.apple.podspecPath).toEqual(["native/svelte-core/ios/SvelteCore.podspec"]);
-    expect(config.apple.modules).toEqual(["SvelteInsetsModule", "SvelteNavigationModule", "SvelteUpdatesModule", "SvelteBlurModule", "SvelteFetchModule", "SvelteClipboardModule", "SveltePushModule"]);
+    expect(config.apple.modules).toEqual(["SvelteInsetsModule", "SvelteNavigationModule", "SvelteUpdatesModule", "SvelteBlurModule", "SvelteFetchModule", "SvelteClipboardModule", "SveltePushModule", "SvelteLocationModule"]);
     expect(config.apple.appDelegateSubscribers).toEqual(["SvelteCaptureSubscriber", "SveltePushAppDelegateSubscriber"]);
     expect(read("native/svelte-core/ios/push/SveltePushModule.swift")).toContain("public final class SveltePushModule: Module");
     expect(read("native/svelte-core/ios/push/SveltePushModule.swift")).toContain('Name("SveltePush")');

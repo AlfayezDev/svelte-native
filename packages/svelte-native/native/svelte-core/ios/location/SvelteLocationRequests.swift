@@ -1,3 +1,7 @@
+// The whole of this file is compiled only when the config plugin turned location on (`SVELTE_LOCATION`, which SvelteCore.podspec adds from `svelteNative.location` in ios/Podfile.properties.json): an app
+// that did not turn it on has no location code, and no reference to CoreLocation, in its binary (App Store Connect refuses a binary that uses the API without a usage text).
+#if SVELTE_LOCATION
+
 import CoreLocation
 import Foundation
 
@@ -220,3 +224,5 @@ final class SvelteLocationCenter {
     oneShots.removeAll()
   }
 }
+
+#endif

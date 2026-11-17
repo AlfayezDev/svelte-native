@@ -112,6 +112,11 @@ export declare const firebaseMessagingEvent = "com.google.firebase.MESSAGING_EVE
 export declare const postNotificationsPermission = "android.permission.POST_NOTIFICATIONS";
 /** The Info.plist flag (a boolean) that turns the native code on, on iOS: svelte-core's `SveltePushEnabled` check. Written when `capabilities.push.ios` is set, and taken away without. */
 export declare const pushInfoPlistFlag = "SveltePushEnabled";
+/**
+ * The key of `ios/Podfile.properties.json` that compiles push's iOS code into SvelteCore (`SVELTE_PUSH`, read by `SvelteCore.podspec`). Off, none of it is compiled: App Store Connect
+ * warns about a binary that registers for remote notifications without the `aps-environment` entitlement, whether or not it ever calls the API.
+ */
+export declare const pushPodfileProperty = "svelteNative.push";
 /** What `capabilities.push` says once it has been checked. */
 export type PushSettings = {
     android?: {

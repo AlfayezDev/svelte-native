@@ -8,7 +8,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExpoConfig } from "expo/config";
 import { AndroidConfig, compileModsAsync, withPlugins, XML, type ExportedConfig } from "expo/config-plugins";
-import { CapabilityConfigError, type PushCapability, androidStringText, applyPushAppDelegate, applyPushGradle, applyPushManifest, applyPushPermission, applyPushStrings, copyPushIcon, defaultPushChannel, findPushSecret, locationPluginProps, postNotificationsPermission, pushFirebaseDependency, pushInfoPlistFlag, pushMessagingService, pushMetaData, pushResources, pushSettings, hasPushFlag, removePushAppDelegate, removePushGradle, removePushPermission, removePushIcon, removePushManifest, removePushStrings, withCapabilities } from "../../src/capabilities.ts";
+import { CapabilityConfigError, type PushCapability, androidStringText, applyPushAppDelegate, applyPushGradle, applyPushManifest, applyPushPermission, applyPushStrings, copyPushIcon, defaultPushChannel, findPushSecret, locationPluginProps, postNotificationsPermission, pushFirebaseDependency, pushInfoPlistFlag, pushMessagingService, pushPodfileProperty, pushMetaData, pushResources, pushSettings, hasPushFlag, removePushAppDelegate, removePushGradle, removePushPermission, removePushIcon, removePushManifest, removePushStrings, withCapabilities } from "../../src/capabilities.ts";
 import expoPlugin, { applyAppDelegate } from "../../src/expo.ts";
 import { createProject } from "../support/project.ts";
 import { expoTemplateAppBuildGradle, expoTemplateAppDelegate } from "./support/app-delegate.ts";
@@ -313,7 +313,7 @@ describe("capabilities.push", () => {
     expect(iosOnly.android).toEqual({ package: "io.e.a" });
     // The one iOS mod is the AppDelegate patch (the first screen of a launch in the background); the Info.plist (the flag and the background mode) and the entitlements are the config's own keys.
     expect(Object.keys(mods(iosOnly))).toEqual(["ios"]);
-    expect(Object.keys(mods(iosOnly).ios)).toEqual(["appDelegate"]);
+    expect(Object.keys(mods(iosOnly).ios)).toEqual(["podfileProperties", "appDelegate"]);
   });
 
   test("the Expo plugin passes the capability on: its entries land in the config, with no library to install and nothing to leave out of autolinking", () => {
@@ -504,6 +504,13 @@ describe("capabilities.push on iOS: a push that wakes the app mounts no screen",
     expect((refused as Error).message).toBe("Svelte native requires Expo's Swift AppDelegate");
     expect(withPush(project, { android: { googleServicesFile: "./google-services.json" } }).mods?.ios).toBeUndefined();
   });
+
+  test("push on iOS compiles push's Swift into SvelteCore through Podfile.properties.json (SvelteCore.podspec reads the key), beside the app's own properties", async () => {
+    using project = pushApp();
+    const properties = mods(withPush(project, { ios: { mode: "production" } })).ios.podfileProperties as (config: object) => Promise<{ modResults: Record<string, string> }>;
+    expect((await properties({ modRequest: {}, modResults: { "expo.jsEngine": "hermes" } })).modResults).toEqual({ "expo.jsEngine": "hermes", [pushPodfileProperty]: "true" });
+    expect(pushPodfileProperty).toBe("svelteNative.push");
+  });
 });
 
 describe("capabilities.push: the channel's texts reach the native code exactly", () => {
@@ -624,7 +631,7 @@ describe("capabilities.push off: what an earlier prebuild wrote is taken away, a
     const mine = appConfig(project.root, { ios: { bundleIdentifier: "io.e.a", entitlements: { "aps-environment": "production" }, infoPlist: { UIBackgroundModes: ["remote-notification", "fetch"] } } });
     const config = withCapabilities(mine, { push: false }, { projectRoot: project.root });
     expect(config.ios).toEqual(mine.ios);
-    expect(Object.keys(mods(config).ios ?? {})).toEqual(["infoPlist", "appDelegate"]);
+    expect(Object.keys(mods(config).ios ?? {})).toEqual(["infoPlist", "podfileProperties", "appDelegate"]);
   });
 
   test("Info.plist loses the flag that turns the native code on, and keeps every other key, the background mode among them", async () => {
@@ -743,8 +750,10 @@ describe("capabilities.push off: what an earlier prebuild wrote is taken away, a
   test("push on for one platform takes away what an earlier prebuild wrote for the other, and writes the one that is named", async () => {
     using project = pushApp({}, { "ios/App/AppDelegate.swift": "", "android/app/build.gradle": "" });
     const androidOnly = withPush(project, { android: { googleServicesFile: "./google-services.json" } });
-    expect(Object.keys(mods(androidOnly).ios)).toEqual(["infoPlist", "appDelegate"]);
+    expect(Object.keys(mods(androidOnly).ios)).toEqual(["infoPlist", "podfileProperties", "appDelegate"]);
     expect((await run(androidOnly, "ios", "infoPlist", { [pushInfoPlistFlag]: true, CFBundleName: "App" })).CFBundleName).toBe("App");
+    // The key that compiles push's iOS code into SvelteCore goes, so the next `pod install` builds the pod without it.
+    expect(await run(androidOnly, "ios", "podfileProperties", { [pushPodfileProperty]: "true", "expo.jsEngine": "hermes" })).toEqual({ "expo.jsEngine": "hermes" });
     expect((await run(androidOnly, "ios", "appDelegate", { language: "swift", path: "AppDelegate.swift", contents: applyPushAppDelegate(template) })).contents).toBe(template);
     const iosOnly = withPush(project, { ios: { mode: "production" } });
     expect(Object.keys(mods(iosOnly).android).sort()).toEqual(["appBuildGradle", "colors", "dangerous", "manifest", "strings"]);

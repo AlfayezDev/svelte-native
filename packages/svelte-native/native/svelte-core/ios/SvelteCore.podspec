@@ -1,3 +1,15 @@
+require 'json'
+
+# What the config plugin's capabilities turned on, from `ios/Podfile.properties.json` (written at prebuild). A feature that is off is not compiled
+# at all, so its system APIs are not in the app's binary: App Store Connect refuses or warns about a binary that references an API without the
+# purpose string or entitlement it needs, whether or not the app calls it.
+svelte_properties = begin
+  JSON.parse(File.read(File.join(Pod::Config.instance.installation_root.to_s, 'Podfile.properties.json')))
+rescue StandardError
+  {}
+end
+svelte_conditions = { 'svelteNative.push' => 'SVELTE_PUSH' }.select { |key, _| svelte_properties[key] == 'true' }.values
+
 Pod::Spec.new do |s|
   s.name           = 'SvelteCore'
   s.version        = '0.1.0'
@@ -21,7 +33,8 @@ Pod::Spec.new do |s|
   s.requires_arc = true
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
-    'SWIFT_COMPILATION_MODE' => 'wholemodule'
+    'SWIFT_COMPILATION_MODE' => 'wholemodule',
+    'SWIFT_ACTIVE_COMPILATION_CONDITIONS' => (['$(inherited)'] + svelte_conditions).join(' ')
   }
 
   # React-RCTFabric, React-Fabric, folly and the C++ language level for the Fabric components (merged into the settings above).

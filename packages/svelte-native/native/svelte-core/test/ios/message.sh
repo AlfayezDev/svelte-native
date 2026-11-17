@@ -7,5 +7,5 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 cp "$here/SveltePushMessageCheck.swift" "$work/main.swift"
-swiftc -warnings-as-errors -O "$here/../../ios/push/SveltePushMessage.swift" "$here/../../ios/push/SveltePushEnvironment.swift" "$here/../../ios/push/SveltePushFlag.swift" "$work/main.swift" -o "$work/message-check"
+swiftc -warnings-as-errors -O -D SVELTE_PUSH "$here/../../ios/push/SveltePushMessage.swift" "$here/../../ios/push/SveltePushEnvironment.swift" "$here/../../ios/push/SveltePushFlag.swift" "$work/main.swift" -o "$work/message-check"
 "$work/message-check"

@@ -1,3 +1,5 @@
+// Compiled only when push is on (`SVELTE_PUSH`, set by SvelteCore.podspec from the config plugin's `capabilities.push.ios`): an app without push has none of it in its binary.
+#if SVELTE_PUSH
 import Foundation
 
 /// Which Apple Push Notification service the build's device tokens belong to: the `aps-environment` entitlement the app was signed with, `development` or `production`. The
@@ -63,3 +65,4 @@ enum SveltePushEnvironment {
     return environment
   }
 }
+#endif

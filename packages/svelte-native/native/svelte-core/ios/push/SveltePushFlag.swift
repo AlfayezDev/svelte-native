@@ -1,3 +1,5 @@
+// Compiled only when push is on (`SVELTE_PUSH`, set by SvelteCore.podspec from the config plugin's `capabilities.push.ios`): an app without push has none of it in its binary.
+#if SVELTE_PUSH
 import Foundation
 
 /// Whether push is on in this build. This code is part of SvelteCore, which is in every app, so everything it does starts from this answer: the config plugin writes the Info.plist
@@ -16,3 +18,4 @@ enum SveltePushFlag {
     (value as? Bool) == true
   }
 }
+#endif

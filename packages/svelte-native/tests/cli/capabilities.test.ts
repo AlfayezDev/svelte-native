@@ -325,7 +325,7 @@ describe("capabilities.push on iOS: a push that wakes the app mounts no screen",
     // The call stands between the helper's two halves, character for character.
     expect(once).toContain(`      surface: { [self] in\n${call}\n      })\n    // Svelte native: end of the first screen of a launch in the background\n`);
     // The host is what the first startReactNative would start before it made the surface: the factory's own root view factory, with the bundle and dev menu the factory would pass.
-    expect(once).toContain("factory.rootViewFactory.initializeReactHost(\n          withLaunchOptions: launchOptions,\n          bundleConfiguration: factory.bundleConfiguration,\n          devMenuConfiguration: factory.devMenuConfiguration ?? RCTDevMenuConfiguration.default())");
+    expect(once).toContain("factory.rootViewFactory.initializeReactHost(\n          launchOptions: launchOptions,\n          bundleConfiguration: factory.bundleConfiguration,\n          devMenuConfiguration: factory.devMenuConfiguration ?? RCTDevMenuConfiguration.default())");
     expect(once).toContain("SveltePushBackgroundLaunch.start(\n      application,\n      host: {");
     // After the window is made, before the template's last line, inside the `#if` that guards them both, and with the import of the module that holds the helper.
     expect(once.indexOf("window = UIWindow(frame: UIScreen.main.bounds)")).toBeLessThan(once.indexOf("SveltePushBackgroundLaunch.start("));

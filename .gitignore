@@ -27,6 +27,7 @@ android/
 # The push package's native code is source as well
 !/packages/svelte-native-push/android/
 !/packages/svelte-native-push/ios/
+!/packages/svelte-native-push/test/ios/
 /packages/svelte-native-push/android/build/
 /packages/svelte-native-push/android/.gradle/
 /packages/svelte-native-push/ios/build/

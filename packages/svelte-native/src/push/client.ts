@@ -102,6 +102,15 @@ export const FOREGROUND_TIMEOUT_MS = 900;
 /** The `localStorage` key of the token last saved successfully (`tokenKey`). */
 export const SAVED_TOKEN_KEY = "svelte-native.push.saved-token";
 
+/** The `localStorage` key of the permission the system last reported, so that `push.permission` starts there on the next launch and does not flash `prompt` at a user who has answered. */
+export const PERMISSION_KEY = "svelte-native.push.permission";
+
+/** The permission the system last reported to this app, read from the storage; `null` for an app that has never read it. */
+export function storedPermission(storage: Storage | undefined): PushPermission | null {
+  const value = storage?.getItem(PERMISSION_KEY);
+  return value === "granted" || value === "denied" || value === "prompt" ? value : null;
+}
+
 /** Why `push` does nothing in a build: the native module is missing. */
 export const MISSING_PUSH =
   "[Svelte push] push is not part of this app's build: install @alfayez/svelte-native-push (npx expo install @alfayez/svelte-native-push), turn on `capabilities: { push: { … } }` in the @alfayez/svelte-native plugin of the app config, and rebuild the native app. Until then `push.permission` reads \"denied\" and `push.subscribe` resolves with null";
@@ -162,13 +171,14 @@ export class PushClient {
 
   /**
    * Listens to the native module and reads the permission, and wraps `Linking.getInitialURL`; in a build without the module it says so once, and the permission reads `denied`.
-   * Called once, when the app has push hooks or imports `push`.
+   * Called once, when the module is evaluated: at start in a build that has the native module (`load.ts`), or where the app imports `push`.
    */
   start(): void {
     if (this.#started) return;
     this.#started = true;
     const native = this.#options.native;
     if (native === null) {
+      // Not stored: it is the build that is missing the module, not the user who answered.
       this.#options.state.permission = "denied";
       console.warn(MISSING_PUSH);
       return;
@@ -224,7 +234,14 @@ export class PushClient {
   }
 
   async #refresh(native: NativePushModule): Promise<void> {
-    this.#options.state.permission = await native.permission();
+    this.#report(await native.permission());
+  }
+
+  /** The system's state as the module reported it now: what `push.permission` reads, and what the next launch starts from. */
+  #report(permission: PushPermission): void {
+    this.#options.state.permission = permission;
+    const storage = this.#options.storage();
+    if (storage !== undefined && storage.getItem(PERMISSION_KEY) !== permission) storage.setItem(PERMISSION_KEY, permission);
   }
 
   /** Whether the app may show notifications, asking when the system still lets it ask. One question at a time, whatever the number of callers. */
@@ -235,7 +252,7 @@ export class PushClient {
       this.#asking ??= native.requestPermission().finally(() => { this.#asking = null; });
       permission = await this.#asking;
     }
-    this.#options.state.permission = permission;
+    this.#report(permission);
     return permission === "granted";
   }
 

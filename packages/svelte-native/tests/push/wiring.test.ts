@@ -31,11 +31,12 @@ const loadLibrary = (): Promise<Loaded> => loadBundle<Loaded>({
   converters: false,
 });
 
-/** Only `registerHooks`, and `push/load.ts` that `app.ts` imports: the entry of an app whose code never imports `push`. */
-const loadHooksOnly = (): Promise<Pick<Loaded, "registerHooks">> => loadBundle({
+/** Only `registerHooks`, `Linking` and `push/load.ts` that `app.ts` imports: the entry of an app whose code never imports `push`. */
+const loadHooksOnly = (): Promise<Pick<Loaded, "registerHooks" | "Linking">> => loadBundle({
   entry: `import ${JSON.stringify(src("push/load.ts"))};
     import { registerHooks } from ${JSON.stringify(src("app-hooks.ts"))};
-    export { registerHooks };`,
+    import Linking from "react-native/Libraries/Linking/Linking";
+    export { registerHooks, Linking };`,
   stubs: { ...baseStubs(), ...pushStubs },
   converters: false,
 });
@@ -89,6 +90,39 @@ describe("push.permission and push.token", () => {
     expect(m.push.permission).toBe("granted");
   });
 
+  test("a second launch starts at the permission the system last reported, and refreshes it from the module", async () => {
+    pushWorld.permission = "granted";
+    await loadLibrary();
+    await settle();
+    expect(localStorage.getItem("svelte-native.push.permission")).toBe("granted");
+
+    // The module has not answered yet: no `prompt` for a user who granted it.
+    let answer: (() => void) | undefined;
+    pushWorld.holdPermission = new Promise<void>((resolve) => { answer = resolve; });
+    pushWorld.permission = "denied";
+    const second = await loadLibrary();
+    const { seen } = second.watch();
+    await settle();
+    expect([second.push.permission, seen]).toEqual(["granted", ["granted -"]]);
+    // The user changed it in the settings: the module's answer is what is read, and what the next launch starts from.
+    answer?.();
+    await settle();
+    second.flushSync();
+    expect([second.push.permission, seen]).toEqual(["denied", ["granted -", "denied -"]]);
+    expect(localStorage.getItem("svelte-native.push.permission")).toBe("denied");
+    pushWorld.holdPermission = undefined;
+    expect((await loadLibrary()).push.permission).toBe("denied");
+  });
+
+  test("the answer to a question the app asks is stored too, and a stored value that is not a permission is ignored", async () => {
+    localStorage.setItem("svelte-native.push.permission", "maybe");
+    const m = await loadLibrary();
+    expect(m.push.permission).toBe("prompt");
+    await settle();
+    await m.push.subscribe({ save: () => {} });
+    expect(localStorage.getItem("svelte-native.push.permission")).toBe("granted");
+  });
+
   test("push is an object whose methods do not read this", async () => {
     const m = await loadLibrary();
     const { subscribe, unsubscribe, on } = m.push;
@@ -107,6 +141,8 @@ describe("push.permission and push.token", () => {
       expect(await m.push.subscribe({ save: () => {} })).toBeNull();
       expect(await m.push.subscribe({ save: () => {} })).toBeNull();
       expect(m.push.token).toBeNull();
+      // A missing module is not the user's answer: nothing is stored for the build that has it later.
+      expect(localStorage.getItem("svelte-native.push.permission")).toBeNull();
       expect(warn.mock.calls).toHaveLength(1);
       expect(String(warn.mock.calls[0]?.[0])).toContain("@alfayez/svelte-native-push");
       expect(String(warn.mock.calls[0]?.[0])).toContain("capabilities");
@@ -128,21 +164,68 @@ describe("push.permission and push.token", () => {
 });
 
 describe("what loads push", () => {
-  test("a hooks file whose exports have `push` starts the client: the native module is looked up and listened to, and the hooks are read as registered when a message comes", async () => {
+  test("a build that has the native module starts the client at start, with no push hooks: it is listened to, and a message in the foreground is shown by default", async () => {
     const m = await loadHooksOnly();
+    expect(pushWorld.lookups).toContain("SveltePush");
+    expect(pushWorld.appState).toHaveLength(1);
     m.registerHooks({});
     m.registerHooks({ init: () => {} });
-    expect(pushWorld.lookups).not.toContain("SveltePush");
+    pushWorld.dispatch("message", message());
+    await settle();
+    expect(pushWorld.calls).toContain(`show m1 ${JSON.stringify({ banner: true, sound: true, badge: true })}`);
+    expect(m.Linking.getInitialURL as unknown).not.toBe(pushWorld.originalGetInitialURL);
+  });
 
+  test("the cold-start tap opens its link although the hooks have no push and nothing imports push", async () => {
+    pushWorld.launch = message({ id: "launch", url: "/orders/42" });
+    const m = await loadHooksOnly();
+    m.registerHooks({ init: () => {} });
+    expect(await m.Linking.getInitialURL()).toBe("https://app.invalid/orders/42");
+    expect(pushWorld.calls.filter((call) => call === "take")).toHaveLength(1);
+  });
+
+  test("a build without the native module wraps nothing and loads nothing of the client, with hooks that have no push", async () => {
+    pushWorld = world({ module: false });
+    pushWorld.launch = message({ url: "/orders/42" });
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const m = await loadHooksOnly();
+      m.registerHooks({});
+      m.registerHooks({ init: () => {} });
+      // The lookup is `load.ts`'s alone: the client looks it up again when it loads, and it did not.
+      expect(pushWorld.lookups.filter((name) => name === "SveltePush")).toHaveLength(1);
+      expect(pushWorld.appState).toHaveLength(0);
+      expect(m.Linking.getInitialURL as unknown).toBe(pushWorld.originalGetInitialURL);
+      expect(warn).not.toHaveBeenCalled();
+      expect(pushWorld.calls).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("a hooks file with `push` loads the client in a build without the module, which says so once and wraps nothing", async () => {
+    pushWorld = world({ module: false });
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const m = await loadHooksOnly();
+      m.registerHooks({ push: {} });
+      m.registerHooks({ push: {} });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(m.Linking.getInitialURL as unknown).toBe(pushWorld.originalGetInitialURL);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("the hooks are read as registered when a message comes: a hot update of the hooks file changes the answer, and the client is not made again", async () => {
+    const m = await loadHooksOnly();
     m.registerHooks({ push: { foreground: () => ({ banner: false }) } });
-    expect(pushWorld.lookups.filter((name) => name === "SveltePush")).toHaveLength(1);
     pushWorld.dispatch("message", message());
     await settle();
     expect(pushWorld.calls).toContain(`show m1 ${JSON.stringify({ banner: false, sound: true, badge: true })}`);
 
-    // A hot update of the file registers its new exports; the client is not made again, and it reads the new hooks.
     m.registerHooks({ push: { foreground: () => ({ sound: false }) } });
-    expect(pushWorld.lookups.filter((name) => name === "SveltePush")).toHaveLength(1);
+    expect(pushWorld.appState).toHaveLength(1);
     pushWorld.dispatch("message", message({ id: "m2" }));
     await settle();
     expect(pushWorld.calls).toContain(`show m2 ${JSON.stringify({ banner: true, sound: false, badge: true })}`);

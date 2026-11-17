@@ -1,6 +1,6 @@
 // The device's side of push (`src/push/client.ts`) against a stand-in for the native module `SveltePush` that records what it was asked, and a fake `Linking`.
 import { afterEach, describe, expect, jest, spyOn, test } from "bun:test";
-import { FOREGROUND_TIMEOUT_MS, linkOf, MISSING_PUSH, PushClient, SAVED_TOKEN_KEY, type NativePushModule, type PushLinking, type PushPermission, type PushState } from "../../src/push/client.ts";
+import { FOREGROUND_TIMEOUT_MS, linkOf, MISSING_PUSH, PERMISSION_KEY, PushClient, SAVED_TOKEN_KEY, storedPermission, type NativePushModule, type PushLinking, type PushPermission, type PushState } from "../../src/push/client.ts";
 import type { PushHooks } from "../../src/push/hooks.ts";
 import type { PushMessage, PushToken } from "../../src/push/types.ts";
 import { createStorage, memoryBackend } from "../../src/web-storage.ts";
@@ -123,8 +123,10 @@ describe("the permission", () => {
 
   test("a build without the module: denied at once, subscribe resolves null, and one warning says what to install", async () => {
     const { warnings, messages } = logs();
-    const { client, state, calls } = fake({ module: false });
+    const storage = createStorage(memoryBackend());
+    const { client, state, calls } = fake({ module: false, storage });
     expect(state.permission).toBe("denied");
+    expect(storage.getItem(PERMISSION_KEY)).toBeNull(); // the build is missing the module; the user has not answered
     expect(await client.subscribe({ save: () => { throw new Error("no token to save"); } })).toBeNull();
     await client.subscribe({ save: () => {} });
     await client.unsubscribe();
@@ -134,6 +136,37 @@ describe("the permission", () => {
     expect(MISSING_PUSH).toContain("capabilities");
     // Messages are not delivered, but the listeners can still be added and removed.
     expect(client.on("message", () => {})).toBeInstanceOf(Function);
+  });
+
+  test("is written to the storage whenever the module reports it (at start, in the foreground, and after a question), and only when it changed", async () => {
+    const storage = createStorage(memoryBackend());
+    const writes: string[] = [];
+    const counting = new Proxy(storage, { get: (target, key) => (key === "setItem" ? (name: string, value: string) => { if (name === PERMISSION_KEY) writes.push(`${name}=${value}`); target.setItem(name, value); } : Reflect.get(target, key)) });
+    const { client, foreground, setPermission } = fake({ permission: "prompt", storage: counting });
+    await settle();
+    expect(storage.getItem(PERMISSION_KEY)).toBe("prompt");
+    foreground();
+    await settle();
+    expect(writes).toEqual([`${PERMISSION_KEY}=prompt`]);
+    await client.subscribe({ save: () => {} });
+    expect(storage.getItem(PERMISSION_KEY)).toBe("granted");
+    setPermission("denied");
+    foreground();
+    await settle();
+    expect(storage.getItem(PERMISSION_KEY)).toBe("denied");
+    expect(writes).toEqual([`${PERMISSION_KEY}=prompt`, `${PERMISSION_KEY}=granted`, `${PERMISSION_KEY}=denied`]);
+  });
+
+  test("storedPermission reads what was written, and nothing else: no storage, no value, or a value that is not a permission", () => {
+    const storage = createStorage(memoryBackend());
+    expect(storedPermission(undefined)).toBeNull();
+    expect(storedPermission(storage)).toBeNull();
+    for (const permission of ["granted", "denied", "prompt"] as const) {
+      storage.setItem(PERMISSION_KEY, permission);
+      expect(storedPermission(storage)).toBe(permission);
+    }
+    storage.setItem(PERMISSION_KEY, "maybe");
+    expect(storedPermission(storage)).toBeNull();
   });
 
   test("starting twice listens once", () => {

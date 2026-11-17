@@ -159,8 +159,12 @@ export class PushClient {
   #save: ((token: PushToken) => unknown) | null = null;
   /** `tokenKey` of the token last saved successfully: `undefined` until read from the storage. */
   #saved: string | null | undefined;
-  /** The save in flight, so that a second `subscribe` (or a rotation) of the same token does not send it twice. */
-  #saving: { key: string; done: Promise<void> } | null = null;
+  /** The saves waiting or in flight by `tokenKey`, so that a second `subscribe` (or a rotation) of the same token does not send it twice. */
+  #saving = new Map<string, Promise<void>>();
+  /** The end of the queue of saves: the next save starts when it settles (it never rejects), so two are never in flight at once. */
+  #saves: Promise<void> = Promise.resolve();
+  /** Counts the rotations handled: a `subscribe` whose `register()` was in flight for one holds the newer token, not the one `register()` came back with. */
+  #rotations = 0;
   /** Counts `unsubscribe`s: a `subscribe` or a save that began before one must not register or remember anything after it. */
   #generation = 0;
   #asking: Promise<PushPermission> | null = null;
@@ -207,18 +211,21 @@ export class PushClient {
     // `unsubscribe` may run while this waits (a sign-out while signing in): what it registers would belong to nobody.
     if (!(await this.#permitted(native)) || generation !== this.#generation) return null;
     this.#save = save;
-    const token = await native.register();
+    const rotations = this.#rotations;
+    const registered = await native.register();
     if (generation !== this.#generation) return null;
-    this.#options.state.token = token;
+    // A rotation handled while `register()` was in flight is newer than what it came back with: it has set `state.token` and queued its own save, and it is the token to keep.
+    if (this.#rotations === rotations) this.#options.state.token = registered;
+    const token = this.#options.state.token ?? registered;
     await this.#persist(token, save);
-    return token;
+    return this.#options.state.token ?? token;
   }
 
   /** Deletes the device's token with the provider and forgets the saved one, so that the next `subscribe` saves again. The app removes the token from its own server. */
   async unsubscribe(): Promise<void> {
     this.#generation++;
     this.#save = null;
-    this.#saving = null;
+    this.#saving.clear();
     this.#saved = null;
     this.#options.storage()?.removeItem(SAVED_TOKEN_KEY);
     this.#options.state.token = null;
@@ -263,22 +270,33 @@ export class PushClient {
     return this.#saved;
   }
 
-  /** Calls `save` for `token` unless it is the one last saved, or one already in flight; remembers it when `save` resolves. */
+  /**
+   * Calls `save` for `token` unless it is the one last saved, and remembers it when `save` resolves. One save runs at a time: a token that comes while another is being saved
+   * waits for it to settle (a rotation during a slow save would otherwise start a second one, and the two can finish in either order, leaving the older token as the server's
+   * last write). When its turn comes a save is skipped if the app has unsubscribed, if the provider has replaced the token meanwhile (the replacement's own save is queued
+   * behind it), or if it has been saved by then. A second call for a token that waits or is in flight shares that save.
+   */
   #persist(token: PushToken, save: (token: PushToken) => unknown): Promise<void> {
     const key = tokenKey(token);
     if (key === this.#savedKey()) return Promise.resolve();
-    if (this.#saving?.key === key) return this.#saving.done;
+    const waiting = this.#saving.get(key);
+    if (waiting !== undefined) return waiting;
     const generation = this.#generation;
+    /** Whether `token` is still the one to save: not after an `unsubscribe`, and not once the provider has replaced it. */
+    const current = (): boolean => {
+      const now = this.#options.state.token;
+      return generation === this.#generation && now !== null && key === tokenKey(now);
+    };
     const run = async (): Promise<void> => {
+      if (!current() || key === this.#savedKey()) return;
       await save(token);
-      // Not after an `unsubscribe`, and not for a token the provider has replaced meanwhile: the rotation saves its own.
-      const current = this.#options.state.token;
-      if (generation !== this.#generation || current === null || key !== tokenKey(current)) return;
+      if (!current()) return;
       this.#saved = key;
       this.#options.storage()?.setItem(SAVED_TOKEN_KEY, key);
     };
-    const done: Promise<void> = run().finally(() => { if (this.#saving?.done === done) this.#saving = null; });
-    this.#saving = { key, done };
+    const done: Promise<void> = this.#saves.then(run).finally(() => { if (this.#saving.get(key) === done) this.#saving.delete(key); });
+    this.#saving.set(key, done);
+    this.#saves = done.catch(() => {});
     return done;
   }
 
@@ -286,6 +304,7 @@ export class PushClient {
   #rotated(token: PushToken): void {
     const save = this.#save;
     if (save === null) return;
+    this.#rotations++;
     this.#options.state.token = token;
     this.#persist(token, save).catch(report("saving the token the provider rotated failed; the next push.subscribe saves it again"));
   }

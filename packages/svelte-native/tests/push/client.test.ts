@@ -348,23 +348,104 @@ describe("a rotated token", () => {
     expect(saved).toEqual(["token-1", "token-2", "token-2"]);
   });
 
-  test("a save that finishes after a newer rotation does not remember the older token", async () => {
-    const storage = createStorage(memoryBackend());
-    const { client, dispatch } = fake({ permission: "granted", storage });
-    const finish: (() => void)[] = [];
+  /** A `save` the test finishes by hand: what it was called with, and the way to settle each call. */
+  function slowSave() {
     const saved: string[] = [];
-    const save = (token: PushToken) => new Promise<void>((resolve) => { saved.push(token.token); finish.push(resolve); });
+    const settles: { resolve: () => void; reject: (error: Error) => void }[] = [];
+    const save = (token: PushToken) => new Promise<void>((resolve, reject) => { saved.push(token.token); settles.push({ resolve, reject }); });
+    return { save, saved, settles };
+  }
+  const rememberedToken = (storage: Storage): string | undefined => (JSON.parse(storage.getItem(SAVED_TOKEN_KEY) ?? "null") as string[] | null)?.[3];
+
+  test("a rotation during a save waits for it: two saves are never in flight, the last write is the newest token, and the older one is not remembered", async () => {
+    const storage = createStorage(memoryBackend());
+    const { client, dispatch, state } = fake({ permission: "granted", storage });
+    const { save, saved, settles } = slowSave();
     const first = client.subscribe({ save });
     await settle();
     dispatch("token", { ...TOKEN, token: "token-2" });
     await settle();
-    expect(saved).toEqual(["token-1", "token-2"]);
-    finish[0]();
-    await first;
-    expect(storage.getItem(SAVED_TOKEN_KEY)).toBeNull(); // the older token's save came back: the newer one's is still out
-    finish[1]();
+    expect(saved).toEqual(["token-1"]); // the newer one waits for the older one's save to settle
+    expect(state.token?.token).toBe("token-2");
+    settles[0].resolve();
+    expect((await first)?.token).toBe("token-2"); // the token subscribe gives back is the current one
+    expect(storage.getItem(SAVED_TOKEN_KEY)).toBeNull(); // the older token's save came back: the newer one is still to go
     await settle();
-    expect(JSON.parse(storage.getItem(SAVED_TOKEN_KEY) as string)).toEqual(["fcm", null, "dev.example.app", "token-2"]);
+    expect(saved).toEqual(["token-1", "token-2"]);
+    settles[1].resolve();
+    await settle();
+    expect(rememberedToken(storage)).toBe("token-2");
+  });
+
+  test("rotations that pile up behind a save are saved by the newest alone, in order", async () => {
+    const storage = createStorage(memoryBackend());
+    const { client, dispatch } = fake({ permission: "granted", storage });
+    const { save, saved, settles } = slowSave();
+    const first = client.subscribe({ save });
+    await settle();
+    dispatch("token", { ...TOKEN, token: "token-2" });
+    dispatch("token", { ...TOKEN, token: "token-2" }); // the same token again waits once
+    dispatch("token", { ...TOKEN, token: "token-3" });
+    await settle();
+    settles[0].resolve();
+    await first;
+    await settle();
+    expect(saved).toEqual(["token-1", "token-3"]); // token-2 was replaced before its turn came: nothing is sent for it
+    settles[1].resolve();
+    await settle();
+    expect(rememberedToken(storage)).toBe("token-3");
+    expect(settles).toHaveLength(2);
+  });
+
+  test("a save that fails does not stop the one behind it, and its token is not remembered", async () => {
+    logs();
+    const storage = createStorage(memoryBackend());
+    const { client, dispatch } = fake({ permission: "granted", storage });
+    const { save, saved, settles } = slowSave();
+    const failure = client.subscribe({ save }).then(() => null, (error: Error) => error); // not `expect(...).rejects`: Bun waits for the promise in place, and it settles below
+    await settle();
+    dispatch("token", { ...TOKEN, token: "token-2" });
+    await settle();
+    settles[0].reject(new Error("the server is down"));
+    expect((await failure)?.message).toBe("the server is down");
+    await settle();
+    expect(saved).toEqual(["token-1", "token-2"]);
+    settles[1].resolve();
+    await settle();
+    expect(rememberedToken(storage)).toBe("token-2");
+  });
+
+  test("the token is checked again when its save's turn comes: after an unsubscribe nothing is sent", async () => {
+    const storage = createStorage(memoryBackend());
+    const { client, dispatch, state } = fake({ permission: "granted", storage });
+    const { save, saved, settles } = slowSave();
+    const first = client.subscribe({ save });
+    await settle();
+    dispatch("token", { ...TOKEN, token: "token-2" });
+    await settle();
+    await client.unsubscribe();
+    settles[0].resolve();
+    await first;
+    await settle();
+    expect(saved).toEqual(["token-1"]);
+    expect([state.token, storage.getItem(SAVED_TOKEN_KEY)]).toEqual([null, null]);
+  });
+
+  test("a rotation handled while register() is in flight is not overwritten by the older token register() comes back with", async () => {
+    const storage = createStorage(memoryBackend());
+    const { client, dispatch, native, state } = fake({ permission: "granted", storage });
+    let answer: ((token: PushToken) => void) | undefined;
+    native.register = () => new Promise<PushToken>((resolve) => { answer = resolve; });
+    const saved: string[] = [];
+    const subscribing = client.subscribe({ save: (token) => { saved.push(token.token); } });
+    await settle();
+    dispatch("token", { ...TOKEN, token: "token-2" }); // the provider rotated while register() was still out
+    answer?.(TOKEN); // and register() answers with what it had registered: older
+    const token = await subscribing;
+    await settle();
+    expect([token?.token, state.token?.token]).toEqual(["token-2", "token-2"]);
+    expect(saved).toEqual(["token-2"]); // one save, of the newer token: the rotation's, which subscribe shares
+    expect(rememberedToken(storage)).toBe("token-2");
   });
 });
 

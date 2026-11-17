@@ -45,6 +45,12 @@ describe("the package", () => {
     }
     for (const output of ["!android/build", "!android/.gradle", "!ios/build", "!ios/Pods"]) expect(manifest.files).toContain(output);
   });
+
+  test("is linked by Expo's autolinking alone: React Native's is told there is nothing for it, or it links the same Gradle project and pod a second time", async () => {
+    expect(manifest.files).toContain("react-native.config.js");
+    const rn = (await import(join(root, "react-native.config.js"))) as { default?: { dependency?: { platforms?: Record<string, unknown> } } };
+    expect(rn.default?.dependency?.platforms).toEqual({ android: null, ios: null });
+  });
 });
 
 describe("expo-module.config.json", () => {

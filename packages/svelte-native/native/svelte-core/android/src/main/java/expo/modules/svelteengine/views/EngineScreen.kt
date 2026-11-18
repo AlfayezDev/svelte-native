@@ -3,7 +3,6 @@ package expo.modules.svelteengine.views
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import android.content.res.Configuration
 import android.os.Build
 import android.view.View
 import androidx.core.view.ViewCompat
@@ -16,6 +15,7 @@ import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.NavProps
 import expo.modules.svelteengine.SystemBarsRules
 import kotlin.math.max
+import expo.modules.svelteappearance.isNight
 
 /** The system bar options of a screen (record 125); styles are 0 auto, 1 light icons, 2 dark icons. */
 data class SystemBarsSpec(val statusStyle: Int, val statusHidden: Boolean, val hasNavColor: Boolean, val navColor: Int, val navStyle: Int)
@@ -338,7 +338,7 @@ object SystemBars {
   }
 
   private fun apply(root: EngineRoot, spec: SystemBarsSpec?) {
-    val night = root.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+    val night = isNight(root.resources)
     if (!SystemBarsRules.needsWrite(written, spec == applied, night == appliedNight)) return
     val window = activityOf(root)?.window ?: return
     val controller = WindowCompat.getInsetsController(window, window.decorView)

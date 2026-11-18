@@ -199,6 +199,8 @@ export function pushPlatforms(projectRoot: string): { android: boolean; ios: boo
   return "unknown" in read ? undefined : pushPlatformsOf(read.options);
 }
 
+let unknownConfigWarned = false;
+
 export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOptions = {}): ConfigT {
   assertCustomRenderer("withSvelteNative (@alfayez/svelte-native/metro)");
   Object.assign(process.env, runesEnvironment(options.runes), asyncEnvironment(options.async));
@@ -265,7 +267,11 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
   const pushClient = realpathSync(sourceFile("push/push.svelte.ts"));
   // The app's config is read once for both decisions made from it: the push client above and the optional libraries below.
   const read = appPluginOptions(config.projectRoot);
-  if ("unknown" in read && options.libraries === undefined) console.warn(`svelte-native: ${read.unknown}; every optional library and the push client are bundled`);
+  // Once per process: Metro reads the config again for every variant and every restart of the resolver, and the reason does not change.
+  if ("unknown" in read && options.libraries === undefined && !unknownConfigWarned) {
+    unknownConfigWarned = true;
+    console.warn(`svelte-native: ${read.unknown}; every optional library and the push client are bundled`);
+  }
   const pushOn = "unknown" in read ? undefined : pushPlatformsOf(read.options);
   // The optional libraries the app turned on: the others resolve to a stub that says how to turn them on, and are not bundled. Unknown (a config that cannot be read, or one the prebuild
   // refuses) keeps them all, as push keeps its client.

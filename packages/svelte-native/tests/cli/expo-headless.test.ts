@@ -277,7 +277,8 @@ describe("headless Android config", () => {
     expect(once).toContain('def svelteNativeConfigCommand = ["node", svelteNativeCli, "android-autolinking"]');
     // The definitions come before the block that uses them.
     expect(once.indexOf("def svelteNativeConfigCommand")).toBeLessThan(once.indexOf("extensions.configure(com.facebook.react.ReactSettingsExtension)"));
-    const community = `extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
+    const community = `
+extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
   if (System.getenv('EXPO_USE_COMMUNITY_AUTOLINKING') == '1') {
     ex.autolinkLibrariesFromCommand()
   } else {

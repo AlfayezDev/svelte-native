@@ -42,7 +42,7 @@ export function hostOf(url: string): string {
  * A message with every URL in it cut to its scheme and host. Node's own errors quote the URL they were given (`fetch` refuses one with credentials by quoting it whole), and
  * a `detail` is printed by `push send` and logged by apps.
  */
-export const withoutSecrets = (text: string): string => text.replace(/\b([a-z][a-z\d+.-]*:\/\/)[^\s"'<>]+/gi, (url, scheme: string) => `${scheme}${hostOf(url)}`);
+const withoutSecrets = (text: string): string => text.replace(/\b([a-z][a-z\d+.-]*:\/\/)[^\s"'<>]+/gi, (url, scheme: string) => `${scheme}${hostOf(url)}`);
 
 /** A body that is JSON, or `undefined` when it is not: an error page of a proxy in front of a provider is text, and its status says what it is. */
 export function parseJson(text: string): unknown {

@@ -10,7 +10,7 @@ import type { PushToken } from "./types.ts";
 
 const SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
 const FCM_URL = "https://fcm.googleapis.com";
-const TOKEN_URL = "https://oauth2.googleapis.com/token";
+export const TOKEN_URL = "https://oauth2.googleapis.com/token";
 /** The longest an assertion may live (Google's limit), and so the `exp` it is signed with. */
 const ASSERTION_SECONDS = 3600;
 /** How long before an access token expires it is replaced, so that no send starts with a token that expires on the way. */
@@ -57,7 +57,7 @@ export function createFcm(options: FcmOptions | undefined, timeout: number): Fcm
 }
 
 /** What the sender sends for a message: FCM's v1 `Message` (PUSH.md, "How a message maps"). */
-export function fcmBody(token: PushToken, message: PushSend): { message: Record<string, unknown> } {
+function fcmBody(token: PushToken, message: PushSend): { message: Record<string, unknown> } {
   const data: Record<string, string> = { ...message.data };
   if (message.url !== undefined) data.url = message.url;
   const android: Record<string, unknown> = {};
@@ -95,7 +95,7 @@ function readError(body: unknown): { code?: string; message?: string; aboutToken
  * (an error page of a proxy, a `NOT_FOUND` of the canonical codes). `gone` and `invalid-token` tell the app to delete a token, so only the body's own word for it decides
  * them: a bare 404 is a wrong project id or endpoint, which would otherwise make a misconfigured server delete every token it has.
  */
-export function fcmFailure(status: number, body: unknown, text: string, retryAfter: number | undefined): Failure {
+function fcmFailure(status: number, body: unknown, text: string, retryAfter: number | undefined): Failure {
   const { code, message, aboutToken } = readError(body);
   const detail = message ?? code ?? (text.trim() === "" ? `HTTP ${status}` : text.trim().slice(0, 300));
   switch (code) {

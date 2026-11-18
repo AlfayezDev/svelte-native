@@ -507,7 +507,7 @@ export class Geolocation {
     this.#listen();
     try {
       watch.started = true;
-      // Every position, not one each so many meters, as a browser reports them.
+      // No distance filter: every position the platform reports, as a browser delivers them.
       await this.#native.startWatch(id, { accuracy: watch.options.accuracy, distanceInterval: 0 });
       // Cleared while the native watch was starting: stop it now that it exists.
       if (!current()) {

@@ -36,7 +36,7 @@ import { apsEnvironmentEntitlement, checkPushConfig, findPushSecret, googleServi
 
 const { AndroidConfig: expoAndroid } = configPlugins;
 
-// Defined in `push/config.ts` now, which the doctor loads without Expo; it stays importable from here.
+// `push/config.ts` owns it, because the doctor loads it without Expo; the plugin's module re-exports it for the plugin's callers.
 export { findPushSecret };
 
 /**
@@ -396,7 +396,7 @@ const holdBegin = "    // Svelte native: push, the first screen of a launch in t
 const holdOpen = "      surface: { [self] in";
 const holdClose = "      })";
 const holdEnd = "    // Svelte native: end of the first screen of a launch in the background";
-// `internal`, as `applyAppDelegate` writes its own import (of the same module, SvelteCore, which holds `SveltePushBackgroundLaunch` now, under a comment of its own): Expo's generated
+// `internal`, as `applyAppDelegate` (`expo.ts`) writes its own import of the same module, SvelteCore, which holds `SveltePushBackgroundLaunch`, under a comment of its own: Expo's generated
 // ExpoModulesProvider imports every module as `internal import`, and a plain import of the same module in the app target is ambiguous.
 const holdImportComment = "// Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
 const holdImport = `internal import SvelteCore ${holdImportComment}`;
@@ -712,7 +712,7 @@ function withPushAndroid(config: ExpoConfig, android: NonNullable<PushSettings["
 
 /**
  * Takes what the capability wrote out of an app that has no push on iOS (the capability is off, or names no iOS side), when it has an iOS project at all: the `SveltePushEnabled` flag in
- * `Info.plist` (the native code is in the app either way, and must do nothing without it) and the push wrapper of `AppDelegate.swift` (`removePushAppDelegate`; an app built with the
+ * `Info.plist` and the Podfile property that compiles the iOS code in (`pushPodfileProperty`; the native code is in the app either way, and must do nothing without them) and the push wrapper of `AppDelegate.swift` (`removePushAppDelegate`; an app built with the
  * separate package of an earlier version would otherwise stop on "No such module 'SveltePush'" once it is uninstalled). The entitlement and the background mode stay: they are in
  * `Info.plist` and the entitlements file with nothing that says the capability wrote them, and the app's own config or another library's plugin may be the one that wants them.
  */

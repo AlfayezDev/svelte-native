@@ -188,7 +188,7 @@ export default {
 | `remote` | `{ origin, base?, appDir? }`: the SvelteKit server your [remote functions](loading-data#remote-functions) call. An `http:` origin also allows plain HTTP to it. |
 | `androidOnDemandViewManagers` | Android: create a package's views on first use instead of at startup, by the package's class name: `{ "com.brentvatne.react.ReactVideoPackage": ["RCTVideo"] }`. Shortens startup when you link libraries with many views. |
 | `autolinkingExclude` | Packages and local modules to leave out of this build's native code. |
-| `capabilities` | What needs a permission or a service of the system, each on once you give what it needs. `{ location: 'Shows the stores near you.' }` turns on `navigator.geolocation`, with expo-location installed ([Geolocation](web-apis#geolocation)). `{ push: { … } }` turns on push notifications (below). |
+| `capabilities` | What needs a permission or a service of the system, each on once you give what it needs. `{ location: 'Shows the stores near you.' }` turns on `navigator.geolocation`, with nothing to install ([Geolocation](web-apis#geolocation)). A capability that is off isn't compiled into the iOS app at all, so App Store Connect sees none of its APIs. `{ push: { … } }` turns on push notifications (below). |
 
 Run `expo prebuild` after changing the plugin's options ([Development builds](development-builds#when-to-run-expo-prebuild)).
 

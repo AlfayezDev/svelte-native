@@ -171,6 +171,13 @@ jobs:
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bash packages/svelte-native/native/svelte-core/android/src/test/push.sh
 
+      # The Android side of location that needs no device: which providers a request tries (the fused provider from API 31, the GPS only with the precise permission), the permission's
+      # state, the payloads, the registry of watches, the enabled flag every call asks first, and that no Google library is part of it and the module and config plugin agree with
+      # src/geolocation.ts. kotlinc only.
+      - name: Location host checks
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bash packages/svelte-native/native/svelte-core/android/src/test/location.sh
+
   docs:
     name: Documentation site
     runs-on: ubuntu-latest

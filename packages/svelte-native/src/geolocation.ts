@@ -1,7 +1,8 @@
 /**
- * `navigator.geolocation` and `navigator.permissions` on the device: the W3C Geolocation API over expo-location's native module (`ExpoLocation`), which the
- * app links by turning on the location capability (`capabilities: { location }` in the config plugin, with expo-location installed). `polyfills.ts` defines both
- * lazily: nothing of this loads until one is read, and in a build without the module `navigator.geolocation` reads as `undefined`, with the reason logged once.
+ * `navigator.geolocation` and `navigator.permissions` on the device: the W3C Geolocation API over the library's own native module (`SvelteLocation`, in `native/svelte-core`: Android's `LocationManager`,
+ * iOS's `CLLocationManager`; SPEC.md, "Location"), which the config plugin turns on with the location capability (`capabilities: { location }`; the module is in every app and does nothing without it,
+ * and nothing is installed). `polyfills.ts` defines both lazily: nothing of this loads until one is read, and in a build without the capability `navigator.geolocation` reads as `undefined`,
+ * with the reason logged once.
  *
  * What it follows of the web: `getCurrentPosition`, `watchPosition` and `clearWatch` call back asynchronously, with a `GeolocationPosition` or a
  * `GeolocationPositionError` (`PERMISSION_DENIED`, `POSITION_UNAVAILABLE`, `TIMEOUT`); the first use asks for the permission, and `timeout` counts from when it is
@@ -9,8 +10,8 @@
  * `enableHighAccuracy` (the web's cached position and its `[[isHighAccuracy]]`; the system's last known position, taken no one knows how, answers only a request without
  * it; the system's is also a native lookup that may not answer: a `getCurrentPosition` waits for it at most `CACHE_LOOKUP_MS`, a watch looks it up alongside its native
  * watch); `enableHighAccuracy` asks for the GPS. Where it differs: a
- * position the platform cannot place in altitude, heading or speed reports `null` for them (Android reports 0 when it does not know, and it is read as unknown when its
- * accuracy is 0); and the permission is the system's, so a user who denied it can be asked again where the system still allows it (Android asks twice).
+ * position the platform cannot place in altitude, heading or speed reports `null` for them (the native module leaves them out, and a platform that reports a negative value, as iOS does, or an
+ * altitude with no accuracy, is read as unknown); and the permission is the system's, so a user who denied it can be asked again where the system still allows it (Android asks twice).
  */
 import { onForeground } from "./foreground.ts";
 
@@ -23,24 +24,35 @@ type NativeCoords = {
   heading?: number | null;
   speed?: number | null;
 };
-type NativeLocation = { coords: NativeCoords; timestamp: number; mocked?: boolean };
+type NativeLocation = { coords: NativeCoords; timestamp: number };
 type NativePermission = { status: "granted" | "denied" | "undetermined"; granted: boolean; canAskAgain: boolean };
 type Subscription = { remove(): void };
 
-/** What this file uses of expo-location's native module: its permission calls, one-off and last known positions, and the watches it reports with `Expo.locationChanged`. */
-export type NativeLocationModule = {
-  getForegroundPermissionsAsync(): Promise<NativePermission>;
-  requestForegroundPermissionsAsync(): Promise<NativePermission>;
-  getCurrentPositionAsync(options: { accuracy: number }): Promise<NativeLocation>;
-  getLastKnownPositionAsync(options: { maxAge?: number }): Promise<NativeLocation | null>;
-  watchPositionImplAsync(watchId: number, options: { accuracy: number; distanceInterval: number }): Promise<void>;
-  removeWatchAsync(watchId: number): Promise<void>;
-  addListener(event: string, listener: (event: Record<string, unknown>) => void): Subscription;
+/** How precise a request asks to be: `balanced` (about a city block: the network and Wi-Fi) or `high` (the GPS, `enableHighAccuracy`). */
+export type Accuracy = "balanced" | "high";
+
+/** The events of a watch: a position (`locationChanged`), and a watch that failed (`locationError`: iOS's, and Android's when the provider a watch runs on is switched off). */
+export type NativeLocationEvents = {
+  locationChanged: { watchId: number; location: NativeLocation };
+  locationError: { watchId: number; reason: string };
 };
 
-/** expo-location's accuracies: `Balanced` (about a city block, network and Wi-Fi) and `High` (the GPS). */
-const BALANCED = 3;
-const HIGH = 4;
+/**
+ * What this file uses of the `SvelteLocation` native module (SPEC.md, "Location"): whether the build has location on (`enabled`, which the capability turns on; every call rejects without it), the
+ * permission (read, and asked), a one-off position, the system's last known position, and watches by the id this file gives them, whose positions come as `locationChanged`. A rejection's `code`
+ * is `ERR_LOCATION_UNAUTHORIZED` for a permission the user has not given, and another `ERR_LOCATION_*` for a position it could not get.
+ */
+export type NativeLocationModule = {
+  readonly enabled: boolean;
+  permission(): Promise<NativePermission>;
+  requestPermission(): Promise<NativePermission>;
+  currentPosition(options: { accuracy: Accuracy }): Promise<NativeLocation>;
+  lastKnownPosition(options: { maxAge?: number }): Promise<NativeLocation | null>;
+  startWatch(watchId: number, options: { accuracy: Accuracy; distanceInterval: number }): Promise<void>;
+  stopWatch(watchId: number): Promise<void>;
+  addListener<Event extends keyof NativeLocationEvents>(event: Event, listener: (payload: NativeLocationEvents[Event]) => void): Subscription;
+};
+
 /** The web's default `timeout`: none (2^32 - 1 ms, as `[EnforceRange] unsigned long` allows). */
 const NO_TIMEOUT = 0xffffffff;
 /**
@@ -49,11 +61,8 @@ const NO_TIMEOUT = 0xffffffff;
  * wait for it (see `#startWatch`).
  */
 const CACHE_LOOKUP_MS = 100;
-/**
- * Watch ids start far from expo-location's own (its JavaScript counts from 1): both share the module's watches and its `Expo.locationChanged` events. expo-location's
- * listener stops a watch it does not know when it hears one of its events, so an app should not watch through both at once.
- */
-const FIRST_WATCH = 1_000_000;
+/** The first id `watchPosition` returns: the web's ids are positive, and the native module's watches are this file's alone, so no other library's ids and events can meet them. */
+const FIRST_WATCH = 1;
 
 const ILLEGAL = Symbol("geolocation internal");
 
@@ -151,9 +160,10 @@ function milliseconds(value: unknown, fallback: number): number {
 
 function readOptions(options: PositionOptions | null | undefined) {
   const high = Boolean(options?.enableHighAccuracy);
+  const accuracy: Accuracy = high ? "high" : "balanced";
   return {
     high,
-    accuracy: high ? HIGH : BALANCED,
+    accuracy,
     timeout: milliseconds(options?.timeout, NO_TIMEOUT),
     maximumAge: milliseconds(options?.maximumAge, 0),
   };
@@ -174,14 +184,11 @@ function invoke<Value>(callback: ((value: Value) => void) | null | undefined, va
   }
 }
 
-/**
- * The code of a rejection of the native module: a permission refused (Android's `ERR_LOCATION_UNAUTHORIZED`, iOS's `ERR_DENIED_FOREGROUND_LOCATION_PERMISSION`),
- * or a position it could not get.
- */
+/** The code of a rejection of the native module: a permission refused (`ERR_LOCATION_UNAUTHORIZED`, on both platforms), or a position it could not get. */
 function failure(error: unknown): GeolocationPositionError {
   const code = typeof error === "object" && error !== null ? String((error as { code?: unknown }).code ?? "") : "";
   const message = error instanceof Error ? error.message : String(error);
-  return /UNAUTHORIZED|DENIED/.test(code) ? positionError(1, message || "User denied Geolocation") : positionError(2, message || "Position unavailable");
+  return code === "ERR_LOCATION_UNAUTHORIZED" ? positionError(1, message || "User denied Geolocation") : positionError(2, message || "Position unavailable");
 }
 
 /** The permission state the web names: `granted`, `denied` once the system will not ask again, else `prompt`. */
@@ -285,7 +292,7 @@ export class Geolocation {
     if (!watch) return;
     this.#watches.delete(id);
     clearTimeout(watch.timer);
-    if (watch.started) this.#native.removeWatchAsync(id).catch(() => {});
+    if (watch.started) this.#native.stopWatch(id).catch(() => {});
     if (this.#watches.size === 0) {
       for (const subscription of this.#subscriptions ?? []) subscription.remove();
       this.#subscriptions = null;
@@ -294,7 +301,7 @@ export class Geolocation {
 
   /** `navigator.permissions.query({ name: "geolocation" })`. */
   async query(): Promise<PermissionStatus> {
-    const status = new PermissionStatus(ILLEGAL, permissionState(await this.#native.getForegroundPermissionsAsync()));
+    const status = new PermissionStatus(ILLEGAL, permissionState(await this.#native.permission()));
     this.#statuses.add(status);
     if (!this.#foregroundSubscribed) {
       this.#foregroundSubscribed = true;
@@ -304,7 +311,7 @@ export class Geolocation {
   }
 
   async #refresh(): Promise<"granted" | "denied" | "prompt"> {
-    const state = permissionState(await this.#native.getForegroundPermissionsAsync());
+    const state = permissionState(await this.#native.permission());
     this.#statuses.update(state);
     return state;
   }
@@ -321,8 +328,8 @@ export class Geolocation {
   }
 
   async #ask(): Promise<boolean> {
-    let permission = await this.#native.getForegroundPermissionsAsync();
-    if (permissionState(permission) === "prompt") permission = await this.#native.requestForegroundPermissionsAsync();
+    let permission = await this.#native.permission();
+    if (permissionState(permission) === "prompt") permission = await this.#native.requestPermission();
     const state = permissionState(permission);
     this.#statuses.update(state);
     return state === "granted";
@@ -352,7 +359,7 @@ export class Geolocation {
     if (maximumAge <= 0 || options.high) return null;
     let lookup: Promise<NativeLocation | null>;
     try {
-      lookup = this.#native.getLastKnownPositionAsync({ maxAge: maximumAge }).catch(() => null);
+      lookup = this.#native.lastKnownPosition({ maxAge: maximumAge }).catch(() => null);
     } catch {
       return null;
     }
@@ -403,7 +410,7 @@ export class Geolocation {
       // The caller has had its TIMEOUT: no native request that nobody will read.
       if (timedOut) throw positionError(3, "Timeout expired");
       try {
-        return this.#remember(await this.#native.getCurrentPositionAsync({ accuracy: options.accuracy }), options.high);
+        return this.#remember(await this.#native.currentPosition({ accuracy: options.accuracy }), options.high);
       } catch (error) {
         throw failure(error);
       }
@@ -415,20 +422,20 @@ export class Geolocation {
     }
   }
 
-  /** The module's watch events: a position (`Expo.locationChanged`), and on iOS a watch that failed (`Expo.locationError`; Android reports none once a watch runs). */
+  /** The module's watch events: a position (`locationChanged`), and a watch that failed (`locationError`: iOS's, and Android's when the provider a watch runs on is switched off). */
   #listen(): void {
     this.#subscriptions ??= [
-      this.#native.addListener("Expo.locationChanged", (event) => {
-        const id = event.watchId as number;
+      this.#native.addListener("locationChanged", (event) => {
+        const id = event.watchId;
         const watch = this.#watches.get(id);
         if (!watch) return;
         watch.positioned = true;
-        const position = this.#remember(event.location as NativeLocation, watch.options.high);
+        const position = this.#remember(event.location, watch.options.high);
         this.#arm(id, watch);
         invoke(watch.success, position);
       }),
-      this.#native.addListener("Expo.locationError", (event) => {
-        const id = event.watchId as number;
+      this.#native.addListener("locationError", (event) => {
+        const id = event.watchId;
         if (!this.#watches.has(id)) return;
         void this.#watchFailed(id, String(event.reason ?? "Position unavailable"));
       }),
@@ -437,7 +444,7 @@ export class Geolocation {
 
   /** A running watch failed: a permission taken away ends it with `PERMISSION_DENIED`, as on the web; anything else is `POSITION_UNAVAILABLE`, and it goes on. */
   async #watchFailed(id: number, reason: string): Promise<void> {
-    const permission = await this.#native.getForegroundPermissionsAsync().catch(() => null);
+    const permission = await this.#native.permission().catch(() => null);
     const watch = this.#watches.get(id);
     if (!watch) return;
     const state = permission ? permissionState(permission) : "granted";
@@ -500,11 +507,11 @@ export class Geolocation {
     this.#listen();
     try {
       watch.started = true;
-      // Every position, not one each 50 to 100 m (Android's default for these accuracies; iOS's is 0), as a browser reports them.
-      await this.#native.watchPositionImplAsync(id, { accuracy: watch.options.accuracy, distanceInterval: 0 });
+      // Every position, not one each so many meters, as a browser reports them.
+      await this.#native.startWatch(id, { accuracy: watch.options.accuracy, distanceInterval: 0 });
       // Cleared while the native watch was starting: stop it now that it exists.
       if (!current()) {
-        this.#native.removeWatchAsync(id).catch(() => {});
+        this.#native.stopWatch(id).catch(() => {});
         return;
       }
       // The timeout counts from when the watch runs: not while Android's dialog that asks to turn on better accuracy is up (so a native start that never
@@ -538,17 +545,26 @@ Object.defineProperty(Permissions.prototype, Symbol.toStringTag, { value: "Permi
 
 /** Why `navigator.geolocation` is missing from a build: the capability is off. */
 export const MISSING_LOCATION =
-  "the location capability is not part of this app's build: install expo-location, add `capabilities: { location: \"<why the app uses the location>\" }` to the @alfayez/svelte-native plugin in the app config, and rebuild the native app";
+  "the location capability is not part of this app's build: add `capabilities: { location: \"<why the app uses the location>\" }` to the @alfayez/svelte-native plugin in the app config, and rebuild the native app";
 
 let shared: Geolocation | undefined;
 
-/** `navigator.geolocation`: expo-location's native module, looked up on the first read. Throws in a build without it (the lazy global then reads as `undefined`). */
-export function loadGeolocation(): Geolocation {
-  if (shared) return shared;
+/**
+ * The native module `SvelteLocation` when location is on in this build (its `enabled`, which `capabilities.location` turns on), else `null`. The module itself is part of the library's native
+ * code, in every app.
+ */
+function nativeLocation(): NativeLocationModule | null {
   /* eslint-disable @typescript-eslint/no-require-imports -- required on the first read of `navigator.geolocation` */
   const registry = require("expo-modules-core") as Partial<typeof import("expo-modules-core")>;
-  const native = registry.requireOptionalNativeModule?.<NativeLocationModule>("ExpoLocation") ?? null;
+  const native = registry.requireOptionalNativeModule?.<NativeLocationModule>("SvelteLocation") ?? null;
   /* eslint-enable @typescript-eslint/no-require-imports */
+  return native?.enabled === true ? native : null;
+}
+
+/** `navigator.geolocation`: the native module, looked up on the first read. Throws in a build without the capability (the lazy global then reads as `undefined`). */
+export function loadGeolocation(): Geolocation {
+  if (shared) return shared;
+  const native = nativeLocation();
   if (native === null) throw new Error(MISSING_LOCATION);
   shared = new Geolocation(native, onForeground);
   return shared;

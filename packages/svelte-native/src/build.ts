@@ -292,7 +292,7 @@ export function watchRoutes(root: string, options: SyncOptions = {}, debounceMs 
 
 /**
  * The environment `expo` runs in: this process's, with `extra` over it. Expo's TypeScript setup is off unless the environment turns it on: it is for React apps,
- * and asks a Svelte app, whose `tsconfig.json` is SvelteKit's, to install `@types/react`.
+ * and stops the first run of a Svelte app, whose TypeScript is SvelteKit's, to ask to install `@types/react`.
  */
 export function expoEnvironment(args: string[], extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { EXPO_NO_TYPESCRIPT_SETUP: "1", ...process.env, EXPO_NO_TELEMETRY: "1", ...extra };

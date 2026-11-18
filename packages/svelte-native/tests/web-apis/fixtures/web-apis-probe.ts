@@ -18,7 +18,8 @@ const bufferBefore = scope.Buffer;
 // react-native-quick-crypto: the exports `crypto` is made of, and `install`, which sets globals the library must not set.
 let installs = 0;
 const fakeSubtle = { digest: async () => new ArrayBuffer(32), marker: "subtle" };
-mock.module("react-native-quick-crypto", () => {
+// The library requires its own copy by the name of its `imports` map (`#vendor/react-native-quick-crypto`).
+mock.module("#vendor/react-native-quick-crypto", () => {
   if (missing) throw new Error("Requiring unknown module \"react-native-quick-crypto\"");
   events.push("quick-crypto loaded");
   return {
@@ -45,7 +46,7 @@ class FakeMMKV {
   clearAll() { this.data.clear(); }
   getAllKeys() { return [...this.data.keys()]; }
 }
-mock.module("react-native-mmkv", () => {
+mock.module("#vendor/react-native-mmkv", () => {
   if (missingMMKV) throw new Error("Nitro module \"MMKVFactory\" is not in this app");
   events.push("mmkv loaded");
   return {
@@ -59,7 +60,7 @@ mock.module("react-native-mmkv", () => {
 
 // What `polyfills.ts` imports besides: not under test.
 mock.module("expo/src/winter", () => ({}));
-mock.module("hermes-intl", () => ({}));
+mock.module("#vendor/hermes-intl", () => ({}));
 mock.module("react-native/Libraries/AppState/AppState", () => ({ default: { addEventListener: () => ({ remove() {} }) } }));
 
 const result: Record<string, unknown> = {};

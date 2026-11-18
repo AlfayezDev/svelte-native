@@ -3,7 +3,7 @@ import type { Reader } from "./resolve.ts";
 /**
  * What the library's patches leave in the packages they patch, read from the installed files: the shape the package's tests pin
  * (`tests/upstream/foreign-native-events.test.ts`, `tests/upstream/expo-modules-core-patch.test.ts`, `tests/upstream/react-native-gesture-handler-patch.test.ts`, `tests/upstream/worklets-frame-loop.test.ts`)
- * and `svelte-native doctor` reports on in an app. Each function takes a `Reader` over one package's directory and returns the problems
+ * and `svelte-native doctor` reports on in an app: the packages an app installs (`patches/`) and the copies the library carries (`vendor/`, patched by `scripts/vendor.ts`; `vendored: true` in `patches.ts`). Each function takes a `Reader` over one package's directory and returns the problems
  * it finds, so an empty list means the patch is in; none of them reads anything but the files they name.
  */
 
@@ -39,7 +39,14 @@ export function kitProblems(read: Reader): string[] {
 // ---- react-native-pdf, react-native-video, lottie-react-native, react-native-maps: Android events that must not coalesce ----
 
 export function pdfProblems(read: Reader): string[] {
-  return inFile(read, "android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java", [["canCoalesce() is not overridden to return false", neverCoalesces]]);
+  return [
+    ...inFile(read, "android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java", [["canCoalesce() is not overridden to return false", neverCoalesces]]),
+    // The library carries the package (`vendor/`), so react-native is not found from the package's own place beside it in node_modules but from the app's directory upwards.
+    ...inFile(read, "android/build.gradle", [
+      ["does not look for react-native in the node_modules above the app's directory", has("reactNativeFromAncestor")],
+      ["still looks for react-native beside the package itself", (code) => !code.includes("reactNativeFromNodeModulesWithPDF")],
+    ], true),
+  ];
 }
 
 /**
@@ -78,6 +85,7 @@ export function mapsProblems(read: Reader): string[] {
     const stream = mapsStreamEvents.includes(file.slice(0, -".java".length));
     problems.push(...inFile(read, `${directory}/${file}`, [stream ? ["a stream event no longer coalesces", (code) => !code.includes("canCoalesce")] : ["canCoalesce() is not overridden to return false", neverCoalesces]]));
   }
+  problems.push(...inFile(read, "plugin/build/ios.js", [["the Podfile line of its iOS plugin looks for an installed react-native-maps, not the library's copy", has("require.resolve(\\'@alfayez/svelte-native/package.json\\')")]], true));
   return problems;
 }
 
@@ -127,6 +135,10 @@ export function reanimatedProblems(read: Reader): string[] {
     ]),
     ...inFile(read, `${base}/cpp/reanimated/android/NativeProxy.cpp`, [["does not export reanimatedSetSynchronousPropsSink", has("reanimatedSetSynchronousPropsSink")], ["does not call the sink", has("synchronousPropsSink.load")]]),
     ...inFile(read, `${base}/cpp/reanimated/android/NativeProxy.h`, [["does not declare SynchronousPropsSink", has("SynchronousPropsSink")], ["does not keep the sink's rest buffers", has("sinkRestInts_")]]),
+    // The Gradle task and the podspec's script find Worklets by this path (`vendor/react-native-worklets`, beside the copy of Reanimated): by name it is not a package of the app.
+    ...inFile(read, "scripts/validate-worklets-version.js", [["still looks for react-native-worklets by name", has("require('../../react-native-worklets/package.json')")]], true),
+    // The patched Android update (the sink above) is reached only through the synchronous update this flag turns on, which an app no longer sets itself.
+    ...inFile(read, "src/featureFlags/staticFlags.json", [["has the synchronous Android update off by default", has('"ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true')]], true),
   ];
 }
 
@@ -193,4 +205,11 @@ export function expoModulesCoreProblems(read: Reader, patch: string): string[] {
     ...inFile(read, "android/src/main/java/expo/modules/adapters/react/NativeModulesProxy.java", [["cannot build the interop registry in the background", has("startInteropInBackground")]], true),
     ...inFile(read, "src/NativeViewManagerAdapter.native.tsx", [["imports the native component registry when it loads", adapterLoadsRegistryLazily]], true),
   ];
+}
+
+export function riveProblems(read: Reader): string[] {
+  return inFile(read, "android/src/main/java/com/rivereactnative/RiveReactNativeView.kt", [
+    ["an event still goes through the old architecture's event emitter (a soft exception for every event in a bridgeless app)", (code) => !code.includes("RCTEventEmitter")],
+    ["the view's events are not sent through the event dispatcher", (code) => code.includes("getEventDispatcherForReactTag")],
+  ]);
 }

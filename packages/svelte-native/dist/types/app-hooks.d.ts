@@ -1,3 +1,4 @@
+import type { PushHooks } from "./push/hooks.js";
 /** What `src/hooks.mobile.ts` may export. Every export is optional. */
 export type MobileHooks = {
     /** Runs once when the app starts, before the first screen mounts. SvelteKit's `ClientInit`: the first screen waits for the promise it returns. */
@@ -16,6 +17,11 @@ export type MobileHooks = {
         encode(value: unknown): unknown;
         decode(data: unknown): unknown;
     }>;
+    /**
+     * What the app does with push notifications (`@alfayez/svelte-native/push`): how a message that arrives in the foreground is shown (`foreground`), what a data message
+     * does while the app is in the background (`background`), and whether a tapped notification opens its link (`opened`).
+     */
+    push?: PushHooks;
 };
 /** Called by the generated `.svelte-native/hooks.ts` with the exports of `src/hooks.mobile.ts` (or none, for an app without the file), on every evaluation of it. */
 export declare function registerHooks(hooks: MobileHooks): void;

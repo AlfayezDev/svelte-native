@@ -143,7 +143,8 @@ describe("the entries 0.4.0-rc.6 deprecated are removed, and what they exported 
     expect(manifest.exports["./app"]).toEqual({ "svelte-native-source": "./src/app.ts", types: "./dist/types/app.d.ts", default: "./src/app.ts" });
     expect(existsSync(src("init.ts")) && existsSync(src("polyfills.ts"))).toBe(true);
     const imports = readFileSync(src("app.ts"), "utf8").split("\n").filter((line) => line.startsWith("import "));
-    expect(imports).toEqual(['import "./init.ts";', 'import "./polyfills.ts";', expect.stringMatching(/^import \{ .* \} from "\.\/fabric\/index\.ts";$/)]);
+    // `push/load.ts` comes after the host: it evaluates no push code unless the build has push, so it is not one of the boot phases.
+    expect(imports).toEqual(['import "./init.ts";', 'import "./polyfills.ts";', expect.stringMatching(/^import \{ .* \} from "\.\/fabric\/index\.ts";$/), 'import "./push/load.ts";']);
     expect(manifest.exports["./init"]).toBeUndefined();
     expect(manifest.exports["./polyfills"]).toBeUndefined();
   });
@@ -162,7 +163,7 @@ describe("the web's `localStorage` entry", () => {
     const names = exportsOf(src("mmkv.ts"));
     expect([...names.values].sort()).toEqual(["createMMKV", "localStorageMMKV"]);
     expect([...names.types].sort()).toEqual(["Configuration", "MMKV", "Mode"]);
-    expect(readFileSync(src("mmkv.ts"), "utf8")).toContain('from "react-native-mmkv"');
+    expect(readFileSync(src("mmkv.ts"), "utf8")).toContain('from "#vendor/react-native-mmkv"');
     // The main entry and the primitives export nothing of it: an app that does not use MMKV directly does not load its types.
     expect(JSON.stringify(manifest.exports["."])).not.toContain("mmkv");
     for (const entry of [src("index.ts"), src("core.ts"), src("app.ts")]) expect(readFileSync(entry, "utf8")).not.toMatch(/mmkv|quick-crypto/);

@@ -20,7 +20,7 @@ describe("React Native clears tmp/ReactNative late, which is why the module swee
 describe("the module that sweeps is a product module wired the way Expo autolinks it", () => {
   test("the package's config lists the subscriber that a Swift file defines, and the host check sits outside the pod", () => {
     const config = JSON.parse(readFileSync(resolve(core, "../../expo-module.config.json"), "utf8")) as { apple: { appDelegateSubscribers: string[] } };
-    expect(config.apple.appDelegateSubscribers).toEqual(["SvelteCaptureSubscriber"]);
+    expect(config.apple.appDelegateSubscribers).toContain("SvelteCaptureSubscriber");
     expect(subscriber).toContain("public final class SvelteCaptureSubscriber: ExpoAppDelegateSubscriber");
     // The host check sits outside the pod's directory (ios/), so the app does not compile a second `main`.
     expect(existsSync(resolve(core, "ios/capture/SvelteCaptureFilesCheck.swift"))).toBe(false);

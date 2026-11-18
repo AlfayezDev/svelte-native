@@ -2,7 +2,7 @@
 title: Modules
 ---
 
-Svelte Native's code is split into a few entry points. An app imports almost everything from the main one and reaches for `/foreign`, `/platform`, `/remote` and `/updates` for the rest. This page lists each entry point and what it exports, with a link to the page that explains it.
+Svelte Native's code is split into a few entry points. An app imports almost everything from the main one and reaches for `/foreign`, `/platform`, `/remote`, `/updates` and `/push` for the rest. This page lists each entry point and what it exports, with a link to the page that explains it.
 
 ## @alfayez/svelte-native
 
@@ -69,11 +69,11 @@ Native gesture recognisers, with react-native-gesture-handler. [Gestures](gestur
 
 ### SVG
 
-SVG with react-native-svg, which is a required peer dependency: `Svg`, `G`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polygon`, `Polyline`, `SvgText`, `TSpan`, `TextPath`, `Use`, `SvgImage`, `Defs`, `ClipPath`, `SvgLinearGradient`, `RadialGradient`, `Stop`, `Pattern`, `Mask`, `SvgMarker`, `Symbol`, `ForeignObject`, the filters (`Filter`, `FeBlend`, `FeColorMatrix`, `FeComposite`, `FeDropShadow`, `FeFlood`, `FeGaussianBlur`, `FeMerge`, `FeMergeNode`, `FeOffset`), `SvgXml` and `SvgUri`, and the handle types `SvgHandle` and `SvgRootHandle`. react-native-svg's `Text`, `Image`, `LinearGradient` and `Marker` are `SvgText`, `SvgImage`, `SvgLinearGradient` and `SvgMarker` here, because `Text` and `Image` are the views and `/foreign` has a `LinearGradient` and a `Marker` of its own (expo-linear-gradient and react-native-maps). [SVG](svg)
+SVG with react-native-svg, which the library carries itself: `Svg`, `G`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polygon`, `Polyline`, `SvgText`, `TSpan`, `TextPath`, `Use`, `SvgImage`, `Defs`, `ClipPath`, `SvgLinearGradient`, `RadialGradient`, `Stop`, `Pattern`, `Mask`, `SvgMarker`, `Symbol`, `ForeignObject`, the filters (`Filter`, `FeBlend`, `FeColorMatrix`, `FeComposite`, `FeDropShadow`, `FeFlood`, `FeGaussianBlur`, `FeMerge`, `FeMergeNode`, `FeOffset`), `SvgXml` and `SvgUri`, and the handle types `SvgHandle` and `SvgRootHandle`. react-native-svg's `Text`, `Image`, `LinearGradient` and `Marker` are `SvgText`, `SvgImage`, `SvgLinearGradient` and `SvgMarker` here, because `Text` and `Image` are the views and `/foreign` has a `LinearGradient` and a `Marker` of its own (expo-linear-gradient and react-native-maps). [SVG](svg)
 
 ## @alfayez/svelte-native/foreign
 
-Native views of other libraries. [Native views](native-views)
+Native views of other libraries. [Native views](native-views). Each component needs its library turned on in `libraries` of the [plugin's options](configuration#libraries); a component whose library is off throws a message that says so.
 
 | Export | Description |
 | --- | --- |
@@ -83,11 +83,11 @@ Native views of other libraries. [Native views](native-views)
 | `LinearGradient` | `expo-linear-gradient`. |
 | `ConicGradient` | `expo-conic-gradient`. |
 | `Video` | `react-native-video`. |
-| `VideoView` | `expo-video`. |
+| `VideoView`, `createVideoPlayer` | `expo-video`. `createVideoPlayer` is the library's own function, which makes the `player` a `VideoView` shows. |
 | `LottieView` | `lottie-react-native`. |
 | `Rive` | `rive-react-native`. |
 | `DateTimePicker`, `openDatePicker`, `dismissDatePicker` | `@react-native-community/datetimepicker`. |
-| `Pdf` | `react-native-pdf`. |
+| `Pdf` | `react-native-pdf` (and `react-native-blob-util`, which it brings). |
 | `WebView` | `react-native-webview`. |
 | `MapView`, `Marker` | `react-native-maps`. |
 | `ViewShot`, `captureRef`, `captureScreen`, `releaseCapture` | `react-native-view-shot`. |
@@ -133,6 +133,25 @@ SvelteKit's remote functions on the device. [Loading data](loading-data#remote-f
 ## @alfayez/svelte-native/updates
 
 Over-the-air updates, compatible with `eas update`: `isEnabled`, `updateId`, `channel`, `runtimeVersion`, `checkForUpdateAsync`, `fetchUpdateAsync`, `reloadAsync` and `checkOnLaunch`. [Updates](updates)
+
+## @alfayez/svelte-native/push
+
+Push notifications on the device, once `capabilities.push` turns them on. [Push notifications](push-notifications)
+
+| Export | Description |
+| --- | --- |
+| `push` | `push.permission` and `push.token` as state, and `push.subscribe({ save })`, `push.unsubscribe()` and `push.on('message', listener)`. |
+| `PushHooks`, `PushPresentation` | The types of the `push` export of `src/hooks.mobile.ts`. |
+| `PushMessage`, `PushToken`, `PushPermission` | The types of a message, of the token the app saves, and of `push.permission`. |
+
+## @alfayez/svelte-native/push/server
+
+The sender, for your server (Node, no dependencies; it does not run on the device). [Push notifications](push-notifications#on-the-server)
+
+| Export | Description |
+| --- | --- |
+| `createPush({ fcm, apns, timeout })` | Makes the sender. It has `send(token, message)`, which sends one message to one device and resolves with a `SendResult`, and `close()`. |
+| `PushSend`, `SendResult`, `PushToken`, `Push`, `PushOptions` | The types of a message, of its result, of the token the app saved, of the sender and of its options. |
 
 ## Build tools
 

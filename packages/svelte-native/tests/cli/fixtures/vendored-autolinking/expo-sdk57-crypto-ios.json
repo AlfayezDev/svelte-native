@@ -1,0 +1,38 @@
+{
+  "hermes-intl": {
+    "root": "$PACKAGE",
+    "name": "hermes-intl",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/HermesIntl.podspec",
+        "version": "0.1.2",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  },
+  "react-native-quick-base64": {
+    "root": "$PACKAGE",
+    "name": "react-native-quick-base64",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/react-native-quick-base64.podspec",
+        "version": "2.2.2",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  },
+  "react-native-quick-crypto": {
+    "root": "$PACKAGE",
+    "name": "react-native-quick-crypto",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/QuickCrypto.podspec",
+        "version": "1.1.3",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  }
+}

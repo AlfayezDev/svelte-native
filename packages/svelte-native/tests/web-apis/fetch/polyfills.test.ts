@@ -31,7 +31,7 @@ const bundled = (): Promise<string> => bundle({
   plugins: [{
     name: "stubs",
     setup(builder: PluginBuild) {
-      builder.onResolve({ filter: /^(react-native\/Libraries\/|expo-modules-core$|expo\/src\/winter$|hermes-intl$|react-native-mmkv$|react-native-quick-crypto$)/ }, (args) => ({ path: args.path, namespace: "stub" }));
+      builder.onResolve({ filter: /^(react-native\/Libraries\/|expo-modules-core$|expo\/src\/winter$|#vendor\/(?:hermes-intl|react-native-mmkv|react-native-quick-crypto)$)/ }, (args) => ({ path: args.path, namespace: "stub" }));
       builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
       // Counts the modules of src/fetch that are evaluated, to say when the layer was loaded.
       builder.onLoad({ filter: /src[\\/]fetch[\\/][^\\/]+\.ts$/ }, ({ path }) => ({ contents: `${readFileSync(path, "utf8")}\nglobalThis.__fetchLoaded = [...(globalThis.__fetchLoaded ?? []), ${JSON.stringify(path.split("/").at(-1))}];`, loader: "ts" }));

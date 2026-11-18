@@ -3,7 +3,7 @@
   import { createNativeProps } from "../../native-props.ts";
   import { imageNativeProps } from "../../fabric/foreign-svg.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
-  import type { ImageProps } from "react-native-svg";
+  import type { ImageProps } from "#vendor/react-native-svg";
 
   /** `react-native-svg`'s `Image`: `href` is a URI or an asset number (`require`), drawn into `x`, `y`, `width`, `height` by `preserveAspectRatio`. `onLoad` is the native image's. */
   let { ref, animatedProps, ...props }: ImageProps & SvgExtras = $props();

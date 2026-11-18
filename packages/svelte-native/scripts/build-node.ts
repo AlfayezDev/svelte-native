@@ -34,6 +34,7 @@ export const entries: readonly Entry[] = [
   { name: "expo", source: "src/expo.ts", format: "cjs" },
   { name: "lower", source: "src/lower.ts", format: "esm" },
   { name: "metro", source: "src/metro.ts", format: "cjs" },
+  { name: "push-server", source: "src/push/server.ts", format: "esm" },
   { name: "routes", source: "src/routes-table.ts", format: "esm" },
   { name: "transformer", source: "src/transformer.ts", format: "cjs" },
   { name: "vite", source: "src/vite.ts", format: "esm" },

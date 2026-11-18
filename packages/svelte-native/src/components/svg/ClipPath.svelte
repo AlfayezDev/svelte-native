@@ -4,7 +4,7 @@
   import { createNativeProps } from "../../native-props.ts";
   import { clipPathNativeProps } from "../../fabric/foreign-svg.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
-  import type { ClipPathProps } from "react-native-svg";
+  import type { ClipPathProps } from "#vendor/react-native-svg";
 
   /** `react-native-svg`'s `ClipPath`: a definition with an `id` whose children clip the elements that name it (`clipPath="url(#id)"`). */
   let { children, ref, animatedProps, ...props }: Omit<ClipPathProps, "children"> & { children?: Snippet } & SvgExtras = $props();

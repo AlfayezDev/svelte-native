@@ -5,6 +5,7 @@ import { dirname, join, relative } from "node:path";
 import { patchFiles, patchKey, type PatchFile } from "./doctor/patches.ts";
 import { compareVersions, parseVersion } from "./doctor/semver.ts";
 import { requiredSvelte } from "./svelte-build.ts";
+import { collisionMessage, vendoredNames } from "./vendored.ts";
 
 /**
  * `svelte-native init`: turns a SvelteKit project (what `npx sv create` makes) into a Svelte Native one, after the library is installed in it with
@@ -19,21 +20,15 @@ import { requiredSvelte } from "./svelte-build.ts";
 export const appDependencies: Readonly<Record<string, string>> = {
   expo: "57.0.30",
   "expo-constants": "57.0.22",
-  "hermes-intl": "^0.1.2",
   react: "19.2.7",
   "react-native": "0.86.3",
-  "react-native-gesture-handler": "2.32.0",
-  "react-native-mmkv": "4.3.1",
-  "react-native-nitro-modules": "0.35.10",
-  "react-native-quick-base64": "2.2.2",
-  "react-native-quick-crypto": "1.1.3",
-  "react-native-reanimated": "4.5.1",
-  "react-native-svg": "15.15.4",
-  "react-native-worklets": "0.10.1",
 };
 
-/** Packages whose patch every app needs; the others are declared when the app has the package (SvelteKit) or lists it at the patch's version (the view libraries). */
-const alwaysPatched = ["expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"];
+/**
+ * Packages whose patch every app needs; the others are declared when the app has the package (SvelteKit). The packages the library carries itself (`vendored.ts`: gesture handler, Reanimated,
+ * Worklets, svg, the view libraries, ...) are not here and not in `appDependencies`: their patches are in the library's own copies of them (`vendor-patches/`), and the app lists none of them and declares nothing for them.
+ */
+const alwaysPatched = ["expo-modules-core"];
 // The package's own name: Expo finds the package's `app.plugin.js`, the same plugin as `@alfayez/svelte-native/app.plugin`.
 const plugin = "@alfayez/svelte-native";
 const pluginNames: readonly string[] = [plugin, `${plugin}/app.plugin`];
@@ -183,11 +178,10 @@ function planPackageJson(root: string, original: string, patches: readonly Patch
   // The packages the app needs next to the library, at the versions it was exercised on.
   let changedPeers = 0;
   for (const [name, version] of Object.entries(appDependencies)) if (setDependency(name, version, "dependencies")) changedPeers++;
-  // `expo-modules-core` comes with `expo` and `svelte` is the custom-renderer build (a `file:` tarball or the preview URL): neither is a dependency init pins by version.
-  for (const patch of patches.filter((entry) => alwaysPatched.includes(entry.package) && entry.package !== "expo-modules-core")) {
-    if (appDependencies[patch.package] !== patch.version) warnings.push(`${patch.package}: the library's patch is for ${patch.version}, and init's version is ${appDependencies[patch.package] ?? "none"}; this is a bug in the library.`);
-  }
   if (changedPeers > 0) summary.push(`${plural(changedPeers, "dependency")} (the versions the library was exercised on)`);
+  // A package the library carries and the project lists (an app from before the library did) is not removed for the person: the prebuild, the autolinking and the doctor refuse it, and this says why.
+  const listed = vendoredNames.filter(has);
+  if (listed.length > 0) warnings.push(`package.json: ${collisionMessage(listed)}`);
 
   // The scripts: the project's own (`dev`, `build`, `check`) stay. A script of the same name that does something else stays too.
   const nextScripts = { ...(manifest.scripts ?? {}) };
@@ -204,13 +198,6 @@ function planPackageJson(root: string, original: string, patches: readonly Patch
   if (addedScripts.length > 0) {
     next.scripts = nextScripts;
     summary.push(`scripts ${addedScripts.join(", ")}`);
-  }
-
-  // Reanimated's flag: the patched Android update is reached only through the synchronous update it turns on.
-  const reanimated = (typeof next.reanimated === "object" && next.reanimated !== null ? next.reanimated : {}) as { staticFeatureFlags?: Record<string, unknown> };
-  if (reanimated.staticFeatureFlags?.ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS !== true) {
-    next.reanimated = { ...reanimated, staticFeatureFlags: { ...(reanimated.staticFeatureFlags ?? {}), ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS: true } };
-    summary.push("the Reanimated flag");
   }
 
   next.dependencies = dependencies;
@@ -505,18 +492,12 @@ export function planInit(root: string, options: InitOptions = {}): Plan {
 
   const names = appNames(pkg.name, options);
   const manifest = JSON.parse(manifestText) as Manifest;
-  const declared = { ...(manifest.devDependencies ?? {}), ...(manifest.dependencies ?? {}) };
 
-  // The patches this app needs: the always-needed, SvelteKit's (the version the app is pinned to), and a view library's when the app lists it at the patch's version.
+  // The patches this app needs: the always-needed one, and SvelteKit's (the version the app is pinned to).
   const needed: PatchFile[] = [];
   for (const patch of patches) {
     if (alwaysPatched.includes(patch.package)) needed.push(patch);
-    else if (patch.package === "@sveltejs/kit") {
-      if (pkg.hasKit && patch.version === pkg.kitVersion) needed.push(patch);
-    } else if (patch.package in declared) {
-      if (declared[patch.package] === patch.version) needed.push(patch);
-      else plan.warnings.push(`${patch.package}: package.json asks for ${declared[patch.package]}, and the library's patch is for ${patch.version} (it is declared only for that version); pin it with \`pnpm add ${patch.package}@${patch.version}\` and run init again.`);
-    }
+    else if (patch.package === "@sveltejs/kit" && pkg.hasKit && patch.version === pkg.kitVersion) needed.push(patch);
   }
 
   // pnpm-workspace.yaml: allowBuilds, overrides, patchedDependencies.

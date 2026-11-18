@@ -3,7 +3,7 @@
   import { createNativeProps } from "../../native-props.ts";
   import { feColorMatrixNativeProps } from "../../fabric/foreign-svg.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
-  import type { FeColorMatrixProps, FilterPrimitiveCommonProps } from "react-native-svg";
+  import type { FeColorMatrixProps, FilterPrimitiveCommonProps } from "#vendor/react-native-svg";
 
   /** `react-native-svg`'s `FeColorMatrix`: `type` (`matrix`, `saturate`, `hueRotate`, `luminanceToAlpha`) and `values`. */
   let { ref, animatedProps, ...props }: FeColorMatrixProps & FilterPrimitiveCommonProps & SvgExtras = $props();

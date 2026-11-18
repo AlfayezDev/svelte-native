@@ -57,7 +57,8 @@ export const checks: Check[] = [
 		module: "mmkv",
 		path: "js",
 		run: () => {
-			const { createMMKV } = require("react-native-mmkv") as typeof import("react-native-mmkv");
+			// By its name, as an app's own code would import it: Metro resolves it to the library's copy (the library carries MMKV, VENDORING.md), which is what the check is for. The types are the library's re-export.
+			const { createMMKV } = require("react-native-mmkv") as typeof import("@alfayez/svelte-native/mmkv");
 			const storage = createMMKV({ id: "svelte-smoke" });
 			storage.set("key", "value");
 			const read = storage.getString("key");
@@ -137,7 +138,8 @@ export const checks: Check[] = [
 		module: "quick-crypto",
 		path: "js",
 		run: () => {
-			const { createHash, randomBytes } = require("react-native-quick-crypto") as typeof import("react-native-quick-crypto");
+			// By its name, as an app's own code would import it: Metro resolves it to the library's copy (the library carries quick-crypto, VENDORING.md), which is what the check is for.
+			const { createHash, randomBytes } = require("react-native-quick-crypto") as { createHash(algorithm: string): { update(data: string): { digest(encoding: "hex"): string } }; randomBytes(size: number): Uint8Array };
 			const random = randomBytes(16);
 			const digest = createHash("sha256").update("abc").digest("hex");
 			expect(random.length === 16 && looksRandom(random), `randomBytes(16) gave ${hex(random)}`);
@@ -149,7 +151,8 @@ export const checks: Check[] = [
 		module: "quick-base64",
 		path: "js",
 		run: () => {
-			const base64 = require("react-native-quick-base64") as typeof import("react-native-quick-base64");
+			// The library's copy too, by the name Metro resolves.
+			const base64 = require("react-native-quick-base64") as { fromByteArray(bytes: Uint8Array): string; toByteArray(text: string): Uint8Array; atob(text: string): string; btoa(text: string): string };
 			const text = "Svelte Native";
 			const encoded = base64.fromByteArray(ascii(text));
 			const decoded = String.fromCharCode(...base64.toByteArray(encoded));
@@ -161,7 +164,8 @@ export const checks: Check[] = [
 		module: "nitro",
 		path: "js",
 		run: () => {
-			const { NitroModules } = require("react-native-nitro-modules") as typeof import("react-native-nitro-modules");
+			// The Nitro runtime is the library's copy too (VENDORING.md): the name is resolved by Metro, and the type is what this check reads of it (no app installs the package for its types).
+			const { NitroModules } = require("react-native-nitro-modules") as { NitroModules: { version: string; buildType: string; getAllHybridObjectNames(): string[] } };
 			const names = NitroModules.getAllHybridObjectNames();
 			expect(typeof NitroModules.version === "string" && NitroModules.version.length > 0, `version ${String(NitroModules.version)}`);
 			return `core ${NitroModules.version} (${NitroModules.buildType}), ${names.length} hybrid objects registered: ${names.slice(0, 6).join(", ")}${names.length > 6 ? ", …" : ""}`;

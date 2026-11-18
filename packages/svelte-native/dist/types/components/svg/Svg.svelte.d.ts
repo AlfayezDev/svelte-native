@@ -1,7 +1,7 @@
 import type { Snippet } from "svelte";
 import { type SvgRootHandle } from "../../fabric/foreign-svg.js";
 import { type SvgRef } from "./handle.js";
-import type { SvgProps } from "react-native-svg";
+import type { SvgProps } from "#vendor/react-native-svg";
 type $$ComponentProps = Omit<SvgProps, "children"> & {
     children?: Snippet;
     ref?: SvgRef<SvgRootHandle>;

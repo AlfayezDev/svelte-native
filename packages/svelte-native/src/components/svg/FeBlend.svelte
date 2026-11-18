@@ -3,7 +3,7 @@
   import { createNativeProps } from "../../native-props.ts";
   import { feBlendNativeProps } from "../../fabric/foreign-svg.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
-  import type { FeBlendProps, FilterPrimitiveCommonProps } from "react-native-svg";
+  import type { FeBlendProps, FilterPrimitiveCommonProps } from "#vendor/react-native-svg";
 
   /** `react-native-svg`'s `FeBlend`: blends `in` with `in2` by `mode` (`normal`, `multiply`, `screen`, `darken`, `lighten`). */
   let { ref, animatedProps, ...props }: FeBlendProps & FilterPrimitiveCommonProps & SvgExtras = $props();

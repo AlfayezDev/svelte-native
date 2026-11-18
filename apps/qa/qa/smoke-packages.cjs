@@ -1,7 +1,7 @@
 // The packages only the smoke app links. `smoke-modules.json` lists every module the smoke test calls; those the product has too
-// (`shared`: secure store, localization, constants, asset, system UI, splash screen, and the four the library itself requires for the
-// device's `crypto` and `localStorage`: react-native-quick-crypto, react-native-mmkv, react-native-nitro-modules, react-native-quick-base64;
-// every app links and bundles them, the smoke test still checks them) and pure JavaScript ones (`link: "js"`) stay.
+// (`shared`: secure store, localization, constants, asset, system UI, splash screen, and the four the library carries itself, react-native-quick-crypto, react-native-quick-base64,
+// react-native-mmkv and react-native-nitro-modules, which are in no package.json; every app links and bundles them, the smoke test still checks them) and pure JavaScript ones
+// (`link: "js"`) stay.
 // Read by app.config.ts (autolinking excludes and config plugins) and react-native.config.js (React Native community autolinking).
 const { modules } = require("./smoke-modules.json");
 
@@ -15,9 +15,10 @@ const smokeOnlyPackages = [...new Set(modules.filter((entry) => !entry.shared &&
 const smokeOnlyBundlePackages = [...new Set(modules.filter((entry) => !entry.shared).flatMap((entry) => entry.packages))];
 
 /**
- * The four packages `@alfayez/svelte-native` requires as peers (the device's `crypto` and `localStorage` are made of them). They are in the
- * table above as `shared`, so they are in no exclusion and no stub: every app links and bundles them, and the smoke test still checks them.
+ * The packages the library carries itself (`packages/svelte-native/vendor/`, VENDORING.md): the Nitro runtime and MMKV (`localStorage`), react-native-quick-crypto and the base64 module it
+ * asks for (`crypto`), and gesture handler, Worklets, Reanimated and svg (the gestures, the animation and the SVG components). They are no dependency of any app here (the smoke app installs the production app's libraries as stand-ins, and these are not among them any more: the vendored copy
+ * is what the smoke test calls), so the module table lists them without a package. Every app links and bundles them, the smoke test still checks them.
  */
-const libraryPeerPackages = ["react-native-quick-crypto", "react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64"];
+const libraryVendoredPackages = ["react-native-mmkv", "react-native-nitro-modules", "react-native-quick-crypto", "react-native-quick-base64", "react-native-gesture-handler", "react-native-worklets", "react-native-reanimated", "react-native-svg"];
 
-module.exports = { modules, smokeOnlyPackages, smokeOnlyBundlePackages, libraryPeerPackages };
+module.exports = { modules, smokeOnlyPackages, smokeOnlyBundlePackages, libraryVendoredPackages };

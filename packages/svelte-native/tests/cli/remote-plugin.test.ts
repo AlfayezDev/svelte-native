@@ -2,6 +2,8 @@
 // reach an http: development server.
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { allowAndroidCleartext, allowIosCleartext, atsExceptionDomain, isCleartext, remoteExtra, withRemoteHost } from "../../src/remote/plugin.ts";
 import { hostFromExtra } from "../../src/remote/host.ts";
 
@@ -70,9 +72,25 @@ describe("the plugin", () => {
 describe("loading", () => {
   test("what the config plugin imports from its own files is loaded by Node's module loader, which wants `expo/config-plugins.js` spelled out", () => {
     // (`expo.ts` is transpiled by Expo's config loader, which turns its imports into requires; the files it requires are Node's to load.)
-    for (const file of ["remote/plugin.ts", "remote/host.ts"]) {
+    for (const file of ["remote/plugin.ts", "remote/host.ts", "capabilities.ts"]) {
       const done = spawnSync("node", ["--input-type=module", "-e", `const loaded = await import(${JSON.stringify(new URL(`../../src/${file}`, import.meta.url).href)}); if (Object.keys(loaded).length === 0) process.exit(2);`], { encoding: "utf8" });
       expect([file, done.status, done.stderr.slice(0, 300)]).toEqual([file, 0, ""]);
+    }
+  });
+
+  test("and it names no export that Expo defines with a getter (`AndroidConfig`, `XML`, `IOSConfig`): Node before 24 does not see those in a CommonJS module, whatever the Node that runs this test sees", () => {
+    const expoRequire = createRequire(createRequire(import.meta.url).resolve("expo/package.json"));
+    const index = readFileSync(expoRequire.resolve("@expo/config-plugins"), "utf8");
+    const getters = [...index.matchAll(/Object\.defineProperty\(exports, "(\w+)"/g)].map((match) => match[1]);
+    expect(getters).toContain("AndroidConfig");
+    for (const file of ["remote/plugin.ts", "remote/host.ts", "capabilities.ts"]) {
+      const source = readFileSync(new URL(`../../src/${file}`, import.meta.url), "utf8");
+      const named = [...source.matchAll(/^import\s+(?!type\b)[^;]*?\{([^}]*)\}\s*from\s*"expo\/config-plugins(?:\.js)?";/gm)]
+        .flatMap((match) => (match[1] ?? "").split(","))
+        .map((name) => name.trim())
+        .filter((name) => name !== "" && !name.startsWith("type "))
+        .map((name) => name.split(/\s+as\s+/)[0]);
+      expect([file, named.filter((name) => getters.includes(name ?? ""))]).toEqual([file, []]);
     }
   });
 });

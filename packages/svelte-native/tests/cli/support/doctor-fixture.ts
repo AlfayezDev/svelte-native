@@ -7,13 +7,12 @@ import { peerVersion } from "../../support/versions.ts";
 
 /**
  * A fake app for `svelte-native doctor`: a directory with a package.json, Metro and Expo configs, and a `node_modules` that holds stubs of the
- * library's peers. The packages the library patches hold only the files its patches change, taken from the repository's own install (which
+ * library's peers. The packages an app patches (`patches/`) hold only the files its patches change, taken from the repository's own install (which
  * pnpm patched), or, for an unpatched package, the same files with the patch taken out again (each hunk's result replaced by what the hunk
- * found, a file the patch creates left out): the shape of the package before pnpm applied anything.
+ * found, a file the patch creates left out): the shape of the package before pnpm applied anything. The packages the library carries (`vendor/`)
+ * are the repository's own copies, read through `packageRoot`, and patched when they were written.
  */
 export const repository = resolve(import.meta.dirname, "../../../../..");
-/** The required peers React Native's autolinking links only from the app's own dependencies (`AUTOLINKED_PEERS` in `src/doctor/checks.ts`). */
-export const nativePeers = ["hermes-intl", "react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64", "react-native-quick-crypto"] as const;
 
 export const library = JSON.parse(readFileSync(join(repository, "packages/svelte-native/package.json"), "utf8")) as { name: string; peerDependencies: Record<string, string>; peerDependenciesMeta: Record<string, { optional?: boolean }> };
 
@@ -46,7 +45,8 @@ export type FakeApp = {
   stockSvelte?: boolean;
 };
 
-const concreteVersion = (range: string) => range.replace(/^[~^]/, "");
+/** A version a peer's range names; for `*` (any version, as `@babel/core` is asked for) the one the repository has installed. */
+const concreteVersion = (range: string) => (range === "*" ? "7.29.7" : range.replace(/^[~^]/, ""));
 
 export function makeFakeApp(options: FakeApp = {}): string {
   const root = mkdtempSync(join(tmpdir(), "doctor-app-"));
@@ -86,8 +86,8 @@ export function makeFakeApp(options: FakeApp = {}): string {
     if (spec?.via) put(`node_modules/${patch.package}/package.json`, JSON.stringify({ name: patch.package, version: version(patch.package, patch.version) }));
   }
 
-  // The required peers with a native module (`hermes-intl`, and the four `crypto` and `localStorage` are made of) are linked by React Native's autolinking only when the app depends on them itself.
-  put("package.json", JSON.stringify({ name: "fake-app", version: "1.0.0", dependencies: { [library.name]: "*", ...Object.fromEntries(nativePeers.map((name) => [name, "*"])) } }));
+  // The app lists the library and nothing native beside it: what `crypto`, `Intl` and `localStorage` are made of is vendored (`src/vendored.ts`), and an app that lists one is refused.
+  put("package.json", JSON.stringify({ name: "fake-app", version: "1.0.0", dependencies: { [library.name]: "*" } }));
   put("metro.config.cjs", `const { getDefaultConfig } = require("expo/metro-config");\nconst { withSvelteNative } = require("${library.name}/metro");\nmodule.exports = withSvelteNative(getDefaultConfig(__dirname));\n`);
   put("app.json", JSON.stringify({ expo: { name: "fake", plugins: [[library.name, {}]] } }));
   if (options.declared !== false) {

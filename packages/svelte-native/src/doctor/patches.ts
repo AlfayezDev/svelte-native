@@ -2,7 +2,7 @@ import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { packageRoot } from "../package-root.ts";
 import type { Reader } from "./resolve.ts";
-import { expoModulesCoreProblems, kitProblems, lottieProblems, mapsProblems, pdfProblems, reanimatedProblems, rnghProblems, videoProblems, workletsProblems } from "./shapes.ts";
+import { expoModulesCoreProblems, kitProblems, lottieProblems, mapsProblems, pdfProblems, reanimatedProblems, riveProblems, rnghProblems, videoProblems, workletsProblems } from "./shapes.ts";
 
 /** The directory of the library's patch files, in the repository and in an app's `node_modules` alike. */
 export const patchesDirectory = resolve(packageRoot, "patches");
@@ -14,6 +14,8 @@ export type PatchSpec = {
   does: string;
   /** Where the package is found when an app does not depend on it itself: the installed package whose own dependency it is. */
   via?: string;
+  /** The library carries this package (`vendor/`, `vendor-patches/`), already patched: the doctor looks in the copy, and no app declares the patch. */
+  vendored?: true;
   /** The problems in the installed package, from its files and the patch file (an empty list means the patch is in). */
   inspect(installed: Reader, patch: string): string[];
 };
@@ -22,13 +24,14 @@ export type PatchSpec = {
 export const patchSpecs: readonly PatchSpec[] = [
   { package: "@sveltejs/kit", does: "SvelteKit leaves the `+mobile.svelte` files of a route directory alone", inspect: kitProblems },
   { package: "expo-modules-core", via: "expo", does: "Expo modules register lazily and the common ones are prewarmed (Android start)", inspect: expoModulesCoreProblems },
-  { package: "lottie-react-native", does: "Lottie's events are delivered one by one (Android) and a load or failure before the emitter exists is kept (iOS)", inspect: lottieProblems },
-  { package: "react-native-gesture-handler", does: "the root gesture recognizer can be registered for the screens the library presents (iOS)", inspect: rnghProblems },
-  { package: "react-native-maps", does: "the map's discrete events are delivered one by one, its streams still coalesce (Android)", inspect: mapsProblems },
-  { package: "react-native-pdf", does: "the pdf view's one event, which carries every message, no longer coalesces (Android)", inspect: pdfProblems },
-  { package: "react-native-reanimated", does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android)", inspect: reanimatedProblems },
-  { package: "react-native-video", does: "only progress and bandwidth events coalesce; every other video event is delivered (Android)", inspect: videoProblems },
-  { package: "react-native-worklets", does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems },
+  { package: "lottie-react-native", vendored: true, does: "Lottie's events are delivered one by one (Android) and a load or failure before the emitter exists is kept (iOS)", inspect: lottieProblems },
+  { package: "react-native-gesture-handler", vendored: true, does: "the root gesture recognizer can be registered for the screens the library presents (iOS)", inspect: rnghProblems },
+  { package: "react-native-maps", vendored: true, does: "the map's discrete events are delivered one by one, its streams still coalesce (Android); its iOS plugin points the Podfile at the library's copy", inspect: mapsProblems },
+  { package: "react-native-pdf", vendored: true, does: "the pdf view's one event, which carries every message, no longer coalesces, and react-native is found from the app's directory (Android)", inspect: pdfProblems },
+  { package: "react-native-reanimated", vendored: true, does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, and Worklets is the copy beside it", inspect: reanimatedProblems },
+  { package: "react-native-video", vendored: true, does: "only progress and bandwidth events coalesce; every other video event is delivered (Android)", inspect: videoProblems },
+  { package: "react-native-worklets", vendored: true, does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems },
+  { package: "rive-react-native", vendored: true, does: "the Rive view sends its events through the event dispatcher, not the old event emitter that a bridgeless app reports for every event (Android)", inspect: riveProblems },
 ];
 
 export type PatchFile = { package: string; version: string; file: string; path: string };

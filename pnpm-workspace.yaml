@@ -42,12 +42,5 @@ overrides:
 patchedDependencies:
   "@sveltejs/kit@3.1.1": packages/svelte-native/patches/@sveltejs__kit@3.1.1.patch
   expo-modules-core@57.0.23: packages/svelte-native/patches/expo-modules-core@57.0.23.patch
-  lottie-react-native@7.3.8: packages/svelte-native/patches/lottie-react-native@7.3.8.patch
-  react-native-gesture-handler@2.32.0: packages/svelte-native/patches/react-native-gesture-handler@2.32.0.patch
   react-native-live-direction@0.1.1: patches/react-native-live-direction@0.1.1.patch
-  react-native-maps@1.27.2: packages/svelte-native/patches/react-native-maps@1.27.2.patch
-  react-native-pdf@7.0.3: packages/svelte-native/patches/react-native-pdf@7.0.3.patch
-  react-native-reanimated@4.5.1: packages/svelte-native/patches/react-native-reanimated@4.5.1.patch
-  react-native-video@6.19.3: packages/svelte-native/patches/react-native-video@6.19.3.patch
-  react-native-worklets@0.10.1: packages/svelte-native/patches/react-native-worklets@0.10.1.patch
   svelte@5.56.7: patches/svelte@5.56.7.patch

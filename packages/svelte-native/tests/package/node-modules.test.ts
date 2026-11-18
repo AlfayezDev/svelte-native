@@ -116,7 +116,7 @@ function probe(file: string, cwd = app): Record<string, unknown> {
 
 describe("the package as it is packed", () => {
   test("ships the built JavaScript next to the sources, and the bin points at it", () => {
-    for (const file of ["cli.js", "expo.cjs", "lower.js", "metro.cjs", "routes.js", "transformer.cjs", "vite.js"]) expect([file, existsSync(join(installed, "dist/node", file))]).toEqual([file, true]);
+    for (const file of ["cli.js", "expo.cjs", "lower.js", "metro.cjs", "push-server.js", "routes.js", "transformer.cjs", "vite.js"]) expect([file, existsSync(join(installed, "dist/node", file))]).toEqual([file, true]);
     expect(existsSync(join(installed, "app.plugin.js"))).toBe(true);
     expect(existsSync(join(installed, "src/fabric/react-native-lite.ts"))).toBe(true);
     expect(JSON.parse(readFileSync(join(installed, "package.json"), "utf8")).bin).toEqual({ "svelte-native": "./dist/node/cli.js" });
@@ -279,6 +279,14 @@ try { transformer.transform({ filename: process.cwd() + "/src/Plain.svelte", src
     expect(result.web.some((name) => name?.startsWith("vite-plugin-sveltekit"))).toBe(true);
   });
 
+  test("@alfayez/svelte-native/push/server: imported, and it sends a message (the file in dist/node, not the TypeScript)", () => {
+    const resolved = run(["-e", 'console.log(require.resolve("@alfayez/svelte-native/push/server"))']).stdout.trim();
+    expect(resolved).toBe(join(installed, "dist/node/push-server.js"));
+    const result = probe("push-server.mjs") as { exports: string[]; result: unknown };
+    expect(result.exports).toEqual(["createPush"]);
+    expect(result.result).toEqual({ ok: true, id: "0:1%abc" });
+  });
+
   test("@alfayez/svelte-native/lower and /routes are importable", () => {
     const result = probe("lower.mjs") as { routes: string[]; lowered: string };
     expect(result.routes).toEqual([]);
@@ -324,10 +332,12 @@ describe("an app that builds for native only: no @sveltejs/kit, no vite", () => 
 
   test("the Metro integration and the transformer load, resolve and compile; what needs SvelteKit names it", () => {
     const result = probe("probe-metro.cjs", bare) as {
-      routes: string; ordinary: string; kitFromRuntime: string; kitInternal: string; svelteImports: string[]; remoteModule: string; cacheKey: string;
+      routes: string; ordinary: string; vendored: string; kitFromRuntime: string; kitInternal: string; svelteImports: string[]; remoteModule: string; cacheKey: string;
     };
     expect(result.routes).toBe(join(bare, ".svelte-native/routes.app.ts"));
-    expect(result.ordinary).toBe(`${bare}/src/a.ts::react-native-reanimated`);
+    expect(result.ordinary).toBe(`${bare}/src/a.ts::react-native-screens`);
+    // A package the library carries is the library's copy for the app (and for every library of it), whether or not the app has one of that name.
+    expect(result.vendored).toBe(`${bare}/src/a.ts::${join(bareInstalled, "vendor/react-native-reanimated/src/updateProps")}`);
     expect(result.svelteImports).toContain("svelte/internal/client");
     expect(result.cacheKey).toMatch(/^[0-9a-f]{64}$/);
     // The runtime's imports of SvelteKit's files, and a remote function module, are what need it.

@@ -3,7 +3,7 @@
   import { createNativeProps } from "../../native-props.ts";
   import { feOffsetNativeProps } from "../../fabric/foreign-svg.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
-  import type { FeOffsetProps, FilterPrimitiveCommonProps } from "react-native-svg";
+  import type { FeOffsetProps, FilterPrimitiveCommonProps } from "#vendor/react-native-svg";
 
   /** `react-native-svg`'s `FeOffset`: moves `in` by `dx`, `dy`. */
   let { ref, animatedProps, ...props }: FeOffsetProps & FilterPrimitiveCommonProps & SvgExtras = $props();

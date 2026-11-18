@@ -3,7 +3,7 @@
   import { createNativeProps } from "../../native-props.ts";
   import { feGaussianBlurNativeProps } from "../../fabric/foreign-svg.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
-  import type { FeGaussianBlurProps, FilterPrimitiveCommonProps } from "react-native-svg";
+  import type { FeGaussianBlurProps, FilterPrimitiveCommonProps } from "#vendor/react-native-svg";
 
   /** `react-native-svg`'s `FeGaussianBlur`: blurs `in` by `stdDeviation` (one number, or two for x and y). */
   let { ref, animatedProps, ...props }: FeGaussianBlurProps & FilterPrimitiveCommonProps & SvgExtras = $props();

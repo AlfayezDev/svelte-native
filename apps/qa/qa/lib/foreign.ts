@@ -28,25 +28,26 @@ export async function foreignPins(platform: Platform): Promise<ForeignPins> {
  * The modules of each library's own JavaScript (its React components, its wrappers over `requireNativeComponent`), which the Svelte components of the lab
  * do not use and the bundle must not hold: the native view is mounted by name and the library's JavaScript half is ported (SPEC.md, "Native-view
  * libraries"). react-native-svg is the exception that proves how it is done: 17 files of `src/lib` that import no React are the library's own.
- * `react-native-blob-util` is react-native-pdf's file access and is reached as a TurboModule.
+ * `react-native-blob-util` is react-native-pdf's file access and is reached as a TurboModule. The libraries are the package's own copies (`packages/svelte-native/vendor/<name>/`, which an app turns on
+ * with `libraries`), so a module is below `vendor/` as well as below `node_modules/`.
  */
 export const libraryModules: Record<string, RegExp[]> = {
-	image: [/\/node_modules\/expo-image\//],
-	blur: [/\/node_modules\/expo-blur\//],
+	image: [/\/(?:node_modules|vendor)\/expo-image\//],
+	blur: [/\/(?:node_modules|vendor)\/expo-blur\//],
 	// The library's own blur needs no package, and no other blur library's JavaScript is in the bundle either (expo-blur's belongs to `blur` above and fails that library alone: a bundle's module list says what the
 	// app carries, not which section imported it). That the built-in blur's own wrapper does not reach expo-blur's is held where it can be told, in its imports (`importClosure`, `expoBlurReaches`).
 	svelteblur: [/\/node_modules\/(?:@react-native-community\/blur|react-native-blur|@sbaiahmed1\/react-native-blur|react-native-blur-view|@react-native-masked-view\/masked-view)\//],
-	gradient: [/\/node_modules\/expo-linear-gradient\//],
-	video: [/\/node_modules\/react-native-video\//],
-	datetime: [/\/node_modules\/@react-native-community\/datetimepicker\//],
-	lottie: [/\/node_modules\/lottie-react-native\//],
-	pdf: [/\/node_modules\/react-native-pdf\//, /\/node_modules\/react-native-blob-util\//],
-	capture: [/\/node_modules\/react-native-view-shot\//],
-	rive: [/\/node_modules\/rive-react-native\//],
-	conic: [/\/node_modules\/expo-conic-gradient\//],
-	shadow: [/\/node_modules\/react-native-fast-shadow\//],
-	text: [/\/node_modules\/react-native-animateable-text\//],
-	svg: [/\/node_modules\/react-native-svg\/(?!src\/lib\/)/],
+	gradient: [/\/(?:node_modules|vendor)\/expo-linear-gradient\//],
+	video: [/\/(?:node_modules|vendor)\/react-native-video\//],
+	datetime: [/\/(?:node_modules|vendor)\/@react-native-community\/datetimepicker\//],
+	lottie: [/\/(?:node_modules|vendor)\/lottie-react-native\//],
+	pdf: [/\/(?:node_modules|vendor)\/react-native-pdf\//, /\/(?:node_modules|vendor)\/react-native-blob-util\//],
+	capture: [/\/(?:node_modules|vendor)\/react-native-view-shot\//],
+	rive: [/\/(?:node_modules|vendor)\/rive-react-native\//],
+	conic: [/\/(?:node_modules|vendor)\/expo-conic-gradient\//],
+	shadow: [/\/(?:node_modules|vendor)\/react-native-fast-shadow\//],
+	text: [/\/(?:node_modules|vendor)\/react-native-animateable-text\//],
+	svg: [/\/(?:node_modules|vendor)\/react-native-svg\/(?!src\/lib\/)/],
 };
 
 /**

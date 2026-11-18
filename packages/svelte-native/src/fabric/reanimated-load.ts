@@ -3,8 +3,8 @@
  * Hermes runtime). The Fabric host loads them on the first animated node, the public `animation` module on its first
  * call; whoever comes first notifies the other.
  */
-import type * as Reanimated from "react-native-reanimated";
-import type * as Worklets from "react-native-worklets";
+import type * as Reanimated from "#vendor/react-native-reanimated";
+import type * as Worklets from "#vendor/react-native-worklets";
 
 export type ReanimatedModules = { reanimated: typeof Reanimated; worklets: typeof Worklets };
 
@@ -14,7 +14,7 @@ const listeners: ((modules: ReanimatedModules) => void)[] = [];
 export function loadReanimated(): ReanimatedModules {
   if (modules) return modules;
   /* eslint-disable @typescript-eslint/no-require-imports */
-  modules = { reanimated: require("react-native-reanimated") as typeof Reanimated, worklets: require("react-native-worklets") as typeof Worklets };
+  modules = { reanimated: require("#vendor/react-native-reanimated") as typeof Reanimated, worklets: require("#vendor/react-native-worklets") as typeof Worklets };
   /* eslint-enable @typescript-eslint/no-require-imports */
   for (const listener of listeners.splice(0)) listener(modules);
   return modules;

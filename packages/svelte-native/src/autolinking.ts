@@ -1,8 +1,12 @@
 /**
- * `svelte-native android-autolinking <command...>`: runs React Native's autolinking config command (the one `settings.gradle` gives
- * `autolinkLibrariesFromCommand`, Expo's `react-native-config`) and prints its JSON with the Nitro modules' packages relinked, so that their
- * native libraries load after the start instead of during it. The app's `settings.gradle` runs it (`applyHeadlessSettings` in `expo.ts`
- * writes the command); it is not a command for people.
+ * `svelte-native android-autolinking <command...>` and `svelte-native ios-autolinking <command...>`: run React Native's autolinking config command (the one `settings.gradle` gives
+ * `autolinkLibrariesFromCommand` and the Podfile gives `use_native_modules!`, Expo's `react-native-config`) and print its JSON with the packages the library carries linked from
+ * its own `vendor/` directory (`vendored.ts`, VENDORING.md), so the app's package.json lists none of them; on Android, with the Nitro modules' packages relinked, so that their
+ * native libraries load after the start instead of during it. The app's `settings.gradle` and Podfile run them (`applyHeadlessSettings` and `applyPodfileVendoredLinking` in
+ * `expo.ts` write the commands); they are not commands for people.
+ *
+ * The optional libraries (`libraries.ts`) are linked only when named: `--link <name>` before the command, once per library, which the plugin writes from the app's `libraries`
+ * option. A library that is not named is taken out of the config if autolinking found an original of it.
  *
  * Each package below exists only to load its module's library, from a static initializer, which `PackageList` runs on the main thread while the
  * host is being built (7 ms of a cold start on the Galaxy A16). Linked instead: `DeferredNitroPackage`, which registers the library, and around
@@ -11,6 +15,7 @@
  * package is not the one expected: without the gate, a deferred library could be missing when JavaScript asks for its module.
  */
 import { spawnSync } from "node:child_process";
+import { linkVendored, VendoredCollision, type LinkPlatform } from "./vendored.ts";
 
 type AndroidDependency = { packageImportPath?: string | null; packageInstance?: string | null; [key: string]: unknown };
 type Dependency = { platforms?: { android?: AndroidDependency | null; [platform: string]: unknown }; [key: string]: unknown };
@@ -57,19 +62,33 @@ export function deferNitroLibraries(config: AutolinkingConfig): AutolinkingConfi
   return { ...config, dependencies: relinked };
 }
 
+/** The `--link <name>` pairs in front of the config command (the optional libraries that are on), and the command that follows them. */
+export function splitLinks(argv: readonly string[]): { link: string[]; command: string[] } {
+  const link: string[] = [];
+  let index = 0;
+  while (argv[index] === "--link") {
+    const name = argv[index + 1];
+    if (name === undefined) break;
+    link.push(name);
+    index += 2;
+  }
+  return { link, command: argv.slice(index) };
+}
+
 /**
- * Runs `command`, and prints what it printed with `deferNitroLibraries` applied; its standard error and its exit status are its own. Output that is
- * not a JSON object is printed as it came (the build then fails on it where it would have).
+ * Runs the config command in `given` (after its `--link` pairs), and prints what it printed with the vendored packages linked and `transform` applied; its standard error and its exit status are its own. Output that is
+ * not a JSON object is printed as it came (the build then fails on it where it would have). An app that declares a vendored package itself is refused (`VendoredCollision`).
  */
-export function runAndroidAutolinking(command: readonly string[]): number {
+function runAutolinking(name: string, platform: LinkPlatform, given: readonly string[], transform: (config: AutolinkingConfig) => AutolinkingConfig): number {
+  const { link, command } = splitLinks(given);
   const [program, ...args] = command;
   if (!program) {
-    console.error("svelte-native android-autolinking: no command (settings.gradle gives it React Native's config command)");
+    console.error(`svelte-native ${name}: no command (${platform === "android" ? "settings.gradle" : "the Podfile"} gives it React Native's config command)`);
     return 2;
   }
   const result = spawnSync(program, args, { encoding: "utf8", stdio: ["inherit", "pipe", "inherit"], maxBuffer: 256 * 1024 * 1024 });
   if (result.error) {
-    console.error(`svelte-native android-autolinking: could not run ${program}: ${result.error.message}`);
+    console.error(`svelte-native ${name}: could not run ${program}: ${result.error.message}`);
     return 1;
   }
   if (result.status !== 0) {
@@ -87,6 +106,18 @@ export function runAndroidAutolinking(command: readonly string[]): number {
     process.stdout.write(result.stdout);
     return 0;
   }
-  process.stdout.write(JSON.stringify(deferNitroLibraries(config as AutolinkingConfig)));
+  try {
+    process.stdout.write(JSON.stringify(transform(linkVendored(config as AutolinkingConfig, platform, undefined, link))));
+  } catch (error) {
+    if (!(error instanceof VendoredCollision)) throw error;
+    console.error(`svelte-native ${name}: ${error.message}`);
+    return 1;
+  }
   return 0;
 }
+
+/** `svelte-native android-autolinking`: the config with the vendored packages linked and the Nitro libraries deferred. */
+export const runAndroidAutolinking = (command: readonly string[]): number => runAutolinking("android-autolinking", "android", command, deferNitroLibraries);
+
+/** `svelte-native ios-autolinking`: the config with the vendored packages linked. */
+export const runIosAutolinking = (command: readonly string[]): number => runAutolinking("ios-autolinking", "ios", command, (config) => config);

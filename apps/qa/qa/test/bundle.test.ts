@@ -18,7 +18,7 @@ import { platformDir, svelteNativeCli } from "../lib/paths.ts";
  * which Metro writes when its config loads, so a bundle never touches another variant's table, and the tests below can run beside a live
  * development server of the QA app.
  */
-const { smokeOnlyBundlePackages, libraryPeerPackages } = createRequire(import.meta.url)("../smoke-packages.cjs") as { smokeOnlyBundlePackages: string[]; libraryPeerPackages: string[] };
+const { smokeOnlyBundlePackages, libraryVendoredPackages } = createRequire(import.meta.url)("../smoke-packages.cjs") as { smokeOnlyBundlePackages: string[]; libraryVendoredPackages: string[] };
 
 /**
  * The size of the same bundle at a reference commit (JavaScript before Hermes, bytes), built with this recipe: the QA app may grow by
@@ -117,7 +117,7 @@ const bundled = (variant: string, syncedFirst: readonly string[] = []) => {
 
 /** Strings that belong to the libraries' own code and to nothing else in the app. */
 const libraryCode = ["RNFBAppModule", "MixpanelReactNative", "IntercomEventEmitter", "RNCNetInfo", "RNCAsyncStorage", "SslPublicKeyPinning", "StatsigClient", "RNSentry"];
-/** Strings of the four packages the library requires (react-native-quick-crypto, react-native-mmkv, react-native-nitro-modules, react-native-quick-base64), which every app carries: the Nitro runtime's hybrid objects and quick-base64's native module. */
+/** Strings of the packages the library carries (vendored: react-native-quick-crypto, react-native-quick-base64, react-native-mmkv and react-native-nitro-modules), which every app carries: the Nitro runtime's hybrid objects and quick-base64's native module. */
 const peerCode = ["QuickBase64", "HybridObject"];
 
 describe("the JavaScript bundles", () => {
@@ -127,9 +127,9 @@ describe("the JavaScript bundles", () => {
 			const lines = text.split("\n");
 			for (const library of smokeOnlyBundlePackages) {
 				const mentions = lines.filter((line) => line.includes(library));
-				// A package's name is in the bundle on the lines of its own stub if some code still requires it, and nowhere else; the library's own message for a
-				// build without the location capability names expo-location as text, to say what to install (`MISSING_LOCATION`, src/geolocation.ts), and is no code of it.
-				expect([library, mentions.filter((line) => !/_core\.js|is not linked in this app|var smokeModules|var MISSING_LOCATION = /.test(line))]).toEqual([library, []]);
+				// A package's name is in the bundle on the lines of its own stub if some code still requires it, and nowhere else (the library's own location code
+				// is its own native module and names no package: `MISSING_LOCATION` in src/geolocation.ts says to turn the capability on, not what to install).
+				expect([library, mentions.filter((line) => !/_core\.js|is not linked in this app|var smokeModules/.test(line))]).toEqual([library, []]);
 			}
 			for (const code of libraryCode) expect([code, text.includes(code)]).toEqual([code, false]);
 			expect(text).not.toContain("RNGetRandomValues.getRandomBase64");
@@ -137,12 +137,14 @@ describe("the JavaScript bundles", () => {
 			expect(text.includes("smoke-checks")).toBe(variant === "");
 		}, 120_000);
 	}
-	test("every app bundles the four packages the library requires (crypto and localStorage are made of them), the real ones and no stub", () => {
+	test("every app bundles the packages the library carries (crypto and localStorage are made of four of them; the animation, gestures and svg of the rest), its own copies and no stub", () => {
 		for (const variant of ["", "production", "smoke"]) {
 			const { modules, text } = bundled(variant);
-			for (const library of libraryPeerPackages) {
-				expect([variant, library, modules.some((module) => module.includes(`node_modules/${library}/`))]).toEqual([variant, library, true]);
-				// Metro's stub for a package is a file named after it (`.svelte-native/stubs/<variant>/<package>.js`): there is none for these.
+			// The ones the library vendors are its own copies (`packages/svelte-native/vendor/<name>/`), one each: the app's import, quick-crypto's imports of the Nitro runtime and the base64 module and the library's own all reach the same files, and no installed original is bundled beside them (`react-native-quick-base64` is installed all the same, for the Buffer package, and so are gesture handler, Reanimated and Worklets, which a package manager installs for Expo Router's peers: none of them is reached).
+			// Metro's stub for a package is a file named after it (`.svelte-native/stubs/<variant>/<package>.js`): there is none for these.
+			for (const library of libraryVendoredPackages) {
+				expect([variant, library, modules.some((module) => module.startsWith(`packages/svelte-native/vendor/${library}/`))]).toEqual([variant, library, true]);
+				expect([variant, library, modules.filter((module) => module.includes(`node_modules/${library}/`))]).toEqual([variant, library, []]);
 				expect([variant, library, modules.filter((module) => stubModule.test(module) && module.includes(library))]).toEqual([variant, library, []]);
 			}
 			for (const code of peerCode) expect([variant, code, text.includes(code)]).toEqual([variant, code, true]);

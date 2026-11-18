@@ -1,6 +1,6 @@
 import type { Snippet } from "svelte";
 import { type SvgExtras } from "./handle.js";
-import type { TSpanProps } from "react-native-svg";
+import type { TSpanProps } from "#vendor/react-native-svg";
 type $$ComponentProps = Omit<TSpanProps, "children"> & {
     children?: Snippet;
     /** @internal `SvgXml` sets it: the library's XML renderer gives a `TSpan` an array of children even for one string, so the string is a span of its own and not the `content`. */

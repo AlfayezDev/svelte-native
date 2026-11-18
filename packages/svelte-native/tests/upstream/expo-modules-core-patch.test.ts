@@ -17,7 +17,8 @@ const { lazyEntries, prewarm, startup, definitionOnly } = lazyRegistry(patch);
 // Registered through `registerLazily` in `AppContext`, not through the modules provider.
 const coreModules: Record<string, string> = { NativeModulesProxy: "NativeModulesProxyModuleName", ExpoModulesCoreJSLogger: "JSLoggerModuleName" };
 
-const packageDirectories = [join(root, "node_modules"), join(root, "apps/qa/modules"), join(root, "packages/svelte-native/native")].flatMap((base) => readdirSync(base).map((entry) => join(base, entry)));
+// The Expo modules the package carries (`vendor/`: expo-image, expo-blur, ...) are looked in beside the installed ones.
+const packageDirectories = [join(root, "node_modules"), join(root, "apps/qa/modules"), join(root, "packages/svelte-native/native"), join(root, "packages/svelte-native/vendor")].flatMap((base) => readdirSync(base).map((entry) => join(base, entry)));
 
 /** Kotlin source of a module class, looked up in the Expo packages and in the app's local modules. */
 function sourceOf(className: string): string | undefined {
@@ -46,7 +47,7 @@ describe("lazy Expo module registry", () => {
   for (const [className, name] of lazyEntries) {
     test(`${name} is the name ${className.split(".").pop()} declares and it needs no foreground, view or intent hooks`, () => {
       const source = sourceOf(className);
-      expect(source, `${className} sources not found under node_modules, apps/qa/modules or packages/svelte-native/native`).toBeDefined();
+      expect(source, `${className} sources not found under node_modules, apps/qa/modules, packages/svelte-native/native or packages/svelte-native/vendor`).toBeDefined();
       expect(declaresName(source ?? "", name), `${className} does not declare the name ${name}`).toBe(true);
       const hooks = viewsOnDemand.has(name) ? /\b(OnNewIntent|OnUserLeavesActivity)\b/m : /\b(OnActivityEntersForeground|OnActivityEntersBackground|OnNewIntent|OnUserLeavesActivity|ViewManager)\b|^\s*View\(/m;
       expect(hooks.test(source ?? ""), `${className} defines hooks that a late registration would miss`).toBe(false);

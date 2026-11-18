@@ -1,5 +1,5 @@
-import { createRequire } from "node:module";
-import { dirname } from "node:path";
+import Module, { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { transformSync } from "esbuild";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -10,6 +10,7 @@ import { lowerPrimitives } from "./lower.ts";
 import { svelteCompiler } from "./svelte-compiler.ts";
 import { cacheKeyFiles } from "./transformer-cache.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
+import { vendoredFileAs, vendoredRoot } from "./vendored.ts";
 import { isRemoteModule, kitGlobalsImport, kitRoot, transformRemoteModule } from "./remote/transform.ts";
 import { TraceMap, originalPositionFor } from "@jridgewell/trace-mapping";
 
@@ -32,6 +33,39 @@ export function upstreamTransformerPath(searchFrom: readonly string[] = [process
 }
 
 const upstream = require(upstreamTransformerPath());
+
+/**
+ * The Worklets Babel plugin, which `babel-preset-expo` puts in every bundle that has Worklets: it asks Node to resolve `react-native-worklets/plugin` from the app's directory and, when
+ * that finds a package, adds the plugin in the place where the other plugins of the preset end and React Native's own begin. Worklets is the library's own copy (`vendor/`,
+ * `vendored.ts`) and not a package of the app, so nothing of the app's would answer, and one that does (pnpm installs `react-native-worklets` beside Expo Router, which peer-depends on it) is
+ * another version than the native code the library links and the runtime it bundles. So that name resolves to the copy's plugin, for the preset and for anything else that asks for it
+ * (an app's own Babel config that lists it): the plugin is added once, where the preset adds it, and it is the copy's. `react-native-reanimated/plugin`, which an app's Babel config from
+ * before Reanimated 4 lists, resolves to Reanimated's copy, which re-exports it.
+ * `Module._resolveFilename` is what `require.resolve` ends in on every Node the library supports (a resolve hook of `module.registerHooks` is not documented to reach it).
+ */
+const workletsPluginFile = (): string => join(vendoredRoot("react-native-worklets"), "plugin/index.js");
+const pluginFiles: Readonly<Record<string, () => string>> = {
+  "react-native-worklets/plugin": workletsPluginFile,
+  "react-native-reanimated/plugin": () => join(vendoredRoot("react-native-reanimated"), "plugin/index.js"),
+};
+const redirected = Symbol.for("@alfayez/svelte-native/worklets-plugin");
+type ResolveFilename = ((request: string, ...rest: unknown[]) => string) & { [redirected]?: true };
+const internals = Module as unknown as { _resolveFilename: ResolveFilename };
+// Not under Bun, which the repository's own tests run the transformer in: after the wrapper, a `require` of a relative file by a module that is not the first one fails there ("Cannot find module './x.ts' from ''"). The preset
+// finds whatever the app's `node_modules` has in such a run, which in this repository is Worklets 0.10.1, the version the copy is. An app's Metro under Bun (`bun --bun expo start`) gets
+// no Worklets plugin at all, so its worklets fail on the device: it is told once.
+if (process.versions.bun !== undefined && process.env.NODE_ENV !== "test") {
+  console.warn("svelte-native: Metro runs under Bun, where the library cannot give Babel its copy of the Worklets plugin; animations and gestures need Metro on Node (`expo start`, not `bun --bun expo start`)");
+}
+if (process.versions.bun === undefined && internals._resolveFilename[redirected] !== true) {
+  const resolveFilename = internals._resolveFilename;
+  const redirect: ResolveFilename = function (this: unknown, request, ...rest) {
+    const plugin = pluginFiles[request];
+    return plugin ? plugin() : resolveFilename.call(this, request, ...rest);
+  };
+  redirect[redirected] = true;
+  internals._resolveFilename = redirect;
+}
 type TransformInput = { filename: string; src: string; options: { dev: boolean; projectRoot?: string }; [key: string]: unknown };
 
 /**
@@ -106,7 +140,8 @@ export function transform(input: TransformInput) {
     // RN component codegen needs the original TypeScript declarations. The TypeScript a package ships under `node_modules` is left to Babel, except a `.svelte.ts`
     // module: Svelte compiles it before Babel sees it, and its compiler reads JavaScript. The library's own (`router.svelte.ts`, `insets.svelte.ts`, ...) is one.
     const svelteModule = /\.svelte\.[jt]s$/.test(filename);
-    const stripTypes = /\.tsx?$/.test(filename) && (svelteModule || !filename.includes("/node_modules/")) && !src.includes("codegenNativeComponent") && !src.includes("codegenNativeCommands");
+    // A file of a vendored package (`vendor/`) is a package of `node_modules` as far as this goes, whether the library is installed or linked from the workspace.
+    const stripTypes = /\.tsx?$/.test(filename) && (svelteModule || (!filename.includes("/node_modules/") && vendoredFileAs(filename) === undefined)) && !src.includes("codegenNativeComponent") && !src.includes("codegenNativeCommands");
     if (stripTypes) {
       const stripped = transformSync(src, { loader: filename.endsWith(".tsx") ? "tsx" : "ts", jsx: "preserve", target: "es2022", sourcemap: "external", sourcefile: filename });
       code = stripped.code;
@@ -144,6 +179,8 @@ export function getCacheKey(options?: unknown): string {
   const files = cacheKeyFiles(import.meta.filename, import.meta.dirname);
   const hash = createHash("sha256");
   for (const file of files) hash.update(readFileSync(file));
+  // The Worklets plugin is part of what the library produces: a copy of another version generates other code.
+  hash.update(readFileSync(workletsPluginFile()));
   // The mode an app's components are compiled in is not in any file: `withSvelteNative(config, { runes, async })` hands it over in the environment.
   hash.update(`runes-default:${runesDefaultEnabled()}`);
   hash.update(`async:${asyncEnabled()}`);

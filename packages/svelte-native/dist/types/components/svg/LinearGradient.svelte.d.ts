@@ -1,6 +1,6 @@
 import { type Snippet } from "svelte";
 import { type SvgExtras } from "./handle.js";
-import type { LinearGradientProps } from "react-native-svg";
+import type { LinearGradientProps } from "#vendor/react-native-svg";
 type $$ComponentProps = Omit<LinearGradientProps, "children"> & {
     children?: Snippet;
 } & SvgExtras;

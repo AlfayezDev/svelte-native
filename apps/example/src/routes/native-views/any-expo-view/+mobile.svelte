@@ -4,7 +4,6 @@
   import { defineExpoView, type ExpoViewHandle } from "@alfayez/svelte-native/foreign";
   import type { CameraNativeProps, CameraViewRef } from "expo-camera";
   import CameraManager from "expo-camera/build/ExpoCameraManager";
-  import type { ImageLoadEventData, ImageNativeProps } from "expo-image";
   import resolveAssetSource from "react-native/Libraries/Image/resolveAssetSource";
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
@@ -17,9 +16,14 @@
   // `flashMode` and `autoFocus`, not the React component's `flash` and `autofocus`), an `on...` prop is an event called with `{ nativeEvent }`, and
   // `ref` gives the functions the module defines for the view. The types come from the packages and nothing of them runs, so no React is loaded.
   const CameraView = defineExpoView<CameraNativeProps, CameraViewRef>("ExpoCamera");
-  // expo-image types `onLoad` and `onError` as its React component calls them, with the data; the native view sends `{ nativeEvent }`.
-  type NativeImageProps = Omit<ImageNativeProps, "onLoad" | "onError"> & {
-    onLoad?: (event: { nativeEvent: ImageLoadEventData }) => void;
+  // expo-image is one of the libraries Svelte Native carries (turned on in app.config.ts, not installed), so its types are not imported here: the props the screen passes are typed by hand.
+  // The native view sends `{ nativeEvent }`, where the library's React component calls its handlers with the data.
+  type NativeImageProps = {
+    source: unknown[];
+    contentFit?: "cover" | "contain";
+    accessibilityLabel?: string;
+    style?: object;
+    onLoad?: (event: { nativeEvent: { source: { width: number; height: number } } }) => void;
     onError?: (event: { nativeEvent: { error: string } }) => void;
   };
   type ImageViewRef = { readonly reloadAsync: () => Promise<void> };

@@ -273,7 +273,7 @@ class SvelteEngineModule : Module() {
   }
 
   // Reanimated is a soft dependency: its patched NativeProxy exposes `SvelteEngineHook.updater` and a native sink
-  // (patches/react-native-reanimated@4.5.1.patch). Without the patch or the library both are no-ops. The sink takes the
+  // (vendor-patches/react-native-reanimated/0001-engine-views-and-direct-props.patch). Without the patch or the library both are no-ops. The sink takes the
   // per-frame writes of engine views as flat records (AnimatedBridge); the updater receives what it does not cover, as
   // the maps Reanimated builds, in the `SvelteEngine.applyAnimated` trace slice.
   private fun installAnimatedHook(manager: MountingManager) {

@@ -1,4 +1,4 @@
-import type { StopProps as LibraryStopProps } from "react-native-svg";
+import type { StopProps as LibraryStopProps } from "#vendor/react-native-svg";
 type $$ComponentProps = Omit<LibraryStopProps, "parent"> & {
     style?: Record<string, unknown>;
 };

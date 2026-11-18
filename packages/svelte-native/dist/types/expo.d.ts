@@ -1,7 +1,9 @@
-import { type ConfigPlugin } from "expo/config-plugins";
+import { type AndroidConfig, type ConfigPlugin } from "expo/config-plugins";
 import { type Capabilities } from "./capabilities.js";
-export type { Capabilities, LocationCapability } from "./capabilities.js";
-import type { RemoteHostConfig } from "./remote/host.js";
+export type { Capabilities, LocationCapability, PushCapability } from "./capabilities.js";
+import { type Libraries, type LibraryLinks, type LibrariesOption } from "./libraries.js";
+export type { LibrariesOption, LibraryOptions } from "./libraries.js";
+import { type RemoteHostConfig } from "./remote/host.js";
 export type ViewRecycling = {
     view?: boolean;
     text?: boolean;
@@ -53,11 +55,30 @@ export type SvelteNativeOptions = {
      */
     variant?: string;
     /**
-     * The web APIs that need a permission of the system, each turned on by saying why the app uses it. `location` (with expo-location installed) is
-     * `navigator.geolocation`: `{ location: "Shows the stores near you." }`, the text iOS shows when it asks, or `{ location: { whenInUse, background } }` for the
-     * background too. A capability on without its library, and a library installed without its capability, stop the prebuild (`capabilities.ts`).
+     * The web APIs that need a permission of the system, each turned on by saying why the app uses it. Their native code is part of the library, in every app, and does nothing
+     * until the prebuild turns it on: nothing is installed. `location` is `navigator.geolocation` while the app is in use: `{ location: "Shows the stores near you." }`, the
+     * text iOS shows when it asks, or `{ location: { whenInUse } }` (Android gets the two location permissions; background location is not part of it). `push` is push
+     * notifications, from the app's identifiers: `{ push: { android: { googleServicesFile }, ios: { mode } } }`, and never a server key. A config that cannot be built as
+     * it stands (a secret, an empty reason, two answers to one question) stops the prebuild (`capabilities.ts`).
      */
     capabilities?: Capabilities;
+    /**
+     * The optional native view libraries the app uses, from the ones `@alfayez/svelte-native` carries (`vendor/`): `expo-image`, `expo-blur`, `expo-linear-gradient`, `expo-conic-gradient`,
+     * `expo-video`, `react-native-video`, `lottie-react-native`, `rive-react-native`, `@react-native-community/datetimepicker`, `react-native-pdf` (which turns `react-native-blob-util` on too),
+     * `react-native-webview`, `react-native-maps`, `react-native-view-shot`, `react-native-fast-shadow` and `react-native-animateable-text`. Each is `true`, or the options of the library's own
+     * config plugin (`"react-native-maps": { androidGoogleMapsApiKey }`, `"expo-video": { supportsPictureInPicture: true }`), which the plugin runs from the library's copy; `false` is the same as
+     * leaving it out. A listed library is linked on Android and iOS and bundled by Metro. An unlisted one is neither: no native code of it in the build (on iOS not even compiled: react-native-maps
+     * references CoreLocation, which App Store Connect would hold every app to), and its name resolves to a stub that says how to turn it on. Nothing is installed for any of them: an app that lists
+     * one in its `package.json` or `plugins` is refused. Prebuild again after changing it.
+     */
+    libraries?: LibrariesOption;
+    /**
+     * libsodium in `crypto` and in Node's `crypto` (react-native-quick-crypto, which the library carries: `vendor/react-native-quick-crypto`): the algorithms OpenSSL lacks (XSalsa20 and the other
+     * libsodium ciphers). It is the option of the same name that react-native-quick-crypto's own Expo plugin took, and an app that lists that plugin moves the option here, since the package is not
+     * the app's any more. Android: `sodiumEnabled=true` in `gradle.properties`, which links `io.github.ronickg:sodium`; iOS: `ENV['SODIUM_ENABLED'] = '1'` at the top of the Podfile, which makes
+     * the pod download libsodium's source (1.0.20) and compile it. Default `false`: neither platform has libsodium. The plugin owns the setting: it is written again, or removed, on every prebuild.
+     */
+    sodiumEnabled?: boolean;
 };
 /**
  * The Android build is headless: no React host, so native boot is trimmed. AndroidX `EmojiCompatInitializer` is removed,
@@ -100,23 +121,51 @@ export declare function applyMainActivity(contents: string): string;
 export declare function applyAppDelegate(contents: string): string;
 /**
  * `settings.gradle`: excludes packages from Expo and React Native autolinking, the headless ones and `extra`, and runs React Native's config command
- * through the library's `android-autolinking` (`autolinking.ts`: the Nitro modules' native libraries load after the start). With
- * `EXPO_USE_COMMUNITY_AUTOLINKING=1` the community CLI's command runs as it is. Idempotent.
+ * through the library's `android-autolinking` (`autolinking.ts`: the packages the library carries are linked from its directory, and the Nitro modules' native libraries load
+ * after the start). With `EXPO_USE_COMMUNITY_AUTOLINKING=1` the community CLI's command goes through it too: the copies are in no app's `package.json`, so the community CLI alone
+ * would link none of them. Idempotent.
+ *
+ * The optional libraries the app turned on (`links`, `libraries.ts`): the React Native ones are `--link` arguments of `android-autolinking`, and the Expo modules are search paths of Expo's
+ * autolinker (`expoAutolinking.searchPaths`: the directory of each copy, under the library's own directory, which the block finds from the CLI's path). The Expo modules that are off join
+ * Expo's `exclude`, so a copy installed for another package's sake is not linked either. Expo's command line puts the search paths after its `--exclude` options, and `--exclude` takes any
+ * number of values, so without a `--` in front the paths would be read as names to leave out and the modules would not be found: the first search path is that `--`. The block's
+ * lock files include `settings.gradle` itself: React Native keeps the command's output until a lock file changes, and a changed `libraries` changes the `--link` arguments.
  */
-export declare function applyHeadlessSettings(contents: string, extra?: readonly string[]): string;
+export declare function applyHeadlessSettings(contents: string, extra?: readonly string[], links?: LibraryLinks): string;
 /**
  * `Podfile`: the packages Expo's `use_expo_modules!` and the React Native config command (`expo-modules-autolinking
  * react-native-config`) leave out. With `EXPO_USE_COMMUNITY_AUTOLINKING=1` the command is the community CLI's own, which
  * reads `react-native.config.js` instead. Idempotent; an empty list restores the template.
+ *
+ * `expoModules` are the optional Expo modules the app turned on (`libraries.ts`): `use_expo_modules!` gets their directories in the library (`vendor/<name>`, which the block finds from the
+ * app with `require.resolve`, as it finds the CLI) as `searchPaths`, and nothing else of the library's copies is looked at.
  */
-export declare function applyPodfileAutolinkingExclude(contents: string, names: readonly string[]): string;
+export declare function applyPodfileAutolinkingExclude(contents: string, names: readonly string[], expoModules?: readonly string[]): string;
+/**
+ * `Podfile`: the config command that `use_native_modules!` runs goes through the library's `ios-autolinking` (`autolinking.ts`), which adds the packages the library carries
+ * (`vendored.ts`, which lists them, and the optional libraries `links` names, `libraries.ts`) to its output, with the podspecs
+ * of `vendor/` in the library's directory, so the app's package.json lists none of them. The block goes in front of the line that reads the config, after anything that already extended the
+ * command; stripped and written again on every prebuild, so an update of the library moves it. With `EXPO_USE_COMMUNITY_AUTOLINKING=1` the command underneath is the community CLI's, and its output
+ * gets the same entries.
+ */
+export declare function applyPodfileVendoredLinking(contents: string, links?: readonly string[]): string;
+/**
+ * `Podfile`: `ENV['SODIUM_ENABLED'] = '1'` before anything else, which the podspec of react-native-quick-crypto reads when CocoaPods evaluates it (what quick-crypto's own Expo plugin wrote
+ * at the top of the Podfile when `sodiumEnabled` was its option). Stripped and written again on every prebuild, so a project prebuilt with the option and then without it loses the line.
+ */
+export declare function applyPodfileSodium(contents: string, enabled: boolean): string;
+/**
+ * `gradle.properties`: `sodiumEnabled=true`, which the Gradle project of react-native-quick-crypto reads (`hasProperty('sodiumEnabled')`: it passes `-DSODIUM_ENABLED` to CMake and adds
+ * `io.github.ronickg:sodium`). Without the option the property is removed, so the setting is the plugin's alone and one directory can be prebuilt with and without it.
+ */
+export declare function applyGradleSodium(properties: AndroidConfig.Properties.PropertiesItem[], enabled: boolean): AndroidConfig.Properties.PropertiesItem[];
 /** Kotlin source for the package that replaces `MainReactPackage` in headless builds. */
 export declare function headlessPackageSource(applicationId: string): string;
 /** Kotlin source of the wrapper that makes a package's view managers on demand (`androidOnDemandViewManagers`). */
 export declare function onDemandPackageSource(applicationId: string): string;
 /**
- * Expo's prebuild applies a built-in plugin for every installed package it thinks is autolinked (expo-location's location
- * permissions, expo-local-authentication's biometric ones, …), and it asks the autolinker with `package.json`'s options only, so
+ * Expo's prebuild applies a built-in plugin for every installed package it thinks is autolinked (expo-local-authentication's biometric
+ * permissions, expo-notifications', …), and it asks the autolinker with `package.json`'s options only, so
  * it never sees the excludes this plugin passes on the command line: a package left out of the build would still add its manifest
  * permissions and Info.plist texts. Every Expo plugin runs once per config (`createRunOncePlugin`, keyed by package name), so the
  * excluded packages are entered in the config's plugin history here, before the prebuild applies its own, and those plugins
@@ -125,6 +174,23 @@ export declare function onDemandPackageSource(applicationId: string): string;
 export declare function leaveOutOfAutoPlugins<Config extends {
     _internal?: Record<string, unknown>;
 }>(config: Config, names: readonly string[]): Config;
+/**
+ * The prebuild stops for an app that installs a package the library carries (`vendored.ts`): the library links its copy, and the app's own would be linked beside it, two
+ * native modules of one name. The same refusal as `svelte-native doctor`'s and `ios-autolinking`'s.
+ */
+export declare function assertNoVendoredOriginals(projectRoot: string): void;
+/**
+ * The `androidOnDemandViewManagers` the app gave, without the entries of an optional library that is off: the entry names the library's package class, which is not in the build
+ * (Kotlin would not compile `is com.rnmaps.maps.MapsPackage` without it), so one config can serve the builds that turn a library on and those that do not.
+ */
+export declare function onDemandForLibraries(onDemand: Record<string, string[]> | undefined, enabled: readonly string[]): Record<string, string[]> | undefined;
+/**
+ * The optional libraries the app turned on, applied to the Expo config: each library's own config plugin runs from its copy in `vendor/` with the options the app gave it (as if the app
+ * had listed the library in `plugins`), and the names of the libraries that are on go to `extra.svelteNative.libraries`, which the device reads from the manifest embedded in the build
+ * (`fabric/foreign-libraries.ts`) so that a component whose library is not in the build says how to turn it on. An app that lists a library's own plugin in `plugins` is refused: the
+ * package is not installed, so Expo could not find the plugin, and its options belong to `libraries`.
+ */
+export declare const withLibraries: ConfigPlugin<Libraries>;
 declare const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined>;
 export default withSvelteNative;
 /** Baseline profile rules (the Android Gradle plugin's text format): every method of the engine and the updates module, hot + startup + post-startup. */

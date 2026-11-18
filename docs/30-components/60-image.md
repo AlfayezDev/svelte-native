@@ -54,4 +54,4 @@ video: pressable
 
 It also takes the other props of React Native's [`Image`](https://reactnative.dev/docs/image).
 
-For placeholders (blurhash, thumbhash), transitions between pictures and control over caching, use `ExpoImage` from `@alfayez/svelte-native/foreign`, which is [expo-image](native-views).
+For placeholders (blurhash, thumbhash), transitions between pictures and control over caching, use `ExpoImage` from `@alfayez/svelte-native/foreign`, which is [expo-image](native-views#turning-a-library-on): turn it on with `libraries: { 'expo-image': true }` in the plugin's options.

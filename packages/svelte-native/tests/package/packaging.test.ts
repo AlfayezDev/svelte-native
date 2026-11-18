@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import { satisfies } from "../../src/doctor/semver.ts";
+import { vendoredNames } from "../../src/vendored.ts";
 
 // The package is installed by apps outside this repository, as a git dependency (`git+ssh://…#<tag>&path:packages/svelte-native`). What such an
 // app gets is the package directory as `files` packs it: the JavaScript, the library's native modules and the one `expo-module.config.json`
@@ -56,17 +58,36 @@ describe("the manifest holds nothing that only resolves inside this repository",
     expect([existsSync(join(root, "dist/node/expo.cjs")), existsSync(join(root, "src/expo.ts"))]).toEqual([true, true]);
   });
 
-  // React Native's autolinking links a native module only from the app's own dependencies, so an app installs these itself: they are required peers, at an exact version where several of
-  // them share a runtime (Nitro), and not dependencies of the package. SvelteKit and Vite it may leave out.
-  test("hermes-intl, the SVG library and the four the web's crypto and localStorage are made of are required peers, not dependencies; SvelteKit and Vite are optional", () => {
-    for (const name of ["hermes-intl", "react-native-svg", "react-native-quick-crypto", "react-native-nitro-modules", "react-native-quick-base64", "react-native-mmkv"]) {
-      expect([name, typeof manifest.peerDependencies[name]]).toEqual([name, "string"]);
-      expect([name, manifest.peerDependenciesMeta?.[name]]).toEqual([name, undefined]);
-      expect([name, manifest.dependencies[name]]).toEqual([name, undefined]);
+  // React Native's autolinking links a native module only from the app's own dependencies, so a native package an app installs itself would be a required peer. There is none: the library carries every
+  // native package it needs (vendor/, below), and SvelteKit and Vite are the optional peers an app may leave out.
+  test("no native package is a peer to install: SvelteKit and Vite are the optional peers, and the ones the library carries are neither peers nor dependencies", () => {
+    for (const name of ["react-native-svg", "hermes-intl", "react-native-quick-crypto", "react-native-quick-base64"]) {
+      expect([name, manifest.peerDependencies[name], manifest.peerDependenciesMeta?.[name], manifest.dependencies[name]]).toEqual([name, undefined, undefined, undefined]);
     }
-    for (const name of ["react-native-quick-crypto", "react-native-nitro-modules", "react-native-quick-base64", "react-native-mmkv"]) expect([name, manifest.peerDependencies[name]]).toEqual([name, expect.stringMatching(/^\d+\.\d+\.\d+$/)]);
     expect(manifest.peerDependenciesMeta?.["@sveltejs/kit"]).toEqual({ optional: true });
     expect(manifest.peerDependenciesMeta?.vite).toEqual({ optional: true });
+  });
+
+  test("the vendored packages are no peer, no dependency and no development dependency: an app's package.json lists the library and nothing beside it", () => {
+    for (const name of vendoredNames) {
+      expect([name, manifest.peerDependencies[name], manifest.peerDependenciesMeta?.[name], manifest.dependencies[name], (manifest as { devDependencies?: Record<string, string> }).devDependencies?.[name]]).toEqual([name, undefined, undefined, undefined, undefined]);
+    }
+  });
+
+  // Their own JavaScript dependencies are the package's: a copy under `vendor/` finds what it imports from where the package is (the library's dependencies, which a package manager installs beside it), not in an app's
+  // package.json. The Worklets Babel plugin needs `@babel/core` of Metro's own (a peer, optional: the app has it), and requires two Babel packages its manifest does not list.
+  test("the packages the library carries have the dependencies of their own that their JavaScript imports, as dependencies of the library (Worklets' plugin, svg, gesture handler and Reanimated)", () => {
+    const own = (name: string) => (JSON.parse(readFileSync(join(root, "vendor", name, "package.json"), "utf8")) as { dependencies?: Record<string, string> }).dependencies ?? {};
+    for (const name of ["react-native-gesture-handler", "react-native-reanimated", "react-native-worklets", "react-native-svg"]) {
+      // Types only (`@types/*`) are not needed to run, and what the library already has is the library's version.
+      for (const [dependency, range] of Object.entries(own(name)).filter(([dependency]) => !dependency.startsWith("@types/"))) {
+        expect([name, dependency, manifest.dependencies[dependency] !== undefined]).toEqual([name, dependency, true]);
+        expect([name, dependency, satisfies(manifest.dependencies[dependency] ?? "", range) ?? true]).toEqual([name, dependency, true]);
+      }
+    }
+    for (const name of ["@babel/generator", "@babel/traverse"]) expect([name, manifest.dependencies[name] !== undefined]).toEqual([name, true]);
+    expect(manifest.peerDependencies["@babel/core"]).toBe("*");
+    expect(manifest.peerDependenciesMeta?.["@babel/core"]).toEqual({ optional: true });
   });
 
   test("the license is the repository's", () => {
@@ -161,8 +182,92 @@ describe("what `files` packs", () => {
   });
 
   test("it holds no test, fixture, plan, specification or build output", () => {
-    const unwanted = listed.filter((path) => /^tests\/|(^|\/)test\/|(^|\/)(build|\.cxx|\.gradle|Pods)\//.test(path) || /(^|\/)(SPEC|NOTES|PLAN)\.md$/.test(path) || /\.test\.ts$/.test(path));
+    // A `build/` directory is a native build's output (`android/build`, `ios/build`) and is not packed; an Expo module's JavaScript is in `build/` and its config plugin's in `plugin/build/`, and a
+    // vendored copy carries them (`vendor/expo-image/build/`).
+    const nativeBuild = (path: string) => /(^|\/)(android|ios)\/build\//.test(path) || (/(^|\/)build\//.test(path) && !/^vendor\/(?:@[^/]+\/)?[^/]+\/(?:plugin\/)?build\//.test(path));
+    const unwanted = listed.filter((path) => /^tests\/|(^|\/)test\/|(^|\/)(\.cxx|\.gradle|Pods)\//.test(path) || nativeBuild(path) || /(^|\/)(SPEC|NOTES|PLAN)\.md$/.test(path) || /\.test\.ts$/.test(path));
     expect(unwanted).toEqual([]);
-    expect(listed.filter((path) => path.endsWith(".md")).sort()).toEqual(["CHANGELOG.md", "README.md", "REFERENCE.md"]);
+    // The package's own documents; a vendored package brings its README and the VENDOR.md that says where it came from (checked below).
+    expect(listed.filter((path) => path.endsWith(".md") && !path.startsWith("vendor/")).sort()).toEqual(["CHANGELOG.md", "README.md", "REFERENCE.md"]);
+  });
+
+  test("it holds the vendored packages whole, each with the license and the VENDOR.md that came with the copy (VENDORING.md)", () => {
+    for (const name of ["react-native-mmkv", "react-native-nitro-modules"]) {
+      // What the library's `imports` map points at (`#vendor/<name>`): the source Metro bundles and the declarations the type checker reads.
+      for (const file of ["LICENSE", "VENDOR.md", "package.json", "android/build.gradle", "android/CMakeLists.txt", "react-native.config.js", "src/index.ts", name === "react-native-mmkv" ? "lib/index.d.ts" : "lib/typescript/index.d.ts"])
+        expect([`vendor/${name}/${file}`, listed.includes(`vendor/${name}/${file}`)]).toEqual([`vendor/${name}/${file}`, true]);
+      expect([name, listed.some((path) => path.startsWith(`vendor/${name}/cpp/`)), listed.some((path) => path.startsWith(`vendor/${name}/android/src/main/`))]).toEqual([name, true, true]);
+    }
+    // The generated code of MMKV (Nitro's codegen output, which the app does not run), the podspecs and the Swift of both, and Nitro's own iOS sources.
+    for (const path of [
+      "vendor/react-native-mmkv/NitroMmkv.podspec",
+      "vendor/react-native-mmkv/nitro.json",
+      "vendor/react-native-mmkv/nitrogen/generated/android/NitroMmkv+autolinking.cmake",
+      "vendor/react-native-mmkv/nitrogen/generated/android/NitroMmkv+autolinking.gradle",
+      "vendor/react-native-mmkv/nitrogen/generated/ios/NitroMmkv+autolinking.rb",
+      "vendor/react-native-mmkv/ios/HybridMMKVPlatformContext.swift",
+      "vendor/react-native-mmkv/android/src/main/java/com/margelo/nitro/mmkv/NitroMmkvPackage.java",
+      "vendor/react-native-nitro-modules/NitroModules.podspec",
+      "vendor/react-native-nitro-modules/nitro_pod_utils.rb",
+      "vendor/react-native-nitro-modules/android/src/main/java/com/margelo/nitro/NitroModulesPackage.kt",
+      "vendor/react-native-nitro-modules/ios/core/HybridObject.swift",
+    ])
+      expect([path, listed.includes(path)]).toEqual([path, true]);
+  });
+
+  test("it holds the other vendored packages whole too: the sources Metro bundles, the declarations, the native projects and podspecs, the Worklets plugin, and none of what the copies leave out", () => {
+    for (const path of [
+      "vendor/react-native-gesture-handler/src/index.ts",
+      "vendor/react-native-gesture-handler/src/handlers/gestures/gestureObjects.ts",
+      "vendor/react-native-gesture-handler/lib/typescript/index.d.ts",
+      "vendor/react-native-gesture-handler/lib/typescript/handlers/gestures/gesture.d.ts",
+      "vendor/react-native-gesture-handler/android/build.gradle",
+      "vendor/react-native-gesture-handler/android/src/main/java/com/swmansion/gesturehandler/RNGestureHandlerPackage.kt",
+      "vendor/react-native-gesture-handler/android/src/main/jni/CMakeLists.txt",
+      "vendor/react-native-gesture-handler/apple/RNGestureHandlerManager.mm",
+      "vendor/react-native-gesture-handler/RNGestureHandler.podspec",
+      "vendor/react-native-reanimated/src/index.ts",
+      "vendor/react-native-reanimated/src/updateProps/index.ts",
+      "vendor/react-native-reanimated/src/featureFlags/staticFlags.json",
+      "vendor/react-native-reanimated/lib/typescript/index.d.ts",
+      "vendor/react-native-reanimated/android/build.gradle.kts",
+      "vendor/react-native-reanimated/android/CMakeLists.txt",
+      "vendor/react-native-reanimated/android/src/main/java/com/swmansion/reanimated/ReanimatedPackage.kt",
+      "vendor/react-native-reanimated/android/src/main/java/com/swmansion/reanimated/SvelteEngineHook.kt",
+      "vendor/react-native-reanimated/Common/cpp/reanimated/NativeModules/ReanimatedModuleProxy.h",
+      "vendor/react-native-reanimated/scripts/validate-worklets-version.js",
+      "vendor/react-native-reanimated/compatibility.json",
+      "vendor/react-native-reanimated/RNReanimated.podspec",
+      "vendor/react-native-worklets/src/index.ts",
+      "vendor/react-native-worklets/lib/module/runLoop/uiRuntime/requestAnimationFrame.js",
+      "vendor/react-native-worklets/lib/typescript/index.d.ts",
+      "vendor/react-native-worklets/plugin/index.js",
+      "vendor/react-native-worklets/android/build.gradle.kts",
+      "vendor/react-native-worklets/android/src/main/java/com/swmansion/worklets/WorkletsPackage.kt",
+      "vendor/react-native-worklets/RNWorklets.podspec",
+      "vendor/react-native-svg/src/index.ts",
+      "vendor/react-native-svg/src/lib/extract/extractProps.ts",
+      "vendor/react-native-svg/lib/typescript/index.d.ts",
+      "vendor/react-native-svg/android/build.gradle",
+      "vendor/react-native-svg/android/src/main/jni/CMakeLists.txt",
+      "vendor/react-native-svg/android/src/main/java/com/horcrux/svg/SvgPackage.java",
+      "vendor/react-native-svg/apple/Elements/RNSVGSvgView.mm",
+      "vendor/react-native-svg/RNSVG.podspec",
+    ])
+      expect([path, listed.includes(path)]).toEqual([path, true]);
+    for (const name of ["react-native-gesture-handler", "react-native-reanimated", "react-native-worklets", "react-native-svg"]) {
+      for (const file of ["LICENSE", "VENDOR.md", "package.json"]) expect([`vendor/${name}/${file}`, listed.includes(`vendor/${name}/${file}`)]).toEqual([`vendor/${name}/${file}`, true]);
+      // What `scripts/vendor.ts` leaves out of each copy (VENDOR.md says so): the source maps, the CommonJS builds, the Windows projects, the Gradle wrapper.
+      expect([name, listed.filter((path) => path.startsWith(`vendor/${name}/`) && (path.endsWith(".map") || path.includes("/lib/commonjs/") || path.includes("/windows/") || path.includes("/gradle/wrapper/") || /\/gradlew(?:\.bat)?$/.test(path)))]).toEqual([name, []]);
+    }
+    // The patches are applied to the copies when the library is written; the files are packed too, beside them (`vendor-patches/<name>/`: VENDOR.md lists each with its sha256).
+    expect(listed.filter((path) => path.startsWith("vendor-patches/react-native-reanimated/")).length).toBe(3);
+    expect(listed.some((path) => /^patches\/react-native-(?:gesture-handler|reanimated|worklets)@/.test(path))).toBe(false);
+  });
+
+  test("the vendored LICENSE and VENDOR.md are the copy's own files, not the package's: the package's LICENSE is still the repository's", () => {
+    expect(read("vendor/react-native-mmkv/LICENSE")).not.toBe(read("LICENSE"));
+    expect(read("LICENSE")).toBe(readFileSync(resolve(root, "../../LICENSE"), "utf8"));
+    for (const name of vendoredNames) expect(read(`vendor/${name}/VENDOR.md`)).toStartWith(`# ${name} `);
   });
 });

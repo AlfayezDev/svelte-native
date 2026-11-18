@@ -1,5 +1,5 @@
-// The device checks of the web APIs Svelte Native backs with native code: `fetch` and `Blob` (the SvelteFetch module), `crypto` (react-native-quick-crypto),
-// `localStorage` (MMKV) and `navigator` (the clipboard through the SvelteClipboard module, the language, `canShare`, `vibrate`, and the geolocation over expo-location's). They run against the library's test server (packages/svelte-native/tests/web-apis/fetch/support/server.ts) when the Web APIs screen opens with
+// The device checks of the web APIs Svelte Native backs with native code: `fetch` and `Blob` (the SvelteFetch module), `crypto` (react-native-quick-crypto, part of the library),
+// `localStorage` (MMKV) and `navigator` (the clipboard through the SvelteClipboard module, the language, `canShare`, `vibrate`, and the geolocation over the library's own location module). They run against the library's test server (packages/svelte-native/tests/web-apis/fetch/support/server.ts) when the Web APIs screen opens with
 // `?checks=<origin>`: `svelte-native://web-apis?checks=http://localhost:8787` (an Android emulator after `adb reverse tcp:8787 tcp:8787`; the iOS
 // Simulator reaches the Mac's localhost). A release build talks plain HTTP only when it was built with SVELTE_NATIVE_REMOTE_ORIGIN=http://localhost:8787,
 // which makes the plugin allow it. Every result is logged as `[web-apis] …`, the last line `[web-apis] done pass=N fail=N skip=N`,
@@ -300,6 +300,19 @@ const checks: [name: string, run: (origin: string) => Promise<string>][] = [
     expect(random.some((byte) => byte !== 0), "32 zero bytes");
     return "digest, randomUUID, getRandomValues";
   }],
+  // The `Intl` constructors Hermes lacks come from hermes-intl, which the library carries: its C++ TurboModule is in the build only when the library linked it (an app built before it was vendored has it from the app's own dependency).
+  ["Intl: PluralRules, RelativeTimeFormat, ListFormat, Locale", async () => {
+    if (typeof Intl.PluralRules === "undefined" || typeof Intl.RelativeTimeFormat === "undefined") throw new Skip("no Intl.PluralRules or Intl.RelativeTimeFormat");
+    const plural = new Intl.PluralRules("ar").select(3);
+    expect(plural === "few", `Arabic select(3) was ${plural}`);
+    const relative = new Intl.RelativeTimeFormat("en").format(-1, "day");
+    expect(relative === "1 day ago", `RelativeTimeFormat.format(-1, "day") was ${relative}`);
+    const list = new Intl.ListFormat("en", { style: "long", type: "conjunction" }).format(["red", "green", "blue"]);
+    expect(list === "red, green, and blue", `ListFormat was ${list}`);
+    const locale = new Intl.Locale("ar-EG");
+    expect(locale.language === "ar" && locale.region === "EG", `Locale was ${locale.language}-${locale.region}`);
+    return `PluralRules ar 3 = ${plural}, "${relative}", "${list}", Locale ${locale.toString()}`;
+  }],
   ["localStorage", async () => {
     if (typeof localStorage === "undefined") throw new Skip("no localStorage");
     localStorage.setItem("checks.probe", "1");
@@ -337,7 +350,7 @@ const checks: [name: string, run: (origin: string) => Promise<string>][] = [
     expect(navigator.vibrate(0) === true, "vibrate(0)");
     return `language ${navigator.language}`;
   }],
-  // The location capability (expo-location, `capabilities.location` in app.config.ts). The permission is asked for on the first call: grant it ahead
+  // The location capability (`capabilities.location` in app.config.ts: the library's own native module, nothing to install). The permission is asked for on the first call: grant it ahead
   // (`adb shell pm grant … android.permission.ACCESS_FINE_LOCATION`, `xcrun simctl privacy … grant location …`) for a run nobody watches.
   ["geolocation: a position, a watch, the permission", async () => {
     if (typeof navigator.geolocation === "undefined") throw new Skip("no navigator.geolocation");
@@ -347,7 +360,7 @@ const checks: [name: string, run: (origin: string) => Promise<string>][] = [
     expect(Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 && accuracy >= 0, `coords ${JSON.stringify(position.coords)}`);
     expect(position.timestamp > Date.now() - 24 * 3600_000, `timestamp ${position.timestamp}`);
     const watched = await new Promise<GeolocationPosition>((resolve, reject) => {
-      // `maximumAge: 0`: the position comes from the native watch (`Expo.locationChanged`), not from the one just read.
+      // `maximumAge: 0`: the position comes from the native watch (`locationChanged`), not from the one just read.
       const id = navigator.geolocation.watchPosition((next) => { navigator.geolocation.clearWatch(id); resolve(next); }, (error) => { navigator.geolocation.clearWatch(id); reject(error); }, { ...options, maximumAge: 0 });
     });
     expect(Number.isFinite(watched.coords.latitude), "watched position");

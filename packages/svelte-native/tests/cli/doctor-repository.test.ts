@@ -18,7 +18,8 @@ const packagePatches = "packages/svelte-native/patches";
 
 test("every patch file of the package is one the doctor knows, and every entry of the doctor has its file", () => {
   expect(patchesDirectory).toBe(join(repository, packagePatches));
-  expect(patchFiles().map((patch) => patch.package)).toEqual(patchSpecs.map((spec) => spec.package));
+  // The libraries the package carries (`vendored: true`) are patched in their copies (`vendor-patches/`), which no app declares: they have a spec and no file here.
+  expect(patchFiles().map((patch) => patch.package)).toEqual(patchSpecs.filter((spec) => spec.vendored !== true).map((spec) => spec.package));
   expect(readdirSync(patchesDirectory).filter((file) => !file.endsWith(".patch"))).toEqual([]);
 });
 
@@ -67,9 +68,11 @@ test("the example app, installed and patched by the repository, passes every che
     pnpm: () => requirements.pnpm.slice(2),
     repository: true,
   });
-  expect(checks.filter((entry) => entry.status !== "pass")).toEqual([]);
+  // The doctor reads the app's config (`libraries`) as Expo does, and Bun cannot run Expo's loader of an `app.config.ts` ("Expected CommonJS module to have a function wrapper"): the one
+  // check that skips here is that, and the test below runs the shipped doctor on Node, which reads it.
+  expect(checks.filter((entry) => entry.status !== "pass" && !entry.message.startsWith("could not read the app's config"))).toEqual([]);
   expect(checks.filter((entry) => entry.group === "patches")).toHaveLength(patchFiles().length);
-  expect(checks.filter((entry) => entry.group === "peer dependencies").length).toBeGreaterThan(20);
+  expect(checks.filter((entry) => entry.group === "peer dependencies").length).toBeGreaterThan(5);
 });
 
 describe("which Node the doctor holds an app to", () => {
@@ -107,4 +110,15 @@ describe("which Node the doctor holds an app to", () => {
   test("a directory that is not there is an app", () => {
     expect(isRepositoryApp(join(tmpdir(), "doctor-scope-missing"), packageRoot)).toBe(false);
   });
+});
+
+test.skipIf(!Bun.which("node"))("the shipped doctor, run on Node in the QA app, reads the libraries its config turns on and passes every check", () => {
+  const result = Bun.spawnSync(["node", join(repository, "packages/svelte-native/dist/node/cli.js"), "doctor", "--json"], { cwd: join(repository, "apps/qa") });
+  const report = JSON.parse(result.stdout.toString()) as { ok: boolean; checks: { group: string; status: string; message: string }[] };
+  const libraries = report.checks.find((entry) => entry.message.startsWith("libraries turned on:"));
+  // The fifteen the QA app lists, and react-native-blob-util that react-native-pdf brings.
+  expect(libraries?.status).toBe("pass");
+  expect(libraries?.message).toContain("react-native-pdf");
+  expect(libraries?.message).toContain("(react-native-blob-util: needed by another)");
+  expect(report.checks.filter((entry) => entry.status === "fail")).toEqual([]);
 });

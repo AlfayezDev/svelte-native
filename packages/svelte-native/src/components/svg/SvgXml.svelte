@@ -4,7 +4,7 @@
   import { parse } from "../../fabric/foreign-svg-xml.ts";
   import Svg from "./Svg.svelte";
   import SvgNode from "./SvgNode.svelte";
-  import type { SvgProps } from "react-native-svg";
+  import type { SvgProps } from "#vendor/react-native-svg";
 
   /**
    * `react-native-svg`'s `SvgXml`: draws an SVG document given as a string. It is parsed with the library's own parser (`parse`) and drawn with these

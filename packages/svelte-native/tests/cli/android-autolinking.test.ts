@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { type AutolinkingConfig, deferNitroLibraries, deferredNitroPackages, nitroPackage, relinkedPackage } from "../../src/autolinking.ts";
+import { vendoredNames, vendoredRoot } from "../../src/vendored.ts";
 
 /**
  * `svelte-native android-autolinking` (`autolinking.ts`): React Native's autolinking config with the Nitro modules' packages relinked, so that
@@ -123,9 +124,10 @@ describe("the command", () => {
   });
 });
 
-describe("the installed packages are what the rewrite assumes (a version bump that changes one fails here)", () => {
-  /** A package's directory, from the package's own node_modules or a parent's (the repository installs them hoisted). */
+describe("the packages are what the rewrite assumes (a version bump that changes one fails here)", () => {
+  /** A package's directory: the library's own copy for a vendored one (MMKV, the Nitro runtime), else the package's own node_modules or a parent's (the repository installs them hoisted). */
   function packageDirectory(name: string): string | undefined {
+    if (vendoredNames.includes(name)) return vendoredRoot(name);
     for (let directory = resolve(import.meta.dirname, "../.."); ; directory = resolve(directory, "..")) {
       const candidate = resolve(directory, "node_modules", name);
       if (existsSync(resolve(candidate, "package.json"))) return candidate;

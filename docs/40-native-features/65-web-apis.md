@@ -71,7 +71,7 @@ A few things differ from a browser:
 
 ## Crypto
 
-`crypto` is the web's: `crypto.getRandomValues(array)`, `crypto.randomUUID()` and `crypto.subtle`, the Web Crypto API (digests, HMAC, AES, RSA, ECDSA, key derivation). It is backed by [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto), so the work is native.
+`crypto` is the web's: `crypto.getRandomValues(array)`, `crypto.randomUUID()` and `crypto.subtle`, the Web Crypto API (digests, HMAC, AES, RSA, ECDSA, key derivation). It is backed by [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto), which is part of Svelte Native (the library carries it, with the base64 module it asks for, and links it), so the work is native and there is nothing to install.
 
 ```ts
 const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -81,7 +81,7 @@ const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('h
 
 Nothing loads until `crypto` is first read, so an app that never uses it pays nothing at start. A library that reads it while it starts loads it then: Sentry's SDK does, from `src/hooks.mobile.ts`. Only `crypto` is defined: not `Buffer`, and not `process`. The library behind it adds a few things of its own when it loads, on the first read of `crypto`: `process.nextTick`, and the functions `base64FromArrayBuffer` and `base64ToArrayBuffer`.
 
-A library written for Node that imports `crypto` or `node:crypto` gets react-native-quick-crypto itself, which has Node's API (`createHash`, `createHmac`, `randomBytes`, ciphers, key pairs) as well as `subtle`. Metro does the substitution, so nothing needs configuring. The package is a required dependency of the app: `svelte-native init` installs it and `svelte-native doctor` checks it.
+A library written for Node that imports `crypto` or `node:crypto` gets react-native-quick-crypto itself, which has Node's API (`createHash`, `createHmac`, `randomBytes`, ciphers, key pairs) as well as `subtle`. Metro does the substitution, so nothing needs configuring. The package is not a dependency of the app: an app that lists `react-native-quick-crypto` or `react-native-quick-base64` is refused, because a second copy would be linked beside the library's. libsodium's algorithms (XSalsa20 and the other ciphers OpenSSL lacks) are off; the `sodiumEnabled` plugin option turns them on ([Configuration](configuration)).
 
 ## Storage
 
@@ -109,7 +109,7 @@ localStorageMMKV().set('onboarded', true);
 localStorage.getItem('onboarded'); // null: localStorage reads strings
 ```
 
-react-native-mmkv is a required dependency of the app, with react-native-nitro-modules.
+react-native-mmkv comes with the library, together with react-native-nitro-modules: do not add either to the app's dependencies (the prebuild stops if you do).
 
 ## navigator
 
@@ -149,11 +149,7 @@ await navigator.share({ title: 'Svelte Native', text: 'Have a look', url: 'https
 
 ### Geolocation
 
-`navigator.geolocation` is the web's Geolocation API. It needs a permission of the system, so it is a capability: off until the app says why it uses it. Install [expo-location](https://docs.expo.dev/versions/latest/sdk/location/), whose native module it runs on, and give the reason in the plugin's options:
-
-```sh
-npx expo install expo-location
-```
+`navigator.geolocation` is the web's Geolocation API. It needs a permission of the system, so it is a capability: off until the app says why it uses it. Its native code is part of Svelte Native, so there is nothing to install: give the reason in the plugin's options.
 
 ```ts
 /// file: app.config.ts
@@ -162,9 +158,9 @@ export default {
 };
 ```
 
-The text is what iOS shows when the app asks. Then prebuild and rebuild the native app. For expo-location's background APIs (`startLocationUpdatesAsync`, geofencing), give the reason for the background too: `location: { whenInUse: '…', background: '…' }`. `navigator.geolocation` needs only the first. Without `background`, the app has no background location: the Always texts are left out of `Info.plist`, even one you wrote in `ios.infoPlist`. expo-location also brings CoreMotion on iOS, so `Info.plist` always has a motion text: give yours with `motion: '…'` if the app uses expo-location's motion APIs; otherwise it is expo-location's, which iOS never shows, since `navigator.geolocation` doesn't ask for motion.
+The text is what iOS shows when the app asks (`location: { whenInUse: '…' }` says the same). Then prebuild and rebuild the native app. The prebuild adds the location permissions on Android (`ACCESS_FINE_LOCATION` and `ACCESS_COARSE_LOCATION`) and the text on iOS, and on iOS it compiles the location code into the app only then: an app without the capability has no location API in its binary, so App Store Connect never asks it for a location text. On Android the position comes from the system's own location service, with no Google library: on Android 12 and later its fused provider, and the GPS or the network otherwise, so it works on phones without Google services too. Turn the capability off and prebuild again, and the permissions and the compiled code go away (the iOS text stays, as nothing says it was the capability's).
 
-The prebuild stops when the two halves don't match: the capability without expo-location installed, expo-location installed without the capability, or the capability on while expo-location is left out of autolinking. The second is so that Expo's generic location text ("Allow $(PRODUCT_NAME) to access your location") never reaches App Review. An app that lists expo-location's own plugin with its options has configured it there and doesn't set the capability as well.
+The capability is for `navigator.geolocation`, in the foreground. Background location (tracking with the app closed, geofencing) is not part of it: the prebuild stops on a `background` or `motion` option and says so. An app that needs it can install expo-location and configure its own plugin; the two don't share anything, so they can be in the same app.
 
 ```ts
 navigator.geolocation.getCurrentPosition(
@@ -185,11 +181,10 @@ It behaves as in a browser: the first call asks for the permission, the callback
 
 A few things differ from a browser:
 
-- What the platform doesn't know reads as `null`: altitude, heading and speed. Android reports 0 for an altitude it doesn't have; one whose accuracy is 0 is read as unknown. Android also reports a speed of 0 when it has none, so a position without a speed reads as standing still, with the heading `NaN`.
-- A watch that fails once it runs: iOS reports it, as `POSITION_UNAVAILABLE` (the watch goes on) or, when the permission was taken away, `PERMISSION_DENIED` (the watch ends). Android reports only a watch that can't start; one that loses its fix goes quiet, and a `timeout` is how you hear of it.
+- What the platform doesn't know reads as `null`: altitude, heading and speed.
+- A watch that fails once it runs reports it, as `POSITION_UNAVAILABLE` (the watch goes on: on Android when its location provider is switched off, on iOS when the fix is lost) or, on iOS when the permission was taken away, `PERMISSION_DENIED` (the watch ends). A watch that only goes quiet is heard of through its `timeout`.
 - The permission is the system's. After a refusal the app can ask again where the system still allows it: Android asks twice, then answers for the user.
 - `navigator.permissions.query` knows `geolocation`, and refuses other names with a `TypeError`, as a browser refuses one it doesn't know.
-- Watch with `navigator.geolocation` or with expo-location's `watchPositionAsync`, not both at once: they share the native module's watches, and expo-location stops a watch it didn't start.
 
 ## An update to an older build
 

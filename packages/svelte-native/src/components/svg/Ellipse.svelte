@@ -3,7 +3,7 @@
   import { createNativeProps } from "../../native-props.ts";
   import { ellipseNativeProps } from "../../fabric/foreign-svg.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
-  import type { EllipseProps } from "react-native-svg";
+  import type { EllipseProps } from "#vendor/react-native-svg";
 
   /** `react-native-svg`'s `Ellipse`: `cx`, `cy`, `rx`, `ry`. */
   let { ref, animatedProps, ...props }: EllipseProps & SvgExtras = $props();

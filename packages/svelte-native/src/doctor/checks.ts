@@ -1,16 +1,19 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { declaredPatches } from "./declared.ts";
-import { expoPluginFinding, metroFinding, type Finding } from "./integration.ts";
+import { expoPluginFinding, metroFinding, record, type Finding } from "./integration.ts";
 import { missingFromPackage } from "./hunks.ts";
 import { patchFiles, patchKey, patchSpecs } from "./patches.ts";
+import { pushChecks } from "./push.ts";
 import { nodeAdvice, requirements } from "./requirements.ts";
 import { findPackage, readerFor, readJson, type InstalledPackage } from "./resolve.ts";
 import { satisfies } from "./semver.ts";
+import { appPluginOptions, checkLibraries, LibrariesConfigError } from "../libraries.ts";
+import { collisionMessage, declaredVendored, vendoredPackages, vendoredRoot } from "../vendored.ts";
 
 export type Status = "pass" | "fail" | "skip" | "unknown";
 export type Check = {
-  group: "environment" | "svelte" | "peer dependencies" | "patches" | "build integration";
+  group: "environment" | "svelte" | "peer dependencies" | "vendored packages" | "patches" | "build integration" | "push" | "push server";
   status: Status;
   message: string;
   /** More lines under the message (what exactly is missing). */
@@ -32,7 +35,6 @@ export type Context = {
   repository?: boolean;
 };
 
-const record = (value: unknown): Record<string, unknown> => (typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
 const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 
 function environment(context: Context): Check[] {
@@ -139,25 +141,72 @@ function expoRuntime(context: Context): Check[] {
 }
 
 /**
- * Required peers that carry a native module React Native's autolinking must link. It reads the app's own `dependencies`, not whatever is installed
- * below `node_modules`, so a library that only comes with another package (or a hoisted install) is in the JavaScript bundle and missing from the build. `hermes-intl` is
- * the library's `Intl` constructors (`PluralRules`, `RelativeTimeFormat`, `ListFormat`, `Locale`: Hermes lacks them); the others are what the web's `crypto` and `localStorage` are made of:
- * react-native-quick-crypto with the Nitro runtime it and react-native-mmkv share (`react-native-nitro-modules`) and the base64 module it asks for (`react-native-quick-base64`).
+ * The packages the library carries (`vendored.ts`): present in the installed library at the version it pins, and not among the app's own dependencies. An app that lists one
+ * links it twice (its own native module beside the library's copy), which the config plugin and the autolinking command refuse as well. React Native's autolinking links a native
+ * module only from the app's own dependencies, which is why the library adds its copies to the config itself (`autolinking.ts`) and why an app has nothing to install for
+ * `crypto` (react-native-quick-crypto and the base64 module it asks for), the `Intl` constructors Hermes lacks (`hermes-intl`) or `localStorage` (MMKV and the Nitro runtime). The optional
+ * libraries (`libraries.ts`) are summed up in one line when all is well, and `libraries` of the app's config is read and reported: the libraries that are on, or why the option cannot be read.
  */
-const AUTOLINKED_PEERS = ["hermes-intl", "react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64", "react-native-quick-crypto"] as const;
-
-function autolinkedPeers(context: Context, peers: Record<string, unknown>, appPackage: Record<string, unknown>): Check[] {
-  const dependencies = { ...record(appPackage.dependencies), ...record(appPackage.devDependencies), ...record(appPackage.optionalDependencies) };
+function vendored(context: Context, libraryName: string): Check[] {
+  const declared = new Set(declaredVendored(context.appRoot));
   const checks: Check[] = [];
-  for (const name of AUTOLINKED_PEERS) {
-    const range = text(peers[name]);
-    if (range === undefined) continue;
-    if (name in dependencies) {
-      checks.push({ group: "peer dependencies", status: "pass", message: `${name} is a dependency of the app: React Native's autolinking links its native module` });
-    } else if (findPackage(name, context.appRoot)) {
-      checks.push({ group: "peer dependencies", status: "fail", message: `${name} is installed but is not a dependency of the app (${join(context.appRoot, "package.json")}): React Native's autolinking links only the app's own dependencies, so the build would not have its native module`, fix: `pnpm add ${name}@${range}, then npx expo prebuild` });
-    }
-    // Not installed and not declared: the peer dependency check above already fails it.
+  const optionalCopies: string[] = [];
+  for (const { name, version, optional } of vendoredPackages) {
+    const directory = vendoredRoot(name, context.packageRoot);
+    const copy = readJson(join(directory, "package.json"));
+    if (copy === undefined || copy.version !== version) {
+      checks.push({
+        group: "vendored packages",
+        status: "fail",
+        message: copy === undefined ? `${libraryName} has no copy of ${name} (${directory}): the installed library is incomplete` : `${directory} is ${name} ${String(copy.version)}, the library pins ${version}`,
+        fix: `install ${libraryName} again (a package manager that dropped the library's vendor/ folder, or a stale cache, leaves it incomplete)`,
+      });
+    } else if (declared.has(name)) {
+      checks.push({ group: "vendored packages", status: "fail", message: `${name} is a dependency of the app (${join(context.appRoot, "package.json")}): ${collisionMessage([name], libraryName)}`, fix: `pnpm remove ${name}, then npx expo prebuild` });
+    } else if (optional === undefined) {
+      checks.push({ group: "vendored packages", status: "pass", message: `${name} ${version} comes with ${libraryName} (vendor/${name}); the app does not list it` });
+    } else optionalCopies.push(name);
+  }
+  if (optionalCopies.length > 0) checks.push({ group: "vendored packages", status: "pass", message: `the ${optionalCopies.length} optional libraries come with ${libraryName} (vendor/), at the versions it pins; the app lists none of them` });
+  checks.push(libraries(context, libraryName));
+  return checks;
+}
+
+/** The libraries the app's config turns on (`libraries` of the plugin options): which they are, or what is wrong with the option or why it could not be read. */
+function libraries(context: Context, libraryName: string): Check {
+  const group = "vendored packages";
+  const fix = `fix \`libraries\` in the ${libraryName} plugin's options (app.json or app.config.*), then prebuild again`;
+  const read = appPluginOptions(context.appRoot, join(context.appRoot, "package.json"));
+  // The plugin checks `libraries` while Expo reads the config, so an invalid one is what made the config unreadable.
+  if ("error" in read && read.error instanceof Error && read.error.name === "LibrariesConfigError") {
+    return { group, status: "fail", message: read.error.message, fix };
+  }
+  if ("unknown" in read) return { group, status: "skip", message: `${read.unknown}, so the optional libraries it turns on were not checked (\`npx expo config\` shows the config)` };
+  try {
+    const { enabled, listed } = checkLibraries(read.options?.libraries);
+    if (enabled.length === 0) return { group, status: "pass", message: "no optional library is turned on (libraries): none of their native code is in the app" };
+    const implied = enabled.filter((name) => !listed.has(name));
+    return { group, status: "pass", message: `libraries turned on: ${enabled.join(", ")}${implied.length > 0 ? ` (${implied.join(", ")}: needed by another)` : ""}; the others are not linked, and Metro stubs them` };
+  } catch (error) {
+    if (!(error instanceof LibrariesConfigError)) throw error;
+    return { group, status: "fail", message: error.message, fix };
+  }
+}
+
+/**
+ * The patches the library applied to its own copies (`vendor/<name>`, `vendor-patches/`): the shape each patch leaves is looked for in the copy, so an installed library that is not
+ * the one that was built (a stale copy, a package manager that rewrote a file) is told apart. The app has nothing to do about a failure but install the library again.
+ */
+function vendoredPatches(context: Context, libraryName: string): Check[] {
+  const checks: Check[] = [];
+  for (const spec of patchSpecs) {
+    if (!spec.vendored) continue;
+    const directory = vendoredRoot(spec.package, context.packageRoot);
+    if (readJson(join(directory, "package.json")) === undefined) continue;
+    const problems = spec.inspect(readerFor(directory), "");
+    checks.push(problems.length === 0
+      ? { group: "vendored packages", status: "pass", message: `${spec.package}: ${spec.does} (in ${libraryName}'s copy)` }
+      : { group: "vendored packages", status: "fail", message: `${spec.package} in ${libraryName}'s copy is not patched: ${spec.does}`, details: problems.slice(0, 4), fix: `install ${libraryName} again: the copy in vendor/${spec.package} is not the one the library was built with` });
   }
   return checks;
 }
@@ -246,10 +295,12 @@ export function runChecks(context: Context): Check[] {
     ...environment(context),
     svelte(context, peers),
     ...peerDependencies(context, peers, optional),
-    ...autolinkedPeers(context, peers, appPackage),
     ...expoRuntime(context),
+    ...vendored(context, name),
+    ...vendoredPatches(context, name),
     ...patches(context, name, optional),
     library(context, name, text(own.version) ?? "?", appPackage),
     ...integration(context, name),
+    ...pushChecks(context, { name, version: text(own.version) ?? "?" }, appPackage),
   ];
 }

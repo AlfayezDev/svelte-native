@@ -4,7 +4,7 @@
   import { createNativeProps } from "../../native-props.ts";
   import { symbolNativeProps } from "../../fabric/foreign-svg.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
-  import type { SymbolProps } from "react-native-svg";
+  import type { SymbolProps } from "#vendor/react-native-svg";
 
   /** `react-native-svg`'s `Symbol`: a reusable drawing with its own `viewBox`, drawn by a `Use` that names its `id`. */
   let { children, ref, animatedProps, ...props }: Omit<SymbolProps, "children"> & { children?: Snippet } & SvgExtras = $props();

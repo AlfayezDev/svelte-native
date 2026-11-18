@@ -11,7 +11,8 @@ import { basename, dirname, relative, resolve } from "node:path";
  */
 const repository = resolve(import.meta.dirname, "../../../..");
 const roots = ["README.md", "docs", "packages/svelte-native", "apps/qa/qa"];
-const skipped = new Set(["node_modules", "out", "runs", "build", ".gradle", "Pods", ".svelte-native"]);
+// `vendor` holds third-party packages with their own documents (VENDORING.md): their links are theirs.
+const skipped = new Set(["node_modules", "out", "runs", "build", ".gradle", "Pods", ".svelte-native", "vendor"]);
 const specFile = resolve(repository, "packages/svelte-native/native/svelte-core/SPEC.md");
 
 function markdownFiles(path: string): string[] {

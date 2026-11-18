@@ -10,7 +10,8 @@ if (command === "help" || command === "--help" || command === "-h") {
   console.log(`Usage: svelte-native <command>
 
   init       turn a SvelteKit project (npx sv create) into a Svelte Native app; \`init --help\` lists its options
-  doctor     check the app's setup (peer versions, patches, Metro and Expo wiring)
+  doctor     check the app's setup (peer versions, patches, Metro and Expo wiring, push); \`doctor --server\` checks the push server's credentials instead
+  push       \`push send\` sends one push message to one device with the server's credentials; \`push --help\` and \`push send --help\` list the options
   android    sync, prebuild if android/ is missing, build and run on a device or emulator (arguments go to expo run:android)
   ios        the same for iOS (a Mac with Xcode)
   dev        regenerate .svelte-native/ when a route file changes and start Metro (arguments go to expo start)
@@ -24,10 +25,20 @@ if (command === "init") {
   const { runInit } = await import("./init-app.ts");
   process.exit(runInit(root, args));
 }
+/** Exits once what was written is out: a pipe takes output in pieces, and `process.exit` would cut off what is still on its way. */
+async function exitAfterFlush(status: number): Promise<never> {
+  for (const stream of [process.stdout, process.stderr]) await new Promise<void>((flushed) => stream.write("", () => flushed()));
+  process.exit(status);
+}
 if (command === "doctor") {
-  // Before the sync: the doctor is for an app that may not be set up yet, and it must not write anything.
+  // Before the sync: the doctor is for an app that may not be set up yet, and it must not write anything. (`--server` makes requests, so it is a promise.)
   const { runDoctor } = await import("./doctor/index.ts");
-  process.exit(runDoctor(root, args));
+  await exitAfterFlush(await runDoctor(root, args));
+}
+if (command === "push") {
+  // Before the sync, like the doctor: it needs no routes, and it must not write `.svelte-native/`. It is the server's side of push: no app is needed to send.
+  const { runPush } = await import("./push/cli.ts");
+  await exitAfterFlush(await runPush(root, args));
 }
 if (command === "android-autolinking") {
   // Not a command for people: settings.gradle runs it around React Native's autolinking config command (`autolinking.ts`). Before the sync: it needs no routes.
@@ -36,6 +47,11 @@ if (command === "android-autolinking") {
   // A pipe takes the JSON in pieces: exit once all of it is written.
   await new Promise<void>((flushed) => process.stdout.write("", () => flushed()));
   process.exit(status);
+}
+if (command === "ios-autolinking") {
+  // Not a command for people either: the Podfile runs it around React Native's autolinking config command, as settings.gradle runs the Android one. Before the sync: it needs no routes.
+  const { runIosAutolinking } = await import("./autolinking.ts");
+  await exitAfterFlush(runIosAutolinking(args));
 }
 if (command === "css") {
   // What the Metro integration runs in a process of its own (`buildClassesSync`), and a way to see what a CSS file compiles to. Before the sync: it needs no routes.
@@ -84,5 +100,5 @@ if (command === "build") {
   child.once("error", (error) => { watcher.close(); console.error(error); process.exitCode = 1; });
   child.once("exit", (code) => { watcher.close(); process.exitCode = code ?? 1; });
 } else if (command !== "sync") {
-  throw new Error(`Unknown command: ${command}. Use init, dev, android, ios, build, sync, css or doctor.`);
+  throw new Error(`Unknown command: ${command}. Use init, dev, android, ios, build, sync, css, doctor or push.`);
 }

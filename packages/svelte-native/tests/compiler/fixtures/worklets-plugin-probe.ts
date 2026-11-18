@@ -22,6 +22,8 @@ const output = transform({
 const code = (generate as unknown as { default?: typeof generate }).default?.(output.ast as never).code ?? (generate as unknown as (ast: object) => { code: string })(output.ast).code;
 // What a plugin or the preset finds when it asks Node for the package's plugin, from the app and from babel-preset-expo's own directory (the two places the preset looks).
 const fromApp = createRequire(join(root, "package.json")).resolve("react-native-worklets/plugin");
+// An app's Babel config from before Reanimated 4 lists Reanimated's name for the plugin.
+const reanimatedFromApp = createRequire(join(root, "package.json")).resolve("react-native-reanimated/plugin");
 const preset = createRequire(import.meta.url).resolve("babel-preset-expo/package.json");
 const fromPreset = createRequire(join(preset, "..", "build", "utils", "resolveModule.js")).resolve("react-native-worklets/plugin", { paths: [root, join(preset, "..", "build", "utils")] });
-console.log(JSON.stringify({ code, fromApp, fromPreset, loaded: Object.keys(createRequire(import.meta.url).cache).filter((path) => path.includes("react-native-worklets")) }));
+console.log(JSON.stringify({ code, fromApp, fromPreset, reanimatedFromApp, loaded: Object.keys(createRequire(import.meta.url).cache).filter((path) => path.includes("react-native-worklets")) }));

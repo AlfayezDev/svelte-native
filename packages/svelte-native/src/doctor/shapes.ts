@@ -85,6 +85,7 @@ export function mapsProblems(read: Reader): string[] {
     const stream = mapsStreamEvents.includes(file.slice(0, -".java".length));
     problems.push(...inFile(read, `${directory}/${file}`, [stream ? ["a stream event no longer coalesces", (code) => !code.includes("canCoalesce")] : ["canCoalesce() is not overridden to return false", neverCoalesces]]));
   }
+  problems.push(...inFile(read, "plugin/build/ios.js", [["the Podfile line of its iOS plugin looks for an installed react-native-maps, not the library's copy", (code) => code.includes("'vendor/react-native-maps'")]]));
   return problems;
 }
 

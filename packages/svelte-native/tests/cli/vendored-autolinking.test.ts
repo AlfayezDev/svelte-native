@@ -201,7 +201,7 @@ describe("linkVendored", () => {
   test("the refusal is said the same way by the plugin, the doctor and the command: the library includes it, remove it from the app's dependencies", () => {
     expect(collisionMessage(["react-native-mmkv"])).toStartWith("@alfayez/svelte-native includes react-native-mmkv 4.3.1; remove it from the app's dependencies (package.json)");
     expect(collisionMessage(["react-native-nitro-modules", "react-native-mmkv"])).toContain("includes react-native-nitro-modules 0.35.10 and react-native-mmkv 4.3.1; remove them from");
-    expect(collisionMessage(["react-native-reanimated"])).toStartWith("@alfayez/svelte-native includes react-native-reanimated 4.5.1; remove it from the app's dependencies (package.json), reinstall, and prebuild again.");
+    expect(collisionMessage(["react-native-reanimated"])).toStartWith("@alfayez/svelte-native includes react-native-reanimated 4.5.1; remove it from the app's dependencies (package.json) and any `patchedDependencies` entry for it (pnpm stops on a patch of a package it no longer installs), reinstall, and prebuild again."));
   });
 
   test("the refusal says what becomes of a library that asks for the package as a peer: the copy serves it, under the same name, so nothing replaces what is removed", () => {

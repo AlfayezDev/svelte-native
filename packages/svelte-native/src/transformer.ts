@@ -39,20 +39,29 @@ const upstream = require(upstreamTransformerPath());
  * that finds a package, adds the plugin in the place where the other plugins of the preset end and React Native's own begin. Worklets is the library's own copy (`vendor/`,
  * `vendored.ts`) and not a package of the app, so nothing of the app's would answer, and one that does (pnpm installs `react-native-worklets` beside Expo Router, which peer-depends on it) is
  * another version than the native code the library links and the runtime it bundles. So that name resolves to the copy's plugin, for the preset and for anything else that asks for it
- * (`react-native-reanimated/plugin` re-exports it, and so does an app's own Babel config that lists it): the plugin is added once, where the preset adds it, and it is the copy's.
+ * (an app's own Babel config that lists it): the plugin is added once, where the preset adds it, and it is the copy's. `react-native-reanimated/plugin`, which an app's Babel config from
+ * before Reanimated 4 lists, resolves to Reanimated's copy, which re-exports it.
  * `Module._resolveFilename` is what `require.resolve` ends in on every Node the library supports (a resolve hook of `module.registerHooks` is not documented to reach it).
  */
-const WORKLETS_PLUGIN = "react-native-worklets/plugin";
 const workletsPluginFile = (): string => join(vendoredRoot("react-native-worklets"), "plugin/index.js");
+const pluginFiles: Readonly<Record<string, () => string>> = {
+  "react-native-worklets/plugin": workletsPluginFile,
+  "react-native-reanimated/plugin": () => join(vendoredRoot("react-native-reanimated"), "plugin/index.js"),
+};
 const redirected = Symbol.for("@alfayez/svelte-native/worklets-plugin");
 type ResolveFilename = ((request: string, ...rest: unknown[]) => string) & { [redirected]?: true };
 const internals = Module as unknown as { _resolveFilename: ResolveFilename };
 // Not under Bun, which the repository's own tests run the transformer in: after the wrapper, a `require` of a relative file by a module that is not the first one fails there ("Cannot find module './x.ts' from ''"). The preset
-// finds whatever the app's `node_modules` has in such a run, which in this repository is Worklets 0.10.1, the version the copy is.
+// finds whatever the app's `node_modules` has in such a run, which in this repository is Worklets 0.10.1, the version the copy is. An app's Metro under Bun (`bun --bun expo start`) gets
+// no Worklets plugin at all, so its worklets fail on the device: it is told once.
+if (process.versions.bun !== undefined && process.env.NODE_ENV !== "test") {
+  console.warn("svelte-native: Metro runs under Bun, where the library cannot give Babel its copy of the Worklets plugin; animations and gestures need Metro on Node (`expo start`, not `bun --bun expo start`)");
+}
 if (process.versions.bun === undefined && internals._resolveFilename[redirected] !== true) {
   const resolveFilename = internals._resolveFilename;
   const redirect: ResolveFilename = function (this: unknown, request, ...rest) {
-    return request === WORKLETS_PLUGIN ? workletsPluginFile() : resolveFilename.call(this, request, ...rest);
+    const plugin = pluginFiles[request];
+    return plugin ? plugin() : resolveFilename.call(this, request, ...rest);
   };
   redirect[redirected] = true;
   internals._resolveFilename = redirect;

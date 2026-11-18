@@ -26,7 +26,7 @@ export const patchSpecs: readonly PatchSpec[] = [
   { package: "expo-modules-core", via: "expo", does: "Expo modules register lazily and the common ones are prewarmed (Android start)", inspect: expoModulesCoreProblems },
   { package: "lottie-react-native", vendored: true, does: "Lottie's events are delivered one by one (Android) and a load or failure before the emitter exists is kept (iOS)", inspect: lottieProblems },
   { package: "react-native-gesture-handler", vendored: true, does: "the root gesture recognizer can be registered for the screens the library presents (iOS)", inspect: rnghProblems },
-  { package: "react-native-maps", vendored: true, does: "the map's discrete events are delivered one by one, its streams still coalesce (Android)", inspect: mapsProblems },
+  { package: "react-native-maps", vendored: true, does: "the map's discrete events are delivered one by one, its streams still coalesce (Android); its iOS plugin points the Podfile at the library's copy", inspect: mapsProblems },
   { package: "react-native-pdf", vendored: true, does: "the pdf view's one event, which carries every message, no longer coalesces, and react-native is found from the app's directory (Android)", inspect: pdfProblems },
   { package: "react-native-reanimated", vendored: true, does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, and Worklets is the copy beside it", inspect: reanimatedProblems },
   { package: "react-native-video", vendored: true, does: "only progress and bandwidth events coalesce; every other video event is delivered (Android)", inspect: videoProblems },

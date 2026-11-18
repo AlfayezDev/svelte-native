@@ -191,12 +191,12 @@ const realOr = (path: string): string => {
 };
 
 /**
- * The platforms `capabilities.push` names in the app's config, read as Expo reads it (`getConfig` from `expo/config`, which runs `app.config.*` and does not apply plugins). `undefined`
- * when the config cannot be read or its push settings are malformed (the prebuild refuses those): then the client is bundled, and the native module's `enabled` decides on the device.
+ * The platforms `capabilities.push` names in the app's config (`appPluginOptions`). `undefined` when the options are not known or its push settings are malformed (the prebuild refuses
+ * those): then the client is bundled, and the native module's `enabled` decides on the device.
  */
 export function pushPlatforms(projectRoot: string): { android: boolean; ios: boolean } | undefined {
   const read = appPluginOptions(projectRoot);
-  return read === undefined ? undefined : pushPlatformsOf(read.options);
+  return "unknown" in read ? undefined : pushPlatformsOf(read.options);
 }
 
 export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOptions = {}): ConfigT {
@@ -265,10 +265,11 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
   const pushClient = realpathSync(sourceFile("push/push.svelte.ts"));
   // The app's config is read once for both decisions made from it: the push client above and the optional libraries below.
   const read = appPluginOptions(config.projectRoot);
-  const pushOn = read === undefined ? undefined : pushPlatformsOf(read.options);
+  if ("unknown" in read && options.libraries === undefined) console.warn(`svelte-native: ${read.unknown}; every optional library and the push client are bundled`);
+  const pushOn = "unknown" in read ? undefined : pushPlatformsOf(read.options);
   // The optional libraries the app turned on: the others resolve to a stub that says how to turn them on, and are not bundled. Unknown (a config that cannot be read, or one the prebuild
   // refuses) keeps them all, as push keeps its client.
-  const libraries = options.libraries !== undefined ? withRequired(options.libraries) : read === undefined ? undefined : enabledLibraries(read.options)?.enabled;
+  const libraries = options.libraries !== undefined ? withRequired(options.libraries) : "unknown" in read ? undefined : enabledLibraries(read.options)?.enabled;
   const libraryStubs = new Map<string, string>();
   if (libraries !== undefined) {
     for (const name of libraryNames.filter((candidate) => !libraries.includes(candidate))) {
@@ -335,8 +336,9 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     // The packages the library carries (`vendored.ts`) are the app's for every importer: the app, a library that depends on them (react-native-quick-crypto asks for the Nitro runtime), the
     // copy itself. Their names, and the paths below them, resolve to `vendor/<name>/` of the library, where the library's own imports (`#vendor/<name>`) already are: one copy, one module.
     const vendoredName = vendoredImport(moduleName);
-    // An optional library the app did not turn on is a stub for every importer, whichever path below the package it asks for.
-    const libraryStub = vendoredName ? libraryStubs.get(vendoredName.vendored.name) : undefined;
+    // An optional library the app did not turn on is a stub for every importer, whichever path below the package it asks for, and for the library's own `#vendor/<name>` imports.
+    const stubbedName = vendoredName ?? (moduleName.startsWith("#vendor/") ? vendoredImport(moduleName.slice("#vendor/".length)) : undefined);
+    const libraryStub = stubbedName ? libraryStubs.get(stubbedName.vendored.name) : undefined;
     if (libraryStub !== undefined) return { type: "sourceFile", filePath: libraryStub };
     const target = vendoredName ? join(vendoredRoot(vendoredName.vendored.name), vendoredName.subpath) : moduleName;
     const result = resolveRequest ? resolveRequest(context, target, platform) : context.resolveRequest(context, target, platform);

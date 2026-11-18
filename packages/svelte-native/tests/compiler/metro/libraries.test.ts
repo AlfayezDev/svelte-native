@@ -106,6 +106,33 @@ describe("the libraries the app's config turns on", () => {
     expect(resolveFrom(config, origin, "react-native-mmkv")).toBe(`/real/${copy("react-native-mmkv")} (from ${origin})`);
   });
 
+  test("the library's own `#vendor/<name>` import of a library that is off is the stub too", () => {
+    using project = app({ libraries: { "expo-image": true } });
+    const config = withSvelteNative(fakeConfig(project.directory), { variant: "qa" });
+    const origin = join(packageRoot, "src/fabric/foreign-video-player.ts");
+    expect(resolveFrom(config, origin, "#vendor/expo-video/build/VideoPlayer")).toBe(stubOf(project, "qa", "expo-video"));
+    expect(resolveFrom(config, origin, "#vendor/expo-image")).toBe(`/real/#vendor/expo-image (from ${origin})`);
+  });
+
+  test("a plugin entry that is a path to the library is the plugin; a config with no entry for it keeps every library, as a config that cannot be read does", () => {
+    const project = (plugins: unknown[]): Project => {
+      const made = createProject({}, "metro-libraries-");
+      made.write("package.json", JSON.stringify({ name: "app", version: "1.0.0", dependencies: { "@alfayez/svelte-native": "*" } }));
+      made.write("app.json", JSON.stringify({ expo: { name: "app", slug: "app", plugins } }));
+      mkdirSync(made.path("node_modules/@alfayez"), { recursive: true });
+      symlinkSync(packageRoot, made.path("node_modules/@alfayez/svelte-native"));
+      return made;
+    };
+    using byPath = project([["./node_modules/@alfayez/svelte-native/app.plugin.js", { libraries: { "expo-image": true } }]]);
+    const config = withSvelteNative(fakeConfig(byPath.directory), { variant: "qa" });
+    const origin = byPath.path("src/a.ts");
+    expect(resolveFrom(config, origin, "expo-image")).toBe(`/real/${copy("expo-image")} (from ${origin})`);
+    expect(resolveFrom(config, origin, "expo-video")).toBe(stubOf(byPath, "qa", "expo-video"));
+    using none = project(["expo-font"]);
+    const keeps = withSvelteNative(fakeConfig(none.directory), { variant: "qa" });
+    for (const name of libraryNames) expect(resolveFrom(keeps, none.path("src/a.ts"), name), name).toBe(`/real/${copy(name)} (from ${none.path("src/a.ts")})`);
+  });
+
   test("Metro's cache is kept apart for another set of libraries: the same file resolves differently", () => {
     using none = app({ libraries: {} });
     using some = app({ libraries: { "expo-image": true } });

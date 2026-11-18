@@ -350,8 +350,8 @@ export function applyAppDelegate(contents: string): string {
 /**
  * `settings.gradle`: excludes packages from Expo and React Native autolinking, the headless ones and `extra`, and runs React Native's config command
  * through the library's `android-autolinking` (`autolinking.ts`: the packages the library carries are linked from its directory, and the Nitro modules' native libraries load
- * after the start). With
- * `EXPO_USE_COMMUNITY_AUTOLINKING=1` the community CLI's command runs as it is. Idempotent.
+ * after the start). With `EXPO_USE_COMMUNITY_AUTOLINKING=1` the community CLI's command goes through it too: the copies are in no app's `package.json`, so the community CLI alone
+ * would link none of them. Idempotent.
  *
  * The optional libraries the app turned on (`links`, `libraries.ts`): the React Native ones are `--link` arguments of `android-autolinking`, and the Expo modules are search paths of Expo's
  * autolinker (`expoAutolinking.searchPaths`: the directory of each copy, under the library's own directory, which the block finds from the CLI's path). The Expo modules that are off join
@@ -359,8 +359,12 @@ export function applyAppDelegate(contents: string): string {
  * number of values, so without a `--` in front the paths would be read as names to leave out and the modules would not be found: the first search path is that `--`. The block's
  * lock files include `settings.gradle` itself: React Native keeps the command's output until a lock file changes, and a changed `libraries` changes the `--link` arguments.
  */
+/** The community CLI's command (`EXPO_USE_COMMUNITY_AUTOLINKING=1`) through the library's: React Native's default, `cmd /c` first on Windows as React Native's `windowsAwareCommandLine` does. */
+const communityCall = "svelteNativeConfigCommand + svelteNativeCommunityCommand, svelteNativeAppRoot.asFile, svelteNativeLockFiles";
+
 export function applyHeadlessSettings(contents: string, extra: readonly string[] = [], links?: LibraryLinks): string {
-  const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\((?:svelteNativeConfigCommand \+ )?expoAutolinking\.rnConfigCommand \+ svelteNativeExcludeArgs(?:, svelteNativeAppRoot\.asFile, svelteNativeLockFiles)?\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)");
+  const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\((?:svelteNativeConfigCommand \+ )?expoAutolinking\.rnConfigCommand \+ svelteNativeExcludeArgs(?:, svelteNativeAppRoot\.asFile, svelteNativeLockFiles)?\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)")
+    .replace(`autolinkLibrariesFromCommand(${communityCall})`, "autolinkLibrariesFromCommand()");
   const anchor = /^extensions\.configure\(com\.facebook\.react\.ReactSettingsExtension\)/m.exec(stripped);
   if (!anchor || !stripped.includes("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)")) throw new Error("Svelte native could not find the autolinking block in settings.gradle");
   const list = [...new Set([...headlessExcludedPackages, ...extra, ...(links?.expoOff ?? [])])].map((name) => `"${name}"`).join(", ");
@@ -382,6 +386,7 @@ export function applyHeadlessSettings(contents: string, extra: readonly string[]
           'expoAutolinking.searchPaths = ["--"] + svelteNativeExpoModules.collect { new File(svelteNativeLibrary, "vendor/" + it).toString() }',
         ]),
     `def svelteNativeConfigCommand = ["node", svelteNativeCli, "android-autolinking"${reactNative.map((name) => `, "--link", "${name}"`).join("")}]`,
+    'def svelteNativeCommunityCommand = (System.getProperty("os.name").toLowerCase().contains("windows") ? ["cmd", "/c"] : []) + ["npx", "@react-native-community/cli", "config"]',
     // React Native keeps the command's output until a lockfile of the app changes: React Native's own list, the CLI, and this file, so that a new version of the
     // library (a workspace or file: dependency changes no lockfile) and a changed `libraries` (the `--link` arguments above) run the command again.
     'def svelteNativeAppRoot = settings.layout.rootDirectory.dir("../")',
@@ -389,7 +394,8 @@ export function applyHeadlessSettings(contents: string, extra: readonly string[]
     gradleEnd,
     "",
   ].join("\n");
-  return `${stripped.slice(0, anchor.index)}${block}${stripped.slice(anchor.index)}`.replace("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)", "autolinkLibrariesFromCommand(svelteNativeConfigCommand + expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs, svelteNativeAppRoot.asFile, svelteNativeLockFiles)");
+  return `${stripped.slice(0, anchor.index)}${block}${stripped.slice(anchor.index)}`.replace("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)", "autolinkLibrariesFromCommand(svelteNativeConfigCommand + expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs, svelteNativeAppRoot.asFile, svelteNativeLockFiles)")
+    .replace("autolinkLibrariesFromCommand()", `autolinkLibrariesFromCommand(${communityCall})`);
 }
 
 const podfileBegin = "  # Svelte native: autolinking excludes (generated, do not edit)";
@@ -630,10 +636,15 @@ export function onDemandForLibraries(onDemand: Record<string, string[]> | undefi
  * package is not installed, so Expo could not find the plugin, and its options belong to `libraries`.
  */
 export const withLibraries: ConfigPlugin<Libraries> = (config, libraries) => {
-  const listedPlugins = (config.plugins ?? []).map((plugin) => String(Array.isArray(plugin) ? plugin[0] : plugin)).filter((name) => vendoredPackage(name)?.optional !== undefined);
+  const listedPlugins = (config.plugins ?? []).map((plugin) => String(Array.isArray(plugin) ? plugin[0] : plugin)).filter((name) => vendoredPackage(name) !== undefined);
+  const optionalPlugins = listedPlugins.filter((name) => vendoredPackage(name)?.optional !== undefined);
+  if (optionalPlugins.length > 0) {
+    throw new LibrariesConfigError(`\`plugins\` lists ${optionalPlugins.join(", ")}, which ${libraryPackage} carries and is not installed: its plugin runs from the library's copy, with its options under \`libraries\` ` +
+      `(\`["${libraryPackage}", { libraries: { ${optionalPlugins.map((name) => `"${name}": { … }`).join(", ")} } }]\`). Remove it from \`plugins\`.`);
+  }
   if (listedPlugins.length > 0) {
-    throw new LibrariesConfigError(`\`plugins\` lists ${listedPlugins.join(", ")}, which ${libraryPackage} carries and is not installed: its plugin runs from the library's copy, with its options under \`libraries\` ` +
-      `(\`["${libraryPackage}", { libraries: { ${listedPlugins.map((name) => `"${name}": { … }`).join(", ")} } }]\`). Remove it from \`plugins\`.`);
+    const sodium = listedPlugins.includes("react-native-quick-crypto") ? ` react-native-quick-crypto's \`sodiumEnabled\` is an option of ${libraryPackage}'s plugin: \`["${libraryPackage}", { sodiumEnabled: true }]\`.` : "";
+    throw new LibrariesConfigError(`\`plugins\` lists ${listedPlugins.join(", ")}, which ${libraryPackage} carries and links itself, and is not installed. Remove it from \`plugins\`.${sodium}`);
   }
   for (const name of libraries.enabled) {
     const vendored = vendoredPackage(name);

@@ -106,20 +106,33 @@ export const expoModuleSearchPaths = (expo: readonly string[], root?: string): s
 /** The packages whose options a plugin entry of the app's config may carry: the library's plugin under its own name, or under the names Expo resolves to the same file. */
 export const PLUGIN_NAMES: ReadonlySet<string> = new Set(["@alfayez/svelte-native", "@alfayez/svelte-native/app.plugin", "@alfayez/svelte-native/expo"]);
 
+/** What `appPluginOptions` read: the options the app's config gives the library's plugin, or why they are not known (`unknown`). */
+export type PluginOptionsRead = { options: Record<string, unknown> | undefined } | { unknown: string; error?: unknown };
+
+/** An entry of `plugins` that is the library's plugin: one of its names, or a path to the package or its `app.plugin` (`./node_modules/@alfayez/svelte-native/app.plugin.js`). */
+function isLibraryPlugin(entry: unknown): boolean {
+  if (typeof entry !== "string") return false;
+  if (PLUGIN_NAMES.has(entry)) return true;
+  const path = entry.replace(/\\/g, "/").replace(/\/$/, "").replace(/\.js$/, "");
+  return [...PLUGIN_NAMES].some((name) => path.endsWith(`/node_modules/${name}`));
+}
+
 /**
- * The options the app's config gives the library's plugin, read as Expo reads it (`getConfig` from `expo/config`, which runs `app.config.*` and does not apply plugins), or `undefined` when
- * the config cannot be read. `{ options: undefined }` is a config that lists the plugin without options (or not at all). `from` is where `expo/config` is found: the library's own location
- * by default (its peer `expo`), the app's for the doctor.
+ * The options the app's config gives the library's plugin, read as Expo reads it (`getConfig` from `expo/config`, which runs `app.config.*` and applies its plugins, this library's too:
+ * an invalid `libraries` throws there, as in a prebuild). `{ options: undefined }` is a config that lists the plugin without options. `unknown` says why the options are not known: the
+ * config could not be read (`error` is what it threw), or no entry of `plugins` is the plugin by a name or a path (a function, say). `from` is where `expo/config` is found: the
+ * library's own location by default (its peer `expo`), the app's for the doctor.
  */
-export function appPluginOptions(projectRoot: string, from: string = import.meta.url): { options: Record<string, unknown> | undefined } | undefined {
+export function appPluginOptions(projectRoot: string, from: string = import.meta.url): PluginOptionsRead {
   let plugins: unknown;
   try {
     const { getConfig } = createRequire(from)("expo/config") as typeof import("expo/config");
     plugins = getConfig(projectRoot, { skipSDKVersionRequirement: true }).exp.plugins;
-  } catch {
-    return undefined;
+  } catch (error) {
+    return { unknown: `could not read the app's config: ${error instanceof Error ? error.message : String(error)}`, error };
   }
-  const entry = (Array.isArray(plugins) ? plugins : []).find((plugin: unknown) => PLUGIN_NAMES.has(String(Array.isArray(plugin) ? plugin[0] : plugin)));
+  const entry = (Array.isArray(plugins) ? plugins : []).find((plugin: unknown) => isLibraryPlugin(Array.isArray(plugin) ? plugin[0] : plugin));
+  if (entry === undefined) return { unknown: "no entry of the app's `plugins` names @alfayez/svelte-native" };
   const options: unknown = Array.isArray(entry) ? entry[1] : undefined;
   return { options: isObject(options) ? options : undefined };
 }

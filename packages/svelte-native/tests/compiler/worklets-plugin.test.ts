@@ -15,7 +15,7 @@ const copy = join(vendoredRoot("react-native-worklets"), "plugin/index.js");
 const projects: { remove(): void }[] = [];
 afterAll(() => { for (const project of projects) project.remove(); });
 
-type Outcome = { code: string; fromApp: string; fromPreset: string; loaded: string[] };
+type Outcome = { code: string; fromApp: string; fromPreset: string; reanimatedFromApp: string; loaded: string[] };
 function run(files: Record<string, string> = {}): Outcome {
   const project = createProject({ "package.json": JSON.stringify({ name: "app", dependencies: {} }), ...files }, "worklets-plugin-");
   projects.push(project);
@@ -40,6 +40,8 @@ describe("the transformer adds the Worklets plugin from the vendored copy", () =
   test("the name is the copy's plugin for whoever resolves it: the app's directory and babel-preset-expo's own lookup", () => {
     expect(without.fromApp).toBe(copy);
     expect(without.fromPreset).toBe(copy);
+    // Reanimated's name for it, which an app's Babel config from before Reanimated 4 lists, is Reanimated's copy, which re-exports the Worklets plugin.
+    expect(without.reanimatedFromApp).toBe(join(vendoredRoot("react-native-reanimated"), "plugin/index.js"));
     expect(without.loaded.length).toBeGreaterThan(0);
     expect(without.loaded.every((path) => path.startsWith(vendoredRoot("react-native-worklets")))).toBe(true);
   });

@@ -31,6 +31,7 @@ __export(metro_exports, {
   isInPackage: () => isInPackage,
   isLiteOrigin: () => isLiteOrigin,
   libraryChanged: () => libraryChanged,
+  libraryStubSource: () => libraryStubSource,
   pushPlatforms: () => pushPlatforms,
   stubCoreSource: () => stubCoreSource,
   stubSource: () => stubSource,
@@ -38,7 +39,7 @@ __export(metro_exports, {
 });
 module.exports = __toCommonJS(metro_exports);
 var import_node_fs7 = require("node:fs");
-var import_node_module5 = require("node:module");
+var import_node_module6 = require("node:module");
 var import_node_path10 = require("node:path");
 
 // src/build.ts
@@ -2556,75 +2557,6 @@ function kitResolution(moduleName) {
   return void 0;
 }
 
-// src/push/config.ts
-var Refusal = class extends Error {
-};
-var refuse = (message) => {
-  throw new Refusal(message);
-};
-function section(value, where, example) {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return refuse(`${where} takes an object: ${example}`);
-  return value;
-}
-function optionalText(value, where) {
-  if (value === void 0) return void 0;
-  if (typeof value !== "string" || value.trim() === "") return refuse(`${where} must be a text that is not empty.`);
-  return value;
-}
-function readIos(value) {
-  const ios = section(value, "capabilities.push.ios", '`ios: { mode: "production" }`');
-  if (ios.mode !== "development" && ios.mode !== "production")
-    return refuse(
-      'capabilities.push.ios.mode must be "development" or "production": it is the aps-environment entitlement, "development" for a build signed for development and "production" for TestFlight and the App Store.'
-    );
-  return { mode: ios.mode };
-}
-function readAndroid(value) {
-  const android = section(value, "capabilities.push.android", '`android: { googleServicesFile: "./google-services.json" }`');
-  const file = android.googleServicesFile;
-  if (typeof file !== "string" || file.trim() === "")
-    return refuse(
-      'capabilities.push.android needs googleServicesFile, the path of the Firebase project\'s google-services.json (Firebase console, Project settings, your Android app): `android: { googleServicesFile: "./google-services.json" }`. Leave `android` out for an app that has no push on Android.'
-    );
-  const settings = { googleServicesFile: file };
-  const icon = optionalText(android.icon, "capabilities.push.android.icon");
-  if (icon !== void 0) {
-    if (!/\.png$/i.test(icon)) return refuse(`capabilities.push.android.icon ("${icon}") must be a PNG file: the notification's small icon, white on a transparent background.`);
-    settings.icon = icon;
-  }
-  const color = optionalText(android.color, "capabilities.push.android.color");
-  if (color !== void 0) {
-    if (!/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color)) return refuse(`capabilities.push.android.color ("${color}") must be a hex color such as "#0a7f5a": the notification's accent color.`);
-    settings.color = color;
-  }
-  if (android.channel !== void 0) {
-    const channel = section(android.channel, "capabilities.push.android.channel", '`channel: { name: "Updates" }`');
-    if (typeof channel.name !== "string" || channel.name.trim() === "")
-      return refuse('capabilities.push.android.channel needs a name, as the user will read it in the app\'s notification settings: `channel: { name: "Updates" }`.');
-    const id = optionalText(channel.id, "capabilities.push.android.channel.id");
-    const description = optionalText(channel.description, "capabilities.push.android.channel.description");
-    settings.channel = { ...id === void 0 ? {} : { id }, name: channel.name, ...description === void 0 ? {} : { description } };
-  }
-  return settings;
-}
-function checkPushConfig(push) {
-  try {
-    const platforms = section(push, "capabilities.push", '`push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } }`, or `push: false`');
-    if (platforms.android === void 0 && platforms.ios === void 0)
-      return refuse(
-        "capabilities.push names no platform: give `android` (its google-services.json), `ios` (its aps-environment mode) or both, or turn the capability off with `push: false`."
-      );
-    const config = {};
-    if (platforms.android !== void 0) config.android = readAndroid(platforms.android);
-    if (platforms.ios !== void 0) config.ios = readIos(platforms.ios);
-    return { config };
-  } catch (error) {
-    if (error instanceof Refusal) return { problem: error.message };
-    throw error;
-  }
-}
-var pushIsOn = (push) => push !== void 0 && push !== null && push !== false;
-
 // src/remote/transform.ts
 var import_node_path7 = require("node:path");
 var import_parser = require("@babel/parser");
@@ -2719,10 +2651,199 @@ function assertCustomRenderer(what, from) {
   if (!inspection.ok) throw new Error(customRendererMessage(inspection, what));
 }
 
+// src/libraries.ts
+var import_node_module5 = require("node:module");
+
+// src/push/config.ts
+var Refusal = class extends Error {
+};
+var refuse = (message) => {
+  throw new Refusal(message);
+};
+function section(value, where, example) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return refuse(`${where} takes an object: ${example}`);
+  return value;
+}
+function optionalText(value, where) {
+  if (value === void 0) return void 0;
+  if (typeof value !== "string" || value.trim() === "") return refuse(`${where} must be a text that is not empty.`);
+  return value;
+}
+function readIos(value) {
+  const ios = section(value, "capabilities.push.ios", '`ios: { mode: "production" }`');
+  if (ios.mode !== "development" && ios.mode !== "production")
+    return refuse(
+      'capabilities.push.ios.mode must be "development" or "production": it is the aps-environment entitlement, "development" for a build signed for development and "production" for TestFlight and the App Store.'
+    );
+  return { mode: ios.mode };
+}
+function readAndroid(value) {
+  const android = section(value, "capabilities.push.android", '`android: { googleServicesFile: "./google-services.json" }`');
+  const file = android.googleServicesFile;
+  if (typeof file !== "string" || file.trim() === "")
+    return refuse(
+      'capabilities.push.android needs googleServicesFile, the path of the Firebase project\'s google-services.json (Firebase console, Project settings, your Android app): `android: { googleServicesFile: "./google-services.json" }`. Leave `android` out for an app that has no push on Android.'
+    );
+  const settings = { googleServicesFile: file };
+  const icon = optionalText(android.icon, "capabilities.push.android.icon");
+  if (icon !== void 0) {
+    if (!/\.png$/i.test(icon)) return refuse(`capabilities.push.android.icon ("${icon}") must be a PNG file: the notification's small icon, white on a transparent background.`);
+    settings.icon = icon;
+  }
+  const color = optionalText(android.color, "capabilities.push.android.color");
+  if (color !== void 0) {
+    if (!/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color)) return refuse(`capabilities.push.android.color ("${color}") must be a hex color such as "#0a7f5a": the notification's accent color.`);
+    settings.color = color;
+  }
+  if (android.channel !== void 0) {
+    const channel = section(android.channel, "capabilities.push.android.channel", '`channel: { name: "Updates" }`');
+    if (typeof channel.name !== "string" || channel.name.trim() === "")
+      return refuse('capabilities.push.android.channel needs a name, as the user will read it in the app\'s notification settings: `channel: { name: "Updates" }`.');
+    const id = optionalText(channel.id, "capabilities.push.android.channel.id");
+    const description = optionalText(channel.description, "capabilities.push.android.channel.description");
+    settings.channel = { ...id === void 0 ? {} : { id }, name: channel.name, ...description === void 0 ? {} : { description } };
+  }
+  return settings;
+}
+function checkPushConfig(push) {
+  try {
+    const platforms = section(push, "capabilities.push", '`push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } }`, or `push: false`');
+    if (platforms.android === void 0 && platforms.ios === void 0)
+      return refuse(
+        "capabilities.push names no platform: give `android` (its google-services.json), `ios` (its aps-environment mode) or both, or turn the capability off with `push: false`."
+      );
+    const config = {};
+    if (platforms.android !== void 0) config.android = readAndroid(platforms.android);
+    if (platforms.ios !== void 0) config.ios = readIos(platforms.ios);
+    return { config };
+  } catch (error) {
+    if (error instanceof Refusal) return { problem: error.message };
+    throw error;
+  }
+}
+var pushIsOn = (push) => push !== void 0 && push !== null && push !== false;
+
 // src/vendored.ts
 var import_node_fs6 = require("node:fs");
 var import_node_path9 = require("node:path");
+
+// src/optional-libraries.ts
+var react = "react-native";
+var expo = "expo";
+var optionalLibraries = [
+  // ---- Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module ----
+  { name: "expo-blur", version: "57.0.3", optional: { kind: expo } },
+  { name: "expo-conic-gradient", version: "0.2.1", optional: { kind: expo } },
+  { name: "expo-image", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+  { name: "expo-linear-gradient", version: "57.0.2", optional: { kind: expo } },
+  { name: "expo-video", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+  // ---- React Native packages: an entry of the autolinking config for each platform ----
+  {
+    name: "@react-native-community/datetimepicker",
+    version: "9.1.0",
+    android: { packageImportPath: "import com.reactcommunity.rndatetimepicker.RNDateTimePickerPackage;", packageInstance: "new RNDateTimePickerPackage()" },
+    ios: { podspec: "RNDateTimePicker.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    name: "lottie-react-native",
+    version: "7.3.8",
+    android: { packageImportPath: "import com.airbnb.android.react.lottie.LottiePackage;", packageInstance: "new LottiePackage()", componentDescriptors: ["LottieAnimationViewComponentDescriptor"] },
+    ios: { podspec: "lottie-react-native.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-animateable-text",
+    version: "0.19.3",
+    android: {
+      packageImportPath: "import com.reactnativereanimatedtext.ReanimatedTextPackage;",
+      packageInstance: "new ReanimatedTextPackage()",
+      libraryName: "JBAnimatedText",
+      componentDescriptors: ["CParagraphComponentDescriptor"],
+      cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+    },
+    ios: { podspec: "react-native-animateable-text.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-blob-util",
+    version: "0.24.9",
+    android: { packageImportPath: "import com.ReactNativeBlobUtil.ReactNativeBlobUtilPackage;", packageInstance: "new ReactNativeBlobUtilPackage()" },
+    ios: { podspec: "react-native-blob-util.podspec" },
+    optional: { kind: react }
+  },
+  {
+    // No iOS code: `ShadowedView` is React Native's own `View` there (the layer's shadow), so the library has no podspec.
+    name: "react-native-fast-shadow",
+    version: "0.1.1",
+    android: { packageImportPath: "import com.reactnativefastshadow.FastShadowPackage;", packageInstance: "new FastShadowPackage()" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-maps",
+    version: "1.27.2",
+    android: {
+      packageImportPath: "import com.rnmaps.maps.MapsPackage;",
+      packageInstance: "new MapsPackage()",
+      componentDescriptors: [
+        "RNMapsCalloutComponentDescriptor",
+        "RNMapsCircleComponentDescriptor",
+        "RNMapsGoogleMapViewComponentDescriptor",
+        "RNMapsGooglePolygonComponentDescriptor",
+        "RNMapsMapViewComponentDescriptor",
+        "RNMapsMarkerComponentDescriptor",
+        "RNMapsOverlayComponentDescriptor",
+        "RNMapsPolylineComponentDescriptor",
+        "RNMapsUrlTileComponentDescriptor",
+        "RNMapsWMSTileComponentDescriptor"
+      ],
+      cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+    },
+    ios: { podspec: "react-native-maps.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    // The PDF view reads its files through react-native-blob-util's native module, so turning it on turns that one on.
+    name: "react-native-pdf",
+    version: "7.0.3",
+    android: { packageImportPath: "import org.wonday.pdf.RNPDFPackage;", packageInstance: "new RNPDFPackage()", componentDescriptors: ["RNPDFPdfViewComponentDescriptor"] },
+    ios: { podspec: "react-native-pdf.podspec" },
+    optional: { kind: react, requires: ["react-native-blob-util"] }
+  },
+  {
+    name: "react-native-video",
+    version: "6.19.3",
+    android: { packageImportPath: "import com.brentvatne.react.ReactVideoPackage;", packageInstance: "new ReactVideoPackage()" },
+    ios: { podspec: "react-native-video.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    name: "react-native-view-shot",
+    version: "5.1.0",
+    android: { packageImportPath: "import fr.greweb.reactnativeviewshot.RNViewShotPackage;", packageInstance: "new RNViewShotPackage()" },
+    ios: { podspec: "react-native-view-shot.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-webview",
+    version: "13.16.1",
+    android: { packageImportPath: "import com.reactnativecommunity.webview.RNCWebViewPackage;", packageInstance: "new RNCWebViewPackage()", componentDescriptors: ["RNCWebViewComponentDescriptor"] },
+    ios: { podspec: "react-native-webview.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "rive-react-native",
+    version: "9.7.1",
+    android: { packageImportPath: "import com.rivereactnative.RiveReactNativePackage;", packageInstance: "new RiveReactNativePackage()" },
+    ios: { podspec: "rive-react-native.podspec" },
+    optional: { kind: react }
+  }
+];
+
+// src/vendored.ts
 var vendoredPackages = [
+  // The optional view libraries (`optional-libraries.ts`).
+  ...optionalLibraries,
   {
     name: "react-native-nitro-modules",
     version: "0.35.10",
@@ -2737,6 +2858,9 @@ var vendoredPackages = [
   }
 ];
 var vendoredNames = vendoredPackages.map((vendored) => vendored.name);
+var optionalPackages = vendoredPackages.filter((vendored) => vendored.optional !== void 0);
+var alwaysLinkedPackages = vendoredPackages.filter((vendored) => vendored.optional === void 0);
+var vendoredPackage = (name) => vendoredPackages.find((vendored) => vendored.name === name);
 var vendorDirectory = (root = packageRoot) => (0, import_node_path9.join)(root, "vendor");
 var vendoredRoot = (name, root = packageRoot) => (0, import_node_path9.join)(vendorDirectory(root), name);
 function vendoredImport(request) {
@@ -2772,9 +2896,78 @@ function vendoredFileAs(path, root = packageRoot) {
   }
   return void 0;
 }
+function withRequired(names) {
+  const all = /* @__PURE__ */ new Set();
+  const add = (name) => {
+    if (all.has(name)) return;
+    all.add(name);
+    for (const required of vendoredPackage(name)?.optional?.requires ?? []) add(required);
+  };
+  for (const name of names) add(name);
+  return [...all];
+}
+
+// src/libraries.ts
+var LibrariesConfigError = class extends Error {
+  name = "LibrariesConfigError";
+};
+var libraryNames = optionalPackages.map((vendored) => vendored.name);
+var enableMessage = (name) => `${name} is not in this app: turn it on with \`libraries: { "${name}": true }\` in the @alfayez/svelte-native plugin options (app.json or app.config.*), then prebuild and build the app again`;
+var isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+function checkLibraries(option) {
+  if (option === void 0 || option === null) return { listed: /* @__PURE__ */ new Map(), enabled: [] };
+  if (!isObject(option)) throw new LibrariesConfigError('`libraries` takes an object of library names: `libraries: { "react-native-maps": true }`');
+  const listed = /* @__PURE__ */ new Map();
+  for (const [name, value] of Object.entries(option)) {
+    const vendored = vendoredPackage(name);
+    if (vendored?.optional === void 0) {
+      const always = vendored !== void 0 ? ` ${name} is in every app: there is nothing to turn on.` : "";
+      throw new LibrariesConfigError(`\`libraries\` names "${name}", which is not one of the optional libraries @alfayez/svelte-native carries.${always} The libraries: ${libraryNames.join(", ")}.`);
+    }
+    if (value === false) continue;
+    if (value === true) {
+      listed.set(name, void 0);
+      continue;
+    }
+    if (!isObject(value)) throw new LibrariesConfigError(`libraries["${name}"] is \`true\`, \`false\` or the options of ${name}'s config plugin (an object), not ${JSON.stringify(value) ?? String(value)}`);
+    if (vendored.optional.plugin === void 0 && Object.keys(value).length > 0) {
+      throw new LibrariesConfigError(`libraries["${name}"] has options (${Object.keys(value).join(", ")}), and ${name} has no config plugin to give them to: write \`libraries: { "${name}": true }\``);
+    }
+    listed.set(name, value);
+  }
+  const wanted = withRequired(listed.keys());
+  return { listed, enabled: libraryNames.filter((name) => wanted.includes(name)) };
+}
+var PLUGIN_NAMES = /* @__PURE__ */ new Set(["@alfayez/svelte-native", "@alfayez/svelte-native/app.plugin", "@alfayez/svelte-native/expo"]);
+function appPluginOptions(projectRoot, from = __importMetaUrl) {
+  let plugins;
+  try {
+    const { getConfig } = (0, import_node_module5.createRequire)(from)("expo/config");
+    plugins = getConfig(projectRoot, { skipSDKVersionRequirement: true }).exp.plugins;
+  } catch {
+    return void 0;
+  }
+  const entry = (Array.isArray(plugins) ? plugins : []).find((plugin) => PLUGIN_NAMES.has(String(Array.isArray(plugin) ? plugin[0] : plugin)));
+  const options = Array.isArray(entry) ? entry[1] : void 0;
+  return { options: isObject(options) ? options : void 0 };
+}
+function pushPlatformsOf(options) {
+  const push = isObject(options?.capabilities) ? options.capabilities.push : void 0;
+  if (!pushIsOn(push)) return { android: false, ios: false };
+  const checked = checkPushConfig(push);
+  return "config" in checked ? { android: checked.config.android !== void 0, ios: checked.config.ios !== void 0 } : void 0;
+}
+function enabledLibraries(options) {
+  try {
+    return checkLibraries(options?.libraries);
+  } catch (error) {
+    if (error instanceof LibrariesConfigError) return void 0;
+    throw error;
+  }
+}
 
 // src/metro.ts
-var require4 = (0, import_node_module5.createRequire)(__importMetaUrl);
+var require4 = (0, import_node_module6.createRequire)(__importMetaUrl);
 var nativeSvelte = (0, import_node_path10.dirname)(require4.resolve("svelte/package.json"));
 var LITE_ORIGINS = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:hermes-intl|expo|expo-modules-core|expo-file-system|react-native-reanimated|react-native-worklets|react-native-is-edge-to-edge|expo-secure-store|expo-image-picker|expo-localization|expo-crypto|expo-constants|expo-font|expo-asset|expo-splash-screen|expo-status-bar|expo-system-ui|expo-keep-awake|expo-application|react-native-nitro-modules|react-native-mmkv|react-native-quick-crypto|react-native-quick-base64|react-native-svg)[\\/]/;
 var NODE_CRYPTO = /* @__PURE__ */ new Set(["crypto", "node:crypto"]);
@@ -2799,8 +2992,8 @@ function closeWatchers() {
 }
 var stubCoreSource = `// Generated by @alfayez/svelte-native/metro: what stands in for a package this app does not link.
 "use strict";
-module.exports = (name, variant) => {
-  const fail = () => { throw new Error(name + " is not in this app (APP_VARIANT=" + variant + ")"); };
+module.exports = (name, variant, message) => {
+  const fail = () => { throw new Error(message || name + " is not in this app (APP_VARIANT=" + variant + ")"); };
   // A bound function: callable and constructible, and without the non-configurable prototype property that ownKeys below would have to report.
   return new Proxy(function () {}.bind(null), {
     get: (_target, key) => (key === "__esModule" ? false : typeof key === "symbol" ? undefined : fail()),
@@ -2815,6 +3008,11 @@ module.exports = (name, variant) => {
 function stubSource(name, variant) {
   return `// Generated by @alfayez/svelte-native/metro: ${name} is not linked in this app.
 module.exports = require("./_core.js")(${JSON.stringify(name)}, ${JSON.stringify(variant)});
+`;
+}
+function libraryStubSource(name) {
+  return `// Generated by @alfayez/svelte-native/metro: ${name} is an optional library this app did not turn on (libraries).
+module.exports = require("./_core.js")(${JSON.stringify(name)}, "", ${JSON.stringify(enableMessage(name))});
 `;
 }
 var isInPackage = (moduleName, name) => moduleName === name || moduleName.startsWith(`${name}/`);
@@ -2840,21 +3038,9 @@ var realOr = (path) => {
     return path;
   }
 };
-var PLUGIN_NAMES = /* @__PURE__ */ new Set(["@alfayez/svelte-native", "@alfayez/svelte-native/app.plugin", "@alfayez/svelte-native/expo"]);
 function pushPlatforms(projectRoot) {
-  let plugins;
-  try {
-    const { getConfig } = require4("expo/config");
-    plugins = getConfig(projectRoot, { skipSDKVersionRequirement: true }).exp.plugins;
-  } catch {
-    return void 0;
-  }
-  const entry = (Array.isArray(plugins) ? plugins : []).find((plugin) => PLUGIN_NAMES.has(String(Array.isArray(plugin) ? plugin[0] : plugin)));
-  const options = Array.isArray(entry) ? entry[1] : void 0;
-  const push = typeof options === "object" && options !== null ? options.capabilities?.push : void 0;
-  if (!pushIsOn(push)) return { android: false, ios: false };
-  const checked = checkPushConfig(push);
-  return "config" in checked ? { android: checked.config.android !== void 0, ios: checked.config.ios !== void 0 } : void 0;
+  const read = appPluginOptions(projectRoot);
+  return read === void 0 ? void 0 : pushPlatformsOf(read.options);
 }
 function withSvelteNative(config, options = {}) {
   assertCustomRenderer("withSvelteNative (@alfayez/svelte-native/metro)");
@@ -2916,7 +3102,19 @@ function withSvelteNative(config, options = {}) {
     if (process.env.NODE_ENV === "development") watchers.add(watchClasses(building, built2.stylesheets));
   }
   const pushClient = (0, import_node_fs7.realpathSync)(sourceFile("push/push.svelte.ts"));
-  const pushOn = pushPlatforms(config.projectRoot);
+  const read = appPluginOptions(config.projectRoot);
+  const pushOn = read === void 0 ? void 0 : pushPlatformsOf(read.options);
+  const libraries = options.libraries !== void 0 ? withRequired(options.libraries) : read === void 0 ? void 0 : enabledLibraries(read.options)?.enabled;
+  const libraryStubs = /* @__PURE__ */ new Map();
+  if (libraries !== void 0) {
+    for (const name of libraryNames.filter((candidate) => !libraries.includes(candidate))) {
+      (0, import_node_fs7.mkdirSync)(stubDirectory, { recursive: true });
+      write((0, import_node_path10.join)(stubDirectory, "_core.js"), stubCoreSource);
+      const file = (0, import_node_path10.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
+      write(file, libraryStubSource(name));
+      libraryStubs.set(name, file);
+    }
+  }
   const pushAbsent = sourceFile("push/absent.ts");
   const pushOff = (platform) => pushOn !== void 0 && (platform === "ios" ? !pushOn.ios : platform === "android" ? !pushOn.android : !pushOn.android && !pushOn.ios);
   const stubFor = (moduleName, origin) => {
@@ -2964,6 +3162,8 @@ function withSvelteNative(config, options = {}) {
         return { type: "sourceFile", filePath: sourceFile("environment.ts") };
       }
       const vendoredName = vendoredImport(moduleName);
+      const libraryStub = vendoredName ? libraryStubs.get(vendoredName.vendored.name) : void 0;
+      if (libraryStub !== void 0) return { type: "sourceFile", filePath: libraryStub };
       const target = vendoredName ? (0, import_node_path10.join)(vendoredRoot(vendoredName.vendored.name), vendoredName.subpath) : moduleName;
       const result = resolveRequest ? resolveRequest(context, target, platform) : context.resolveRequest(context, target, platform);
       if (result.type === "sourceFile") {
@@ -2988,7 +3188,7 @@ function withSvelteNative(config, options = {}) {
   };
   resetForLibrary ??= libraryChanged(config.projectRoot);
   if (resetForLibrary && !config.resetCache) console.log("svelte-native: the installed library changed since Metro last ran here; starting Metro with empty caches");
-  const configured = { ...config, resetCache: config.resetCache || resetForLibrary, cacheVersion: `${config.cacheVersion ?? ""}+svelte-native-2${stubbed.length + files.size + directories.size > 0 ? `+stubs-${variant}` : ""}`, resolver, serializer, transformer: { ...config.transformer, babelTransformerPath: require4.resolve("@alfayez/svelte-native/transformer") } };
+  const configured = { ...config, resetCache: config.resetCache || resetForLibrary, cacheVersion: `${config.cacheVersion ?? ""}+svelte-native-2${stubbed.length + files.size + directories.size > 0 ? `+stubs-${variant}` : ""}${libraryStubs.size > 0 ? `+libraries-${libraries?.join(",")}` : ""}`, resolver, serializer, transformer: { ...config.transformer, babelTransformerPath: require4.resolve("@alfayez/svelte-native/transformer") } };
   return configured;
 }
 // Annotate the CommonJS export names for ESM import in node:
@@ -3002,6 +3202,7 @@ function withSvelteNative(config, options = {}) {
   isInPackage,
   isLiteOrigin,
   libraryChanged,
+  libraryStubSource,
   pushPlatforms,
   stubCoreSource,
   stubSource,

@@ -671,6 +671,12 @@ function expoModulesCoreProblems(read2, patch) {
     ...inFile(read2, "src/NativeViewManagerAdapter.native.tsx", [["imports the native component registry when it loads", adapterLoadsRegistryLazily]], true)
   ];
 }
+function riveProblems(read2) {
+  return inFile(read2, "android/src/main/java/com/rivereactnative/RiveReactNativeView.kt", [
+    ["an event still goes through the old architecture's event emitter (a soft exception for every event in a bridgeless app)", (code) => !code.includes("RCTEventEmitter")],
+    ["the view's events are not sent through the event dispatcher", (code) => code.includes("getEventDispatcherForReactTag")]
+  ]);
+}
 var stripComments, neverCoalescesPattern, neverCoalesces, has, count, mapsStreamEvents, rnghAdditions, rnghUses, rnghRegistration, strings, moduleRegistryPath;
 var init_shapes = __esm({
   "src/doctor/shapes.ts"() {
@@ -719,7 +725,8 @@ var init_patches = __esm({
       { package: "react-native-pdf", vendored: true, does: "the pdf view's one event, which carries every message, no longer coalesces, and react-native is found from the app's directory (Android)", inspect: pdfProblems },
       { package: "react-native-reanimated", vendored: true, does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, and Worklets is the copy beside it", inspect: reanimatedProblems },
       { package: "react-native-video", vendored: true, does: "only progress and bandwidth events coalesce; every other video event is delivered (Android)", inspect: videoProblems },
-      { package: "react-native-worklets", vendored: true, does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems }
+      { package: "react-native-worklets", vendored: true, does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems },
+      { package: "rive-react-native", vendored: true, does: "the Rive view sends its events through the event dispatcher, not the old event emitter that a bridgeless app reports for every event (Android)", inspect: riveProblems }
     ];
     patchKey = (patch) => `${patch.package}@${patch.version}`;
   }

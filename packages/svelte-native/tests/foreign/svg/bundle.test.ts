@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { compile } from "svelte/compiler";
 import { componentOptions } from "../../../src/compile-options.ts";
-import { vendorAliases, vendored } from "../../support/paths.ts";
+import { vendoredAliases, vendored } from "../../support/paths.ts";
 
 /**
  * The SVG exports of the main entry, `src/svg.ts` (SPEC.md, "react-native-svg"), bundled as Metro bundles it: the library's own sources are imported by deep path (the
@@ -51,7 +51,7 @@ async function buildSvgEntry(): Promise<Bundle> {
   const result = await build({
     entryPoints: [resolve(import.meta.dirname, "../../../src/svg.ts")],
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false, metafile: true, logLevel: "silent",
-    alias: vendorAliases(),
+    alias: vendoredAliases,
     plugins: [metro],
   });
   return { externals: [...externals].sort(), inputs: Object.keys(result.metafile.inputs) };
@@ -93,8 +93,10 @@ test("the svg entry bundles no React, and of the library only the extractors of 
 
 test("React Native is reached by deep paths only: the lite shim's modules and the converters the host already uses", async () => {
   const { externals } = await bundleSvgEntry();
-  expect(externals.filter((path) => !path.startsWith("react-native/Libraries/")), "imports that are not React Native deep paths").toEqual([]);
+  // `expo-constants` is read (lazily) for the libraries the build has, when a foreign component is made (`fabric/foreign-libraries.ts`).
+  expect(externals.filter((path) => !path.startsWith("react-native/Libraries/") && path !== "expo-constants"), "imports that are not React Native deep paths").toEqual([]);
   expect(externals).toEqual([
+    "expo-constants",
     // What the lite shim imports (`react-native-lite.ts`): seven modules it evaluates at once and those it requires on first use. Its `View`, `Text` and
     // `findNodeHandle` are placeholders, so no component of React Native is among them; `PanResponder` is the one export the library's `extractResponder` needs.
     "react-native/Libraries/AppState/AppState",

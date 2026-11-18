@@ -3,7 +3,7 @@ import type { Reader } from "./resolve.ts";
 /**
  * What the library's patches leave in the packages they patch, read from the installed files: the shape the package's tests pin
  * (`tests/upstream/foreign-native-events.test.ts`, `tests/upstream/expo-modules-core-patch.test.ts`, `tests/upstream/react-native-gesture-handler-patch.test.ts`, `tests/upstream/worklets-frame-loop.test.ts`)
- * and `svelte-native doctor` reports on in an app: the packages an app installs (`patches/`) and the copies the library carries (`vendor/`, patched by `scripts/vendor.ts`; `vendoredPatchSpecs`). Each function takes a `Reader` over one package's directory and returns the problems
+ * and `svelte-native doctor` reports on in an app: the packages an app installs (`patches/`) and the copies the library carries (`vendor/`, patched by `scripts/vendor.ts`; `vendored: true` in `patches.ts`). Each function takes a `Reader` over one package's directory and returns the problems
  * it finds, so an empty list means the patch is in; none of them reads anything but the files they name.
  */
 
@@ -39,7 +39,14 @@ export function kitProblems(read: Reader): string[] {
 // ---- react-native-pdf, react-native-video, lottie-react-native, react-native-maps: Android events that must not coalesce ----
 
 export function pdfProblems(read: Reader): string[] {
-  return inFile(read, "android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java", [["canCoalesce() is not overridden to return false", neverCoalesces]]);
+  return [
+    ...inFile(read, "android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java", [["canCoalesce() is not overridden to return false", neverCoalesces]]),
+    // The library carries the package (`vendor/`), so react-native is not found from the package's own place beside it in node_modules but from the app's directory upwards.
+    ...inFile(read, "android/build.gradle", [
+      ["does not look for react-native in the node_modules above the app's directory", has("reactNativeFromAncestor")],
+      ["still looks for react-native beside the package itself", (code) => !code.includes("reactNativeFromNodeModulesWithPDF")],
+    ], true),
+  ];
 }
 
 /**

@@ -560,7 +560,14 @@ function kitProblems(read2) {
   ];
 }
 function pdfProblems(read2) {
-  return inFile(read2, "android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java", [["canCoalesce() is not overridden to return false", neverCoalesces]]);
+  return [
+    ...inFile(read2, "android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java", [["canCoalesce() is not overridden to return false", neverCoalesces]]),
+    // The library carries the package (`vendor/`), so react-native is not found from the package's own place beside it in node_modules but from the app's directory upwards.
+    ...inFile(read2, "android/build.gradle", [
+      ["does not look for react-native in the node_modules above the app's directory", has("reactNativeFromAncestor")],
+      ["still looks for react-native beside the package itself", (code) => !code.includes("reactNativeFromNodeModulesWithPDF")]
+    ], true)
+  ];
 }
 function videoEmitterProblems(emitter) {
   const code = stripComments(emitter);
@@ -696,7 +703,7 @@ function patchFiles(directory = patchesDirectory) {
     return { package: stem.slice(0, at).replaceAll("__", "/"), version: stem.slice(at + 1), file, path: resolve4(directory, file) };
   });
 }
-var patchesDirectory, patchSpecs, vendoredPatchSpecs, patchKey;
+var patchesDirectory, patchSpecs, patchKey;
 var init_patches = __esm({
   "src/doctor/patches.ts"() {
     "use strict";
@@ -706,16 +713,14 @@ var init_patches = __esm({
     patchSpecs = [
       { package: "@sveltejs/kit", does: "SvelteKit leaves the `+mobile.svelte` files of a route directory alone", inspect: kitProblems },
       { package: "expo-modules-core", via: "expo", does: "Expo modules register lazily and the common ones are prewarmed (Android start)", inspect: expoModulesCoreProblems },
-      { package: "lottie-react-native", does: "Lottie's events are delivered one by one (Android) and a load or failure before the emitter exists is kept (iOS)", inspect: lottieProblems },
-      { package: "react-native-maps", does: "the map's discrete events are delivered one by one, its streams still coalesce (Android)", inspect: mapsProblems },
-      { package: "react-native-pdf", does: "the pdf view's one event, which carries every message, no longer coalesces (Android)", inspect: pdfProblems },
-      { package: "react-native-video", does: "only progress and bandwidth events coalesce; every other video event is delivered (Android)", inspect: videoProblems }
+      { package: "lottie-react-native", vendored: true, does: "Lottie's events are delivered one by one (Android) and a load or failure before the emitter exists is kept (iOS)", inspect: lottieProblems },
+      { package: "react-native-gesture-handler", vendored: true, does: "the root gesture recognizer can be registered for the screens the library presents (iOS)", inspect: rnghProblems },
+      { package: "react-native-maps", vendored: true, does: "the map's discrete events are delivered one by one, its streams still coalesce (Android)", inspect: mapsProblems },
+      { package: "react-native-pdf", vendored: true, does: "the pdf view's one event, which carries every message, no longer coalesces, and react-native is found from the app's directory (Android)", inspect: pdfProblems },
+      { package: "react-native-reanimated", vendored: true, does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, and Worklets is the copy beside it", inspect: reanimatedProblems },
+      { package: "react-native-video", vendored: true, does: "only progress and bandwidth events coalesce; every other video event is delivered (Android)", inspect: videoProblems },
+      { package: "react-native-worklets", vendored: true, does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems }
     ];
-    vendoredPatchSpecs = {
-      "react-native-gesture-handler": { does: "the root gesture recognizer can be registered for the screens the library presents (iOS)", inspect: rnghProblems },
-      "react-native-reanimated": { does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, and Worklets is the copy beside it", inspect: reanimatedProblems },
-      "react-native-worklets": { does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems }
-    };
     patchKey = (patch) => `${patch.package}@${patch.version}`;
   }
 });
@@ -828,6 +833,125 @@ var init_svelte_build = __esm({
   }
 });
 
+// src/optional-libraries.ts
+var react, expo, optionalLibraries;
+var init_optional_libraries = __esm({
+  "src/optional-libraries.ts"() {
+    "use strict";
+    react = "react-native";
+    expo = "expo";
+    optionalLibraries = [
+      // ---- Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module ----
+      { name: "expo-blur", version: "57.0.3", optional: { kind: expo } },
+      { name: "expo-conic-gradient", version: "0.2.1", optional: { kind: expo } },
+      { name: "expo-image", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+      { name: "expo-linear-gradient", version: "57.0.2", optional: { kind: expo } },
+      { name: "expo-video", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+      // ---- React Native packages: an entry of the autolinking config for each platform ----
+      {
+        name: "@react-native-community/datetimepicker",
+        version: "9.1.0",
+        android: { packageImportPath: "import com.reactcommunity.rndatetimepicker.RNDateTimePickerPackage;", packageInstance: "new RNDateTimePickerPackage()" },
+        ios: { podspec: "RNDateTimePicker.podspec" },
+        optional: { kind: react, plugin: "app.plugin.js" }
+      },
+      {
+        name: "lottie-react-native",
+        version: "7.3.8",
+        android: { packageImportPath: "import com.airbnb.android.react.lottie.LottiePackage;", packageInstance: "new LottiePackage()", componentDescriptors: ["LottieAnimationViewComponentDescriptor"] },
+        ios: { podspec: "lottie-react-native.podspec" },
+        optional: { kind: react }
+      },
+      {
+        name: "react-native-animateable-text",
+        version: "0.19.3",
+        android: {
+          packageImportPath: "import com.reactnativereanimatedtext.ReanimatedTextPackage;",
+          packageInstance: "new ReanimatedTextPackage()",
+          libraryName: "JBAnimatedText",
+          componentDescriptors: ["CParagraphComponentDescriptor"],
+          cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+        },
+        ios: { podspec: "react-native-animateable-text.podspec" },
+        optional: { kind: react }
+      },
+      {
+        name: "react-native-blob-util",
+        version: "0.24.9",
+        android: { packageImportPath: "import com.ReactNativeBlobUtil.ReactNativeBlobUtilPackage;", packageInstance: "new ReactNativeBlobUtilPackage()" },
+        ios: { podspec: "react-native-blob-util.podspec" },
+        optional: { kind: react }
+      },
+      {
+        // No iOS code: `ShadowedView` is React Native's own `View` there (the layer's shadow), so the library has no podspec.
+        name: "react-native-fast-shadow",
+        version: "0.1.1",
+        android: { packageImportPath: "import com.reactnativefastshadow.FastShadowPackage;", packageInstance: "new FastShadowPackage()" },
+        optional: { kind: react }
+      },
+      {
+        name: "react-native-maps",
+        version: "1.27.2",
+        android: {
+          packageImportPath: "import com.rnmaps.maps.MapsPackage;",
+          packageInstance: "new MapsPackage()",
+          componentDescriptors: [
+            "RNMapsCalloutComponentDescriptor",
+            "RNMapsCircleComponentDescriptor",
+            "RNMapsGoogleMapViewComponentDescriptor",
+            "RNMapsGooglePolygonComponentDescriptor",
+            "RNMapsMapViewComponentDescriptor",
+            "RNMapsMarkerComponentDescriptor",
+            "RNMapsOverlayComponentDescriptor",
+            "RNMapsPolylineComponentDescriptor",
+            "RNMapsUrlTileComponentDescriptor",
+            "RNMapsWMSTileComponentDescriptor"
+          ],
+          cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+        },
+        ios: { podspec: "react-native-maps.podspec" },
+        optional: { kind: react, plugin: "app.plugin.js" }
+      },
+      {
+        // The PDF view reads its files through react-native-blob-util's native module, so turning it on turns that one on.
+        name: "react-native-pdf",
+        version: "7.0.3",
+        android: { packageImportPath: "import org.wonday.pdf.RNPDFPackage;", packageInstance: "new RNPDFPackage()", componentDescriptors: ["RNPDFPdfViewComponentDescriptor"] },
+        ios: { podspec: "react-native-pdf.podspec" },
+        optional: { kind: react, requires: ["react-native-blob-util"] }
+      },
+      {
+        name: "react-native-video",
+        version: "6.19.3",
+        android: { packageImportPath: "import com.brentvatne.react.ReactVideoPackage;", packageInstance: "new ReactVideoPackage()" },
+        ios: { podspec: "react-native-video.podspec" },
+        optional: { kind: react, plugin: "app.plugin.js" }
+      },
+      {
+        name: "react-native-view-shot",
+        version: "5.1.0",
+        android: { packageImportPath: "import fr.greweb.reactnativeviewshot.RNViewShotPackage;", packageInstance: "new RNViewShotPackage()" },
+        ios: { podspec: "react-native-view-shot.podspec" },
+        optional: { kind: react }
+      },
+      {
+        name: "react-native-webview",
+        version: "13.16.1",
+        android: { packageImportPath: "import com.reactnativecommunity.webview.RNCWebViewPackage;", packageInstance: "new RNCWebViewPackage()", componentDescriptors: ["RNCWebViewComponentDescriptor"] },
+        ios: { podspec: "react-native-webview.podspec" },
+        optional: { kind: react }
+      },
+      {
+        name: "rive-react-native",
+        version: "9.7.1",
+        android: { packageImportPath: "import com.rivereactnative.RiveReactNativePackage;", packageInstance: "new RiveReactNativePackage()" },
+        ios: { podspec: "rive-react-native.podspec" },
+        optional: { kind: react }
+      }
+    ];
+  }
+});
+
 // src/vendored.ts
 import { readFileSync as readFileSync2, realpathSync } from "node:fs";
 import { isAbsolute, join as join3, relative as relative2, sep as sep4 } from "node:path";
@@ -847,7 +971,7 @@ function vendoredDependency(vendored2, platform, root2 = packageRoot) {
     const sourceDir = join3(directory, "android");
     const codegen = manifest.codegenConfig;
     const codegenName = typeof codegen === "object" && codegen !== null && typeof codegen.name === "string" ? codegen.name : void 0;
-    const libraryName = codegenName ?? gradleLibraryName(join3(sourceDir, "build.gradle"));
+    const libraryName = android.libraryName ?? codegenName ?? gradleLibraryName(join3(sourceDir, "build.gradle"));
     const cxx = android.cxxModule;
     return {
       root: directory,
@@ -887,30 +1011,48 @@ function declaredVendored(appRoot) {
   return vendoredNames.filter((name) => declared.has(name));
 }
 function collisionMessage(names, library2 = "@alfayez/svelte-native") {
-  const list = names.map((name) => `${name} ${vendoredPackages.find((vendored2) => vendored2.name === name)?.version ?? ""}`.trim());
+  const list = names.map((name) => `${name} ${vendoredPackage(name)?.version ?? ""}`.trim());
   const them = names.length === 1 ? "it" : "them";
-  return `${library2} includes ${list.join(" and ")}; remove ${them} from the app's dependencies (package.json), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it. A library of the app that asks for ${them} as a peer dependency is served by the copy (Metro resolves the name to it; the Gradle project and the pod keep the name), so nothing needs to take ${them === "it" ? "its" : "their"} place.`;
+  const optional = names.filter((name) => vendoredPackage(name)?.optional !== void 0);
+  const turnOn = optional.length === 0 ? "" : ` ${optional.length === 1 ? "It is" : "They are"} optional: turn ${optional.length === 1 ? "it" : "them"} on with \`libraries: { ${optional.map((name) => `"${name}": true`).join(", ")} }\` in the ${library2} plugin's options (its own plugin options go there instead of in \`plugins\`).`;
+  return `${library2} includes ${list.join(" and ")}; remove ${them} from the app's dependencies (package.json), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it. A library of the app that asks for ${them} as a peer dependency is served by the copy (Metro resolves the name to it; the Gradle project and the pod keep the name), so nothing needs to take ${them === "it" ? "its" : "their"} place.${turnOn}`;
 }
-function linkVendored(config, platform, root2 = packageRoot) {
+function withRequired(names) {
+  const all = /* @__PURE__ */ new Set();
+  const add = (name) => {
+    if (all.has(name)) return;
+    all.add(name);
+    for (const required of vendoredPackage(name)?.optional?.requires ?? []) add(required);
+  };
+  for (const name of names) add(name);
+  return [...all];
+}
+function linkVendored(config, platform, root2 = packageRoot, linked = []) {
+  const on = new Set(withRequired(linked));
   const entries = vendoredPackages.flatMap((vendored2) => {
+    if (vendored2.optional !== void 0 && !on.has(vendored2.name)) return [];
     const dependency = vendoredDependency(vendored2, platform, root2);
     return dependency ? [[vendored2.name, dependency]] : [];
   });
-  const dependencies = config.dependencies ?? {};
-  const others = entries.filter(([name, own2]) => dependencies[name] !== void 0 && real(dependencies[name].root ?? "") !== real(own2.root)).map(([name]) => name);
+  const dependencies = { ...config.dependencies ?? {} };
+  const others = vendoredPackages.filter((vendored2) => dependencies[vendored2.name] !== void 0 && real(dependencies[vendored2.name]?.root ?? "") !== real(vendoredRoot(vendored2.name, root2))).map((vendored2) => vendored2.name);
   if (others.length > 0 && typeof config.root === "string") {
     const declared = declaredVendored(config.root).filter((name) => others.includes(name));
     if (declared.length > 0) throw new VendoredCollision(declared);
   }
-  const linked = Object.entries({ ...dependencies, ...Object.fromEntries(entries) }).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
-  return { ...config, dependencies: Object.fromEntries(linked) };
+  for (const vendored2 of optionalPackages) if (!on.has(vendored2.name)) delete dependencies[vendored2.name];
+  const sorted = Object.entries({ ...dependencies, ...Object.fromEntries(entries) }).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+  return { ...config, dependencies: Object.fromEntries(sorted) };
 }
-var vendoredPackages, vendoredNames, vendorDirectory, vendoredRoot, real, readJson, VendoredCollision;
+var vendoredPackages, vendoredNames, optionalPackages, alwaysLinkedPackages, vendoredPackage, vendorDirectory, vendoredRoot, real, readJson, VendoredCollision;
 var init_vendored = __esm({
   "src/vendored.ts"() {
     "use strict";
+    init_optional_libraries();
     init_package_root();
     vendoredPackages = [
+      // The optional view libraries (`optional-libraries.ts`).
+      ...optionalLibraries,
       {
         name: "react-native-nitro-modules",
         version: "0.35.10",
@@ -922,6 +1064,27 @@ var init_vendored = __esm({
         version: "4.3.1",
         android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
         ios: { podspec: "NitroMmkv.podspec" }
+      },
+      {
+        // The base64 module quick-crypto and its Buffer ask for (`libraryName` QuickBase64 is the `react { }` block of its build.gradle).
+        name: "react-native-quick-base64",
+        version: "2.2.2",
+        android: { packageImportPath: "import com.reactnativequickbase64.QuickBase64Package;", packageInstance: "new QuickBase64Package()" },
+        ios: { podspec: "react-native-quick-base64.podspec" }
+      },
+      {
+        // `crypto` and `crypto.subtle`: a Nitro module over OpenSSL (and libsodium, when the plugin's `sodiumEnabled` is on). It links the vendored Nitro runtime by its project name and pod.
+        name: "react-native-quick-crypto",
+        version: "1.1.3",
+        android: { packageImportPath: "import com.margelo.nitro.quickcrypto.QuickCryptoPackage;", packageInstance: "new QuickCryptoPackage()" },
+        ios: { podspec: "QuickCrypto.podspec" }
+      },
+      {
+        // The `Intl` constructors Hermes lacks: a pure C++ TurboModule (no view, no module class: the `ReactPackage` is empty), so Android adds its CMake module to the app's build.
+        name: "hermes-intl",
+        version: "0.1.2",
+        android: { packageImportPath: "import dev.hermesintl.HermesIntlPackage;", packageInstance: "new HermesIntlPackage()", cxxModule: { cmakeListsModuleName: "hermesintl", cmakeListsPath: "android/CMakeLists.txt", headerName: "NativeHermesIntl" } },
+        ios: { podspec: "HermesIntl.podspec" }
       },
       {
         name: "react-native-gesture-handler",
@@ -986,6 +1149,9 @@ var init_vendored = __esm({
       }
     ];
     vendoredNames = vendoredPackages.map((vendored2) => vendored2.name);
+    optionalPackages = vendoredPackages.filter((vendored2) => vendored2.optional !== void 0);
+    alwaysLinkedPackages = vendoredPackages.filter((vendored2) => vendored2.optional === void 0);
+    vendoredPackage = (name) => vendoredPackages.find((vendored2) => vendored2.name === name);
     vendorDirectory = (root2 = packageRoot) => join3(root2, "vendor");
     vendoredRoot = (name, root2 = packageRoot) => join3(vendorDirectory(root2), name);
     real = (path) => {
@@ -1446,33 +1612,33 @@ and give the app an \`android.package\` and \`ios.bundleIdentifier\`.`;
     plan.changes.push({ path: "app.json", action: "manual", summary: "is not valid JSON", instructions: `Add "${plugin}" to expo.plugins in app.json.` });
     return;
   }
-  const expo = json.expo ?? json;
+  const expo2 = json.expo ?? json;
   const done = [];
   const configured = wanted();
   for (const key of ["name", "slug", "scheme", "version"]) {
-    if (expo[key] === void 0) {
-      expo[key] = configured[key];
+    if (expo2[key] === void 0) {
+      expo2[key] = configured[key];
       done.push(key);
     }
   }
   for (const [block2, key] of [["android", "package"], ["ios", "bundleIdentifier"]]) {
-    const value = typeof expo[block2] === "object" && expo[block2] !== null ? expo[block2] : {};
+    const value = typeof expo2[block2] === "object" && expo2[block2] !== null ? expo2[block2] : {};
     if (value[key] === void 0) {
-      expo[block2] = { ...value, [key]: configured[block2][key] };
+      expo2[block2] = { ...value, [key]: configured[block2][key] };
       done.push(`${block2}.${key}`);
     }
   }
-  const listed = Array.isArray(expo.plugins) ? expo.plugins : [];
+  const listed = Array.isArray(expo2.plugins) ? expo2.plugins : [];
   const nameOf = (entry) => Array.isArray(entry) ? entry[0] : entry;
   const renamed = listed.some((entry) => nameOf(entry) === removedPluginName);
   const plugins = renamed ? listed.map((entry) => nameOf(entry) !== removedPluginName ? entry : Array.isArray(entry) ? [plugin, ...entry.slice(1)] : plugin) : listed;
   if (renamed) {
-    expo.plugins = plugins;
+    expo2.plugins = plugins;
     done.push(`the plugin's name (${removedPluginName} no longer resolves)`);
   }
   const has2 = plugins.some((entry) => pluginNames.includes(nameOf(entry)));
   if (!has2) {
-    expo.plugins = [...plugins, plugin];
+    expo2.plugins = [...plugins, plugin];
     done.push("the plugin");
   }
   if (done.length === 0) plan.changes.push({ path: "app.json", action: "keep", summary: "lists the plugin" });
@@ -1576,11 +1742,8 @@ var init_init_app = __esm({
     appDependencies = {
       expo: "57.0.30",
       "expo-constants": "57.0.22",
-      "hermes-intl": "^0.1.2",
       react: "19.2.7",
-      "react-native": "0.86.3",
-      "react-native-quick-base64": "2.2.2",
-      "react-native-quick-crypto": "1.1.3"
+      "react-native": "0.86.3"
     };
     alwaysPatched = ["expo-modules-core"];
     plugin = "@alfayez/svelte-native";
@@ -1823,8 +1986,8 @@ function expoPluginFinding(appRoot, library2) {
   const json = firstExisting(appRoot, ["app.json"]);
   const code = firstExisting(appRoot, APP_CONFIG_FILES);
   const parsed = json ? readJson2(join7(appRoot, json)) : void 0;
-  const expo = parsed?.expo ?? parsed;
-  const plugins = Array.isArray(expo?.plugins) ? expo.plugins : [];
+  const expo2 = parsed?.expo ?? parsed;
+  const plugins = Array.isArray(expo2?.plugins) ? expo2.plugins : [];
   const listedInJson = (name) => plugins.some((entry) => pluginName(entry) === name);
   const source = code ? withoutJsComments(readFileSync6(join7(appRoot, code), "utf8")) : "";
   const namedInCode = (name) => ['"', "'", "`"].some((quote) => source.includes(`${quote}${name}${quote}`));
@@ -1842,10 +2005,10 @@ function appJson(appRoot, library2) {
   const file = firstExisting(appRoot, ["app.json"]);
   const parsed = file ? readJson2(join7(appRoot, file)) : void 0;
   if (!file || !parsed) return void 0;
-  const expo = record(parsed.expo ?? parsed);
+  const expo2 = record(parsed.expo ?? parsed);
   const names = [library2, `${library2}/app.plugin`];
-  const entry = (Array.isArray(expo.plugins) ? expo.plugins : []).find((candidate) => names.includes(pluginName(candidate) ?? ""));
-  return { file, expo, plugin: entry === void 0 ? void 0 : record(Array.isArray(entry) ? entry[1] : void 0) };
+  const entry = (Array.isArray(expo2.plugins) ? expo2.plugins : []).find((candidate) => names.includes(pluginName(candidate) ?? ""));
+  return { file, expo: expo2, plugin: entry === void 0 ? void 0 : record(Array.isArray(entry) ? entry[1] : void 0) };
 }
 var METRO_FILES, APP_CONFIG_FILES, firstExisting, pluginName, record, codeConfig;
 var init_integration = __esm({
@@ -2285,6 +2448,59 @@ var init_requirements = __esm({
   }
 });
 
+// src/libraries.ts
+import { createRequire as createRequire3 } from "node:module";
+function checkLibraries(option) {
+  if (option === void 0 || option === null) return { listed: /* @__PURE__ */ new Map(), enabled: [] };
+  if (!isObject(option)) throw new LibrariesConfigError('`libraries` takes an object of library names: `libraries: { "react-native-maps": true }`');
+  const listed = /* @__PURE__ */ new Map();
+  for (const [name, value] of Object.entries(option)) {
+    const vendored2 = vendoredPackage(name);
+    if (vendored2?.optional === void 0) {
+      const always = vendored2 !== void 0 ? ` ${name} is in every app: there is nothing to turn on.` : "";
+      throw new LibrariesConfigError(`\`libraries\` names "${name}", which is not one of the optional libraries @alfayez/svelte-native carries.${always} The libraries: ${libraryNames.join(", ")}.`);
+    }
+    if (value === false) continue;
+    if (value === true) {
+      listed.set(name, void 0);
+      continue;
+    }
+    if (!isObject(value)) throw new LibrariesConfigError(`libraries["${name}"] is \`true\`, \`false\` or the options of ${name}'s config plugin (an object), not ${JSON.stringify(value) ?? String(value)}`);
+    if (vendored2.optional.plugin === void 0 && Object.keys(value).length > 0) {
+      throw new LibrariesConfigError(`libraries["${name}"] has options (${Object.keys(value).join(", ")}), and ${name} has no config plugin to give them to: write \`libraries: { "${name}": true }\``);
+    }
+    listed.set(name, value);
+  }
+  const wanted = withRequired(listed.keys());
+  return { listed, enabled: libraryNames.filter((name) => wanted.includes(name)) };
+}
+function appPluginOptions(projectRoot, from = import.meta.url) {
+  let plugins;
+  try {
+    const { getConfig } = createRequire3(from)("expo/config");
+    plugins = getConfig(projectRoot, { skipSDKVersionRequirement: true }).exp.plugins;
+  } catch {
+    return void 0;
+  }
+  const entry = (Array.isArray(plugins) ? plugins : []).find((plugin2) => PLUGIN_NAMES.has(String(Array.isArray(plugin2) ? plugin2[0] : plugin2)));
+  const options = Array.isArray(entry) ? entry[1] : void 0;
+  return { options: isObject(options) ? options : void 0 };
+}
+var LibrariesConfigError, libraryNames, isObject, PLUGIN_NAMES;
+var init_libraries = __esm({
+  "src/libraries.ts"() {
+    "use strict";
+    init_config();
+    init_vendored();
+    LibrariesConfigError = class extends Error {
+      name = "LibrariesConfigError";
+    };
+    libraryNames = optionalPackages.map((vendored2) => vendored2.name);
+    isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+    PLUGIN_NAMES = /* @__PURE__ */ new Set(["@alfayez/svelte-native", "@alfayez/svelte-native/app.plugin", "@alfayez/svelte-native/expo"]);
+  }
+});
+
 // src/doctor/checks.ts
 import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
 import { join as join9 } from "node:path";
@@ -2361,35 +2577,22 @@ function peerDependencies(context, peers, optional) {
   return checks;
 }
 function expoRuntime(context) {
-  const expo = findPackage("expo", context.appRoot);
-  if (!expo) return [];
-  const missing = EXPO_RUNTIME_FILES.filter((file) => !existsSync6(join9(expo.directory, file)));
-  if (missing.length === 0) return [{ group: "peer dependencies", status: "pass", message: `expo ${expo.version} has src/winter, the runtime (URL, fetch, TextDecoder) that the library's polyfills import` }];
+  const expo2 = findPackage("expo", context.appRoot);
+  if (!expo2) return [];
+  const missing = EXPO_RUNTIME_FILES.filter((file) => !existsSync6(join9(expo2.directory, file)));
+  if (missing.length === 0) return [{ group: "peer dependencies", status: "pass", message: `expo ${expo2.version} has src/winter, the runtime (URL, fetch, TextDecoder) that the library's polyfills import` }];
   return [{
     group: "peer dependencies",
     status: "fail",
-    message: `expo ${expo.version} has no ${missing.join(", ")} (${expo.directory}): the library's polyfills import expo/src/winter for the standard URL, and the router starts blank without it`,
+    message: `expo ${expo2.version} has no ${missing.join(", ")} (${expo2.directory}): the library's polyfills import expo/src/winter for the standard URL, and the router starts blank without it`,
     fix: `npx expo install expo (the version this library was exercised on is in its peerDependencies)`
   }];
-}
-function autolinkedPeers(context, peers, appPackage) {
-  const dependencies = { ...record3(appPackage.dependencies), ...record3(appPackage.devDependencies), ...record3(appPackage.optionalDependencies) };
-  const checks = [];
-  for (const name of AUTOLINKED_PEERS) {
-    const range = text2(peers[name]);
-    if (range === void 0) continue;
-    if (name in dependencies) {
-      checks.push({ group: "peer dependencies", status: "pass", message: `${name} is a dependency of the app: React Native's autolinking links its native module` });
-    } else if (findPackage(name, context.appRoot)) {
-      checks.push({ group: "peer dependencies", status: "fail", message: `${name} is installed but is not a dependency of the app (${join9(context.appRoot, "package.json")}): React Native's autolinking links only the app's own dependencies, so the build would not have its native module`, fix: `pnpm add ${name}@${range}, then npx expo prebuild` });
-    }
-  }
-  return checks;
 }
 function vendored(context, libraryName) {
   const declared = new Set(declaredVendored(context.appRoot));
   const checks = [];
-  for (const { name, version } of vendoredPackages) {
+  const optionalCopies = [];
+  for (const { name, version, optional } of vendoredPackages) {
     const directory = vendoredRoot(name, context.packageRoot);
     const copy = readJson2(join9(directory, "package.json"));
     if (copy === void 0 || copy.version !== version) {
@@ -2401,21 +2604,36 @@ function vendored(context, libraryName) {
       });
     } else if (declared.has(name)) {
       checks.push({ group: "vendored packages", status: "fail", message: `${name} is a dependency of the app (${join9(context.appRoot, "package.json")}): ${collisionMessage([name], libraryName)}`, fix: `pnpm remove ${name}, then npx expo prebuild` });
-    } else {
-      const patched = vendoredPatchSpecs[name];
-      const problems = patched?.inspect(readerFor(directory)) ?? [];
-      if (patched !== void 0 && problems.length > 0) {
-        checks.push({
-          group: "vendored packages",
-          status: "fail",
-          message: `${name} ${version} in ${libraryName} (${directory}) does not carry the library's patch: ${patched.does}`,
-          details: problems.slice(0, 4).concat(problems.length > 4 ? [`and ${problems.length - 4} more`] : []),
-          fix: `install ${libraryName} again: the copy is patched when the library is written (vendor-patches/${name}/), so an incomplete or edited install is the cause`
-        });
-      } else {
-        checks.push({ group: "vendored packages", status: "pass", message: `${name} ${version} comes with ${libraryName} (vendor/${name})${patched ? `, patched: ${patched.does}` : ""}; the app does not list it` });
-      }
-    }
+    } else if (optional === void 0) {
+      checks.push({ group: "vendored packages", status: "pass", message: `${name} ${version} comes with ${libraryName} (vendor/${name}); the app does not list it` });
+    } else optionalCopies.push(name);
+  }
+  if (optionalCopies.length > 0) checks.push({ group: "vendored packages", status: "pass", message: `the ${optionalCopies.length} optional libraries come with ${libraryName} (vendor/), at the versions it pins; the app lists none of them` });
+  checks.push(libraries(context, libraryName));
+  return checks;
+}
+function libraries(context, libraryName) {
+  const group3 = "vendored packages";
+  const read2 = appPluginOptions(context.appRoot, join9(context.appRoot, "package.json"));
+  if (read2 === void 0) return { group: group3, status: "skip", message: "could not read the app's config (expo/config), so the optional libraries it turns on were not checked (`npx expo config` shows the config)" };
+  try {
+    const { enabled, listed } = checkLibraries(read2.options?.libraries);
+    if (enabled.length === 0) return { group: group3, status: "pass", message: "no optional library is turned on (libraries): none of their native code is in the app" };
+    const implied = enabled.filter((name) => !listed.has(name));
+    return { group: group3, status: "pass", message: `libraries turned on: ${enabled.join(", ")}${implied.length > 0 ? ` (${implied.join(", ")}: needed by another)` : ""}; the others are not linked, and Metro stubs them` };
+  } catch (error) {
+    if (!(error instanceof LibrariesConfigError)) throw error;
+    return { group: group3, status: "fail", message: error.message, fix: `fix \`libraries\` in the ${libraryName} plugin's options (app.json or app.config.*), then prebuild again` };
+  }
+}
+function vendoredPatches(context, libraryName) {
+  const checks = [];
+  for (const spec of patchSpecs) {
+    if (!spec.vendored) continue;
+    const directory = vendoredRoot(spec.package, context.packageRoot);
+    if (readJson2(join9(directory, "package.json")) === void 0) continue;
+    const problems = spec.inspect(readerFor(directory), "");
+    checks.push(problems.length === 0 ? { group: "vendored packages", status: "pass", message: `${spec.package}: ${spec.does} (in ${libraryName}'s copy)` } : { group: "vendored packages", status: "fail", message: `${spec.package} in ${libraryName}'s copy is not patched: ${spec.does}`, details: problems.slice(0, 4), fix: `install ${libraryName} again: the copy in vendor/${spec.package} is not the one the library was built with` });
   }
   return checks;
 }
@@ -2489,16 +2707,16 @@ function runChecks(context) {
     ...environment(context),
     svelte(context, peers),
     ...peerDependencies(context, peers, optional),
-    ...autolinkedPeers(context, peers, appPackage),
     ...expoRuntime(context),
     ...vendored(context, name),
+    ...vendoredPatches(context, name),
     ...patches(context, name, optional),
     library(context, name, text2(own2.version) ?? "?", appPackage),
     ...integration(context, name),
     ...pushChecks(context, { name, version: text2(own2.version) ?? "?" }, appPackage)
   ];
 }
-var record3, text2, EXPO_RUNTIME_FILES, AUTOLINKED_PEERS;
+var record3, text2, EXPO_RUNTIME_FILES;
 var init_checks = __esm({
   "src/doctor/checks.ts"() {
     "use strict";
@@ -2510,11 +2728,11 @@ var init_checks = __esm({
     init_requirements();
     init_resolve();
     init_semver();
+    init_libraries();
     init_vendored();
     record3 = (value) => typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
     text2 = (value) => typeof value === "string" ? value : void 0;
     EXPO_RUNTIME_FILES = ["src/winter/index.ts", "src/winter/runtime.native.ts"];
-    AUTOLINKED_PEERS = ["hermes-intl", "react-native-quick-base64", "react-native-quick-crypto"];
   }
 });
 
@@ -3728,7 +3946,8 @@ __export(autolinking_exports, {
   nitroPackage: () => nitroPackage,
   relinkedPackage: () => relinkedPackage,
   runAndroidAutolinking: () => runAndroidAutolinking,
-  runIosAutolinking: () => runIosAutolinking
+  runIosAutolinking: () => runIosAutolinking,
+  splitLinks: () => splitLinks
 });
 import { spawnSync as spawnSync3 } from "node:child_process";
 function relinkedPackage(name) {
@@ -3749,7 +3968,17 @@ function deferNitroLibraries(config) {
   }
   return { ...config, dependencies: relinked };
 }
-function runAutolinking(name, platform, command2, transform) {
+function splitLinks(argv) {
+  const link = [];
+  let index = 0;
+  while (argv[index] === "--link" && argv[index + 1] !== void 0) {
+    link.push(argv[index + 1]);
+    index += 2;
+  }
+  return { link, command: argv.slice(index) };
+}
+function runAutolinking(name, platform, given, transform) {
+  const { link, command: command2 } = splitLinks(given);
   const [program, ...args2] = command2;
   if (!program) {
     console.error(`svelte-native ${name}: no command (${platform === "android" ? "settings.gradle" : "the Podfile"} gives it React Native's config command)`);
@@ -3776,7 +4005,7 @@ function runAutolinking(name, platform, command2, transform) {
     return 0;
   }
   try {
-    process.stdout.write(JSON.stringify(transform(linkVendored(config, platform))));
+    process.stdout.write(JSON.stringify(transform(linkVendored(config, platform, void 0, link))));
   } catch (error) {
     if (!(error instanceof VendoredCollision)) throw error;
     console.error(`svelte-native ${name}: ${error.message}`);
@@ -5561,7 +5790,7 @@ __export(build_exports, {
 import { spawnSync as spawnSync4 } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync as existsSync8, mkdirSync as mkdirSync3, readdirSync as readdirSync6, readFileSync as readFileSync9, statSync as statSync2, watch as watch3, writeFileSync as writeFileSync3 } from "node:fs";
-import { createRequire as createRequire3 } from "node:module";
+import { createRequire as createRequire4 } from "node:module";
 import { dirname as dirname7, extname, isAbsolute as isAbsolute2, join as join11, relative as relative4, resolve as resolve10, sep as sep5 } from "node:path";
 function sourceFiles(root2) {
   const files = [];
@@ -5618,7 +5847,7 @@ function candidatesOf(root2) {
   return [...candidates].sort();
 }
 function loadTailwind(root2) {
-  const fromApp = createRequire3(join11(root2, "package.json"));
+  const fromApp = createRequire4(join11(root2, "package.json"));
   const install = `pnpm add -D tailwindcss@${TAILWIND_VERSION}`;
   let directory;
   let manifest;
@@ -5677,7 +5906,7 @@ function stylesheetLoader(tailwindDirectory, read2) {
       file = existsSync8(next) && statSync2(next).isFile() ? next : packageStylesheet(id, base);
       if (file === void 0) {
         try {
-          file = createRequire3(join11(base, "noop.js")).resolve(id);
+          file = createRequire4(join11(base, "noop.js")).resolve(id);
         } catch (error) {
           throw new Error(`svelte-native: cannot resolve @import "${id}" from ${base}: ${error.message.split("\n")[0]}`, { cause: error });
         }

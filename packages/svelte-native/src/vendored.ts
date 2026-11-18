@@ -9,9 +9,26 @@
  */
 import { readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative, sep } from "node:path";
+import { optionalLibraries } from "./optional-libraries.ts";
 import { packageRoot } from "./package-root.ts";
 
 export type LinkPlatform = "android" | "ios";
+
+/**
+ * What makes a vendored package optional: it is linked, bundled and configured only for an app that turns it on (`libraries` of the plugin options, `libraries.ts`). A package without
+ * the field is the pilot's kind, in every app.
+ */
+export type OptionalLibrary = {
+  /**
+   * How the library links. `react-native`: React Native's autolinking, through the entry this file adds to the config command's output (`android` and `ios` below). `expo`: an Expo
+   * module, found by Expo's autolinker from its `expo-module.config.json`, which is given the copy's directory as a search path (`libraries.ts`, `expoModuleSearchPaths`).
+   */
+  kind: "react-native" | "expo";
+  /** The package's own Expo config plugin, relative to the package: it runs with the options the app gives the library, as if the app had listed it in `plugins`. */
+  plugin?: string;
+  /** Libraries this one cannot work without (react-native-pdf reads its files through react-native-blob-util): turning it on turns them on too. */
+  requires?: readonly string[];
+};
 
 export type VendoredPackage = {
   /** The package's name on npm, and the name of its directory under `vendor/`. */
@@ -27,12 +44,16 @@ export type VendoredPackage = {
   android?: {
     packageImportPath: string;
     packageInstance: string;
+    /** The codegen library's name when the package's own `react-native.config.js` says it and it is not what `codegenConfig.name` or the `react { }` block of `android/build.gradle` have (react-native-animateable-text: `JBAnimatedText`, not the gradle's `JBAnimatedTextCodegen`). It wins over both. */
+    libraryName?: string;
     componentDescriptors?: readonly string[];
     cmakeListsPath?: string;
     cxxModule?: { cmakeListsModuleName: string; cmakeListsPath: string; headerName: string };
   };
   /** The podspec at the package's root (its file name), which autolinking gives to CocoaPods. */
   ios?: { podspec: string };
+  /** Present for a package an app turns on; absent for one every app links. */
+  optional?: OptionalLibrary;
 };
 
 /**
@@ -40,6 +61,8 @@ export type VendoredPackage = {
  * "Adding a package").
  */
 export const vendoredPackages: readonly VendoredPackage[] = [
+  // The optional view libraries (`optional-libraries.ts`).
+  ...optionalLibraries,
   {
     name: "react-native-nitro-modules",
     version: "0.35.10",
@@ -51,6 +74,27 @@ export const vendoredPackages: readonly VendoredPackage[] = [
     version: "4.3.1",
     android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
     ios: { podspec: "NitroMmkv.podspec" },
+  },
+  {
+    // The base64 module quick-crypto and its Buffer ask for (`libraryName` QuickBase64 is the `react { }` block of its build.gradle).
+    name: "react-native-quick-base64",
+    version: "2.2.2",
+    android: { packageImportPath: "import com.reactnativequickbase64.QuickBase64Package;", packageInstance: "new QuickBase64Package()" },
+    ios: { podspec: "react-native-quick-base64.podspec" },
+  },
+  {
+    // `crypto` and `crypto.subtle`: a Nitro module over OpenSSL (and libsodium, when the plugin's `sodiumEnabled` is on). It links the vendored Nitro runtime by its project name and pod.
+    name: "react-native-quick-crypto",
+    version: "1.1.3",
+    android: { packageImportPath: "import com.margelo.nitro.quickcrypto.QuickCryptoPackage;", packageInstance: "new QuickCryptoPackage()" },
+    ios: { podspec: "QuickCrypto.podspec" },
+  },
+  {
+    // The `Intl` constructors Hermes lacks: a pure C++ TurboModule (no view, no module class: the `ReactPackage` is empty), so Android adds its CMake module to the app's build.
+    name: "hermes-intl",
+    version: "0.1.2",
+    android: { packageImportPath: "import dev.hermesintl.HermesIntlPackage;", packageInstance: "new HermesIntlPackage()", cxxModule: { cmakeListsModuleName: "hermesintl", cmakeListsPath: "android/CMakeLists.txt", headerName: "NativeHermesIntl" } },
+    ios: { podspec: "HermesIntl.podspec" },
   },
   {
     name: "react-native-gesture-handler",
@@ -94,6 +138,13 @@ export const vendoredPackages: readonly VendoredPackage[] = [
 
 /** The names of the vendored packages. */
 export const vendoredNames: readonly string[] = vendoredPackages.map((vendored) => vendored.name);
+
+/** The packages an app turns on (`libraries` of the plugin options), and the ones every app links. */
+export const optionalPackages: readonly VendoredPackage[] = vendoredPackages.filter((vendored) => vendored.optional !== undefined);
+export const alwaysLinkedPackages: readonly VendoredPackage[] = vendoredPackages.filter((vendored) => vendored.optional === undefined);
+
+/** The registry entry of a vendored package, by its name. */
+export const vendoredPackage = (name: string): VendoredPackage | undefined => vendoredPackages.find((vendored) => vendored.name === name);
 
 /** `vendor/` of the package. `root` is the package's directory (this one, unless a test gives another). */
 export const vendorDirectory = (root: string = packageRoot): string => join(root, "vendor");
@@ -182,7 +233,7 @@ export function vendoredDependency(vendored: VendoredPackage, platform: LinkPlat
     const sourceDir = join(directory, "android");
     const codegen = manifest.codegenConfig;
     const codegenName = typeof codegen === "object" && codegen !== null && typeof (codegen as Json).name === "string" ? ((codegen as Json).name as string) : undefined;
-    const libraryName = codegenName ?? gradleLibraryName(join(sourceDir, "build.gradle"));
+    const libraryName = android.libraryName ?? codegenName ?? gradleLibraryName(join(sourceDir, "build.gradle"));
     const cxx = android.cxxModule;
     return {
       root: directory,
@@ -229,9 +280,12 @@ export function declaredVendored(appRoot: string): string[] {
 
 /** The refusal for an app that has an original of a vendored package: said by the config plugin, `svelte-native doctor` and the autolinking command alike. */
 export function collisionMessage(names: readonly string[], library = "@alfayez/svelte-native"): string {
-  const list = names.map((name) => `${name} ${vendoredPackages.find((vendored) => vendored.name === name)?.version ?? ""}`.trim());
+  const list = names.map((name) => `${name} ${vendoredPackage(name)?.version ?? ""}`.trim());
   const them = names.length === 1 ? "it" : "them";
-  return `${library} includes ${list.join(" and ")}; remove ${them} from the app's dependencies (package.json), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it. A library of the app that asks for ${them} as a peer dependency is served by the copy (Metro resolves the name to it; the Gradle project and the pod keep the name), so nothing needs to take ${them === "it" ? "its" : "their"} place.`;
+  const optional = names.filter((name) => vendoredPackage(name)?.optional !== undefined);
+  // An optional library is the app's to turn on: its options go to the plugin, and the rest of the message is the pilot's.
+  const turnOn = optional.length === 0 ? "" : ` ${optional.length === 1 ? "It is" : "They are"} optional: turn ${optional.length === 1 ? "it" : "them"} on with \`libraries: { ${optional.map((name) => `"${name}": true`).join(", ")} }\` in the ${library} plugin's options (its own plugin options go there instead of in \`plugins\`).`;
+  return `${library} includes ${list.join(" and ")}; remove ${them} from the app's dependencies (package.json), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it. A library of the app that asks for ${them} as a peer dependency is served by the copy (Metro resolves the name to it; the Gradle project and the pod keep the name), so nothing needs to take ${them === "it" ? "its" : "their"} place.${turnOn}`;
 }
 
 /** Raised by `linkVendored` for an app that declares a vendored package itself. */
@@ -244,25 +298,42 @@ export class VendoredCollision extends Error {
   }
 }
 
+/** `names` and the libraries they need (`OptionalLibrary.requires`), each once. */
+export function withRequired(names: Iterable<string>): string[] {
+  const all = new Set<string>();
+  const add = (name: string): void => {
+    if (all.has(name)) return;
+    all.add(name);
+    for (const required of vendoredPackage(name)?.optional?.requires ?? []) add(required);
+  };
+  for (const name of names) add(name);
+  return [...all];
+}
+
 /**
  * The autolinking config of `platform` with the vendored packages linked from the library: an entry for each, with the fields autolinking prints for the installed
- * package. A package the config already has (found in `node_modules` all the same, for example the Nitro runtime that react-native-quick-crypto asks for as a peer, which a
- * package manager installs on its own) is replaced by the library's, which keeps the name and so the Gradle project and the pod. A package that the app's own package.json
- * names is a mistake, not a leftover, and throws `VendoredCollision`: the app would be building a second copy it believes is the one it chose.
+ * package. The packages every app links are always there; an optional one (`linked`: the names the app turned on, with what they need) only when it is named, and an optional one
+ * that is not is *taken out* of the config if autolinking found an original of it (a copy installed for another package's sake), so the app carries none of it. A package the config
+ * already has (found in `node_modules` all the same, for example the Nitro runtime that react-native-quick-crypto asks for as a peer, which a package manager installs on its own) is
+ * replaced by the library's, which keeps the name and so the Gradle project and the pod. A package that the app's own package.json names is a mistake, not a leftover, and throws
+ * `VendoredCollision`: the app would be building a second copy it believes is the one it chose, turned on or not.
  * The input is not changed.
  */
-export function linkVendored<Config extends LinkableConfig>(config: Config, platform: LinkPlatform, root: string = packageRoot): Config {
+export function linkVendored<Config extends LinkableConfig>(config: Config, platform: LinkPlatform, root: string = packageRoot, linked: Iterable<string> = []): Config {
+  const on = new Set(withRequired(linked));
   const entries = vendoredPackages.flatMap((vendored) => {
+    if (vendored.optional !== undefined && !on.has(vendored.name)) return [];
     const dependency = vendoredDependency(vendored, platform, root);
     return dependency ? [[vendored.name, dependency] as const] : [];
   });
-  const dependencies = config.dependencies ?? {};
-  const others = entries.filter(([name, own]) => dependencies[name] !== undefined && real(dependencies[name].root ?? "") !== real(own.root)).map(([name]) => name);
+  const dependencies = { ...(config.dependencies ?? {}) };
+  const others = vendoredPackages.filter((vendored) => dependencies[vendored.name] !== undefined && real(dependencies[vendored.name]?.root ?? "") !== real(vendoredRoot(vendored.name, root))).map((vendored) => vendored.name);
   if (others.length > 0 && typeof config.root === "string") {
     const declared = declaredVendored(config.root).filter((name) => others.includes(name));
     if (declared.length > 0) throw new VendoredCollision(declared);
   }
+  for (const vendored of optionalPackages) if (!on.has(vendored.name)) delete dependencies[vendored.name];
   // The config command lists its dependencies by name; so does this.
-  const linked = Object.entries({ ...dependencies, ...Object.fromEntries(entries) }).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return { ...config, dependencies: Object.fromEntries(linked) } as Config;
+  const sorted = Object.entries({ ...dependencies, ...Object.fromEntries(entries) }).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return { ...config, dependencies: Object.fromEntries(sorted) } as Config;
 }

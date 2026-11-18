@@ -1,18 +1,16 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import ts from "typescript";
-import { vendoredImport } from "../../../src/vendored.ts";
-import { nodeModules as modules, vendorRoot } from "../../support/paths.ts";
+import { libraryPath } from "../../support/paths.ts";
 
 /**
  * Readers of what the native-view libraries declare in their own sources (a codegen spec in TypeScript or Flow, an Expo module's Kotlin, a manager's `@ReactProp`s), which the
- * host tests build their fake Expo modules from and the drift tests in this directory compare the host's static view configs with. Paths are relative to `node_modules`.
+ * host tests build their fake Expo modules from and the drift tests in this directory compare the host's static view configs with. Paths are relative to `node_modules`, or to the package's `vendor/` for a library it carries.
  */
 export type ExpoViewConfig = { validAttributes: Record<string, unknown>; directEventTypes?: Record<string, { registrationName: string }> | null };
 
 /** The props and handlers a library's codegen spec (a TypeScript `interface X extends ViewProps`) declares, read from its source: the tables in `view-configs.ts` are compared with them. */
 export function specOf(file: string, interfaceName: string): { props: string[]; handlers: string[]; viewProps: boolean } {
-  const path = resolve(modules, file);
+  const path = libraryPath(file);
   const source = ts.createSourceFile(path, ts.sys.readFile(path) ?? "", ts.ScriptTarget.Latest, true);
   const props: string[] = [];
   const handlers: string[] = [];
@@ -36,7 +34,7 @@ export function specOf(file: string, interfaceName: string): { props: string[]; 
 
 /** The props and events a view of an Expo module declares, read from the module's Kotlin source (`View(X::class) { Name("..."); Events(...); Prop("...") }`). */
 export function expoViewConfigs(moduleFile: string): Record<string, ExpoViewConfig> {
-  const source = readFileSync(resolve(modules, moduleFile), "utf8");
+  const source = readFileSync(libraryPath(moduleFile), "utf8");
   const configs: Record<string, ExpoViewConfig> = {};
   for (const match of source.matchAll(/\bView\(\w+::class\)\s*\{/g)) {
     let depth = 1;
@@ -59,8 +57,8 @@ export function expoViewConfigs(moduleFile: string): Record<string, ExpoViewConf
   return configs;
 }
 
-/** The text of a file of an installed library, relative to `node_modules`; of a library the package carries (react-native-svg, react-native-gesture-handler, ...), the file of its copy in `vendor/`. */
-export const libraryFile = (file: string): string => readFileSync(resolve(vendoredImport(file) ? vendorRoot : modules, file), "utf8");
+/** The text of a file of a library, relative to `node_modules` (to `vendor/` for one the package carries). */
+export const libraryFile = (file: string): string => readFileSync(libraryPath(file), "utf8");
 
 // The datetimepicker spec is Flow, which the TypeScript reader cannot parse: its props are read from the source text.
 export function flowSpec(file: string): { props: string[]; colors: string[]; handlers: string[] } {

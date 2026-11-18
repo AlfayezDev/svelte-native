@@ -2432,7 +2432,124 @@ function assertCustomRenderer(what, from) {
 // src/vendored.ts
 var import_node_fs5 = require("node:fs");
 var import_node_path5 = require("node:path");
+
+// src/optional-libraries.ts
+var react = "react-native";
+var expo = "expo";
+var optionalLibraries = [
+  // ---- Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module ----
+  { name: "expo-blur", version: "57.0.3", optional: { kind: expo } },
+  { name: "expo-conic-gradient", version: "0.2.1", optional: { kind: expo } },
+  { name: "expo-image", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+  { name: "expo-linear-gradient", version: "57.0.2", optional: { kind: expo } },
+  { name: "expo-video", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+  // ---- React Native packages: an entry of the autolinking config for each platform ----
+  {
+    name: "@react-native-community/datetimepicker",
+    version: "9.1.0",
+    android: { packageImportPath: "import com.reactcommunity.rndatetimepicker.RNDateTimePickerPackage;", packageInstance: "new RNDateTimePickerPackage()" },
+    ios: { podspec: "RNDateTimePicker.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    name: "lottie-react-native",
+    version: "7.3.8",
+    android: { packageImportPath: "import com.airbnb.android.react.lottie.LottiePackage;", packageInstance: "new LottiePackage()", componentDescriptors: ["LottieAnimationViewComponentDescriptor"] },
+    ios: { podspec: "lottie-react-native.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-animateable-text",
+    version: "0.19.3",
+    android: {
+      packageImportPath: "import com.reactnativereanimatedtext.ReanimatedTextPackage;",
+      packageInstance: "new ReanimatedTextPackage()",
+      libraryName: "JBAnimatedText",
+      componentDescriptors: ["CParagraphComponentDescriptor"],
+      cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+    },
+    ios: { podspec: "react-native-animateable-text.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-blob-util",
+    version: "0.24.9",
+    android: { packageImportPath: "import com.ReactNativeBlobUtil.ReactNativeBlobUtilPackage;", packageInstance: "new ReactNativeBlobUtilPackage()" },
+    ios: { podspec: "react-native-blob-util.podspec" },
+    optional: { kind: react }
+  },
+  {
+    // No iOS code: `ShadowedView` is React Native's own `View` there (the layer's shadow), so the library has no podspec.
+    name: "react-native-fast-shadow",
+    version: "0.1.1",
+    android: { packageImportPath: "import com.reactnativefastshadow.FastShadowPackage;", packageInstance: "new FastShadowPackage()" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-maps",
+    version: "1.27.2",
+    android: {
+      packageImportPath: "import com.rnmaps.maps.MapsPackage;",
+      packageInstance: "new MapsPackage()",
+      componentDescriptors: [
+        "RNMapsCalloutComponentDescriptor",
+        "RNMapsCircleComponentDescriptor",
+        "RNMapsGoogleMapViewComponentDescriptor",
+        "RNMapsGooglePolygonComponentDescriptor",
+        "RNMapsMapViewComponentDescriptor",
+        "RNMapsMarkerComponentDescriptor",
+        "RNMapsOverlayComponentDescriptor",
+        "RNMapsPolylineComponentDescriptor",
+        "RNMapsUrlTileComponentDescriptor",
+        "RNMapsWMSTileComponentDescriptor"
+      ],
+      cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+    },
+    ios: { podspec: "react-native-maps.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    // The PDF view reads its files through react-native-blob-util's native module, so turning it on turns that one on.
+    name: "react-native-pdf",
+    version: "7.0.3",
+    android: { packageImportPath: "import org.wonday.pdf.RNPDFPackage;", packageInstance: "new RNPDFPackage()", componentDescriptors: ["RNPDFPdfViewComponentDescriptor"] },
+    ios: { podspec: "react-native-pdf.podspec" },
+    optional: { kind: react, requires: ["react-native-blob-util"] }
+  },
+  {
+    name: "react-native-video",
+    version: "6.19.3",
+    android: { packageImportPath: "import com.brentvatne.react.ReactVideoPackage;", packageInstance: "new ReactVideoPackage()" },
+    ios: { podspec: "react-native-video.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    name: "react-native-view-shot",
+    version: "5.1.0",
+    android: { packageImportPath: "import fr.greweb.reactnativeviewshot.RNViewShotPackage;", packageInstance: "new RNViewShotPackage()" },
+    ios: { podspec: "react-native-view-shot.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-webview",
+    version: "13.16.1",
+    android: { packageImportPath: "import com.reactnativecommunity.webview.RNCWebViewPackage;", packageInstance: "new RNCWebViewPackage()", componentDescriptors: ["RNCWebViewComponentDescriptor"] },
+    ios: { podspec: "react-native-webview.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "rive-react-native",
+    version: "9.7.1",
+    android: { packageImportPath: "import com.rivereactnative.RiveReactNativePackage;", packageInstance: "new RiveReactNativePackage()" },
+    ios: { podspec: "rive-react-native.podspec" },
+    optional: { kind: react }
+  }
+];
+
+// src/vendored.ts
 var vendoredPackages = [
+  // The optional view libraries (`optional-libraries.ts`).
+  ...optionalLibraries,
   {
     name: "react-native-nitro-modules",
     version: "0.35.10",
@@ -2444,6 +2561,27 @@ var vendoredPackages = [
     version: "4.3.1",
     android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
     ios: { podspec: "NitroMmkv.podspec" }
+  },
+  {
+    // The base64 module quick-crypto and its Buffer ask for (`libraryName` QuickBase64 is the `react { }` block of its build.gradle).
+    name: "react-native-quick-base64",
+    version: "2.2.2",
+    android: { packageImportPath: "import com.reactnativequickbase64.QuickBase64Package;", packageInstance: "new QuickBase64Package()" },
+    ios: { podspec: "react-native-quick-base64.podspec" }
+  },
+  {
+    // `crypto` and `crypto.subtle`: a Nitro module over OpenSSL (and libsodium, when the plugin's `sodiumEnabled` is on). It links the vendored Nitro runtime by its project name and pod.
+    name: "react-native-quick-crypto",
+    version: "1.1.3",
+    android: { packageImportPath: "import com.margelo.nitro.quickcrypto.QuickCryptoPackage;", packageInstance: "new QuickCryptoPackage()" },
+    ios: { podspec: "QuickCrypto.podspec" }
+  },
+  {
+    // The `Intl` constructors Hermes lacks: a pure C++ TurboModule (no view, no module class: the `ReactPackage` is empty), so Android adds its CMake module to the app's build.
+    name: "hermes-intl",
+    version: "0.1.2",
+    android: { packageImportPath: "import dev.hermesintl.HermesIntlPackage;", packageInstance: "new HermesIntlPackage()", cxxModule: { cmakeListsModuleName: "hermesintl", cmakeListsPath: "android/CMakeLists.txt", headerName: "NativeHermesIntl" } },
+    ios: { podspec: "HermesIntl.podspec" }
   },
   {
     name: "react-native-gesture-handler",
@@ -2508,6 +2646,8 @@ var vendoredPackages = [
   }
 ];
 var vendoredNames = vendoredPackages.map((vendored) => vendored.name);
+var optionalPackages = vendoredPackages.filter((vendored) => vendored.optional !== void 0);
+var alwaysLinkedPackages = vendoredPackages.filter((vendored) => vendored.optional === void 0);
 var vendorDirectory = (root = packageRoot) => (0, import_node_path5.join)(root, "vendor");
 var vendoredRoot = (name, root = packageRoot) => (0, import_node_path5.join)(vendorDirectory(root), name);
 var real = (path) => {

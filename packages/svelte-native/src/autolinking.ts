@@ -5,6 +5,9 @@
  * native libraries load after the start instead of during it. The app's `settings.gradle` and Podfile run them (`applyHeadlessSettings` and `applyPodfileVendoredLinking` in
  * `expo.ts` write the commands); they are not commands for people.
  *
+ * The optional libraries (`libraries.ts`) are linked only when named: `--link <name>` before the command, once per library, which the plugin writes from the app's `libraries`
+ * option. A library that is not named is taken out of the config if autolinking found an original of it.
+ *
  * Each package below exists only to load its module's library, from a static initializer, which `PackageList` runs on the main thread while the
  * host is being built (7 ms of a cold start on the Galaxy A16). Linked instead: `DeferredNitroPackage`, which registers the library, and around
  * Nitro's own package `NitroGate`, which loads what is registered before Nitro is installed in JavaScript (`DeferredLibraries.kt`, svelte-core).
@@ -59,11 +62,23 @@ export function deferNitroLibraries(config: AutolinkingConfig): AutolinkingConfi
   return { ...config, dependencies: relinked };
 }
 
+/** The `--link <name>` pairs in front of the config command (the optional libraries that are on), and the command that follows them. */
+export function splitLinks(argv: readonly string[]): { link: string[]; command: string[] } {
+  const link: string[] = [];
+  let index = 0;
+  while (argv[index] === "--link" && argv[index + 1] !== undefined) {
+    link.push(argv[index + 1] as string);
+    index += 2;
+  }
+  return { link, command: argv.slice(index) };
+}
+
 /**
  * Runs `command`, and prints what it printed with the vendored packages linked and `transform` applied; its standard error and its exit status are its own. Output that is
  * not a JSON object is printed as it came (the build then fails on it where it would have). An app that declares a vendored package itself is refused (`VendoredCollision`).
  */
-function runAutolinking(name: string, platform: LinkPlatform, command: readonly string[], transform: (config: AutolinkingConfig) => AutolinkingConfig): number {
+function runAutolinking(name: string, platform: LinkPlatform, given: readonly string[], transform: (config: AutolinkingConfig) => AutolinkingConfig): number {
+  const { link, command } = splitLinks(given);
   const [program, ...args] = command;
   if (!program) {
     console.error(`svelte-native ${name}: no command (${platform === "android" ? "settings.gradle" : "the Podfile"} gives it React Native's config command)`);
@@ -90,7 +105,7 @@ function runAutolinking(name: string, platform: LinkPlatform, command: readonly 
     return 0;
   }
   try {
-    process.stdout.write(JSON.stringify(transform(linkVendored(config as AutolinkingConfig, platform))));
+    process.stdout.write(JSON.stringify(transform(linkVendored(config as AutolinkingConfig, platform, undefined, link))));
   } catch (error) {
     if (!(error instanceof VendoredCollision)) throw error;
     console.error(`svelte-native ${name}: ${error.message}`);

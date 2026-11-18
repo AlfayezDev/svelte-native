@@ -20,16 +20,13 @@ import { collisionMessage, vendoredNames } from "./vendored.ts";
 export const appDependencies: Readonly<Record<string, string>> = {
   expo: "57.0.30",
   "expo-constants": "57.0.22",
-  "hermes-intl": "^0.1.2",
   react: "19.2.7",
   "react-native": "0.86.3",
-  "react-native-quick-base64": "2.2.2",
-  "react-native-quick-crypto": "1.1.3",
 };
 
 /**
- * Packages whose patch every app needs; the others are declared when the app has the package (SvelteKit) or lists it at the patch's version (the view libraries). The packages the library carries
- * itself (`vendored.ts`: gesture handler, Reanimated, Worklets, svg, ...) are not here and not in `appDependencies`: their patches are applied to the copies, and the app lists none of them.
+ * Packages whose patch every app needs; the others are declared when the app has the package (SvelteKit). The packages the library carries itself (`vendored.ts`: gesture handler, Reanimated,
+ * Worklets, svg, the view libraries, ...) are not here and not in `appDependencies`: their patches are in the library's own copies of them (`vendor-patches/`), and the app lists none of them and declares nothing for them.
  */
 const alwaysPatched = ["expo-modules-core"];
 // The package's own name: Expo finds the package's `app.plugin.js`, the same plugin as `@alfayez/svelte-native/app.plugin`.

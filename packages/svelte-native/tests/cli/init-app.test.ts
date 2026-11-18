@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { patchFiles } from "../../src/doctor/patches.ts";
 import { createProject } from "../support/project.ts";
-import { patchVersion, peerRange, peerVersion } from "../support/versions.ts";
+import { patchVersion, peerVersion } from "../support/versions.ts";
 import { fixture, library, readJson, initProjects } from "./support/init-project.ts";
 import { appDependencies, appNames, mergeWorkspaceYaml, parseInitArguments, planInit, svelteNativeViteConfig } from "../../src/init-app.ts";
 import { compile } from "svelte/compiler";
@@ -48,9 +48,8 @@ describe("init in a fresh sv project", () => {
     expect(manifest.devDependencies.svelte).toBe(requiredSvelte.preview);
     expect(manifest.dependencies["@alfayez/svelte-native"]).toBe(library);
     for (const [name, version] of Object.entries(appDependencies)) expect(manifest.dependencies[name], name).toBe(version);
-    // `crypto` is made of react-native-quick-crypto, which asks for a base64 module: required peers too, installed at the versions the peers name. The packages the library itself carries
-    // (vendor/, VENDORING.md: `localStorage`'s MMKV and the Nitro runtime it shares, gesture handler, Reanimated, Worklets and svg) are installed by init no more than by the app: an app that lists one is refused.
-    for (const name of ["react-native-quick-crypto", "react-native-quick-base64"]) expect([name, manifest.dependencies[name]]).toEqual([name, peerRange(name)]);
+    // The packages the library itself carries (vendor/, VENDORING.md) are installed by init no more than by the app, and an app that lists one is refused: `crypto` (react-native-quick-crypto and the base64 module it asks for),
+    // `Intl` (hermes-intl), `localStorage` (MMKV, on the Nitro runtime they share), the animation, the gestures and the SVG components (Reanimated, Worklets, gesture handler, svg) and the optional view libraries.
     for (const name of vendoredNames) expect([name, manifest.dependencies[name], appDependencies[name]]).toEqual([name, undefined, undefined]);
     // The SvelteKit sv installed is pinned to a version the library has a patch for, exactly.
     const kitVersions = patchFiles().filter((patch) => patch.package === "@sveltejs/kit").map((patch) => patch.version);
@@ -286,20 +285,15 @@ describe("init in a project that already has things", () => {
     }
   });
 
-  test("a view library listed at the patch's version gets its patch; at another version it is a warning and nothing is declared", () => {
-    const lottie = patchFiles().find((patch) => patch.package === "lottie-react-native");
-    expect(lottie).toBeDefined();
-    const root = project((dir) => {
-      const manifest = readJson(dir, "package.json");
-      manifest.dependencies["lottie-react-native"] = lottie?.version;
-      manifest.dependencies["react-native-maps"] = "1.0.0";
-      writeFileSync(join(dir, "package.json"), `${JSON.stringify(manifest, null, "\t")}\n`);
-    });
-    const result = run(root);
+  test("the view libraries the package carries have no patch for the app to declare: they are patched in the library's own copies (vendor-patches/)", () => {
+    const root = project();
+    run(root);
     const yaml = readFileSync(join(root, "pnpm-workspace.yaml"), "utf8");
-    expect(yaml).toContain(`lottie-react-native@${lottie?.version}`);
-    expect(yaml).not.toContain("react-native-maps");
-    expect(result.out).toContain("react-native-maps: package.json asks for 1.0.0");
+    for (const name of ["lottie-react-native", "react-native-maps", "react-native-pdf", "react-native-video"]) {
+      expect([name, yaml.includes(name)]).toEqual([name, false]);
+      expect(patchFiles().some((patch) => patch.package === name)).toBe(false);
+    }
+    expect(readdirSync(join(root, "patches/svelte-native")).filter((file) => /lottie|maps|pdf|video/.test(file))).toEqual([]);
   });
 
   test("a project on another package manager than pnpm is refused before anything is written", () => {

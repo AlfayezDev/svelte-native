@@ -335,7 +335,7 @@ describe("an app that builds for native only: no @sveltejs/kit, no vite", () => 
       routes: string; ordinary: string; vendored: string; kitFromRuntime: string; kitInternal: string; svelteImports: string[]; remoteModule: string; cacheKey: string;
     };
     expect(result.routes).toBe(join(bare, ".svelte-native/routes.app.ts"));
-    expect(result.ordinary).toBe(`${bare}/src/a.ts::react-native-webview`);
+    expect(result.ordinary).toBe(`${bare}/src/a.ts::react-native-screens`);
     // A package the library carries is the library's copy for the app (and for every library of it), whether or not the app has one of that name.
     expect(result.vendored).toBe(`${bare}/src/a.ts::${join(bareInstalled, "vendor/react-native-reanimated/src/updateProps")}`);
     expect(result.svelteImports).toContain("svelte/internal/client");

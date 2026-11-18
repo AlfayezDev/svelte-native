@@ -50,7 +50,10 @@ async function bundleForeignEntry(): Promise<Bundle> {
 test("the foreign entry bundles no React and none of the libraries' JavaScript, and reaches React Native only by deep paths", async () => {
   const { externals, inputs } = await bundleForeignEntry();
   // Nothing of React, React Native's index (which loads every component) or a library's package is imported.
-  expect(externals.filter((path) => !path.startsWith("react-native/Libraries/")), "imports that are not React Native deep paths").toEqual([]);
+  // The two that are not React Native's: `expo-constants`, read (lazily) for the libraries the build has when a foreign component is made (`fabric/foreign-libraries.ts`), and `expo-video/build/VideoPlayer`,
+  // which `createVideoPlayer` requires by name when it is called: Metro resolves the name to the library's copy, or to the stub that says how to turn `expo-video` on.
+  const lazy = ["expo-constants", "expo-video/build/VideoPlayer"];
+  expect(externals.filter((path) => !path.startsWith("react-native/Libraries/") && !lazy.includes(path)), "imports that are not React Native deep paths").toEqual([]);
   for (const path of inputs) {
     for (const library of ["react", "react-dom", "scheduler", ...libraries]) expect(path.includes(`node_modules/${library}/`), `${path} is part of the bundle`).toBe(false);
   }
@@ -73,7 +76,7 @@ test("the foreign entry bundles no React and none of the libraries' JavaScript, 
     "react-native/Libraries/Utilities/PixelRatio",
   ]);
   for (const path of externals) {
-    if (!path.startsWith("react-native/Libraries/StyleSheet/process")) expect(allowed.has(path), `${path} is not an allowed deep import`).toBe(true);
+    if (!path.startsWith("react-native/Libraries/StyleSheet/process") && !lazy.includes(path)) expect(allowed.has(path), `${path} is not an allowed deep import`).toBe(true);
   }
   // The twelve libraries' components and helpers are part of the entry.
   for (const file of components) expect(inputs.some((path) => path.endsWith(`components/${file}.svelte`)), file).toBe(true);

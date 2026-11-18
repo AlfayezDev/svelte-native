@@ -71,7 +71,7 @@ A few things differ from a browser:
 
 ## Crypto
 
-`crypto` is the web's: `crypto.getRandomValues(array)`, `crypto.randomUUID()` and `crypto.subtle`, the Web Crypto API (digests, HMAC, AES, RSA, ECDSA, key derivation). It is backed by [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto), so the work is native.
+`crypto` is the web's: `crypto.getRandomValues(array)`, `crypto.randomUUID()` and `crypto.subtle`, the Web Crypto API (digests, HMAC, AES, RSA, ECDSA, key derivation). It is backed by [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto), which is part of Svelte Native (the library carries it, with the base64 module it asks for, and links it), so the work is native and there is nothing to install.
 
 ```ts
 const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -81,7 +81,7 @@ const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('h
 
 Nothing loads until `crypto` is first read, so an app that never uses it pays nothing at start. A library that reads it while it starts loads it then: Sentry's SDK does, from `src/hooks.mobile.ts`. Only `crypto` is defined: not `Buffer`, and not `process`. The library behind it adds a few things of its own when it loads, on the first read of `crypto`: `process.nextTick`, and the functions `base64FromArrayBuffer` and `base64ToArrayBuffer`.
 
-A library written for Node that imports `crypto` or `node:crypto` gets react-native-quick-crypto itself, which has Node's API (`createHash`, `createHmac`, `randomBytes`, ciphers, key pairs) as well as `subtle`. Metro does the substitution, so nothing needs configuring. The package is a required dependency of the app: `svelte-native init` installs it and `svelte-native doctor` checks it.
+A library written for Node that imports `crypto` or `node:crypto` gets react-native-quick-crypto itself, which has Node's API (`createHash`, `createHmac`, `randomBytes`, ciphers, key pairs) as well as `subtle`. Metro does the substitution, so nothing needs configuring. The package is not a dependency of the app: an app that lists `react-native-quick-crypto` or `react-native-quick-base64` is refused, because a second copy would be linked beside the library's. libsodium's algorithms (XSalsa20 and the other ciphers OpenSSL lacks) are off; the `sodiumEnabled` plugin option turns them on ([Configuration](configuration)).
 
 ## Storage
 

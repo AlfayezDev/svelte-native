@@ -10,7 +10,7 @@ import { type RealResolver, fakeConfig, resolveFrom as resolveWith } from "../..
 import { createProject } from "../../support/project.ts";
 
 /**
- * Node-style libraries import `crypto` or `node:crypto`; Metro resolves both to react-native-quick-crypto, from the app's directory. And the four packages `crypto` and
+ * Node-style libraries import `crypto` or `node:crypto`; Metro resolves both to react-native-quick-crypto, the library's own copy (`vendor/`, VENDORING.md). And the four packages `crypto` and
  * `localStorage` are made of get the React Native shim the other native-module packages get (`LITE_ORIGINS`), which must export what they import from `react-native`.
  */
 // What Metro's own resolver would answer: the file name, with the directory it was asked from, so a test sees where an import was resolved from.
@@ -23,9 +23,10 @@ describe("`crypto` and `node:crypto` are react-native-quick-crypto", () => {
   const root = project.directory;
   const config = withSvelteNative(fakeConfig(root), { variant: "qa" });
   const library = join(root, "node_modules/jose/dist/browser/index.js");
-  const wanted = `/real/react-native-quick-crypto (from ${join(root, "package.json")})`;
+  // The library's copy of the package (`vendor/react-native-quick-crypto`), which the name resolves to for every importer (`vendored.ts`); the origin is the app's package.json.
+  const wanted = `/real/${vendoredRoot("react-native-quick-crypto")} (from ${join(root, "package.json")})`;
 
-  test("both names, from the app's code and from a library's, and the package is resolved from the app's package.json: a library written for Node does not depend on it, the app does", () => {
+  test("both names, from the app's code and from a library's, resolve to the library's copy of the package: a library written for Node does not depend on it, and the app does not install it", () => {
     expect([...NODE_CRYPTO]).toEqual(["crypto", "node:crypto"]);
     expect(QUICK_CRYPTO).toBe("react-native-quick-crypto");
     for (const origin of [join(root, "src/lib/hash.ts"), library]) {
@@ -34,8 +35,8 @@ describe("`crypto` and `node:crypto` are react-native-quick-crypto", () => {
     }
   });
 
-  test("the package itself and every other name are resolved as before, from where they are imported", () => {
-    expect(resolveFrom(config, library, "react-native-quick-crypto")).toBe(`/real/react-native-quick-crypto (from ${library})`);
+  test("the package itself is the copy too, and every other name is resolved as before, from where it is imported", () => {
+    expect(resolveFrom(config, library, "react-native-quick-crypto")).toBe(`/real/${vendoredRoot("react-native-quick-crypto")} (from ${library})`);
     for (const name of ["crypto-js", "crypto/promises", "node:crypto/webcrypto", "node:buffer", "node:fs", "cryptography", "Crypto", "expo-crypto"]) {
       expect(resolveFrom(config, library, name), name).toBe(`/real/${name} (from ${library})`);
     }
@@ -64,7 +65,7 @@ describe("the React Native shim of the packages `crypto` and `localStorage` are 
     expect(LITE_ORIGINS.test("/app/node_modules/react-native-mmkv-storage/index.js")).toBe(false);
   });
 
-  /** The names a package's sources import from `react-native` (types left out), from the installed copy, or the library's own for a vendored package (MMKV, the Nitro runtime). */
+  /** The names a package's sources import from `react-native` (types left out), from the installed copy, or the library's own for a vendored package (all five now). */
   function importedFromReactNative(name: string): string[] {
     const directory = vendoredNames.includes(name) ? vendoredRoot(name) : dirname(createRequire(import.meta.url).resolve(`${name}/package.json`));
     const names = new Set<string>();

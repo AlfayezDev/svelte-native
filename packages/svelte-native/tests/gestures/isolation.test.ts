@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { build, type Metafile } from "esbuild";
 import { resolve } from "node:path";
-import { packageRoot, vendorAliases } from "../support/paths.ts";
+import { packageRoot, vendoredAliases } from "../support/paths.ts";
 import { hostPlugin, load, settle, anim } from "./support/harness.ts";
 
 /**
@@ -19,7 +19,7 @@ function graph(entry: string): Promise<Metafile> {
   if (!built) {
     built = build({
       entryPoints: [entry], bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false, metafile: true, logLevel: "silent",
-      alias: vendorAliases(), define: { __DEV__: "true" }, plugins: [hostPlugin({ openStubs: true })],
+      alias: vendoredAliases, define: { __DEV__: "true" }, plugins: [hostPlugin({ openStubs: true })],
     }).then((result) => result.metafile);
     graphs.set(entry, built);
   }

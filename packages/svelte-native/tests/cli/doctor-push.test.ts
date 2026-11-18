@@ -6,7 +6,7 @@ import { runChecks, type Check } from "../../src/doctor/checks.ts";
 import { formatReport, runDoctor } from "../../src/doctor/index.ts";
 import { ANDROID_PUSH_FLAG, IOS_PUSH_FLAG, plistStrings, plistString } from "../../src/doctor/push.ts";
 import { otherPushLibraries } from "../../src/push/config.ts";
-import { library, makeFakeApp, nativePeers, repository } from "./support/doctor-fixture.ts";
+import { library, makeFakeApp, repository } from "./support/doctor-fixture.ts";
 
 // The push section of `svelte-native doctor` (src/doctor/push.ts) against fake apps: what it says of `capabilities.push`, the Google services file, and the native files the last
 // prebuild wrote, from reading files alone. Push is part of the library: there is no package to check. The `--server` half, which makes requests, is in tests/push/cli.test.ts.
@@ -32,7 +32,7 @@ type PushApp = {
 
 /** The doctor's checks for a fake app, as `options` says, and `files` over the defaults: an `app.json` with push on and a Google services file for `io.e.a`. */
 function run(options: PushApp = {}): { root: string; checks: Check[]; push: Check[] } {
-  const dependencies = { [library.name]: "*", ...Object.fromEntries(nativePeers.map((name) => [name, "*"])), ...Object.fromEntries((options.dependencies ?? []).map((name) => [name, "*"])) };
+  const dependencies = { [library.name]: "*", ...Object.fromEntries((options.dependencies ?? []).map((name) => [name, "*"])) };
   const stubs = Object.fromEntries((options.installed ?? []).map((name) => [`node_modules/${name}/package.json`, JSON.stringify({ name, version: "1.0.0" })]));
   const root = makeFakeApp({
     files: { "package.json": JSON.stringify({ name: "fake-app", version: "1.0.0", dependencies }), "app.json": appJson(fullPush), "google-services.json": googleServices("io.e.a"), ...stubs, ...options.files },

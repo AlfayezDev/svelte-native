@@ -1,0 +1,228 @@
+{
+  "@react-native-community/datetimepicker": {
+    "root": "$PACKAGE",
+    "name": "@react-native-community/datetimepicker",
+    "platforms": {
+      "android": {
+        "sourceDir": "$PACKAGE/android",
+        "packageImportPath": "import com.reactcommunity.rndatetimepicker.RNDateTimePickerPackage;",
+        "packageInstance": "new RNDateTimePickerPackage()",
+        "buildTypes": [],
+        "libraryName": "RNDateTimePickerCGen",
+        "componentDescriptors": [],
+        "cmakeListsPath": "$PACKAGE/android/build/generated/source/codegen/jni/CMakeLists.txt",
+        "cxxModuleCMakeListsModuleName": null,
+        "cxxModuleCMakeListsPath": null,
+        "cxxModuleHeaderName": null,
+        "isPureCxxDependency": false
+      }
+    }
+  },
+  "lottie-react-native": {
+    "root": "$PACKAGE",
+    "name": "lottie-react-native",
+    "platforms": {
+      "android": {
+        "sourceDir": "$PACKAGE/android",
+        "packageImportPath": "import com.airbnb.android.react.lottie.LottiePackage;",
+        "packageInstance": "new LottiePackage()",
+        "buildTypes": [],
+        "libraryName": "lottiereactnative",
+        "componentDescriptors": [
+          "LottieAnimationViewComponentDescriptor"
+        ],
+        "cmakeListsPath": "$PACKAGE/android/build/generated/source/codegen/jni/CMakeLists.txt",
+        "cxxModuleCMakeListsModuleName": null,
+        "cxxModuleCMakeListsPath": null,
+        "cxxModuleHeaderName": null,
+        "isPureCxxDependency": false
+      }
+    }
+  },
+  "react-native-animateable-text": {
+    "root": "$PACKAGE",
+    "name": "react-native-animateable-text",
+    "platforms": {
+      "android": {
+        "sourceDir": "$PACKAGE/android",
+        "packageImportPath": "import com.reactnativereanimatedtext.ReanimatedTextPackage;",
+        "packageInstance": "new ReanimatedTextPackage()",
+        "buildTypes": [],
+        "libraryName": "JBAnimatedText",
+        "componentDescriptors": [
+          "CParagraphComponentDescriptor"
+        ],
+        "cmakeListsPath": "$PACKAGE/android/src/main/jni/CMakeLists.txt",
+        "cxxModuleCMakeListsModuleName": null,
+        "cxxModuleCMakeListsPath": null,
+        "cxxModuleHeaderName": null,
+        "isPureCxxDependency": false
+      }
+    }
+  },
+  "react-native-blob-util": {
+    "root": "$PACKAGE",
+    "name": "react-native-blob-util",
+    "platforms": {
+      "android": {
+        "sourceDir": "$PACKAGE/android",
+        "packageImportPath": "import com.ReactNativeBlobUtil.ReactNativeBlobUtilPackage;",
+        "packageInstance": "new ReactNativeBlobUtilPackage()",
+        "buildTypes": [],
+        "libraryName": "ReactNativeBlobUtilSpec",
+        "componentDescriptors": [],
+        "cmakeListsPath": "$PACKAGE/android/build/generated/source/codegen/jni/CMakeLists.txt",
+        "cxxModuleCMakeListsModuleName": null,
+        "cxxModuleCMakeListsPath": null,
+        "cxxModuleHeaderName": null,
+        "isPureCxxDependency": false
+      }
+    }
+  },
+  "react-native-fast-shadow": {
+    "root": "$PACKAGE",
+    "name": "react-native-fast-shadow",
+    "platforms": {
+      "android": {
+        "sourceDir": "$PACKAGE/android",
+        "packageImportPath": "import com.reactnativefastshadow.FastShadowPackage;",
+        "packageInstance": "new FastShadowPackage()",
+        "buildTypes": [],
+        "libraryName": "FastShadow",
+        "componentDescriptors": [],
+        "cmakeListsPath": "$PACKAGE/android/build/generated/source/codegen/jni/CMakeLists.txt",
+        "cxxModuleCMakeListsModuleName": null,
+        "cxxModuleCMakeListsPath": null,
+        "cxxModuleHeaderName": null,
+        "isPureCxxDependency": false
+      }
+    }
+  },
+  "react-native-maps": {
+    "root": "$PACKAGE",
+    "name": "react-native-maps",
+    "platforms": {
+      "android": {
+        "sourceDir": "$PACKAGE/android",
+        "packageImportPath": "import com.rnmaps.maps.MapsPackage;",
+        "packageInstance": "new MapsPackage()",
+        "buildTypes": [],
+        "libraryName": "RNMapsSpecs",
+        "componentDescriptors": [
+          "RNMapsCalloutComponentDescriptor",
+          "RNMapsCircleComponentDescriptor",
+          "RNMapsGoogleMapViewComponentDescriptor",
+          "RNMapsGooglePolygonComponentDescriptor",
+          "RNMapsMapViewComponentDescriptor",
+          "RNMapsMarkerComponentDescriptor",
+          "RNMapsOverlayComponentDescriptor",
+          "RNMapsPolylineComponentDescriptor",
+          "RNMapsUrlTileComponentDescriptor",
+          "RNMapsWMSTileComponentDescriptor"
+        ],
+        "cmakeListsPath": "$PACKAGE/android/src/main/jni/CMakeLists.txt",
+        "cxxModuleCMakeListsModuleName": null,
+        "cxxModuleCMakeListsPath": null,
+        "cxxModuleHeaderName": null,
+        "isPureCxxDependency": false
+      }
+    }
+  },
+  "react-native-pdf": {
+    "root": "$PACKAGE",
+    "name": "react-native-pdf",
+    "platforms": {
+      "android": {
+        "sourceDir": "$PACKAGE/android",
+        "packageImportPath": "import org.wonday.pdf.RNPDFPackage;",
+        "packageInstance": "new RNPDFPackage()",
+        "buildTypes": [],
+        "libraryName": "rnpdf",
+        "componentDescriptors": [
+          "RNPDFPdfViewComponentDescriptor"
+        ],
+        "cmakeListsPath": "$PACKAGE/android/build/generated/source/codegen/jni/CMakeLists.txt",
+        "cxxModuleCMakeListsModuleName": null,
+        "cxxModuleCMakeListsPath": null,
+        "cxxModuleHeaderName": null,
+        "isPureCxxDependency": false
+      }
+    }
+  },
+  "react-native-video": {
+    "root": "$PACKAGE",
+    "name": "react-native-video",
+    "platforms": {
+      "android": {
+        "sourceDir": "$PACKAGE/android",
+        "packageImportPath": "import com.brentvatne.react.ReactVideoPackage;",
+        "packageInstance": "new ReactVideoPackage()",
+        "buildTypes": [],
+        "componentDescriptors": [],
+        "cmakeListsPath": "$PACKAGE/android/build/generated/source/codegen/jni/CMakeLists.txt",
+        "cxxModuleCMakeListsModuleName": null,
+        "cxxModuleCMakeListsPath": null,
+        "cxxModuleHeaderName": null,
+        "isPureCxxDependency": false
+      }
+    }
+  },
+  "react-native-view-shot": {
+    "root": "$PACKAGE",
+    "name": "react-native-view-shot",
+    "platforms": {
+      "android": {
+        "sourceDir": "$PACKAGE/android",
+        "packageImportPath": "import fr.greweb.reactnativeviewshot.RNViewShotPackage;",
+        "packageInstance": "new RNViewShotPackage()",
+        "buildTypes": [],
+        "libraryName": "rnviewshot",
+        "componentDescriptors": [],
+        "cmakeListsPath": "$PACKAGE/android/build/generated/source/codegen/jni/CMakeLists.txt",
+        "cxxModuleCMakeListsModuleName": null,
+        "cxxModuleCMakeListsPath": null,
+        "cxxModuleHeaderName": null,
+        "isPureCxxDependency": false
+      }
+    }
+  },
+  "react-native-webview": {
+    "root": "$PACKAGE",
+    "name": "react-native-webview",
+    "platforms": {
+      "android": {
+        "sourceDir": "$PACKAGE/android",
+        "packageImportPath": "import com.reactnativecommunity.webview.RNCWebViewPackage;",
+        "packageInstance": "new RNCWebViewPackage()",
+        "buildTypes": [],
+        "libraryName": "RNCWebViewSpec",
+        "componentDescriptors": [
+          "RNCWebViewComponentDescriptor"
+        ],
+        "cmakeListsPath": "$PACKAGE/android/build/generated/source/codegen/jni/CMakeLists.txt",
+        "cxxModuleCMakeListsModuleName": null,
+        "cxxModuleCMakeListsPath": null,
+        "cxxModuleHeaderName": null,
+        "isPureCxxDependency": false
+      }
+    }
+  },
+  "rive-react-native": {
+    "root": "$PACKAGE",
+    "name": "rive-react-native",
+    "platforms": {
+      "android": {
+        "sourceDir": "$PACKAGE/android",
+        "packageImportPath": "import com.rivereactnative.RiveReactNativePackage;",
+        "packageInstance": "new RiveReactNativePackage()",
+        "buildTypes": [],
+        "componentDescriptors": [],
+        "cmakeListsPath": "$PACKAGE/android/build/generated/source/codegen/jni/CMakeLists.txt",
+        "cxxModuleCMakeListsModuleName": null,
+        "cxxModuleCMakeListsPath": null,
+        "cxxModuleHeaderName": null,
+        "isPureCxxDependency": false
+      }
+    }
+  }
+}

@@ -9,6 +9,7 @@ export { default as WebView } from "./components/WebView.svelte";
 export { default as MapView } from "./components/MapView.svelte";
 export { default as Marker } from "./components/Marker.svelte";
 export { default as VideoView } from "./components/VideoView.svelte";
+export { createVideoPlayer } from "./fabric/foreign-video-player.ts";
 export { default as ExpoImage } from "./components/ExpoImage.svelte";
 export { default as BlurView } from "./components/BlurView.svelte";
 export { default as ExpoBlurView } from "./components/ExpoBlurView.svelte";
@@ -31,6 +32,7 @@ export type { ExpoViewHandle, UntypedExpoViewHandle } from "./fabric/foreign-exp
 export type { Camera, EdgePadding, LatLng, MapHandle, Region, WebViewHandle, WebViewMessage, WebViewRequest, WebViewSource } from "./fabric/foreign.ts";
 export type { DatePickerOptions, DatePickerProps, DatePickerChange } from "./fabric/foreign-datetime.ts";
 export type { VideoHandle, VideoSource } from "./fabric/foreign-video.ts";
+export type { VideoPlayer, VideoSource as VideoPlayerSource } from "./fabric/foreign-video-player.ts";
 export type { LottieHandle, LottieSource } from "./fabric/foreign-lottie.ts";
 export type { GradientPoint } from "./fabric/foreign-gradient.ts";
 export type { BlurTint } from "./fabric/foreign-blur.ts";

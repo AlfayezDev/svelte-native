@@ -177,12 +177,12 @@ const platform = (recorder: Record<string, string>): Record<string, string> => (
 
 type Harness = { host: { warnings: string[] } };
 async function load(table: unknown, mutations: readonly Mutation[]): Promise<Bundle> {
-	const [{ componentOptions, lowersHtml }, { lowerPrimitives }, harness, { reanimatedStubs }, { vendorAliases }] = await Promise.all([
+	const [{ componentOptions, lowersHtml }, { lowerPrimitives }, harness, { reanimatedStubs }, { vendoredAliases }] = await Promise.all([
 		import(pathToFileURL(join(library, "src/compile-options.ts")).href) as Promise<{ componentOptions(path: string): Record<string, unknown>; lowersHtml(path: string): boolean }>,
 		import(pathToFileURL(join(library, "src/lower.ts")).href) as Promise<{ lowerPrimitives(source: string, options: { filename: string; html: boolean; warn: (message: string) => void }): string }>,
 		import(pathToFileURL(join(library, "tests/support/html-harness.ts")).href) as Promise<Harness>,
 		import(pathToFileURL(join(library, "tests/support/reanimated-stubs.ts")).href) as Promise<{ reanimatedStubs: Record<string, string> }>,
-		import(pathToFileURL(join(library, "tests/support/paths.ts")).href) as Promise<{ vendorAliases(): Record<string, string> }>,
+		import(pathToFileURL(join(library, "tests/support/paths.ts")).href) as Promise<{ vendoredAliases: Record<string, string> }>,
 	]);
 	const stubs = platform(reanimatedStubs);
 	const components = ["TextInput", "Switch", "Modal"];
@@ -199,7 +199,7 @@ async function load(table: unknown, mutations: readonly Mutation[]): Promise<Bun
 		},
 		bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false, define: { __DEV__: "false" },
 		// What Metro does for every importer: the names of the packages the library carries (and every path below them) are its copies in vendor/.
-		alias: vendorAliases(),
+		alias: vendoredAliases,
 		plugins: [{
 			name: "transition-probe",
 			setup(builder) {
@@ -214,7 +214,7 @@ async function load(table: unknown, mutations: readonly Mutation[]): Promise<Bun
 					return { contents, loader: "ts" };
 				});
 				// The packages the library carries are imported as `#vendor/<name>` by its own sources, and by name by the rest: the stand-ins are written for the names. Gesture handler is the one that is real.
-				builder.onResolve({ filter: /^(react-native|expo-modules-core|@alfayez\/svelte-native$|#vendor\/)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
+				builder.onResolve({ filter: /^(react-native|expo-modules-core|expo-constants$|@alfayez\/svelte-native$|#vendor\/)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
 				builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? stubs[args.path.replace(/^#vendor\//, "")] ?? "export {};", loader: "js" }));
 				builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: join(library, "tests/support/view-configs-stub.ts") }));
 				builder.onResolve({ filter: /^@alfayez\/svelte-native\/classes-table$/ }, (args) => ({ path: args.path, namespace: "classes-table" }));

@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { type AutolinkingConfig, deferNitroLibraries } from "../../src/autolinking.ts";
-import { collisionMessage, declaredVendored, linkVendored, VendoredCollision, type VendoredPackage, vendoredDependency, vendoredNames, vendoredPackages, vendoredRoot } from "../../src/vendored.ts";
+import { alwaysLinkedPackages, collisionMessage, declaredVendored, linkVendored, optionalPackages, VendoredCollision, type VendoredPackage, vendoredDependency, vendoredNames, vendoredPackages, vendoredRoot } from "../../src/vendored.ts";
 import { withPlugins } from "@expo/config-plugins";
 import expoPlugin, { assertNoVendoredOriginals } from "../../src/expo.ts";
 import { createProject } from "../support/project.ts";
@@ -10,11 +10,16 @@ import { createProject } from "../support/project.ts";
 /**
  * The packages the library carries (`src/vendored.ts`, VENDORING.md) in React Native's autolinking config. The reference entries in `fixtures/vendored-autolinking/` are what Expo's
  * own `react-native-config` printed for the packages installed in `apps/example` (SDK 57: `node --no-warnings --eval "require('expo/bin/autolinking')" expo-modules-autolinking
- * react-native-config --json --platform android|ios`, run in `apps/example`, 18 November 2026, before they were vendored: Nitro and MMKV first, then gesture handler, Worklets, Reanimated and
- * svg), with the package's directory written as `$PACKAGE`: the entries the library adds must be those, with the directory of the copy.
+ * react-native-config --json --platform android|ios`, 18 November 2026, before they were vendored), with the package's directory written as `$PACKAGE`: the entries the library adds
+ * must be those, with the directory of the copy. One file per batch of packages and platform: `expo-sdk57-<platform>.json` (the pilot's two), `expo-sdk57-crypto-<platform>.json`
+ * (react-native-quick-crypto, react-native-quick-base64 and hermes-intl, captured from the same app with all three installed), `expo-sdk57-optional-<platform>.json` (the eleven React Native packages
+ * among the optional libraries, which an app links only when it turns them on, captured the same way; the Expo modules among them have no entry) and `expo-sdk57-ui-<platform>.json` (gesture handler,
+ * Worklets, Reanimated and svg, run in `apps/example` with the four installed).
  */
 const fixtures = resolve(import.meta.dirname, "fixtures/vendored-autolinking");
-const reference = (platform: "android" | "ios"): Record<string, unknown> => JSON.parse(readFileSync(join(fixtures, `expo-sdk57-${platform}.json`), "utf8"));
+const reference = (platform: "android" | "ios"): Record<string, unknown> =>
+  Object.assign({}, ...readdirSync(fixtures).filter((file) => new RegExp(`^expo-sdk57-(?:[a-z0-9]+-)*${platform}\\.json$`).test(file)).sort().map((file) => JSON.parse(readFileSync(join(fixtures, file), "utf8")) as Record<string, unknown>));
+const alwaysNames = alwaysLinkedPackages.map((vendored) => vendored.name);
 const withRoot = (value: unknown, root: string): unknown => JSON.parse(JSON.stringify(value).replaceAll("$PACKAGE", root.replaceAll("\\", "\\\\")));
 
 const projects: { remove(): void }[] = [];
@@ -32,13 +37,20 @@ function installed(name: string, platform: "android" | "ios", root: string) {
   return withRoot(entry, root) as { root: string; name: string; platforms: Record<string, unknown> };
 }
 
-const other = (platform: "android" | "ios") => ({ root: "/app/node_modules/react-native-quick-base64", name: "react-native-quick-base64", platforms: { [platform]: { sourceDir: "/app/node_modules/react-native-quick-base64/android" } } });
+// A package that is not vendored, found in the app's node_modules.
+const other = (platform: "android" | "ios") => ({ root: "/app/node_modules/react-native-get-random-values", name: "react-native-get-random-values", platforms: { [platform]: { sourceDir: "/app/node_modules/react-native-get-random-values/android" } } });
 
 describe("the entries the library adds are the ones Expo's autolinking prints for the installed packages", () => {
   for (const platform of ["android", "ios"] as const) {
     test(`${platform}: the same fields in the same order, with the paths of vendor/<name>`, () => {
-      for (const vendored of vendoredPackages) {
+      // The Expo modules have no entry: Expo's own autolinker links them (`libraries.ts`). Every other package has the one Expo printed for the installed copy.
+      for (const vendored of vendoredPackages.filter((candidate) => candidate.optional?.kind !== "expo")) {
         const entry = vendoredDependency(vendored, platform);
+        if (reference(platform)[vendored.name] === undefined) {
+          // A package with no code for the platform (react-native-fast-shadow has no iOS) has no entry, as Expo printed none.
+          expect([vendored.name, entry]).toEqual([vendored.name, undefined]);
+          continue;
+        }
         const wanted = withRoot(reference(platform)[vendored.name], vendoredRoot(vendored.name));
         expect(entry, vendored.name).toEqual(wanted as typeof entry);
         // Same order too: the JSON is what the Gradle plugin and CocoaPods read, and a diff against the installed package's must be the paths alone.
@@ -51,20 +63,36 @@ describe("the entries the library adds are the ones Expo's autolinking prints fo
     for (const vendored of vendoredPackages) {
       const root = vendoredRoot(vendored.name);
       expect(root).toBe(resolve(import.meta.dirname, "../..", "vendor", vendored.name));
+      const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { name: string; version: string };
+      expect([manifest.name, manifest.version]).toEqual([vendored.name, vendored.version]);
+      if (vendored.optional?.kind === "expo") continue;
       const android = vendoredDependency(vendored, "android")?.platforms.android as { sourceDir: string };
-      const ios = vendoredDependency(vendored, "ios")?.platforms.ios as { podspecPath: string; version: string };
+      const ios = vendoredDependency(vendored, "ios")?.platforms.ios as { podspecPath: string; version: string } | undefined;
       expect(["build.gradle", "build.gradle.kts"].some((file) => existsSync(join(android.sourceDir, file))), vendored.name).toBe(true);
+      if (ios === undefined) {
+        expect([vendored.name, readdirSync(root).filter((file) => file.endsWith(".podspec"))]).toEqual([vendored.name, []]);
+        continue;
+      }
       expect(existsSync(ios.podspecPath)).toBe(true);
       // The podspec is the only one at the package's root, which is how CocoaPods names the pod, and the version is the package's own.
       expect(readdirSync(root).filter((file) => file.endsWith(".podspec"))).toEqual([ios.podspecPath.slice(root.length + 1)]);
-      const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { name: string; version: string };
-      expect([manifest.name, manifest.version]).toEqual([vendored.name, vendored.version]);
       expect(ios.version).toBe(manifest.version);
     }
   });
 
+  test("an Expo module is found by Expo's autolinker from its expo-module.config.json, which names a class the copy has", () => {
+    const modules = optionalPackages.filter((vendored) => vendored.optional?.kind === "expo");
+    expect(modules.map((vendored) => vendored.name)).toEqual(["expo-blur", "expo-conic-gradient", "expo-image", "expo-linear-gradient", "expo-video"]);
+    for (const vendored of modules) {
+      expect([vendored.name, vendored.android, vendored.ios]).toEqual([vendored.name, undefined, undefined]);
+      const config = JSON.parse(readFileSync(join(vendoredRoot(vendored.name), "expo-module.config.json"), "utf8")) as { android: { modules: string[] }; apple: { modules: string[] } };
+      for (const classifier of config.android.modules) expect(existsSync(join(vendoredRoot(vendored.name), "android/src/main/java", `${classifier.replaceAll(".", "/")}.kt`)), classifier).toBe(true);
+      expect(config.apple.modules.length).toBeGreaterThan(0);
+    }
+  });
+
   test("the packages' Android classes are the ones named: a ReactPackage in the package's own Java or Kotlin, found where autolinking looks for it", () => {
-    for (const vendored of vendoredPackages) {
+    for (const vendored of vendoredPackages.filter((candidate) => candidate.optional?.kind !== "expo")) {
       const android = vendored.android;
       if (!android) throw new Error(`${vendored.name} has no Android entry`);
       const fqcn = /^import\s+([\w.]+);$/.exec(android.packageImportPath)?.[1];
@@ -86,9 +114,9 @@ describe("the entries the library adds are the ones Expo's autolinking prints fo
       if (existsSync(config)) {
         // The package's own config is what Expo's autolinking reads the descriptors and the CMake path from (relative to its `android/` folder).
         const text = readFileSync(config, "utf8");
-        expect(android?.componentDescriptors ?? [], vendored.name).toEqual([...text.matchAll(/'(\w+ComponentDescriptor)'/g)].map((match) => match[1] ?? ""));
+        if (/componentDescriptors:/.test(text)) expect(android?.componentDescriptors ?? [], vendored.name).toEqual([...new Set([...text.matchAll(/'(\w+ComponentDescriptor)'/g)].map((match) => match[1] ?? ""))]);
         const cmake = /cmakeListsPath:\s*'([^']+)'/.exec(text)?.[1];
-        expect(android?.cmakeListsPath, vendored.name).toBe(cmake === undefined ? undefined : join("android", cmake));
+        if (cmake !== undefined) expect(android?.cmakeListsPath, vendored.name).toBe(join("android", cmake));
       }
       if (android?.cmakeListsPath !== undefined) expect(existsSync(join(vendoredRoot(vendored.name), android.cmakeListsPath)), `${vendored.name}: ${android.cmakeListsPath}`).toBe(true);
     }
@@ -99,55 +127,19 @@ describe("the entries the library adds are the ones Expo's autolinking prints fo
   });
 
   test("the list is what vendor/ holds, and what the library no longer asks an app to install", () => {
-    expect(vendoredNames).toEqual(expect.arrayContaining(["react-native-nitro-modules", "react-native-mmkv", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets", "react-native-svg"]));
-    expect(readdirSync(resolve(import.meta.dirname, "../../vendor")).sort()).toEqual([...vendoredNames].sort());
+    expect(alwaysNames).toEqual(expect.arrayContaining(["react-native-nitro-modules", "react-native-mmkv", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets", "react-native-svg"]));
+    // The directories of vendor/: a package, or a scope that holds packages.
+    const vendorDirectory = resolve(import.meta.dirname, "../../vendor");
+    const held = readdirSync(vendorDirectory).flatMap((entry) => (entry.startsWith("@") ? readdirSync(join(vendorDirectory, entry)).map((name) => `${entry}/${name}`) : [entry]));
+    expect(held.sort()).toEqual([...vendoredNames].sort());
     const manifest = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../package.json"), "utf8")) as { peerDependencies: Record<string, string>; devDependencies: Record<string, string> };
     for (const name of vendoredNames) expect([name, name in manifest.peerDependencies, name in manifest.devDependencies]).toEqual([name, false, false]);
   });
 });
 
-describe("the registry can say what the next packages' entries have that the pilot's two do not", () => {
-  // The entries Expo printed for packages that are not vendored yet (`fixtures/vendored-autolinking/expo-sdk57-android-next-batches.json`), rebuilt from a fake copy and a registry entry: a codegen
-  // library name from package.json or from the `react { }` block of build.gradle, a view library's component descriptors, a pure C++ TurboModule's CMake module.
-  const next = JSON.parse(readFileSync(join(fixtures, "expo-sdk57-android-next-batches.json"), "utf8")) as Record<string, { platforms: { android: { libraryName?: string; componentDescriptors: string[]; cmakeListsPath: string; cxxModuleCMakeListsModuleName: string | null; cxxModuleCMakeListsPath: string | null; cxxModuleHeaderName: string | null; packageImportPath: string; packageInstance: string } } }>;
-
-  /** A package root with `vendor/<name>/` holding what the derivation reads: the manifest's codegen name, or a build.gradle that names the library. */
-  function fakeRoot(name: string, how: "codegen" | "gradle") {
-    const libraryName = next[name]?.platforms.android.libraryName;
-    const project = createProject({
-      [`vendor/${name}/package.json`]: JSON.stringify({ name, version: "1.0.0", ...(how === "codegen" ? { codegenConfig: { name: libraryName, type: "all" } } : {}) }),
-      [`vendor/${name}/android/build.gradle`]: how === "gradle" ? `android {}\nreact {\n  jsRootDir = file("../src/")\n  libraryName = "${libraryName}"\n}\n` : "android {}\n",
-    }, "vendored-fake-");
-    projects.push(project);
-    return project.directory;
-  }
-  const registered = (name: string): VendoredPackage => {
-    const android = next[name]?.platforms.android;
-    if (!android) throw new Error(`${name} is not in the fixture`);
-    const relative = (path: string | null) => path?.replace("$PACKAGE/", "");
-    return {
-      name,
-      version: "1.0.0",
-      android: {
-        packageImportPath: android.packageImportPath,
-        packageInstance: android.packageInstance,
-        componentDescriptors: android.componentDescriptors,
-        ...(android.cmakeListsPath.includes("/android/build/") ? {} : { cmakeListsPath: relative(android.cmakeListsPath) }),
-        ...(android.cxxModuleCMakeListsModuleName ? { cxxModule: { cmakeListsModuleName: android.cxxModuleCMakeListsModuleName, cmakeListsPath: relative(android.cxxModuleCMakeListsPath) ?? "", headerName: android.cxxModuleHeaderName ?? "" } } : {}),
-      },
-    };
-  };
-
-  for (const [name, how] of [["hermes-intl", "codegen"], ["react-native-gesture-handler", "codegen"], ["react-native-svg", "codegen"], ["react-native-quick-crypto", "gradle"]] as const) {
-    test(`${name}: the entry Expo printed for the installed package, with the copy's paths`, () => {
-      const root = fakeRoot(name, how);
-      const entry = vendoredDependency(registered(name), "android", root);
-      const wanted = JSON.parse(JSON.stringify(next[name]).replaceAll("$PACKAGE", join(root, "vendor", name)));
-      expect(entry).toEqual(wanted);
-      expect(JSON.stringify(entry)).toBe(JSON.stringify(wanted));
-    });
-  }
-
+describe("the registry can say what the entries of every kind of package have", () => {
+  // A codegen library name from package.json or, failing that, from the `react { }` block of build.gradle (or the registry's own `libraryName`), a view library's component descriptors, svg's CMake file and
+  // a pure C++ TurboModule's CMake module are all in the real copies, so the entries the registry builds for them are compared with Expo's output above; this is the one precedence that needs a pair of fields.
   test("a package whose manifest has a codegen name uses it even when build.gradle names another library (Nitro's: NitroModulesSpec, not NitroModules)", () => {
     const entry = vendoredDependency(vendoredPackages.find((vendored) => vendored.name === "react-native-nitro-modules") as VendoredPackage, "android")?.platforms.android as { libraryName: string };
     expect(entry.libraryName).toBe("NitroModulesSpec");
@@ -158,14 +150,14 @@ describe("the registry can say what the next packages' entries have that the pil
 describe("linkVendored", () => {
   test("adds an entry for each package, by name, beside the others, and does not change its input", () => {
     for (const platform of ["android", "ios"] as const) {
-      const config = { root: app(), dependencies: { zeta: { root: "/z", name: "zeta", platforms: {} }, "react-native-quick-base64": other(platform), alpha: { root: "/a", name: "alpha", platforms: {} } }, project: { [platform]: { sourceDir: "/app" } } };
+      const config = { root: app(), dependencies: { zeta: { root: "/z", name: "zeta", platforms: {} }, "react-native-get-random-values": other(platform), alpha: { root: "/a", name: "alpha", platforms: {} } }, project: { [platform]: { sourceDir: "/app" } } };
       const before = JSON.stringify(config);
       const linked = linkVendored(config, platform);
       expect(JSON.stringify(config)).toBe(before);
-      expect(Object.keys(linked.dependencies)).toEqual(["alpha", "react-native-quick-base64", "zeta", ...vendoredNames].sort());
-      for (const vendored of vendoredPackages) expect(linked.dependencies[vendored.name]).toEqual(vendoredDependency(vendored, platform) as never);
+      expect(Object.keys(linked.dependencies)).toEqual(["alpha", "react-native-get-random-values", ...alwaysNames, "zeta"].sort());
+      for (const vendored of alwaysLinkedPackages) expect(linked.dependencies[vendored.name]).toEqual(vendoredDependency(vendored, platform) as never);
       expect(linked.dependencies.zeta).toEqual(config.dependencies.zeta);
-      expect(linked.dependencies["react-native-quick-base64"]).toEqual(config.dependencies["react-native-quick-base64"]);
+      expect(linked.dependencies["react-native-get-random-values"]).toEqual(config.dependencies["react-native-get-random-values"]);
       expect({ ...linked, dependencies: undefined }).toEqual({ ...config, dependencies: undefined });
       // Running it on its own output changes nothing.
       expect(linkVendored(linked, platform)).toEqual(linked);
@@ -173,25 +165,27 @@ describe("linkVendored", () => {
   });
 
   test("a config without dependencies gets the packages alone", () => {
-    expect(Object.keys(linkVendored({}, "android").dependencies ?? {})).toEqual([...vendoredNames].sort());
+    expect(Object.keys(linkVendored({}, "android").dependencies ?? {})).toEqual([...alwaysNames].sort());
   });
 
   test("an original that autolinking found all the same (installed as a peer of another package, not the app's own) is replaced: the name, and so the Gradle project and the pod, stay", () => {
     for (const platform of ["android", "ios"] as const) {
       const root = app();
-      const originals = Object.fromEntries(vendoredNames.map((name) => [name, installed(name, platform, `/app/node_modules/${name}`)]));
-      const linked = linkVendored({ root, dependencies: { ...originals, "react-native-quick-base64": other(platform) } }, platform);
-      for (const name of vendoredNames) {
+      const originals = Object.fromEntries(alwaysNames.map((name) => [name, installed(name, platform, `/app/node_modules/${name}`)]));
+      const linked = linkVendored({ root, dependencies: { ...originals, "react-native-get-random-values": other(platform) } }, platform);
+      for (const name of alwaysNames) {
         expect(linked.dependencies[name]?.root, name).toBe(vendoredRoot(name));
         expect(JSON.stringify(linked.dependencies[name]), name).not.toContain("/app/node_modules/");
       }
-      expect(Object.keys(linked.dependencies).filter((name) => vendoredNames.includes(name)).sort()).toEqual([...vendoredNames].sort());
+      expect(Object.keys(linked.dependencies).filter((name) => vendoredNames.includes(name)).sort()).toEqual([...alwaysNames].sort());
     }
   });
 
   test("an app that lists an original itself is refused, naming it: the library's copy would be linked beside the app's", () => {
     for (const platform of ["android", "ios"] as const) {
-      const cases = [...vendoredNames.map((name) => [[name], [name]] as const), [["react-native-nitro-modules", "react-native-mmkv"], ["react-native-nitro-modules", "react-native-mmkv"]] as const, [["react-native-reanimated", "react-native-worklets", "react-native-gesture-handler", "react-native-svg"], ["react-native-gesture-handler", "react-native-worklets", "react-native-reanimated", "react-native-svg"]] as const];
+      // The packages Expo printed an entry for (`installed` reads it): the optional Expo modules have none, and are refused by name all the same (`declaredVendored`, tested below).
+      const printed = vendoredNames.filter((name) => reference(platform)[name] !== undefined);
+      const cases = [...printed.map((name) => [[name], [name]] as const), [["react-native-nitro-modules", "react-native-mmkv"], ["react-native-nitro-modules", "react-native-mmkv"]] as const, [["react-native-reanimated", "react-native-worklets", "react-native-gesture-handler", "react-native-svg"], ["react-native-gesture-handler", "react-native-worklets", "react-native-reanimated", "react-native-svg"]] as const];
       for (const [declared, expected] of cases) {
         const root = app(Object.fromEntries(declared.map((name) => [name, "*"])));
         const config = { root, dependencies: Object.fromEntries(declared.map((name) => [name, installed(name, platform, `/app/node_modules/${name}`)])) };
@@ -245,7 +239,7 @@ describe("what the app lists", () => {
   test("the config plugin's check stops the prebuild with the message, for an app that lists one, and lets another through", () => {
     expect(() => assertNoVendoredOriginals(app({ "react-native-mmkv": "4.3.1" }))).toThrow(collisionMessage(["react-native-mmkv"]));
     expect(() => assertNoVendoredOriginals(app({ "react-native-nitro-modules": "0.35.10", "react-native-mmkv": "4.3.1" }))).toThrow("includes react-native-nitro-modules 0.35.10 and react-native-mmkv 4.3.1");
-    expect(() => assertNoVendoredOriginals(app({ "react-native-quick-crypto": "1.1.3", "react-native-mmkv-storage": "1.0.0" }))).not.toThrow();
+    expect(() => assertNoVendoredOriginals(app({ "react-native-get-random-values": "2.0.0", "react-native-mmkv-storage": "1.0.0" }))).not.toThrow();
   });
 });
 
@@ -271,7 +265,7 @@ describe("with the Nitro libraries deferred (Android)", () => {
 
   test("the same when the originals were in the config and got replaced", () => {
     const config = nitroPeers();
-    for (const name of vendoredNames) config.dependencies = { ...config.dependencies, [name]: installed(name, "android", `/app/node_modules/${name}`) as never };
+    for (const name of alwaysNames) config.dependencies = { ...config.dependencies, [name]: installed(name, "android", `/app/node_modules/${name}`) as never };
     const relinked = deferNitroLibraries(linkVendored(config, "android"));
     expect(instance(relinked, "react-native-mmkv")).toBe('new DeferredNitroPackage("NitroMmkv")');
     expect(instance(relinked, "react-native-nitro-modules")).toStartWith("new NitroGate(");
@@ -290,10 +284,10 @@ describe("the commands", () => {
   for (const [name, cli] of [["svelte-native", sources], ["the shipped dist/node/cli.js (what settings.gradle and the Podfile run)", built]] as const) {
     describe.skipIf(!node)(name, () => {
       test("android-autolinking prints the config with the vendored packages linked from the library and the Nitro libraries deferred", () => {
-        const result = run(cli, "android-autolinking", ...printing({ root: app(), dependencies: { "react-native-quick-base64": other("android") }, project: { android: { packageName: "io.example.app" } } }));
+        const result = run(cli, "android-autolinking", ...printing({ root: app(), dependencies: { "react-native-get-random-values": other("android") }, project: { android: { packageName: "io.example.app" } } }));
         expect(result.exitCode).toBe(0);
         const printed = entries(result);
-        expect(Object.keys(printed.dependencies ?? {})).toEqual([...vendoredNames, "react-native-quick-base64"].sort());
+        expect(Object.keys(printed.dependencies ?? {})).toEqual(["react-native-get-random-values", ...alwaysNames].sort());
         const mmkv = printed.dependencies?.["react-native-mmkv"] as { root: string; platforms: { android: { sourceDir: string; packageInstance: string } } };
         expect(mmkv.root).toBe(vendoredRoot("react-native-mmkv"));
         expect(mmkv.platforms.android.sourceDir).toBe(join(vendoredRoot("react-native-mmkv"), "android"));
@@ -302,15 +296,15 @@ describe("the commands", () => {
       });
 
       test("ios-autolinking prints the config with the vendored packages' podspecs, and nothing else changed", () => {
-        const config = { root: app(), reactNativePath: "/app/node_modules/react-native", dependencies: { "react-native-quick-base64": other("ios") }, project: { ios: { sourceDir: "/app/ios" } } };
+        const config = { root: app(), reactNativePath: "/app/node_modules/react-native", dependencies: { "react-native-get-random-values": other("ios") }, project: { ios: { sourceDir: "/app/ios" } } };
         const result = run(cli, "ios-autolinking", ...printing(config));
         expect(result.exitCode).toBe(0);
         const printed = entries(result);
-        expect(Object.keys(printed.dependencies ?? {})).toEqual([...vendoredNames, "react-native-quick-base64"].sort());
-        for (const name of vendoredNames) expect(printed.dependencies?.[name], name).toEqual(withRoot(reference("ios")[name], vendoredRoot(name)) as never);
+        expect(Object.keys(printed.dependencies ?? {})).toEqual(["react-native-get-random-values", ...alwaysNames].sort());
+        for (const name of alwaysNames) expect(printed.dependencies?.[name], name).toEqual(withRoot(reference("ios")[name], vendoredRoot(name)) as never);
         expect(printed.dependencies?.["react-native-mmkv"]).toEqual(withRoot(reference("ios")["react-native-mmkv"], vendoredRoot("react-native-mmkv")) as never);
         expect(printed.dependencies?.["react-native-nitro-modules"]).toEqual(withRoot(reference("ios")["react-native-nitro-modules"], vendoredRoot("react-native-nitro-modules")) as never);
-        expect(printed.dependencies?.["react-native-quick-base64"]).toEqual(config.dependencies["react-native-quick-base64"] as never);
+        expect(printed.dependencies?.["react-native-get-random-values"]).toEqual(config.dependencies["react-native-get-random-values"] as never);
         expect({ ...printed, dependencies: undefined }).toEqual({ ...config, dependencies: undefined } as never);
       });
 

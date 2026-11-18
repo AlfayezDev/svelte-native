@@ -63,3 +63,16 @@ describe.skipIf(!node)("an app without MMKV or the Nitro runtime in its dependen
     expect(result.exitCode).not.toBe(0);
   });
 });
+
+describe.skipIf(!node)("createVideoPlayer, typed from the copy of expo-video (an optional library the app does not install)", () => {
+  const ts = require("typescript") as typeof import("typescript");
+  const containing = join(installed, "dist/types/fabric/foreign-video-player.d.ts");
+  const resolve = (name: string) => ts.resolveModuleName(name, containing, { moduleResolution: ts.ModuleResolutionKind.Bundler, module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 }, ts.sys).resolvedModule?.resolvedFileName;
+
+  test("the declaration names the copy through the library's imports map (`#vendor/expo-video/*`), which resolves to the copy's own declarations in the installed package", () => {
+    const declaration = ts.sys.readFile(containing) ?? "";
+    expect(declaration).toContain('"#vendor/expo-video/build/VideoPlayer"');
+    expect(resolve("#vendor/expo-video/build/VideoPlayer")).toBe(join(installed, "vendor/expo-video/build/VideoPlayer.d.ts"));
+    expect(resolve("#vendor/expo-video/build/VideoPlayer.types")).toBe(join(installed, "vendor/expo-video/build/VideoPlayer.types.d.ts"));
+  });
+});

@@ -148,7 +148,7 @@ let directory: string;
 /** The files the screens' bundle holds (esbuild's metafile: paths from the working directory, so `../../packages/svelte-native/src/...`). */
 let inputs: string[] = [];
 
-let vendorAliases: () => Record<string, string>;
+let vendoredAliases: Record<string, string>;
 
 beforeAll(async () => {
   // The library loads Reanimated when a screen first animates, and its bundle always names it: the library's own stand-ins for it.
@@ -156,7 +156,7 @@ beforeAll(async () => {
   Object.assign(stubs, reanimatedStubs);
   // The main entry exports the SVG components: the library's host modules for them import react-native-svg's extraction code, which these bundles stub.
   const { svgLibraryStubs } = (await import(join(libraryTests, "support/svg-library-stubs.ts"))) as { svgLibraryStubs: Record<string, string> };
-  ({ vendorAliases } = (await import(join(libraryTests, "support/paths.ts"))) as { vendorAliases(): Record<string, string> });
+  ({ vendoredAliases } = (await import(join(libraryTests, "support/paths.ts"))) as { vendoredAliases: Record<string, string> });
   Object.assign(stubs, svgLibraryStubs);
   // The library's stand-in knows `withTiming` only; the animation and gestures screens also spring and repeat, which the stand-in treats like a timing: the animation is recorded, not played.
   stubs["react-native-reanimated"] += "\nexport const withSpring = (to, config, callback) => withTiming(to, config, callback); export const withRepeat = (animation) => animation;";
@@ -191,7 +191,7 @@ beforeAll(async () => {
     },
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false, metafile: true, nodePaths: [join(app, "node_modules"), join(app, "../../node_modules")],
     // What Metro does for every importer: the names of the packages the library carries (and every path below them) are its copies in vendor/.
-    alias: vendorAliases(),
+    alias: vendoredAliases,
     loader: { ".png": "dataurl" },
     plugins: [svelteCompiler, {
       name: "fabric-fixture",
@@ -204,7 +204,7 @@ beforeAll(async () => {
         builder.onResolve({ filter: /^@alfayez\/svelte-native\/routes$/ }, () => ({ path: join(directory, ".svelte-native/routes.test.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: join(library, "src/environment.ts") }));
         // The polyfills' Expo runtime, Hermes' Intl and the libraries behind `crypto` and `localStorage` are not what a screen test is about.
-        builder.onResolve({ filter: /^(?:expo\/src\/winter|hermes-intl|react-native-quick-crypto|#vendor\/react-native-mmkv)$/ }, (args) => ({ path: args.path, namespace: "stub" }));
+        builder.onResolve({ filter: /^(?:expo\/src\/winter|hermes-intl|react-native-quick-crypto|#vendor\/(?:react-native-mmkv|react-native-quick-crypto|hermes-intl))$/ }, (args) => ({ path: args.path, namespace: "stub" }));
         // SvelteKit's `$app/*`, as Metro answers them; anything else the function leaves to esbuild.
         builder.onResolve({ filter: /^\$app\// }, (args) => {
           const path = kitResolution(args.path);

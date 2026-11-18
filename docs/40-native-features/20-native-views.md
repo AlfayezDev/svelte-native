@@ -24,17 +24,39 @@ Some libraries give you a view that the platform draws: an image with a placehol
 </Screen>
 ```
 
-## Installing a library
+## Turning a library on
 
-Every library on this page is optional. Install the ones you use, then prebuild and build, because each one adds native code:
+Svelte Native carries the libraries on this page, and an app links only the ones it uses. List each one under `libraries` in the plugin's options, then prebuild and build, because each one adds native code:
+
+```ts
+/// file: app.config.ts
+export default {
+	// ...
+	plugins: [
+		['@alfayez/svelte-native', {
+			libraries: {
+				'expo-linear-gradient': true,
+				'react-native-maps': { androidGoogleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY }
+			}
+		}]
+	]
+};
+```
 
 ```sh
-npx expo install expo-linear-gradient
 pnpm exec expo prebuild --platform android
 pnpm android
 ```
 
-An app that doesn't install a library doesn't bundle anything of it, even if it imports its component.
+A library is `true`, or the options of the library's own Expo config plugin (`react-native-maps` takes its Google Maps keys, `expo-video` takes `supportsPictureInPicture`, `expo-image` takes `disableLibdav1d`). The plugin runs it for you, so the options never go in `plugins`. `false` is the same as leaving the library out.
+
+You install nothing. Don't add these packages to `package.json` (the prebuild and `svelte-native doctor` refuse an app that does), and don't list their plugins in `plugins`.
+
+An app that doesn't list a library doesn't carry it: its native code isn't in the build (on iOS it isn't even compiled, so an app without `react-native-maps` has no map or location code that App Store Connect would ask a purpose string for), and its JavaScript isn't in the bundle. Importing the component is fine. Using it throws a message that says how to turn the library on:
+
+```
+react-native-maps is not in this app: turn it on with `libraries: { "react-native-maps": true }` in the @alfayez/svelte-native plugin options (app.json or app.config.*), then prebuild and build the app again
+```
 
 | Library | Components |
 | --- | --- |
@@ -43,11 +65,11 @@ An app that doesn't install a library doesn't bundle anything of it, even if it 
 | `expo-linear-gradient` | [`LinearGradient`](#lineargradient) |
 | `expo-conic-gradient` | [`ConicGradient`](#conicgradient) |
 | `react-native-video` | [`Video`](#video) |
-| `expo-video` | [`VideoView`](#videoview) |
+| `expo-video` | [`VideoView`, `createVideoPlayer`](#videoview) |
 | `lottie-react-native` | [`LottieView`](#lottieview) |
 | `rive-react-native` | [`Rive`](#rive) |
 | `@react-native-community/datetimepicker` | [`DateTimePicker`, `openDatePicker`](#datetimepicker-and-opendatepicker) |
-| `react-native-pdf` and `react-native-blob-util` | [`Pdf`](#pdf) |
+| `react-native-pdf` | [`Pdf`](#pdf). It turns `react-native-blob-util` on too, which it reads its files with. |
 | `react-native-webview` | [`WebView`](#webview) |
 | `react-native-maps` | [`MapView`, `Marker`](#mapview-and-marker) |
 | `react-native-view-shot` | [`ViewShot`, `captureRef`](#viewshot-and-captureref) |
@@ -56,7 +78,9 @@ An app that doesn't install a library doesn't bundle anything of it, even if it 
 | any other Expo module | [`ExpoView`, `defineExpoView`](#any-expo-view) |
 | anything else | [`ForeignView`](#foreignview) |
 
-Four of these libraries need a patch: see [Patches](#patches). `react-native-svg` isn't in the list because it's a required dependency of Svelte Native; its components are in the main entry (see [SVG](svg)).
+The last two rows are libraries Svelte Native doesn't carry: install those the usual way (see [Native libraries](native-libraries)). `react-native-svg` isn't in the list because it's a required dependency of Svelte Native; its components are in the main entry (see [SVG](svg)).
+
+Four of these libraries are patched, and the copies Svelte Native carries already have their patches: see [Patches](#patches).
 
 Every component takes the usual layout and accessibility props of a [`View`](view) (`style`, `accessibilityLabel`, `testID`, ...) besides its own. `ref` gives a handle: the host handle (`tag`, `measure`, ...) or, where the library has them, its functions.
 
@@ -197,12 +221,11 @@ The `ref` handle has `seek(time)`, `pause()`, `resume()`, `setVolume(volume)`, `
 
 ### VideoView
 
-`expo-video`'s view. Create the player with `createVideoPlayer` from `expo-video/build/VideoPlayer`, which has no React in it, and pass it as `player`:
+`expo-video`'s view. Create the player with `createVideoPlayer`, which Svelte Native exports for it (it's `expo-video`'s own function, with no React in it), and pass the player as `player`:
 
 ```svelte
 <script lang="ts">
-	import { VideoView } from '@alfayez/svelte-native/foreign';
-	import { createVideoPlayer } from 'expo-video/build/VideoPlayer';
+	import { createVideoPlayer, VideoView } from '@alfayez/svelte-native/foreign';
 
 	const player = createVideoPlayer({ uri: 'https://example.com/clip.mp4' });
 	player.play();
@@ -305,7 +328,7 @@ The system date and time picker. iOS has a view, `DateTimePicker`. Android has d
 
 ### Pdf
 
-Shows a PDF document. It needs `react-native-blob-util` installed as well.
+Shows a PDF document. Turning `react-native-pdf` on turns `react-native-blob-util` on too, which it reads its files with.
 
 ```svelte
 <script lang="ts">
@@ -364,7 +387,7 @@ Every other prop of the library's native view works too (`javaScriptEnabled`, `i
 
 ### MapView and Marker
 
-A map with `react-native-maps`. iOS draws Apple Maps. Android draws Google Maps, which needs an API key at build time: add `["react-native-maps", { "androidGoogleMapsApiKey": "<your key>" }]` to the `plugins` of `app.json`. Without one, the map mounts but draws no tiles.
+A map with `react-native-maps`. iOS draws Apple Maps. Android draws Google Maps, which needs an API key at build time: give the library its plugin's option, `libraries: { 'react-native-maps': { androidGoogleMapsApiKey: '<your key>' } }`. Without one, the map mounts but draws no tiles.
 
 ```svelte
 <script lang="ts">
@@ -495,7 +518,7 @@ An Expo library without a component above (`expo-camera`, say) needs no wrapper.
 
 Some React components change their props before the view sees them. `expo-camera`'s `CameraView` turns `flash` into the native `flashMode`, and sends `barcodeScannerEnabled`, which Android needs to start the camera. With the native view, you do those steps yourself: that's why the example passes `barcodeScannerEnabled` and types the props as `CameraNativeProps`. Likewise, a function the React component only wraps in JavaScript (`takePictureAsync`) isn't on the handle: call the native one (`takePicture`).
 
-`<ExpoView module="ExpoCamera" facing="back" />` is the same without the types, for one-off use. A module or view the build doesn't have throws when the view mounts, with a message that tells you to install the library and rebuild.
+`<ExpoView module="ExpoCamera" facing="back" />` is the same without the types, for one-off use. A module or view the build doesn't have throws when the view mounts, with a message that tells you to install the library and rebuild. For one of the libraries on this page, the message says to turn it on in `libraries` instead.
 
 ## ForeignView
 
@@ -515,7 +538,7 @@ Native views work inside [`List`](list) rows, sheets and modals.
 
 ## Patches
 
-On Android, React Native can drop an event of a native view when JavaScript is busy and a newer event of the same name arrives from the same view. For a progress stream that's fine; for a "loaded" message it's a lost event. Svelte Native ships patches for four libraries so that their one-off events are always delivered:
+On Android, React Native can drop an event of a native view when JavaScript is busy and a newer event of the same name arrives from the same view. For a progress stream that's fine; for a "loaded" message it's a lost event. The copies of four libraries that Svelte Native carries are patched so that their one-off events are always delivered:
 
 | Library | Version |
 | --- | --- |
@@ -524,11 +547,4 @@ On Android, React Native can drop an event of a native view when JavaScript is b
 | `react-native-pdf` | 7.0.3 |
 | `react-native-video` | 6.19.3 |
 
-Each patch is for exactly one version. To use one of these libraries, install that version, then run `svelte-native init` again: it copies the patch into `patches/svelte-native/` and declares it in `pnpm-workspace.yaml`.
-
-```sh
-pnpm add react-native-pdf@7.0.3 react-native-blob-util
-pnpm exec svelte-native init
-```
-
-`pnpm exec svelte-native doctor` fails when an installed library is missing its patch. [Configuration](configuration#patches) has the details.
+You do nothing: the patches are in the library's copies (`vendor-patches/` lists them, and each copy's `VENDOR.md` says what changed). `svelte-native doctor` checks that they are there. Earlier versions of Svelte Native asked an app to declare these patches in `pnpm-workspace.yaml`: remove those entries when you move the libraries to `libraries`.

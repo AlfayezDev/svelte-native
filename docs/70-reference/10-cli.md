@@ -84,7 +84,11 @@ peer dependencies
   …
   FAIL  react 19.2.6 does not satisfy 19.2.7
         fix: pnpm add react@19.2.7
-  skip  optional view libraries not installed, nothing to check: lottie-react-native, react-native-maps
+
+vendored packages
+  pass  react-native-mmkv 4.3.1 comes with @alfayez/svelte-native (vendor/react-native-mmkv); the app does not list it
+  …
+  pass  libraries turned on: expo-image, react-native-maps; the others are not linked, and Metro stubs them
 
 patches
   pass  react-native-reanimated@4.5.1 applied: the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android)
@@ -102,10 +106,10 @@ build integration
 | --- | --- |
 | `pass` | The check passed. |
 | `FAIL` | The check failed. The line below it says how to fix it. |
-| `skip` | Nothing to check, such as an optional library you haven't installed. |
+| `skip` | Nothing to check, such as an optional package you haven't installed. |
 | `????` | It couldn't tell, such as a Metro config that applies the library from another file. |
 
-It checks Node and pnpm; that Svelte is the custom-renderer build; the versions of the peer dependencies; that each patch is applied to the installed package (not just declared); that Metro and Expo are wired up; and, for an app that has push, its push setup (below). It exits with status 1 when a check failed, and 0 otherwise. `--json` prints the same checks as JSON.
+It checks Node and pnpm; that Svelte is the custom-renderer build; the versions of the peer dependencies; that each patch is applied to the installed package (not just declared); that the packages Svelte Native carries are all there, that the app doesn't list one of them, and which of the optional libraries its config turns on; that Metro and Expo are wired up; and, for an app that has push, its push setup (below). It exits with status 1 when a check failed, and 0 otherwise. `--json` prints the same checks as JSON.
 
 Run it after an install that went wrong, after an upgrade, and before you report a bug. [Troubleshooting](troubleshooting) explains the failures you're likely to see.
 

@@ -144,7 +144,9 @@
     "!vendor/**/build",
     "!vendor/**/.cxx",
     "!vendor/**/.gradle",
-    "!vendor/**/Pods"
+    "!vendor/**/Pods",
+    "!vendor/**/libsodium-stable",
+    "!vendor/**/libsodium.tar.gz"
   ],
   "scripts": {
     "typecheck": "svelte-check --tsconfig ./tsconfig.json",

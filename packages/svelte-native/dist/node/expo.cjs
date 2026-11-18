@@ -402,6 +402,9 @@ var import_promises = require("node:fs/promises");
 var import_node_path4 = require("node:path");
 var import_config_plugins = __toESM(require("expo/config-plugins.js"), 1);
 
+// src/push/common.ts
+var isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+
 // src/push/config.ts
 var otherPushLibraries = ["expo-notifications", "@react-native-firebase/messaging"];
 var apsEnvironmentEntitlement = "aps-environment";
@@ -441,7 +444,7 @@ var refuse = (message) => {
   throw new Refusal(message);
 };
 function section(value, where, example) {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return refuse(`${where} takes an object: ${example}`);
+  if (!isRecord(value)) return refuse(`${where} takes an object: ${example}`);
   return value;
 }
 function optionalText(value, where) {
@@ -945,13 +948,13 @@ var import_node_path5 = require("node:path");
 var react = "react-native";
 var expo = "expo";
 var optionalLibraries = [
-  // ---- Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module ----
+  // Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module, so they have no `android` or `ios` entry here.
   { name: "expo-blur", version: "57.0.3", optional: { kind: expo } },
   { name: "expo-conic-gradient", version: "0.2.1", optional: { kind: expo } },
   { name: "expo-image", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
   { name: "expo-linear-gradient", version: "57.0.2", optional: { kind: expo } },
   { name: "expo-video", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
-  // ---- React Native packages: an entry of the autolinking config for each platform ----
+  // React Native packages: an entry of the autolinking config for each platform.
   {
     name: "@react-native-community/datetimepicker",
     version: "9.1.0",
@@ -1182,7 +1185,7 @@ function collisionMessage(names, library = "@alfayez/svelte-native") {
   const them = names.length === 1 ? "it" : "them";
   const optional = names.filter((name) => vendoredPackage(name)?.optional !== void 0);
   const turnOn = optional.length === 0 ? "" : ` ${optional.length === 1 ? "It is" : "They are"} optional: turn ${optional.length === 1 ? "it" : "them"} on with \`libraries: { ${optional.map((name) => `"${name}": true`).join(", ")} }\` in the ${library} plugin's options (its own plugin options go there instead of in \`plugins\`).`;
-  return `${library} includes ${list.join(" and ")}; remove ${them} from the app's dependencies (package.json), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it. A library of the app that asks for ${them} as a peer dependency is served by the copy (Metro resolves the name to it; the Gradle project and the pod keep the name), so nothing needs to take ${them === "it" ? "its" : "their"} place.${turnOn}`;
+  return `${library} includes ${list.join(" and ")}; remove ${them} from the app's dependencies (package.json) and any \`patchedDependencies\` entry for ${them} (pnpm stops on a patch of a package it no longer installs), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it. A library of the app that asks for ${them} as a peer dependency is served by the copy (Metro resolves the name to it; the Gradle project and the pod keep the name), so nothing needs to take ${them === "it" ? "its" : "their"} place.${turnOn}`;
 }
 function withRequired(names) {
   const all = /* @__PURE__ */ new Set();
@@ -1534,12 +1537,13 @@ function applyAppDelegate(contents) {
 ${delegateImport}${stripped.slice(importEnd, propertyEnd)}
 ${block}${stripped.slice(propertyEnd)}`;
 }
+var communityCall = "svelteNativeConfigCommand + svelteNativeCommunityCommand, svelteNativeAppRoot.asFile, svelteNativeLockFiles";
 function applyHeadlessSettings(contents, extra = [], links) {
-  const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\((?:svelteNativeConfigCommand \+ )?expoAutolinking\.rnConfigCommand \+ svelteNativeExcludeArgs(?:, svelteNativeAppRoot\.asFile, svelteNativeLockFiles)?\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)");
+  const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\((?:svelteNativeConfigCommand \+ )?expoAutolinking\.rnConfigCommand \+ svelteNativeExcludeArgs(?:, svelteNativeAppRoot\.asFile, svelteNativeLockFiles)?\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)").replace(`autolinkLibrariesFromCommand(${communityCall})`, "autolinkLibrariesFromCommand()");
   const anchor = /^extensions\.configure\(com\.facebook\.react\.ReactSettingsExtension\)/m.exec(stripped);
   if (!anchor || !stripped.includes("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)")) throw new Error("Svelte native could not find the autolinking block in settings.gradle");
-  const list = [.../* @__PURE__ */ new Set([...headlessExcludedPackages, ...extra, ...links?.expoOff ?? []])].map((name) => `"${name}"`).join(", ");
   const quoted = (names) => names.map((name) => `"${name}"`).join(", ");
+  const list = quoted([.../* @__PURE__ */ new Set([...headlessExcludedPackages, ...extra, ...links?.expoOff ?? []])]);
   const expoModules = links?.expo ?? [];
   const reactNative = links?.reactNative ?? [];
   const block = [
@@ -1555,6 +1559,7 @@ function applyHeadlessSettings(contents, extra = [], links) {
       'expoAutolinking.searchPaths = ["--"] + svelteNativeExpoModules.collect { new File(svelteNativeLibrary, "vendor/" + it).toString() }'
     ],
     `def svelteNativeConfigCommand = ["node", svelteNativeCli, "android-autolinking"${reactNative.map((name) => `, "--link", "${name}"`).join("")}]`,
+    'def svelteNativeCommunityCommand = (System.getProperty("os.name").toLowerCase().contains("windows") ? ["cmd", "/c"] : []) + ["npx", "@react-native-community/cli", "config"]',
     // React Native keeps the command's output until a lockfile of the app changes: React Native's own list, the CLI, and this file, so that a new version of the
     // library (a workspace or file: dependency changes no lockfile) and a changed `libraries` (the `--link` arguments above) run the command again.
     'def svelteNativeAppRoot = settings.layout.rootDirectory.dir("../")',
@@ -1562,7 +1567,7 @@ function applyHeadlessSettings(contents, extra = [], links) {
     gradleEnd,
     ""
   ].join("\n");
-  return `${stripped.slice(0, anchor.index)}${block}${stripped.slice(anchor.index)}`.replace("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)", "autolinkLibrariesFromCommand(svelteNativeConfigCommand + expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs, svelteNativeAppRoot.asFile, svelteNativeLockFiles)");
+  return `${stripped.slice(0, anchor.index)}${block}${stripped.slice(anchor.index)}`.replace("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)", "autolinkLibrariesFromCommand(svelteNativeConfigCommand + expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs, svelteNativeAppRoot.asFile, svelteNativeLockFiles)").replace("autolinkLibrariesFromCommand()", `autolinkLibrariesFromCommand(${communityCall})`);
 }
 var podfileBegin = "  # Svelte native: autolinking excludes (generated, do not edit)";
 var podfileEnd = "  # Svelte native: end of autolinking excludes";
@@ -1742,9 +1747,14 @@ function onDemandForLibraries(onDemand, enabled) {
   return Object.fromEntries(Object.entries(onDemand).filter(([packageClass]) => !absent.includes(packageClass)));
 }
 var withLibraries = (config, libraries) => {
-  const listedPlugins = (config.plugins ?? []).map((plugin) => String(Array.isArray(plugin) ? plugin[0] : plugin)).filter((name) => vendoredPackage(name)?.optional !== void 0);
+  const listedPlugins = (config.plugins ?? []).map((plugin) => String(Array.isArray(plugin) ? plugin[0] : plugin)).filter((name) => vendoredPackage(name) !== void 0);
+  const optionalPlugins = listedPlugins.filter((name) => vendoredPackage(name)?.optional !== void 0);
+  if (optionalPlugins.length > 0) {
+    throw new LibrariesConfigError(`\`plugins\` lists ${optionalPlugins.join(", ")}, which ${libraryPackage} carries and is not installed: its plugin runs from the library's copy, with its options under \`libraries\` (\`["${libraryPackage}", { libraries: { ${optionalPlugins.map((name) => `"${name}": { … }`).join(", ")} } }]\`). Remove it from \`plugins\`.`);
+  }
   if (listedPlugins.length > 0) {
-    throw new LibrariesConfigError(`\`plugins\` lists ${listedPlugins.join(", ")}, which ${libraryPackage} carries and is not installed: its plugin runs from the library's copy, with its options under \`libraries\` (\`["${libraryPackage}", { libraries: { ${listedPlugins.map((name) => `"${name}": { … }`).join(", ")} } }]\`). Remove it from \`plugins\`.`);
+    const sodium = listedPlugins.includes("react-native-quick-crypto") ? ` react-native-quick-crypto's \`sodiumEnabled\` is an option of ${libraryPackage}'s plugin: \`["${libraryPackage}", { sodiumEnabled: true }]\`.` : "";
+    throw new LibrariesConfigError(`\`plugins\` lists ${listedPlugins.join(", ")}, which ${libraryPackage} carries and links itself, and is not installed. Remove it from \`plugins\`.${sodium}`);
   }
   for (const name of libraries.enabled) {
     const vendored = vendoredPackage(name);

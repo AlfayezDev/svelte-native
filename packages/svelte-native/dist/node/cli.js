@@ -595,6 +595,7 @@ function mapsProblems(read2) {
     const stream = mapsStreamEvents.includes(file.slice(0, -".java".length));
     problems.push(...inFile(read2, `${directory}/${file}`, [stream ? ["a stream event no longer coalesces", (code) => !code.includes("canCoalesce")] : ["canCoalesce() is not overridden to return false", neverCoalesces]]));
   }
+  problems.push(...inFile(read2, "plugin/build/ios.js", [["the Podfile line of its iOS plugin looks for an installed react-native-maps, not the library's copy", has("require.resolve(\\'@alfayez/svelte-native/package.json\\')")]], true));
   return problems;
 }
 function lottieProblems(read2) {
@@ -721,7 +722,7 @@ var init_patches = __esm({
       { package: "expo-modules-core", via: "expo", does: "Expo modules register lazily and the common ones are prewarmed (Android start)", inspect: expoModulesCoreProblems },
       { package: "lottie-react-native", vendored: true, does: "Lottie's events are delivered one by one (Android) and a load or failure before the emitter exists is kept (iOS)", inspect: lottieProblems },
       { package: "react-native-gesture-handler", vendored: true, does: "the root gesture recognizer can be registered for the screens the library presents (iOS)", inspect: rnghProblems },
-      { package: "react-native-maps", vendored: true, does: "the map's discrete events are delivered one by one, its streams still coalesce (Android)", inspect: mapsProblems },
+      { package: "react-native-maps", vendored: true, does: "the map's discrete events are delivered one by one, its streams still coalesce (Android); its iOS plugin points the Podfile at the library's copy", inspect: mapsProblems },
       { package: "react-native-pdf", vendored: true, does: "the pdf view's one event, which carries every message, no longer coalesces, and react-native is found from the app's directory (Android)", inspect: pdfProblems },
       { package: "react-native-reanimated", vendored: true, does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, and Worklets is the copy beside it", inspect: reanimatedProblems },
       { package: "react-native-video", vendored: true, does: "only progress and bandwidth events coalesce; every other video event is delivered (Android)", inspect: videoProblems },
@@ -848,13 +849,13 @@ var init_optional_libraries = __esm({
     react = "react-native";
     expo = "expo";
     optionalLibraries = [
-      // ---- Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module ----
+      // Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module, so they have no `android` or `ios` entry here.
       { name: "expo-blur", version: "57.0.3", optional: { kind: expo } },
       { name: "expo-conic-gradient", version: "0.2.1", optional: { kind: expo } },
       { name: "expo-image", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
       { name: "expo-linear-gradient", version: "57.0.2", optional: { kind: expo } },
       { name: "expo-video", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
-      // ---- React Native packages: an entry of the autolinking config for each platform ----
+      // React Native packages: an entry of the autolinking config for each platform.
       {
         name: "@react-native-community/datetimepicker",
         version: "9.1.0",
@@ -977,7 +978,7 @@ function vendoredDependency(vendored2, platform, root2 = packageRoot) {
     if (!android) return void 0;
     const sourceDir = join3(directory, "android");
     const codegen = manifest.codegenConfig;
-    const codegenName = typeof codegen === "object" && codegen !== null && typeof codegen.name === "string" ? codegen.name : void 0;
+    const codegenName = typeof codegen === "object" && codegen !== null && "name" in codegen && typeof codegen.name === "string" ? codegen.name : void 0;
     const libraryName = android.libraryName ?? codegenName ?? gradleLibraryName(join3(sourceDir, "build.gradle"));
     const cxx = android.cxxModule;
     return {
@@ -1022,7 +1023,7 @@ function collisionMessage(names, library2 = "@alfayez/svelte-native") {
   const them = names.length === 1 ? "it" : "them";
   const optional = names.filter((name) => vendoredPackage(name)?.optional !== void 0);
   const turnOn = optional.length === 0 ? "" : ` ${optional.length === 1 ? "It is" : "They are"} optional: turn ${optional.length === 1 ? "it" : "them"} on with \`libraries: { ${optional.map((name) => `"${name}": true`).join(", ")} }\` in the ${library2} plugin's options (its own plugin options go there instead of in \`plugins\`).`;
-  return `${library2} includes ${list.join(" and ")}; remove ${them} from the app's dependencies (package.json), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it. A library of the app that asks for ${them} as a peer dependency is served by the copy (Metro resolves the name to it; the Gradle project and the pod keep the name), so nothing needs to take ${them === "it" ? "its" : "their"} place.${turnOn}`;
+  return `${library2} includes ${list.join(" and ")}; remove ${them} from the app's dependencies (package.json) and any \`patchedDependencies\` entry for ${them} (pnpm stops on a patch of a package it no longer installs), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it. A library of the app that asks for ${them} as a peer dependency is served by the copy (Metro resolves the name to it; the Gradle project and the pod keep the name), so nothing needs to take ${them === "it" ? "its" : "their"} place.${turnOn}`;
 }
 function withRequired(names) {
   const all = /* @__PURE__ */ new Set();
@@ -1466,16 +1467,10 @@ function planInit(root2, options = {}) {
   plan.changes.push(pkg.changed ? { path: "package.json", action: "edit", summary: pkg.summary.join(", "), text: pkg.text } : { path: "package.json", action: "keep", summary: "has everything" });
   const names = appNames(pkg.name, options);
   const manifest = JSON.parse(manifestText);
-  const declared = { ...manifest.devDependencies ?? {}, ...manifest.dependencies ?? {} };
   const needed = [];
   for (const patch of patches2) {
     if (alwaysPatched.includes(patch.package)) needed.push(patch);
-    else if (patch.package === "@sveltejs/kit") {
-      if (pkg.hasKit && patch.version === pkg.kitVersion) needed.push(patch);
-    } else if (patch.package in declared) {
-      if (declared[patch.package] === patch.version) needed.push(patch);
-      else plan.warnings.push(`${patch.package}: package.json asks for ${declared[patch.package]}, and the library's patch is for ${patch.version} (it is declared only for that version); pin it with \`pnpm add ${patch.package}@${patch.version}\` and run init again.`);
-    }
+    else if (patch.package === "@sveltejs/kit" && pkg.hasKit && patch.version === pkg.kitVersion) needed.push(patch);
   }
   const workspacePath = join4(root2, "pnpm-workspace.yaml");
   const workspaceText = read(workspacePath);
@@ -2104,6 +2099,56 @@ var init_hunks = __esm({
   }
 });
 
+// src/push/common.ts
+function failure(reason, detail, status, retryAfter) {
+  return { ok: false, reason, ...status !== void 0 ? { status } : {}, ...retryAfter !== void 0 ? { retryAfter } : {}, detail };
+}
+function retryAfterOf(value) {
+  const header = (Array.isArray(value) ? value[0] : value)?.trim();
+  if (header === void 0 || header === "") return void 0;
+  if (/^\d+$/.test(header)) return Number(header) * 1e3;
+  const date = Date.parse(header);
+  return Number.isNaN(date) ? void 0 : Math.max(0, date - Date.now());
+}
+function describeNetworkError(error) {
+  if (!(error instanceof Error)) return withoutSecrets(String(error));
+  const cause = error.cause instanceof Error ? error.cause.message : void 0;
+  return withoutSecrets(cause === void 0 || cause === error.message ? error.message : `${error.message} (${cause})`);
+}
+function hostOf(url) {
+  try {
+    return new URL(url).host || "the endpoint";
+  } catch {
+    return "the endpoint";
+  }
+}
+function parseJson(text3) {
+  if (text3 === "") return void 0;
+  try {
+    return JSON.parse(text3);
+  } catch {
+    return void 0;
+  }
+}
+function httpUrl(value, name) {
+  let url;
+  try {
+    url = new URL(String(value));
+  } catch {
+    throw new TypeError(`${name} must be an http or https URL, not ${JSON.stringify(value)}.`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw new TypeError(`${name} must be an http or https URL, not ${JSON.stringify(value)}.`);
+  return url.href.replace(/\/+$/, "");
+}
+var withoutSecrets, isRecord;
+var init_common = __esm({
+  "src/push/common.ts"() {
+    "use strict";
+    withoutSecrets = (text3) => text3.replace(/\b([a-z][a-z\d+.-]*:\/\/)[^\s"'<>]+/gi, (url, scheme) => `${scheme}${hostOf(url)}`);
+    isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+});
+
 // src/push/config.ts
 function findPushSecret(value, where) {
   if (typeof value === "string") {
@@ -2131,7 +2176,7 @@ function googleServicesPackages(parsed) {
   });
 }
 function section(value, where, example) {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return refuse(`${where} takes an object: ${example}`);
+  if (!isRecord(value)) return refuse(`${where} takes an object: ${example}`);
   return value;
 }
 function optionalText(value, where) {
@@ -2195,6 +2240,7 @@ var otherPushLibraries, apsEnvironmentEntitlement, remoteNotificationMode, pemKe
 var init_config = __esm({
   "src/push/config.ts"() {
     "use strict";
+    init_common();
     otherPushLibraries = ["expo-notifications", "@react-native-firebase/messaging"];
     apsEnvironmentEntitlement = "aps-environment";
     remoteNotificationMode = "remote-notification";
@@ -2224,9 +2270,9 @@ function readConfig(context, library2) {
   const json = appJson(context.appRoot, library2);
   const code = codeConfig(context.appRoot);
   if (!json) return { config: void 0, code };
-  const capabilities = record2(json.plugin?.capabilities);
-  const push = pushIsOn(capabilities.push) ? record2(capabilities.push) : void 0;
-  const android = record2(json.expo.android);
+  const capabilities = record(json.plugin?.capabilities);
+  const push = pushIsOn(capabilities.push) ? record(capabilities.push) : void 0;
+  const android = record(json.expo.android);
   return { config: { file: json.file, push, value: capabilities.push, androidPackage: text(android.package), googleServicesFile: text(android.googleServicesFile), conclusive: code === void 0 }, code };
 }
 function otherLibraries(context, dependencies) {
@@ -2275,7 +2321,7 @@ function gradleApplicationId(reader) {
   return void 0;
 }
 function locateGoogleServices(config, reader) {
-  const named = text(config?.push?.android === void 0 ? void 0 : record2(config.push.android).googleServicesFile) ?? config?.googleServicesFile;
+  const named = text(record(config?.push?.android).googleServicesFile) ?? config?.googleServicesFile;
   if (named !== void 0) return named.replace(/^\.\//, "");
   const inRoot = reader.list(".").filter((name) => /^google-services.*\.json$/.test(name)).sort((a, b) => a === "google-services.json" ? -1 : b === "google-services.json" ? 1 : a.localeCompare(b));
   if (inRoot[0] !== void 0) return inRoot[0];
@@ -2314,7 +2360,7 @@ function androidChecks(context, config, code, reader) {
   } catch {
     return [{ group, status: "fail", message: `${file} is not JSON`, fix: `download google-services.json from the Firebase console again (Project settings, your Android app)` }];
   }
-  const project = text(record2(record2(parsed).project_info).project_id);
+  const project = text(record(record(parsed).project_info).project_id);
   const checks = [{ group, status: "pass", message: `${file} is JSON and holds no server secret${project ? ` (Firebase project ${project})` : ""}` }];
   const clients = googleServicesPackages(parsed);
   const appPackage = config?.androidPackage ?? gradleApplicationId(reader);
@@ -2365,7 +2411,7 @@ function iosChecks(config, reader) {
     checks.push({ group, status: "fail", message: `${base} has no .entitlements file: the Push Notifications capability (aps-environment) was not written by the last prebuild`, fix });
   } else {
     const environment2 = plistString(entitlements, apsEnvironmentEntitlement);
-    const wanted = text(record2(config?.push?.ios).mode);
+    const wanted = text(record(config?.push?.ios).mode);
     if (environment2 === void 0) {
       checks.push({ group, status: "fail", message: `${base}/${entitlementsFile} has no ${apsEnvironmentEntitlement}: the app cannot register with APNs`, fix });
     } else if (wanted !== void 0 && wanted !== environment2) {
@@ -2388,7 +2434,7 @@ function iosChecks(config, reader) {
 }
 function prebuiltPush(reader) {
   const manifest = reader.read("android/app/src/main/AndroidManifest.xml");
-  const directory = reader.list("ios").length === 0 ? void 0 : iosAppDirectory(reader);
+  const directory = iosAppDirectory(reader);
   const infoPlist = directory === void 0 ? void 0 : reader.read(`ios/${directory}/Info.plist`);
   return {
     android: manifest === void 0 ? void 0 : new RegExp(`android:name="${ANDROID_PUSH_FLAG.replaceAll(".", "\\.")}"\\s+android:value="true"`).test(manifest),
@@ -2406,7 +2452,7 @@ function prebuildChecks(config, prebuilt) {
   return checks;
 }
 function pushChecks(context, library2, appPackage) {
-  const dependencies = { ...record2(appPackage.dependencies), ...record2(appPackage.devDependencies), ...record2(appPackage.optionalDependencies) };
+  const dependencies = { ...record(appPackage.dependencies), ...record(appPackage.devDependencies), ...record(appPackage.optionalDependencies) };
   const { config, code } = readConfig(context, library2.name);
   const reader = readerFor(context.appRoot);
   const prebuilt = prebuiltPush(reader);
@@ -2420,7 +2466,7 @@ function pushChecks(context, library2, appPackage) {
     ...prebuildChecks(config, prebuilt)
   ];
 }
-var ANDROID_PUSH_FLAG, IOS_PUSH_FLAG, group, record2, text, FIREBASE_FIX;
+var ANDROID_PUSH_FLAG, IOS_PUSH_FLAG, group, text, FIREBASE_FIX;
 var init_push = __esm({
   "src/doctor/push.ts"() {
     "use strict";
@@ -2430,7 +2476,6 @@ var init_push = __esm({
     ANDROID_PUSH_FLAG = "expo.modules.sveltepush.enabled";
     IOS_PUSH_FLAG = "SveltePushEnabled";
     group = "push";
-    record2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
     text = (value) => typeof value === "string" && value !== "" ? value : void 0;
     FIREBASE_FIX = "download google-services.json from the Firebase console (Project settings, your Android app) and save it in the app's directory, then name it in capabilities.push.android.googleServicesFile";
   }
@@ -2481,15 +2526,22 @@ function checkLibraries(option) {
   const wanted = withRequired(listed.keys());
   return { listed, enabled: libraryNames.filter((name) => wanted.includes(name)) };
 }
+function isLibraryPlugin(entry) {
+  if (typeof entry !== "string") return false;
+  if (PLUGIN_NAMES.has(entry)) return true;
+  const path = entry.replace(/\\/g, "/").replace(/\/$/, "").replace(/\.js$/, "");
+  return [...PLUGIN_NAMES].some((name) => path.endsWith(`/node_modules/${name}`));
+}
 function appPluginOptions(projectRoot, from = import.meta.url) {
   let plugins;
   try {
     const { getConfig } = createRequire3(from)("expo/config");
     plugins = getConfig(projectRoot, { skipSDKVersionRequirement: true }).exp.plugins;
-  } catch {
-    return void 0;
+  } catch (error) {
+    return { unknown: `could not read the app's config: ${error instanceof Error ? error.message : String(error)}`, error };
   }
-  const entry = (Array.isArray(plugins) ? plugins : []).find((plugin2) => PLUGIN_NAMES.has(String(Array.isArray(plugin2) ? plugin2[0] : plugin2)));
+  const entry = (Array.isArray(plugins) ? plugins : []).find((plugin2) => isLibraryPlugin(Array.isArray(plugin2) ? plugin2[0] : plugin2));
+  if (entry === void 0) return { unknown: "no entry of the app's `plugins` names @alfayez/svelte-native" };
   const options = Array.isArray(entry) ? entry[1] : void 0;
   return { options: isObject(options) ? options : void 0 };
 }
@@ -2532,15 +2584,15 @@ function environment(context) {
   return checks;
 }
 function library(context, name, version, appPackage) {
-  const dependencies = { ...record3(appPackage.dependencies), ...record3(appPackage.devDependencies), ...record3(appPackage.optionalDependencies) };
+  const dependencies = { ...record(appPackage.dependencies), ...record(appPackage.devDependencies), ...record(appPackage.optionalDependencies) };
   return name in dependencies ? { group: "build integration", status: "pass", message: `${name} ${version} is a dependency of the app` } : { group: "build integration", status: "fail", message: `${name} is not a dependency of the app (${join9(context.appRoot, "package.json")})`, fix: `add it to the app's dependencies (README: "Install in an app"), or run \`pnpm exec svelte-native init\`` };
 }
 function svelte(context, peers) {
   const installed = findPackage("svelte", context.appRoot);
   const fix = 'install the custom-renderer build of Svelte (sveltejs/svelte#18042, commit 216f258, 5.56.7): `pnpm exec svelte-native init` does it (docs/10-getting-started/20-creating-a-project.md), or by hand, README "Install in an app"';
   if (!installed) return { group: "svelte", status: "fail", message: "svelte is not installed", fix };
-  const entry = record3(installed.json.exports)["./renderer"];
-  const target = text2(entry) ?? text2(record3(entry).default);
+  const entry = record(installed.json.exports)["./renderer"];
+  const target = text2(entry) ?? text2(record(entry).default);
   const exported = target !== void 0 && existsSync6(join9(installed.directory, target));
   const compiler = ["src/compiler/validate-options.js", "compiler/index.js"].some((file) => {
     try {
@@ -2621,8 +2673,12 @@ function vendored(context, libraryName) {
 }
 function libraries(context, libraryName) {
   const group3 = "vendored packages";
+  const fix = `fix \`libraries\` in the ${libraryName} plugin's options (app.json or app.config.*), then prebuild again`;
   const read2 = appPluginOptions(context.appRoot, join9(context.appRoot, "package.json"));
-  if (read2 === void 0) return { group: group3, status: "skip", message: "could not read the app's config (expo/config), so the optional libraries it turns on were not checked (`npx expo config` shows the config)" };
+  if ("error" in read2 && read2.error instanceof Error && read2.error.name === "LibrariesConfigError") {
+    return { group: group3, status: "fail", message: read2.error.message, fix };
+  }
+  if ("unknown" in read2) return { group: group3, status: "skip", message: `${read2.unknown}, so the optional libraries it turns on were not checked (\`npx expo config\` shows the config)` };
   try {
     const { enabled, listed } = checkLibraries(read2.options?.libraries);
     if (enabled.length === 0) return { group: group3, status: "pass", message: "no optional library is turned on (libraries): none of their native code is in the app" };
@@ -2630,7 +2686,7 @@ function libraries(context, libraryName) {
     return { group: group3, status: "pass", message: `libraries turned on: ${enabled.join(", ")}${implied.length > 0 ? ` (${implied.join(", ")}: needed by another)` : ""}; the others are not linked, and Metro stubs them` };
   } catch (error) {
     if (!(error instanceof LibrariesConfigError)) throw error;
-    return { group: group3, status: "fail", message: error.message, fix: `fix \`libraries\` in the ${libraryName} plugin's options (app.json or app.config.*), then prebuild again` };
+    return { group: group3, status: "fail", message: error.message, fix };
   }
 }
 function vendoredPatches(context, libraryName) {
@@ -2708,8 +2764,8 @@ function runChecks(context) {
   if (!appPackage) {
     return [{ group: "environment", status: "fail", message: `${context.appRoot} has no package.json: this is not an app directory`, fix: "run svelte-native doctor from the app's directory" }];
   }
-  const peers = record3(own2.peerDependencies);
-  const optional = new Set(Object.entries(record3(own2.peerDependenciesMeta)).filter(([, meta]) => record3(meta).optional === true).map(([peer]) => peer));
+  const peers = record(own2.peerDependencies);
+  const optional = new Set(Object.entries(record(own2.peerDependenciesMeta)).filter(([, meta]) => record(meta).optional === true).map(([peer]) => peer));
   return [
     ...environment(context),
     svelte(context, peers),
@@ -2723,7 +2779,7 @@ function runChecks(context) {
     ...pushChecks(context, { name, version: text2(own2.version) ?? "?" }, appPackage)
   ];
 }
-var record3, text2, EXPO_RUNTIME_FILES;
+var text2, EXPO_RUNTIME_FILES;
 var init_checks = __esm({
   "src/doctor/checks.ts"() {
     "use strict";
@@ -2737,59 +2793,8 @@ var init_checks = __esm({
     init_semver();
     init_libraries();
     init_vendored();
-    record3 = (value) => typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
     text2 = (value) => typeof value === "string" ? value : void 0;
     EXPO_RUNTIME_FILES = ["src/winter/index.ts", "src/winter/runtime.native.ts"];
-  }
-});
-
-// src/push/common.ts
-function failure(reason, detail, status, retryAfter) {
-  return { ok: false, reason, ...status !== void 0 ? { status } : {}, ...retryAfter !== void 0 ? { retryAfter } : {}, detail };
-}
-function retryAfterOf(value) {
-  const header = (Array.isArray(value) ? value[0] : value)?.trim();
-  if (header === void 0 || header === "") return void 0;
-  if (/^\d+$/.test(header)) return Number(header) * 1e3;
-  const date = Date.parse(header);
-  return Number.isNaN(date) ? void 0 : Math.max(0, date - Date.now());
-}
-function describeNetworkError(error) {
-  if (!(error instanceof Error)) return withoutSecrets(String(error));
-  const cause = error.cause instanceof Error ? error.cause.message : void 0;
-  return withoutSecrets(cause === void 0 || cause === error.message ? error.message : `${error.message} (${cause})`);
-}
-function hostOf(url) {
-  try {
-    return new URL(url).host || "the endpoint";
-  } catch {
-    return "the endpoint";
-  }
-}
-function parseJson(text3) {
-  if (text3 === "") return void 0;
-  try {
-    return JSON.parse(text3);
-  } catch {
-    return void 0;
-  }
-}
-function httpUrl(value, name) {
-  let url;
-  try {
-    url = new URL(String(value));
-  } catch {
-    throw new TypeError(`${name} must be an http or https URL, not ${JSON.stringify(value)}.`);
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") throw new TypeError(`${name} must be an http or https URL, not ${JSON.stringify(value)}.`);
-  return url.href.replace(/\/+$/, "");
-}
-var withoutSecrets, isRecord;
-var init_common = __esm({
-  "src/push/common.ts"() {
-    "use strict";
-    withoutSecrets = (text3) => text3.replace(/\b([a-z][a-z\d+.-]*:\/\/)[^\s"'<>]+/gi, (url, scheme) => `${scheme}${hostOf(url)}`);
-    isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
   }
 });
 
@@ -3045,130 +3050,6 @@ var init_apns = __esm({
   }
 });
 
-// src/push/credentials.ts
-import { readFileSync as readFileSync8 } from "node:fs";
-import { resolve as resolve7 } from "node:path";
-function textOrFile(env, name, cwd, isText, kind) {
-  const value = valueSet(env, name) ?? "";
-  if (isText(value)) return { text: value, source: { file: false } };
-  const path = resolve7(cwd, value.trim());
-  try {
-    return { text: readFileSync8(path, "utf8"), source: { file: true, path } };
-  } catch (error) {
-    const code = error.code;
-    return { problem: `is neither ${kind} nor the path of a file that can be read (${code === "ENOENT" ? `no such file, from ${cwd}` : code ?? "unreadable"}): set it to ${kind} itself, or to the path of its file` };
-  }
-}
-function urlOf(env, name) {
-  const value = valueSet(env, name);
-  if (value === void 0) return {};
-  try {
-    const url = new URL(value.trim());
-    if (url.protocol === "http:" || url.protocol === "https:") return { url: value.trim() };
-  } catch {
-  }
-  return { problem: `${name} must be an http or https URL` };
-}
-function readFcm(env, cwd) {
-  const name = variables.fcmServiceAccount;
-  if (valueSet(env, name) === void 0) return { state: "unset" };
-  const read2 = textOrFile(env, name, cwd, (value) => /^\s*[{[]/.test(value), "the service account key's JSON");
-  if ("problem" in read2) return { state: "invalid", problem: `${name} ${read2.problem}` };
-  let parsed;
-  try {
-    parsed = JSON.parse(read2.text);
-  } catch {
-    return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) is not JSON: it must be the service account key's file as Google gave it` };
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) must be the service account key's JSON object` };
-  const account = parsed;
-  for (const field of ["project_id", "client_email", "private_key"]) {
-    if (typeof account[field] !== "string" || account[field] === "") return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) has no \`${field}\`: it is not a service account key` };
-  }
-  if (account.token_uri !== void 0 && typeof account.token_uri !== "string") return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) has a \`token_uri\` that is not a string` };
-  if (typeof account.token_uri === "string") {
-    try {
-      httpUrl(account.token_uri, "token_uri");
-    } catch {
-      return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) has a \`token_uri\` that is not an http or https URL` };
-    }
-  }
-  try {
-    privateKeyOf(String(account.private_key), "RS256", `the private_key of ${name}`);
-  } catch (error) {
-    return { state: "invalid", problem: `${error instanceof Error ? error.message : String(error)}` };
-  }
-  const base = urlOf(env, variables.fcmBaseUrl);
-  const token = urlOf(env, variables.fcmTokenUrl);
-  const problem = base.problem ?? token.problem;
-  if (problem) return { state: "invalid", problem };
-  const tokenUrl = token.url ?? (typeof account.token_uri === "string" ? account.token_uri : GOOGLE_TOKEN_URL);
-  return {
-    state: "ok",
-    options: { serviceAccount: account, ...base.url ? { baseUrl: base.url } : {}, ...token.url ? { tokenUrl: token.url } : {} },
-    projectId: String(account.project_id),
-    clientEmail: String(account.client_email),
-    source: read2.source,
-    tokenHost: hostOf(tokenUrl)
-  };
-}
-function readApns(env, cwd) {
-  const names = [variables.apnsKey, variables.apnsKeyId, variables.apnsTeamId];
-  const unset = names.filter((name) => valueSet(env, name) === void 0);
-  if (unset.length === names.length) return { state: "unset" };
-  if (unset.length > 0) return { state: "invalid", problem: `${unset.join(" and ")} ${unset.length > 1 ? "are" : "is"} not set: APNs needs ${names.join(", ")} together` };
-  const key = textOrFile(env, variables.apnsKey, cwd, (value) => value.includes("-----BEGIN"), "the .p8 key's PEM");
-  if ("problem" in key) return { state: "invalid", problem: `${variables.apnsKey} ${key.problem}` };
-  try {
-    privateKeyOf(key.text, "ES256", variables.apnsKey);
-  } catch (error) {
-    return { state: "invalid", problem: error instanceof Error ? error.message : String(error) };
-  }
-  const keyId = (valueSet(env, variables.apnsKeyId) ?? "").trim();
-  const teamId = (valueSet(env, variables.apnsTeamId) ?? "").trim();
-  for (const [name, value] of [[variables.apnsKeyId, keyId], [variables.apnsTeamId, teamId]]) {
-    if (!tenCharacters.test(value)) return { state: "invalid", problem: `${name} must be 10 letters and digits (it has ${value.length} characters)` };
-  }
-  const production = urlOf(env, variables.apnsProductionUrl);
-  const sandbox = urlOf(env, variables.apnsSandboxUrl);
-  const problem = production.problem ?? sandbox.problem;
-  if (problem) return { state: "invalid", problem };
-  return {
-    state: "ok",
-    options: { key: key.text, keyId, teamId, ...production.url ? { productionUrl: production.url } : {}, ...sandbox.url ? { sandboxUrl: sandbox.url } : {} },
-    keyId,
-    teamId,
-    source: key.source,
-    sandboxHost: hostOf(sandbox.url ?? APNS_SANDBOX_URL)
-  };
-}
-var variables, describeSource, valueSet, GOOGLE_TOKEN_URL, APNS_SANDBOX_URL, tenCharacters;
-var init_credentials = __esm({
-  "src/push/credentials.ts"() {
-    "use strict";
-    init_common();
-    init_jwt();
-    variables = {
-      fcmServiceAccount: "FCM_SERVICE_ACCOUNT",
-      fcmBaseUrl: "FCM_BASE_URL",
-      fcmTokenUrl: "FCM_TOKEN_URL",
-      apnsKey: "APNS_KEY",
-      apnsKeyId: "APNS_KEY_ID",
-      apnsTeamId: "APNS_TEAM_ID",
-      apnsProductionUrl: "APNS_PRODUCTION_URL",
-      apnsSandboxUrl: "APNS_SANDBOX_URL"
-    };
-    describeSource = (source) => source.file ? `the file ${source.path}` : "the variable's text";
-    valueSet = (env, name) => {
-      const value = env[name];
-      return value === void 0 || value.trim() === "" ? void 0 : value;
-    };
-    GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
-    APNS_SANDBOX_URL = "https://api.sandbox.push.apple.com";
-    tenCharacters = /^[A-Za-z0-9]{10}$/;
-  }
-});
-
 // src/push/fcm.ts
 function readAccount(value) {
   let account = value;
@@ -3347,6 +3228,130 @@ var init_fcm = __esm({
         return body.access_token;
       }
     };
+  }
+});
+
+// src/push/credentials.ts
+import { readFileSync as readFileSync8 } from "node:fs";
+import { resolve as resolve7 } from "node:path";
+function textOrFile(env, name, cwd, isText, kind) {
+  const value = valueSet(env, name) ?? "";
+  if (isText(value)) return { text: value, source: { file: false } };
+  const path = resolve7(cwd, value.trim());
+  try {
+    return { text: readFileSync8(path, "utf8"), source: { file: true, path } };
+  } catch (error) {
+    const code = error.code;
+    return { problem: `is neither ${kind} nor the path of a file that can be read (${code === "ENOENT" ? `no such file, from ${cwd}` : code ?? "unreadable"}): set it to ${kind} itself, or to the path of its file` };
+  }
+}
+function urlOf(env, name) {
+  const value = valueSet(env, name);
+  if (value === void 0) return {};
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol === "http:" || url.protocol === "https:") return { url: value.trim() };
+  } catch {
+  }
+  return { problem: `${name} must be an http or https URL` };
+}
+function readFcm(env, cwd) {
+  const name = variables.fcmServiceAccount;
+  if (valueSet(env, name) === void 0) return { state: "unset" };
+  const read2 = textOrFile(env, name, cwd, (value) => /^\s*[{[]/.test(value), "the service account key's JSON");
+  if ("problem" in read2) return { state: "invalid", problem: `${name} ${read2.problem}` };
+  let parsed;
+  try {
+    parsed = JSON.parse(read2.text);
+  } catch {
+    return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) is not JSON: it must be the service account key's file as Google gave it` };
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) must be the service account key's JSON object` };
+  const account = parsed;
+  for (const field of ["project_id", "client_email", "private_key"]) {
+    if (typeof account[field] !== "string" || account[field] === "") return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) has no \`${field}\`: it is not a service account key` };
+  }
+  if (account.token_uri !== void 0 && typeof account.token_uri !== "string") return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) has a \`token_uri\` that is not a string` };
+  if (typeof account.token_uri === "string") {
+    try {
+      httpUrl(account.token_uri, "token_uri");
+    } catch {
+      return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) has a \`token_uri\` that is not an http or https URL` };
+    }
+  }
+  try {
+    privateKeyOf(String(account.private_key), "RS256", `the private_key of ${name}`);
+  } catch (error) {
+    return { state: "invalid", problem: error instanceof Error ? error.message : String(error) };
+  }
+  const base = urlOf(env, variables.fcmBaseUrl);
+  const token = urlOf(env, variables.fcmTokenUrl);
+  const problem = base.problem ?? token.problem;
+  if (problem) return { state: "invalid", problem };
+  const tokenUrl = token.url ?? (typeof account.token_uri === "string" ? account.token_uri : TOKEN_URL);
+  return {
+    state: "ok",
+    options: { serviceAccount: account, ...base.url ? { baseUrl: base.url } : {}, ...token.url ? { tokenUrl: token.url } : {} },
+    projectId: String(account.project_id),
+    clientEmail: String(account.client_email),
+    source: read2.source,
+    tokenHost: hostOf(tokenUrl)
+  };
+}
+function readApns(env, cwd) {
+  const names = [variables.apnsKey, variables.apnsKeyId, variables.apnsTeamId];
+  const unset = names.filter((name) => valueSet(env, name) === void 0);
+  if (unset.length === names.length) return { state: "unset" };
+  if (unset.length > 0) return { state: "invalid", problem: `${unset.join(" and ")} ${unset.length > 1 ? "are" : "is"} not set: APNs needs ${names.join(", ")} together` };
+  const key = textOrFile(env, variables.apnsKey, cwd, (value) => value.includes("-----BEGIN"), "the .p8 key's PEM");
+  if ("problem" in key) return { state: "invalid", problem: `${variables.apnsKey} ${key.problem}` };
+  try {
+    privateKeyOf(key.text, "ES256", variables.apnsKey);
+  } catch (error) {
+    return { state: "invalid", problem: error instanceof Error ? error.message : String(error) };
+  }
+  const keyId = (valueSet(env, variables.apnsKeyId) ?? "").trim();
+  const teamId = (valueSet(env, variables.apnsTeamId) ?? "").trim();
+  for (const [name, value] of [[variables.apnsKeyId, keyId], [variables.apnsTeamId, teamId]]) {
+    if (!tenCharacters.test(value)) return { state: "invalid", problem: `${name} must be 10 letters and digits (it has ${value.length} characters)` };
+  }
+  const production = urlOf(env, variables.apnsProductionUrl);
+  const sandbox = urlOf(env, variables.apnsSandboxUrl);
+  const problem = production.problem ?? sandbox.problem;
+  if (problem) return { state: "invalid", problem };
+  return {
+    state: "ok",
+    options: { key: key.text, keyId, teamId, ...production.url ? { productionUrl: production.url } : {}, ...sandbox.url ? { sandboxUrl: sandbox.url } : {} },
+    keyId,
+    teamId,
+    source: key.source,
+    sandboxHost: hostOf(sandbox.url ?? SANDBOX_URL)
+  };
+}
+var variables, describeSource, valueSet, tenCharacters;
+var init_credentials = __esm({
+  "src/push/credentials.ts"() {
+    "use strict";
+    init_apns();
+    init_common();
+    init_fcm();
+    init_jwt();
+    variables = {
+      fcmServiceAccount: "FCM_SERVICE_ACCOUNT",
+      fcmBaseUrl: "FCM_BASE_URL",
+      fcmTokenUrl: "FCM_TOKEN_URL",
+      apnsKey: "APNS_KEY",
+      apnsKeyId: "APNS_KEY_ID",
+      apnsTeamId: "APNS_TEAM_ID",
+      apnsProductionUrl: "APNS_PRODUCTION_URL",
+      apnsSandboxUrl: "APNS_SANDBOX_URL"
+    };
+    describeSource = (source) => source.file ? `the file ${source.path}` : "the variable's text";
+    valueSet = (env, name) => {
+      const value = env[name];
+      return value === void 0 || value.trim() === "" ? void 0 : value;
+    };
+    tenCharacters = /^[A-Za-z0-9]{10}$/;
   }
 });
 
@@ -3807,16 +3812,17 @@ function messageOf(flags) {
   return message;
 }
 function optionsFor(token, io) {
+  const timeout = io.timeout === void 0 ? {} : { timeout: io.timeout };
   if (token.provider === "fcm") {
     const fcm = readFcm(io.env, io.cwd);
     if (fcm.state === "unset") throw new UsageError(`${variables.fcmServiceAccount} is not set: an FCM token is sent with the service account key (its JSON, or the path of its file)`);
     if (fcm.state === "invalid") throw new UsageError(fcm.problem);
-    return { fcm: fcm.options, ...io.timeout === void 0 ? {} : { timeout: io.timeout } };
+    return { fcm: fcm.options, ...timeout };
   }
   const apns = readApns(io.env, io.cwd);
   if (apns.state === "unset") throw new UsageError(`${variables.apnsKey}, ${variables.apnsKeyId} and ${variables.apnsTeamId} are not set: an APNs token is sent with the .p8 key (its PEM, or the path of its file), its key id and the team id`);
   if (apns.state === "invalid") throw new UsageError(apns.problem);
-  return { apns: apns.options, ...io.timeout === void 0 ? {} : { timeout: io.timeout } };
+  return { apns: apns.options, ...timeout };
 }
 function report(result, token, json) {
   if (json) return `${JSON.stringify(result, null, 2)}
@@ -3978,8 +3984,10 @@ function deferNitroLibraries(config) {
 function splitLinks(argv) {
   const link = [];
   let index = 0;
-  while (argv[index] === "--link" && argv[index + 1] !== void 0) {
-    link.push(argv[index + 1]);
+  while (argv[index] === "--link") {
+    const name = argv[index + 1];
+    if (name === void 0) break;
+    link.push(name);
     index += 2;
   }
   return { link, command: argv.slice(index) };
@@ -6155,9 +6163,7 @@ if (command === "android-autolinking") {
 }
 if (command === "ios-autolinking") {
   const { runIosAutolinking: runIosAutolinking2 } = await Promise.resolve().then(() => (init_autolinking(), autolinking_exports));
-  const status = runIosAutolinking2(args);
-  await new Promise((flushed) => process.stdout.write("", () => flushed()));
-  process.exit(status);
+  await exitAfterFlush(runIosAutolinking2(args));
 }
 if (command === "css") {
   const { buildClasses: buildClasses2 } = await Promise.resolve().then(() => (init_build2(), build_exports));

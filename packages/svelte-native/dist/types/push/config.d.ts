@@ -1,10 +1,4 @@
 /**
- * What the app's push configuration is checked against, in one place for the two that check it: the config plugin (`capabilities.ts`, which refuses a prebuild that
- * ships a secret, a malformed `capabilities.push`, a Google services file that is not the app's, or a second push library) and `svelte-native doctor` (which says the same things
- * before the prebuild, and about the files of the last one). Nothing here reads a file or imports Expo: the doctor is bundled into the CLI, which has to start in an app that has no
- * Expo installed yet.
- */
-/**
  * The push libraries of other makers. Android delivers every message to one `FirebaseMessagingService` and iOS has one notification center delegate, so a second
  * library would take messages from the first, or the first would take them from it: an app has one push library.
  */

@@ -1396,12 +1396,9 @@ var init_init_app = __esm({
     appDependencies = {
       expo: "57.0.30",
       "expo-constants": "57.0.22",
-      "hermes-intl": "^0.1.2",
       react: "19.2.7",
       "react-native": "0.86.3",
       "react-native-gesture-handler": "2.32.0",
-      "react-native-quick-base64": "2.2.2",
-      "react-native-quick-crypto": "1.1.3",
       "react-native-reanimated": "4.5.1",
       "react-native-svg": "15.15.4",
       "react-native-worklets": "0.10.1"
@@ -2339,6 +2336,27 @@ var init_vendored = __esm({
         version: "4.3.1",
         android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
         ios: { podspec: "NitroMmkv.podspec" }
+      },
+      {
+        // The base64 module quick-crypto and its Buffer ask for (`libraryName` QuickBase64 is the `react { }` block of its build.gradle).
+        name: "react-native-quick-base64",
+        version: "2.2.2",
+        android: { packageImportPath: "import com.reactnativequickbase64.QuickBase64Package;", packageInstance: "new QuickBase64Package()" },
+        ios: { podspec: "react-native-quick-base64.podspec" }
+      },
+      {
+        // `crypto` and `crypto.subtle`: a Nitro module over OpenSSL (and libsodium, when the plugin's `sodiumEnabled` is on). It links the vendored Nitro runtime by its project name and pod.
+        name: "react-native-quick-crypto",
+        version: "1.1.3",
+        android: { packageImportPath: "import com.margelo.nitro.quickcrypto.QuickCryptoPackage;", packageInstance: "new QuickCryptoPackage()" },
+        ios: { podspec: "QuickCrypto.podspec" }
+      },
+      {
+        // The `Intl` constructors Hermes lacks: a pure C++ TurboModule (no view, no module class: the `ReactPackage` is empty), so Android adds its CMake module to the app's build.
+        name: "hermes-intl",
+        version: "0.1.2",
+        android: { packageImportPath: "import dev.hermesintl.HermesIntlPackage;", packageInstance: "new HermesIntlPackage()", cxxModule: { cmakeListsModuleName: "hermesintl", cmakeListsPath: "android/CMakeLists.txt", headerName: "NativeHermesIntl" } },
+        ios: { podspec: "HermesIntl.podspec" }
       }
     ];
     vendoredNames = vendoredPackages.map((vendored2) => vendored2.name);
@@ -2513,20 +2531,6 @@ function expoRuntime(context) {
     fix: `npx expo install expo (the version this library was exercised on is in its peerDependencies)`
   }];
 }
-function autolinkedPeers(context, peers, appPackage) {
-  const dependencies = { ...record3(appPackage.dependencies), ...record3(appPackage.devDependencies), ...record3(appPackage.optionalDependencies) };
-  const checks = [];
-  for (const name of AUTOLINKED_PEERS) {
-    const range = text2(peers[name]);
-    if (range === void 0) continue;
-    if (name in dependencies) {
-      checks.push({ group: "peer dependencies", status: "pass", message: `${name} is a dependency of the app: React Native's autolinking links its native module` });
-    } else if (findPackage(name, context.appRoot)) {
-      checks.push({ group: "peer dependencies", status: "fail", message: `${name} is installed but is not a dependency of the app (${join9(context.appRoot, "package.json")}): React Native's autolinking links only the app's own dependencies, so the build would not have its native module`, fix: `pnpm add ${name}@${range}, then npx expo prebuild` });
-    }
-  }
-  return checks;
-}
 function vendored(context, libraryName) {
   const declared = new Set(declaredVendored(context.appRoot));
   const checks = [];
@@ -2646,7 +2650,6 @@ function runChecks(context) {
     ...environment(context),
     svelte(context, peers),
     ...peerDependencies(context, peers, optional),
-    ...autolinkedPeers(context, peers, appPackage),
     ...expoRuntime(context),
     ...vendored(context, name),
     ...vendoredPatches(context, name),
@@ -2656,7 +2659,7 @@ function runChecks(context) {
     ...pushChecks(context, { name, version: text2(own2.version) ?? "?" }, appPackage)
   ];
 }
-var record3, text2, EXPO_RUNTIME_FILES, AUTOLINKED_PEERS;
+var record3, text2, EXPO_RUNTIME_FILES;
 var init_checks = __esm({
   "src/doctor/checks.ts"() {
     "use strict";
@@ -2673,7 +2676,6 @@ var init_checks = __esm({
     record3 = (value) => typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
     text2 = (value) => typeof value === "string" ? value : void 0;
     EXPO_RUNTIME_FILES = ["src/winter/index.ts", "src/winter/runtime.native.ts"];
-    AUTOLINKED_PEERS = ["hermes-intl", "react-native-quick-base64", "react-native-quick-crypto"];
   }
 });
 

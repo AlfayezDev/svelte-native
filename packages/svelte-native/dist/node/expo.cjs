@@ -35,10 +35,12 @@ __export(expo_exports, {
   androidFeatureFlagsFor: () => androidFeatureFlagsFor,
   applyAppDelegate: () => applyAppDelegate,
   applyFeatureFlags: () => applyFeatureFlags,
+  applyGradleSodium: () => applyGradleSodium,
   applyHeadlessApplication: () => applyHeadlessApplication,
   applyHeadlessSettings: () => applyHeadlessSettings,
   applyMainActivity: () => applyMainActivity,
   applyPodfileAutolinkingExclude: () => applyPodfileAutolinkingExclude,
+  applyPodfileSodium: () => applyPodfileSodium,
   applyPodfileVendoredLinking: () => applyPodfileVendoredLinking,
   assertNoVendoredOriginals: () => assertNoVendoredOriginals,
   baselineProfile: () => baselineProfile,
@@ -1067,6 +1069,27 @@ var vendoredPackages = [
     version: "4.3.1",
     android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
     ios: { podspec: "NitroMmkv.podspec" }
+  },
+  {
+    // The base64 module quick-crypto and its Buffer ask for (`libraryName` QuickBase64 is the `react { }` block of its build.gradle).
+    name: "react-native-quick-base64",
+    version: "2.2.2",
+    android: { packageImportPath: "import com.reactnativequickbase64.QuickBase64Package;", packageInstance: "new QuickBase64Package()" },
+    ios: { podspec: "react-native-quick-base64.podspec" }
+  },
+  {
+    // `crypto` and `crypto.subtle`: a Nitro module over OpenSSL (and libsodium, when the plugin's `sodiumEnabled` is on). It links the vendored Nitro runtime by its project name and pod.
+    name: "react-native-quick-crypto",
+    version: "1.1.3",
+    android: { packageImportPath: "import com.margelo.nitro.quickcrypto.QuickCryptoPackage;", packageInstance: "new QuickCryptoPackage()" },
+    ios: { podspec: "QuickCrypto.podspec" }
+  },
+  {
+    // The `Intl` constructors Hermes lacks: a pure C++ TurboModule (no view, no module class: the `ReactPackage` is empty), so Android adds its CMake module to the app's build.
+    name: "hermes-intl",
+    version: "0.1.2",
+    android: { packageImportPath: "import dev.hermesintl.HermesIntlPackage;", packageInstance: "new HermesIntlPackage()", cxxModule: { cmakeListsModuleName: "hermesintl", cmakeListsPath: "android/CMakeLists.txt", headerName: "NativeHermesIntl" } },
+    ios: { podspec: "HermesIntl.podspec" }
   }
 ];
 var vendoredNames = vendoredPackages.map((vendored) => vendored.name);
@@ -1524,6 +1547,17 @@ function applyPodfileVendoredLinking(contents, links = []) {
   return `${stripped.slice(0, anchor.index)}${block}
 ${stripped.slice(anchor.index)}`;
 }
+var podfileSodiumBegin = "# Svelte native: libsodium for react-native-quick-crypto (generated, do not edit)";
+var podfileSodiumEnd = "# Svelte native: end of libsodium";
+function applyPodfileSodium(contents, enabled) {
+  const stripped = contents.replace(new RegExp(`(^|\\n)${escapeRegExp(podfileSodiumBegin)}[\\s\\S]*?${escapeRegExp(podfileSodiumEnd)}(?:\\n|$)`), "$1");
+  return enabled ? `${[podfileSodiumBegin, "ENV['SODIUM_ENABLED'] = '1'", podfileSodiumEnd].join("\n")}
+${stripped}` : stripped;
+}
+function applyGradleSodium(properties, enabled) {
+  const others = properties.filter((item) => !(item.type === "property" && item.key === "sodiumEnabled"));
+  return enabled ? [...others, { type: "property", key: "sodiumEnabled", value: "true" }] : others;
+}
 function headlessPackageSource(applicationId) {
   const dropped = headlessDroppedTurboModules.map((name) => `"${name}"`).join(", ");
   return `package ${applicationId}
@@ -1659,6 +1693,8 @@ var withLibraries = (config, libraries) => {
   return { ...config, extra: { ...config.extra, [EXTRA_KEY]: { ...svelteNative, libraries: [...libraries.enabled] } } };
 };
 var withSvelteNative = (config, options) => {
+  if (options?.sodiumEnabled !== void 0 && typeof options.sodiumEnabled !== "boolean") throw new Error(`Svelte native: sodiumEnabled must be true or false, not ${JSON.stringify(options.sodiumEnabled)}`);
+  const sodium = options?.sodiumEnabled === true;
   const libraries = checkLibraries(options?.libraries);
   const links = libraryLinks(libraries.enabled);
   config = leaveOutOfAutoPlugins(config, options?.autolinkingExclude ?? []);
@@ -1701,7 +1737,11 @@ var withSvelteNative = (config, options) => {
     return config2;
   });
   config = (0, import_config_plugins3.withPodfile)(config, (config2) => {
-    config2.modResults.contents = applyPodfileVendoredLinking(applyPodfileAutolinkingExclude(config2.modResults.contents, [...options?.autolinkingExclude ?? [], ...links.expoOff], links.expo), links.reactNative);
+    config2.modResults.contents = applyPodfileSodium(applyPodfileVendoredLinking(applyPodfileAutolinkingExclude(config2.modResults.contents, [...options?.autolinkingExclude ?? [], ...links.expoOff], links.expo), links.reactNative), sodium);
+    return config2;
+  });
+  config = (0, import_config_plugins3.withGradleProperties)(config, (config2) => {
+    config2.modResults = applyGradleSodium(config2.modResults, sodium);
     return config2;
   });
   if (options?.androidProfileable) {
@@ -1761,10 +1801,12 @@ function baselineProfile() {
   androidFeatureFlagsFor,
   applyAppDelegate,
   applyFeatureFlags,
+  applyGradleSodium,
   applyHeadlessApplication,
   applyHeadlessSettings,
   applyMainActivity,
   applyPodfileAutolinkingExclude,
+  applyPodfileSodium,
   applyPodfileVendoredLinking,
   assertNoVendoredOriginals,
   baselineProfile,

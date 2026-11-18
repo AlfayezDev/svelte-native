@@ -74,7 +74,7 @@ test("the example app, installed and patched by the repository, passes every che
   // check that skips here is that, and the test below runs the shipped doctor on Node, which reads it.
   expect(checks.filter((entry) => entry.status !== "pass" && !entry.message.startsWith("could not read the app's config"))).toEqual([]);
   expect(checks.filter((entry) => entry.group === "patches")).toHaveLength(patchFiles().length);
-  expect(checks.filter((entry) => entry.group === "peer dependencies").length).toBeGreaterThan(15);
+  expect(checks.filter((entry) => entry.group === "peer dependencies").length).toBeGreaterThan(10);
 });
 
 describe("which Node the doctor holds an app to", () => {

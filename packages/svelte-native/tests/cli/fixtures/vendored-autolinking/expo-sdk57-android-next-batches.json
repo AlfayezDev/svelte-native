@@ -1,23 +1,4 @@
 {
-  "hermes-intl": {
-    "root": "$PACKAGE",
-    "name": "hermes-intl",
-    "platforms": {
-      "android": {
-        "sourceDir": "$PACKAGE/android",
-        "packageImportPath": "import dev.hermesintl.HermesIntlPackage;",
-        "packageInstance": "new HermesIntlPackage()",
-        "buildTypes": [],
-        "libraryName": "HermesIntlSpec",
-        "componentDescriptors": [],
-        "cmakeListsPath": "$PACKAGE/android/build/generated/source/codegen/jni/CMakeLists.txt",
-        "cxxModuleCMakeListsModuleName": "hermesintl",
-        "cxxModuleCMakeListsPath": "$PACKAGE/android/CMakeLists.txt",
-        "cxxModuleHeaderName": "NativeHermesIntl",
-        "isPureCxxDependency": false
-      }
-    }
-  },
   "react-native-gesture-handler": {
     "root": "$PACKAGE",
     "name": "react-native-gesture-handler",
@@ -32,25 +13,6 @@
           "RNGestureHandlerButtonComponentDescriptor",
           "RNGestureHandlerRootViewComponentDescriptor"
         ],
-        "cmakeListsPath": "$PACKAGE/android/build/generated/source/codegen/jni/CMakeLists.txt",
-        "cxxModuleCMakeListsModuleName": null,
-        "cxxModuleCMakeListsPath": null,
-        "cxxModuleHeaderName": null,
-        "isPureCxxDependency": false
-      }
-    }
-  },
-  "react-native-quick-crypto": {
-    "root": "$PACKAGE",
-    "name": "react-native-quick-crypto",
-    "platforms": {
-      "android": {
-        "sourceDir": "$PACKAGE/android",
-        "packageImportPath": "import com.margelo.nitro.quickcrypto.QuickCryptoPackage;",
-        "packageInstance": "new QuickCryptoPackage()",
-        "buildTypes": [],
-        "libraryName": "QuickCrypto",
-        "componentDescriptors": [],
         "cmakeListsPath": "$PACKAGE/android/build/generated/source/codegen/jni/CMakeLists.txt",
         "cxxModuleCMakeListsModuleName": null,
         "cxxModuleCMakeListsPath": null,

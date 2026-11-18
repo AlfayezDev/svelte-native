@@ -138,7 +138,8 @@ export const checks: Check[] = [
 		module: "quick-crypto",
 		path: "js",
 		run: () => {
-			const { createHash, randomBytes } = require("react-native-quick-crypto") as typeof import("react-native-quick-crypto");
+			// By its name, as an app's own code would import it: Metro resolves it to the library's copy (the library carries quick-crypto, VENDORING.md), which is what the check is for.
+			const { createHash, randomBytes } = require("react-native-quick-crypto") as { createHash(algorithm: string): { update(data: string): { digest(encoding: "hex"): string } }; randomBytes(size: number): Uint8Array };
 			const random = randomBytes(16);
 			const digest = createHash("sha256").update("abc").digest("hex");
 			expect(random.length === 16 && looksRandom(random), `randomBytes(16) gave ${hex(random)}`);
@@ -150,7 +151,8 @@ export const checks: Check[] = [
 		module: "quick-base64",
 		path: "js",
 		run: () => {
-			const base64 = require("react-native-quick-base64") as typeof import("react-native-quick-base64");
+			// The library's copy too, by the name Metro resolves.
+			const base64 = require("react-native-quick-base64") as { fromByteArray(bytes: Uint8Array): string; toByteArray(text: string): Uint8Array; atob(text: string): string; btoa(text: string): string };
 			const text = "Svelte Native";
 			const encoded = base64.fromByteArray(ascii(text));
 			const decoded = String.fromCharCode(...base64.toByteArray(encoded));

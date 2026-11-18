@@ -267,7 +267,7 @@ describe("headless Android config", () => {
     expect(once).toContain("rnConfigCommand + svelteNativeExcludeArgs");
     expect(applyHeadlessSettings(once)).toBe(once);
   });
-  test("settings.gradle: React Native's config command runs through the library's android-autolinking, found from the app; the community CLI's does not", () => {
+  test("settings.gradle: React Native's config command runs through the library's android-autolinking, found from the app, and so does the community CLI's", () => {
     const once = applyHeadlessSettings(settings);
     expect(once).toContain("ex.autolinkLibrariesFromCommand(svelteNativeConfigCommand + expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs, svelteNativeAppRoot.asFile, svelteNativeLockFiles)");
     // React Native's lockfiles (its default for the command's cache), the CLI and settings.gradle itself: a new library version, and a changed `libraries` (its `--link` arguments), run the command again.
@@ -285,7 +285,12 @@ describe("headless Android config", () => {
   }
 }
 `;
-    expect(applyHeadlessSettings(community)).toContain("    ex.autolinkLibrariesFromCommand()\n");
+    // The copies are in no package.json, so the community CLI's command (React Native's default, `cmd /c` first on Windows) goes through android-autolinking too, with React Native's cache files.
+    const wrapped = applyHeadlessSettings(community);
+    expect(wrapped).toContain("    ex.autolinkLibrariesFromCommand(svelteNativeConfigCommand + svelteNativeCommunityCommand, svelteNativeAppRoot.asFile, svelteNativeLockFiles)\n");
+    expect(wrapped).toContain('def svelteNativeCommunityCommand = (System.getProperty("os.name").toLowerCase().contains("windows") ? ["cmd", "/c"] : []) + ["npx", "@react-native-community/cli", "config"]');
+    expect(wrapped).not.toContain("ex.autolinkLibrariesFromCommand()");
+    expect(applyHeadlessSettings(wrapped)).toBe(wrapped);
   });
   test("settings.gradle: the block an older version wrote (no android-autolinking) is replaced by the new one", () => {
     // What 0.4.0-rc.8 wrote: the block before the extension, and the command with the excludes only.

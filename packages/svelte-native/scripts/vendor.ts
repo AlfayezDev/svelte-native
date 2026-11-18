@@ -223,8 +223,10 @@ if (import.meta.main) {
     const patchDirectory = join(patchesDirectory, name);
     // Named from the package's root, as `VENDOR.md` records them: the same copy is the same bytes on every machine.
     const patches = existsSync(patchDirectory) ? readdirSync(patchDirectory).filter((file) => file.endsWith(".patch")).sort().map((file) => `vendor-patches/${name}/${file}`) : [];
+    // Before the copy is replaced: a tarball that is not what npm reported leaves the old copy as it is.
+    const packed = integrityOf(readFileSync(tarball));
+    if (packed !== integrity) throw new Error(`the tarball's integrity ${packed} is not the one npm reported, ${integrity}`);
     const vendored = vendorTarball({ tarball, name, version, exclude: take("--exclude"), patches, license, licenseUrl });
-    if (vendored.integrity !== integrity) throw new Error(`the tarball's integrity ${vendored.integrity} is not the one npm reported, ${integrity}`);
     console.log(`vendor/${name}  ${vendored.files} files from ${name}@${version} (${vendored.integrity})`);
   } finally {
     rmSync(scratch, { recursive: true, force: true });

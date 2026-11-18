@@ -139,6 +139,15 @@ describe("collisions", () => {
     expect(() => withLibraries({ ...base, plugins: ["expo-font", ["expo-camera", {}]] } as never, checkLibraries({}))).not.toThrow();
   });
 
+  test("an app that still lists quick-crypto's plugin (or another package the library carries) is refused, and told where `sodiumEnabled` went", () => {
+    let refused: unknown;
+    try { withLibraries({ ...base, plugins: [["react-native-quick-crypto", { sodiumEnabled: true }]] } as never, checkLibraries({})); } catch (error) { refused = error; }
+    expect(refused).toBeInstanceOf(LibrariesConfigError);
+    expect((refused as Error).message).toContain("`plugins` lists react-native-quick-crypto, which @alfayez/svelte-native carries and links itself");
+    expect((refused as Error).message).toContain('["@alfayez/svelte-native", { sodiumEnabled: true }]');
+    expect(() => withLibraries({ ...base, plugins: ["react-native-reanimated"] } as never, checkLibraries({}))).toThrow("`plugins` lists react-native-reanimated");
+  });
+
   test("an app whose package.json lists a library is refused before anything is written, whether the library is on or not", () => {
     expect(() => assertNoVendoredOriginals(app({ "react-native-maps": "1.27.2" }))).toThrow(collisionMessage(["react-native-maps"]));
     expect(() => assertNoVendoredOriginals(app({ "expo-image": "~57.0.5", "lottie-react-native": "~7.3.8" }))).toThrow("includes expo-image 57.0.5 and lottie-react-native 7.3.8; remove them from");

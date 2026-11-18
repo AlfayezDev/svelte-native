@@ -187,10 +187,11 @@ function vendorSpellings(root: string): readonly string[] {
  */
 export function vendoredFileAs(path: string, root: string = packageRoot): string | undefined {
   for (const directory of vendorSpellings(root)) {
-    const inside = relative(directory, path);
-    if (inside !== "" && !inside.startsWith("..") && !isAbsolute(inside)) {
-      const name = vendoredPackages.find((vendored) => inside === vendored.name || inside.startsWith(`${vendored.name}${sep}`))?.name;
-      if (name !== undefined) return inside.split(sep).join("/");
+    const relativePath = relative(directory, path);
+    if (relativePath !== "" && !relativePath.startsWith("..") && !isAbsolute(relativePath)) {
+      // Forward slashes, as package names have them (`@react-native-community/datetimepicker`), whatever the platform's separator.
+      const inside = relativePath.split(sep).join("/");
+      if (vendoredPackages.some((vendored) => inside === vendored.name || inside.startsWith(`${vendored.name}/`))) return inside;
     }
   }
   return undefined;
@@ -285,7 +286,7 @@ export function collisionMessage(names: readonly string[], library = "@alfayez/s
   const optional = names.filter((name) => vendoredPackage(name)?.optional !== undefined);
   // An optional library is the app's to turn on: its options go to the plugin, and the rest of the message is the pilot's.
   const turnOn = optional.length === 0 ? "" : ` ${optional.length === 1 ? "It is" : "They are"} optional: turn ${optional.length === 1 ? "it" : "them"} on with \`libraries: { ${optional.map((name) => `"${name}": true`).join(", ")} }\` in the ${library} plugin's options (its own plugin options go there instead of in \`plugins\`).`;
-  return `${library} includes ${list.join(" and ")}; remove ${them} from the app's dependencies (package.json), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it. A library of the app that asks for ${them} as a peer dependency is served by the copy (Metro resolves the name to it; the Gradle project and the pod keep the name), so nothing needs to take ${them === "it" ? "its" : "their"} place.${turnOn}`;
+  return `${library} includes ${list.join(" and ")}; remove ${them} from the app's dependencies (package.json) and any `patchedDependencies` entry for ${them} (pnpm stops on a patch of a package it no longer installs), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it. A library of the app that asks for ${them} as a peer dependency is served by the copy (Metro resolves the name to it; the Gradle project and the pod keep the name), so nothing needs to take ${them === "it" ? "its" : "their"} place.${turnOn}`;
 }
 
 /** Raised by `linkVendored` for an app that declares a vendored package itself. */

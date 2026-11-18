@@ -15,3 +15,4 @@ Third-party code, copied into this package (VENDORING.md). Nothing here is edite
 ## Local changes
 
 - `vendor-patches/react-native-maps/0001-deliver-discrete-events-one-by-one.patch` (sha256 `1ffa4c63d3c0fae9aceedbef730c1e7749d9cb87fa6b076803f00e34df88cab7`), applied with `patch -p1` after the unpack
+- `vendor-patches/react-native-maps/0002-the-podfile-finds-the-copy.patch` (sha256 `1a120968a3d9bba8da6b690e93841f4ff802ef0dfdd7dc175cfaa97cbc2430fa`), applied with `patch -p1` after the unpack

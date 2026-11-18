@@ -177,7 +177,11 @@ function vendored(context: Context, libraryName: string): Check[] {
 function libraries(context: Context, libraryName: string): Check {
   const group = "vendored packages";
   const read = appPluginOptions(context.appRoot, join(context.appRoot, "package.json"));
-  if (read === undefined) return { group, status: "skip", message: "could not read the app's config (expo/config), so the optional libraries it turns on were not checked (`npx expo config` shows the config)" };
+  // The plugin checks `libraries` while Expo reads the config, so an invalid one is what made the config unreadable.
+  if ("error" in read && read.error instanceof Error && read.error.name === "LibrariesConfigError") {
+    return { group, status: "fail", message: read.error.message, fix: `fix \`libraries\` in the ${libraryName} plugin's options (app.json or app.config.*), then prebuild again` };
+  }
+  if ("unknown" in read) return { group, status: "skip", message: `${read.unknown}, so the optional libraries it turns on were not checked (\`npx expo config\` shows the config)` };
   try {
     const { enabled, listed } = checkLibraries(read.options?.libraries);
     if (enabled.length === 0) return { group, status: "pass", message: "no optional library is turned on (libraries): none of their native code is in the app" };

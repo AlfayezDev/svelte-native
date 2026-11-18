@@ -52,6 +52,8 @@ The decision is made twice from the one option, so a build and its bundle agree:
 
 Not changed by any of this: the library's own foreign components (`/foreign`) mount the native views by name and import none of these packages, so nothing of an unused library is evaluated; JavaScript dependencies of the copies (`sf-symbols-typescript`, `crypto-js`, `base-64`, `nullthrows`, ...) are only reached by an app that imports a library's JavaScript itself, which none of the components do, and are not installed (an app that does add them to its own `package.json`).
 
+The config plugins of the copies (react-native-maps, the date and time picker, react-native-video) require `@expo/config-plugins` by that name, which the library does not declare: Node finds it where the app's `expo` put it, at the top of its `node_modules` (npm, Yarn, and pnpm's default hoisting). A pnpm install with `hoist=false` does not, and the prebuild then stops at "Cannot find module '@expo/config-plugins'" when one of those libraries is on.
+
 ## Collisions
 
 An original must not be linked beside a copy.

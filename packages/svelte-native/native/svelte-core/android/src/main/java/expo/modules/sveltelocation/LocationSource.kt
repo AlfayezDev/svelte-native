@@ -32,24 +32,21 @@ internal class LocationSource(private val context: Context) {
   private val manager: LocationManager? = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
   private val executor = ContextCompat.getMainExecutor(context)
   private val pending: MutableSet<CancellationSignal> = Collections.synchronizedSet(HashSet())
-  private val watches = LocationWatches<ActiveWatch>()
+  private val watches = LocationWatches<LocationListenerCompat>()
 
   @Volatile
   private var stopped = false
-
-  /** A running watch: the listener that stops it. */
-  private class ActiveWatch(val listener: LocationListenerCompat)
 
   /** Whether the app may use the location at all (the precise or the approximate permission). */
   fun permitted(): Boolean = granted(Manifest.permission.ACCESS_FINE_LOCATION) || granted(Manifest.permission.ACCESS_COARSE_LOCATION)
 
   private fun granted(permission: String) = ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
-  /** Whether the platform has the provider and it is switched on (`isProviderEnabled` throws for none the platform does not have). */
   /** The platform's request quality for an accuracy: what a one-off position on API 31 and later asks the provider for. */
   private fun qualityOf(accuracy: LocationAccuracy): Int =
     if (accuracy == LocationAccuracy.HIGH) LocationRequest.QUALITY_HIGH_ACCURACY else LocationRequest.QUALITY_BALANCED_POWER_ACCURACY
 
+  /** Whether the platform has the provider and it is switched on (`isProviderEnabled` throws for none the platform does not have). */
   private fun available(manager: LocationManager, name: String): Boolean =
     try {
       LocationManagerCompat.hasProvider(manager, name) && manager.isProviderEnabled(name)
@@ -153,23 +150,22 @@ internal class LocationSource(private val context: Context) {
       .setQuality(if (LocationRules.effectiveAccuracy(accuracy) { name -> available(manager, name) } == LocationAccuracy.HIGH) LocationRequestCompat.QUALITY_HIGH_ACCURACY else LocationRequestCompat.QUALITY_BALANCED_POWER_ACCURACY)
       .setMinUpdateDistanceMeters(distanceMeters)
       .build()
-    val watch = ActiveWatch(listener)
-    watches.add(id, watch)?.let { stopListener(manager, it) }
+    watches.add(id, listener)?.let { LocationManagerCompat.removeUpdates(manager, it) }
     return try {
       LocationManagerCompat.requestLocationUpdates(manager, chosen, request, listener, Looper.getMainLooper())
       null
     } catch (error: SecurityException) {
-      watches.removeIf(id, watch)
+      watches.removeIf(id, listener)
       LocationFailures.unauthorized
     } catch (error: IllegalArgumentException) {
-      watches.removeIf(id, watch)
+      watches.removeIf(id, listener)
       LocationFailures.noProvider
     }
   }
 
   fun stopWatch(id: Int) {
     val manager = manager ?: return
-    watches.remove(id)?.let { stopListener(manager, it) }
+    watches.remove(id)?.let { LocationManagerCompat.removeUpdates(manager, it) }
   }
 
   /** Ends every watch and every request that waits for a position, and answers none of them: the module is going. */
@@ -180,11 +176,7 @@ internal class LocationSource(private val context: Context) {
       pending.clear()
     }
     val manager = manager ?: return
-    for (watch in watches.clear()) stopListener(manager, watch)
-  }
-
-  private fun stopListener(manager: LocationManager, watch: ActiveWatch) {
-    LocationManagerCompat.removeUpdates(manager, watch.listener)
+    for (listener in watches.clear()) LocationManagerCompat.removeUpdates(manager, listener)
   }
 
   private fun fixOf(location: Location): LocationFix =

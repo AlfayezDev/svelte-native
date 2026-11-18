@@ -50,7 +50,7 @@ The header is shown when the screen has a `title`, a `subtitle`, a `header` opti
 | `navigationBar` | `{ color?: string; style?: 'auto' \| 'light' \| 'dark' }` | Android: the system navigation bar while this screen is on top. |
 | `animation` | `'default' \| 'none' \| 'fade' \| 'slide_from_right' \| 'slide_from_bottom'` | How the screen is pushed and popped. Modals and sheets keep the platform's animation. |
 | `gestureEnabled` | `boolean` | `false` stops the user from swiping the screen away: the iOS edge swipe back, and swiping a modal down. Default `true`. A sheet has `sheet.dismissible` instead. |
-| `style` | `ViewStyle` | The style of the screen's content area. `backgroundColor` is the usual one. |
+| `style` | `ViewStyle` | The style of the screen's content area. `backgroundColor` is the usual one. Without one the screen takes the background of the screen it is in (a tab's screens take the tab bar screen's), else the system's in the app's light or dark mode; a transparent modal has none. |
 | `class` | `ClassValue` | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs the `css` option ([Classes](styling#classes)). |
 | `onAppear` | `() => void` | The screen finished appearing. |
 | `onDisappear` | `() => void` | The screen finished disappearing: something covered it, or it left. |

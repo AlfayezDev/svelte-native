@@ -42,9 +42,9 @@ The root layout, `src/routes/+layout.mobile.svelte`, holds the app's root stack,
 
 Each screen's own [`Screen`](screen) options win over these, option by option, and object options merge key by key. A stack without `Stack` gives its screens no defaults.
 
-## Give every screen a background
+## Screen backgrounds
 
-React Native screens are transparent. Without a background, a pushed screen draws over the one below it while it slides in, and both show at once. `style={{ backgroundColor }}` on the `Stack` gives every screen one; [light and dark mode](styling#light-and-dark-mode) shows how to follow the system's colours.
+Every screen is opaque, so a pushed screen covers the one below it while it slides in. One without a background of its own takes the one of the screen it is in: the screens of a tab, or of a nested stack, look as the screen around them does. A screen inside none has the system's: white or black on iOS, Material's surface on Android, in the app's light or dark mode. A transparent modal has none. `style={{ backgroundColor }}` (or a `class`) on the `Stack` gives every screen of the stack yours, and the stacks inside them take it; [light and dark mode](styling#light-and-dark-mode) shows how to switch it with the mode.
 
 ## Loading
 

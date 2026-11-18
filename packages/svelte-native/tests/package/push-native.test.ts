@@ -77,20 +77,24 @@ describe("expo-module.config.json links push's module and subscriber in svelte-c
     expect(existsSync(join(core, "test/ios/SveltePushMessageCheck.swift"))).toBe(true);
   });
 
-  test("Android: one Package registers push's two listeners, found by autolinking from its name and its import, and nothing else registers them", () => {
+  test("Android: one Package registers push's two listeners, found by autolinking from its name and its import, and nothing else registers them (the night mode's package registers one of its own)", () => {
     // `expo-modules-autolinking` (`platforms/android/android.js`) scans the project for files named `*Package.kt` that import `expo.modules.core.interfaces.Package`.
     const packages = filesUnder(join(core, "android"))
       .filter((file) => /Package\.(kt|java)$/.test(file) && /\bimport\s+expo\.modules\.core\.(interfaces\.Package|BasePackage)\b/.test(readFileSync(file, "utf8")))
       .map((file) => file.slice(join(core, "android/src/main/java/").length))
       .sort();
-    expect(packages).toEqual(["expo/modules/svelteupdates/SvelteUpdatesPackage.kt", "expo/modules/sveltepush/SveltePushPackage.kt"].sort());
+    expect(packages).toEqual(["expo/modules/svelteupdates/SvelteUpdatesPackage.kt", "expo/modules/sveltepush/SveltePushPackage.kt", "expo/modules/svelteappearance/SvelteAppearancePackage.kt"].sort());
     const source = read("native/svelte-core/android/src/main/java/expo/modules/sveltepush/SveltePushPackage.kt");
     expect(source).toContain("class SveltePushPackage : Package");
     // Gated: both lists are empty unless the flag the plugin writes is there.
     expect(source).toContain("if (!PushManifest.enabled(context)) return emptyList()");
     expect(source).toContain("if (!PushManifest.enabled(activityContext)) return emptyList()");
     const registering = filesUnder(join(core, "android/src/main")).filter((file) => file.endsWith(".kt") && /(ApplicationLifecycleListener|ReactActivityLifecycleListener) \{|createReactActivityLifecycleListeners|createApplicationLifecycleListeners/.test(readFileSync(file, "utf8")));
-    expect(registering.map((file) => file.split("/").pop()).sort()).toEqual(["PushTapListener.kt", "SveltePushPackage.kt"]);
+    expect(registering.map((file) => file.split("/").pop()).sort()).toEqual(["PushTapListener.kt", "SvelteAppearancePackage.kt", "SveltePushPackage.kt"]);
+    // The app's night mode (`src/user-interface-style.ts`): one application listener, only when the plugin wrote the app's style, and nothing at an activity's start.
+    const appearance = read("native/svelte-core/android/src/main/java/expo/modules/svelteappearance/SvelteAppearancePackage.kt");
+    expect(appearance).toContain("val night = AppearanceRules.night(style(context)) ?: return emptyList()");
+    expect(appearance).not.toContain("createReactActivityLifecycleListeners");
   });
 });
 

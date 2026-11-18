@@ -7,7 +7,7 @@
 import type { Plugin } from "esbuild";
 import { resolve } from "node:path";
 import { reanimatedStubs, type AnimLog } from "../../support/reanimated-stubs.ts";
-import { type HostPluginOptions, hostPlugin as supportHostPlugin, load as loadBundle, src } from "../../support/bundle.ts";
+import { appearanceStub, type HostPluginOptions, hostPlugin as supportHostPlugin, load as loadBundle, src } from "../../support/bundle.ts";
 import { type FakeNode, type Installed, createHost } from "../../support/host.ts";
 
 export type { FakeNode };
@@ -52,6 +52,7 @@ export default {
 const stubs: Record<string, string> = {
   ...reanimatedStubs,
   "react-native/Libraries/Utilities/Platform": "export default { get OS() { return globalThis.__gh.os; }, Version: 34 };",
+  "react-native/Libraries/Utilities/Appearance": appearanceStub,
   "react-native/Libraries/Image/resolveAssetSource": "export default () => null;",
   "react-native/Libraries/Components/View/ViewNativeComponent": "export {};",
   "react-native/Libraries/Text/TextNativeComponent": "export {};",

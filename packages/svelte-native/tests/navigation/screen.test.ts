@@ -221,11 +221,12 @@ test("presentation, sheet and system bar options reach the screen nativeID and s
   app.set({ presentation: "sheet", sheet: { detents: [0.4, 1], initialDetent: 1, grabber: false } });
   await flush();
   expect(screen().props.nativeID).toBe("svelte:screen;a=2;p=sheet;g=1;s=default;b=1;dt=0.4,1;di=1;gr=0");
-  expect(flat(screen().props.style)).toEqual({ position: "absolute", left: 0, right: 0, bottom: 0, maxHeight: 776, height: 776 });
+  // A sheet is opaque: it has the system's background (Android's surface; `screen-background.test.ts`).
+  expect(flat(screen().props.style)).toEqual({ position: "absolute", left: 0, right: 0, bottom: 0, maxHeight: 776, height: 776, backgroundColor: "#FFFBFE" });
   app.set({ presentation: "formSheet" });
   await flush();
   expect(screen().props.nativeID).toBe("svelte:screen;a=2;p=formSheet;g=1;s=default;b=1");
-  expect(flat(screen().props.style)).toEqual({ position: "absolute", top: 24, left: 0, right: 0, bottom: 0 });
+  expect(flat(screen().props.style)).toEqual({ position: "absolute", top: 24, left: 0, right: 0, bottom: 0, backgroundColor: "#FFFBFE" });
   app.set({ presentation: "transparentModal", animation: "fade", gestureEnabled: false, nativeBackButtonDismissalEnabled: false, activityState: 1, statusBar: { style: "light", hidden: true }, navigationBar: { color: "#000", style: "light" } });
   await flush();
   expect(screen().props.nativeID).toBe("svelte:screen;a=1;p=transparentModal;g=0;s=fade;b=0;ss=l;sx=1;nc=000000ff;ns=l");

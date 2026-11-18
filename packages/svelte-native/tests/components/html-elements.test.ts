@@ -22,6 +22,8 @@ afterAll(() => world.restore());
 
 /** A page of this file: `components/fixtures/<name>`. The harness takes a path. */
 const fixture = (name: string) => resolve(import.meta.dirname, "fixtures", name);
+/** The colour of a paragraph with none of its own: the system's text colour, Android's (the harness's) in the light mode (`system-colors.ts`, `components/text-ink.test.ts`). */
+const INK = "#1C1B1F";
 
 let surface = 500;
 let started: { m: Module; tag: number } | undefined;
@@ -375,9 +377,9 @@ test("text style of an HTML element reaches the text and the inputs below it, th
   expect(flat(byID("deep").props.style)).toEqual({ ...outer, fontWeight: "700", lineHeight: 30 });
   expect(flat(byID("own").props.style)).toEqual({ color: "red", fontSize: 20, fontWeight: "700", lineHeight: 30 });
   expect(flat(byID("field").props.style)).toMatchObject(outer);
-  // A Text from the package has React Native's semantics, and so has a View: it neither takes the style nor gives one.
-  expect(byID("rn-text").props.style).toBeUndefined();
-  expect(flat(byID("rn-child").props.style)).toEqual({});
+  // A Text from the package has React Native's semantics, and so has a View: it neither takes the style nor gives one. It has the system's text colour, as any text with none.
+  expect(byID("rn-text").props.style).toEqual({ color: INK });
+  expect(flat(byID("rn-child").props.style)).toEqual({ color: INK });
   // A button's class: the text inside it is white.
   expect(flat(byID("button").props.style)).toMatchObject({ backgroundColor: "#0000ff" });
   expect(flat(all(byID("button").children).find((candidate) => candidate.name === "RCTText")?.props.style)).toEqual({ color: "#ffffff" });
@@ -403,16 +405,16 @@ test("a change to an element's text style reaches the text below it, and a font 
   expect(flat(byID("field").props.style).color).toBe("black");
   expect(flat(all(byID("outer").children).find((candidate) => candidate.name === "RCTText")?.props.style).color).toBe("black");
   // `text-lg` on a div gives its descendants 18; `leading-snug` of a paragraph (or of a div between) is 1.25 of that, and a line height the div gave is its factor, not a size.
-  expect(flat(byID("relative").props.style)).toEqual({ fontSize: 18, lineHeight: 22.5 });
-  expect(flat(byID("relative-deep").props.style)).toEqual({ fontSize: 18, lineHeight: 22.5 });
-  expect(flat(byID("inherited-factor").props.style)).toEqual({ fontSize: 18, lineHeight: 27 });
-  expect(flat(byID("inline-relative").props.style)).toEqual({ fontSize: 10, lineHeight: 20 });
+  expect(flat(byID("relative").props.style)).toEqual({ color: INK, fontSize: 18, lineHeight: 22.5 });
+  expect(flat(byID("relative-deep").props.style)).toEqual({ color: INK, fontSize: 18, lineHeight: 22.5 });
+  expect(flat(byID("inherited-factor").props.style)).toEqual({ color: INK, fontSize: 18, lineHeight: 27 });
+  expect(flat(byID("inline-relative").props.style)).toEqual({ color: INK, fontSize: 10, lineHeight: 20 });
   // The class changes with state: what is below follows (a theme or a breakpoint changes a class the same way).
   api.setBig(false);
   await turns();
-  expect(flat(byID("relative").props.style)).toEqual({ fontSize: 14, lineHeight: 17.5 });
-  expect(flat(byID("relative-deep").props.style)).toEqual({ fontSize: 14, lineHeight: 17.5 });
-  expect(flat(byID("inherited-factor").props.style)).toEqual({ fontSize: 14, lineHeight: 17.5 });
+  expect(flat(byID("relative").props.style)).toEqual({ color: INK, fontSize: 14, lineHeight: 17.5 });
+  expect(flat(byID("relative-deep").props.style)).toEqual({ color: INK, fontSize: 14, lineHeight: 17.5 });
+  expect(flat(byID("inherited-factor").props.style)).toEqual({ color: INK, fontSize: 14, lineHeight: 17.5 });
 });
 
 test("style:property values are what a native style takes: px and numbers are dp, a percentage, a color or a keyword passes, a factor of the font size waits, anything else is left out with a warning", () => {
@@ -705,8 +707,8 @@ test("the default style of an element is a browser's, under its class and style:
   expect(style("pre")).toMatchObject({ fontFamily: "monospace", fontSize: 20 });
   // A link has no default: its color is the app's.
   expect(style("a")).not.toHaveProperty("color");
-  // The text of a paragraph does not take the bold of what is inside it.
-  expect(style("p")).toEqual({});
+  // The text of a paragraph does not take the bold of what is inside it: it has only the system's text colour.
+  expect(style("p")).toEqual({ color: INK });
 });
 
 // --- Round 4: the text context of an element changes, flex containers, runs that are kept ---

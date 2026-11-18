@@ -11,7 +11,8 @@
 import { bootSummary, mark, runBootTasks } from "../boot-marks.ts";
 import { loadReanimated } from "./reanimated-load.ts";
 import { onFirstCommit } from "../updates/launch.ts";
-import { resolveAssetSource, Platform, pixelRatio } from "./deps-rn.ts";
+import { resolveAssetSource, Platform, pixelRatio, appearance } from "./deps-rn.ts";
+import { textColor, type Scheme } from "../system-colors.ts";
 import { createPayload, diffPayload, viewConfigFor } from "./view-configs.ts";
 import { requireOptionalNativeModule } from "./deps-expo.ts";
 import { droppedReasons, freshNavigation } from "../navigation-restore.ts";
@@ -586,6 +587,63 @@ function splitProps(attributes: Record<string, unknown>, into: State, navigation
 
 const isTextInputView = (viewName: string) => viewName === "AndroidTextInput" || viewName === "RCTSinglelineTextInputView" || viewName === "RCTMultilineTextInputView";
 
+/** The texts and inputs drawn in the default colour (`withInk`), to build again when the app switches between the light and the dark mode. */
+const inked = new Set<NativeNode>();
+let inkScheme: Scheme | null = null;
+const inkStyles = new Map<Scheme, { color: string }>();
+
+function schemeNow(): Scheme {
+  return appearance().getColorScheme() === "dark" ? "dark" : "light";
+}
+
+/** The default colour as a style, the same object for a mode, so a text built again in the same mode sends nothing. Listens for the mode the first time it is asked. */
+function inkStyle(): { color: string } {
+  if (inkScheme === null) {
+    inkScheme = schemeNow();
+    appearance().addChangeListener(() => {
+      const next = schemeNow();
+      if (next === inkScheme) return;
+      inkScheme = next;
+      for (const node of inked) {
+        const own = stateOf(node);
+        if (own === null || own.dead || !attached(node)) inked.delete(node);
+        else onInvalidate(node, "props");
+      }
+    });
+  }
+  let style = inkStyles.get(inkScheme);
+  if (!style) {
+    style = { color: textColor(inkScheme, Platform.OS) };
+    inkStyles.set(inkScheme, style);
+  }
+  return style;
+}
+
+/** Whether a node is still in a surface: one taken out of the tree (or a run whose text is gone) is no longer built, so the mode has nothing to change in it. */
+function attached(node: NativeNode): boolean {
+  for (let at: NativeNode | null = node; at; at = at.parent) if (at.surfaceRoot) return true;
+  return false;
+}
+
+function hasColor(style: unknown): boolean {
+  if (Array.isArray(style)) return style.some(hasColor);
+  return style !== null && typeof style === "object" && (style as { color?: unknown }).color != null;
+}
+
+/**
+ * A text (the paragraph: a span takes its colour from it) or a text input with no colour of its own, from its style, its class or the HTML elements above it, is drawn in the
+ * system's text colour of the app's light or dark mode (`system-colors.ts`), under everything else. React Native draws it black in both modes, so it vanished on a dark screen.
+ */
+function withInk(node: NativeNode, props: Record<string, unknown>): void {
+  if (hasColor(props.style)) {
+    inked.delete(node);
+    return;
+  }
+  const ink = inkStyle();
+  props.style = props.style === undefined || props.style === null ? ink : [ink, props.style];
+  inked.add(node);
+}
+
 function isText(node: NativeNode): boolean { return node.name === "native-text"; }
 
 /**
@@ -893,6 +951,7 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   // `gesture` never reaches the payload either; the gesture host forces `collapsable: false` so the view keeps its tag.
   const gestured = gestures || attributes.gesture !== undefined ? loadGestures().gestureProps(node, current, animated) : animated;
   const rnProps = splitProps(node.name === "native-image" ? imageProps(gestured) : navigationTags.has(node.name) ? navigationProps(node.name, gestured) : gestured, current, navigationTags.has(node.name));
+  if (viewName === "RCTText" || isTextInputView(viewName)) withInk(node, rnProps);
   const scroll = viewName === "RCTScrollView";
   const view = only === undefined && html && isViewTag(node);
   // A flex container's children are items: each element is one, and each run of text is an anonymous one. Which it is, is read from the style (`html-flow.ts`), and a change of it is a change of the children.

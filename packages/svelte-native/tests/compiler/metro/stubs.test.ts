@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { createRequire } from "node:module";
-import { readFileSync, readdirSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, symlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
-import { isInPackage, stubCoreSource, stubSource, withSvelteNative } from "../../../src/metro.ts";
+import { isInPackage, pushPlatforms, stubCoreSource, stubSource, withSvelteNative } from "../../../src/metro.ts";
+import { packageRoot, sourceFile } from "../../../src/package-root.ts";
+import { vendored } from "../../support/paths.ts";
 import { type RealResolver, fakeConfig, resolveFrom, watchUntouched } from "../../support/metro.ts";
 import { createProject } from "../../support/project.ts";
 
@@ -59,7 +61,9 @@ describe("Metro resolves the packages an app does not link to stubs", () => {
     const plain = withSvelteNative(fakeConfig(root));
     expect(readdirSync(root)).toEqual([]);
     expect(plain.cacheVersion).toBe("+svelte-native-2");
-    expect(resolve(plain, "react-native-mmkv")).toBe("/real/react-native-mmkv");
+    // Not stubbed, and not the app's to resolve either: the library carries react-native-mmkv, so its name is the copy's (vendored.test.ts).
+    expect(resolve(plain, "react-native-mmkv")).toBe(`/real/${vendored("react-native-mmkv")}`);
+    expect(resolve(plain, "react-native-mmkv-extra")).toBe("/real/react-native-mmkv-extra");
     expect(withSvelteNative(fakeConfig(root), { stubbedPackages: ["x"], variant: "qa" }).cacheVersion).toBe("+svelte-native-2+stubs-qa");
     expect(withSvelteNative(fakeConfig(root), { stubbedPackages: ["x"], variant: "production" }).cacheVersion).toBe("+svelte-native-2+stubs-production");
   });
@@ -145,5 +149,63 @@ describe("what a stub does", () => {
     expect(() => module()).toThrow(message);
     expect(() => new (module as unknown as new () => unknown)()).toThrow(message);
     expect(typeof module[Symbol.iterator as unknown as string]).toBe("undefined");
+  });
+});
+
+describe("a platform whose push is off bundles push's stand-in, not its client", () => {
+  // The library's own file, as Metro finds it from `push/load.ts` and from the `./push` entry.
+  const library: RealResolver = (context, moduleName) => ({ type: "sourceFile", filePath: moduleName.startsWith(".") ? join(dirname(context.originModulePath), moduleName) : `/real/${moduleName}` });
+  const fromLoad = sourceFile("push/load.ts");
+  const client = sourceFile("push/push.svelte.ts");
+  const absent = sourceFile("push/absent.ts");
+  /**
+   * A project whose app.json gives the library's plugin these options. Expo's `getConfig` applies the plugins (that is what keeps their options in `exp.plugins`), so the
+   * library is linked into the project's node_modules, with a Google services file for the package push names.
+   */
+  const app = (options?: object, name = "@alfayez/svelte-native") => {
+    const project = createProject({}, "metro-push-");
+    project.write("package.json", JSON.stringify({ name: "app", version: "1.0.0", dependencies: { "@alfayez/svelte-native": "*" } }));
+    project.write("google-services.json", JSON.stringify({ project_info: { project_id: "p" }, client: [{ client_info: { android_client_info: { package_name: "dev.example.app" } } }] }));
+    project.write("app.json", JSON.stringify({ expo: { name: "app", slug: "app", android: { package: "dev.example.app" }, ios: { bundleIdentifier: "dev.example.app" }, plugins: [options === undefined ? name : [name, options]] } }));
+    mkdirSync(project.path("node_modules/@alfayez"), { recursive: true });
+    symlinkSync(packageRoot, project.path("node_modules/@alfayez/svelte-native"));
+    return project;
+  };
+  const resolveOn = (config: ConfigT, platform: string, origin = fromLoad, name = "./push.svelte.ts") => {
+    const resolveRequest = config.resolver.resolveRequest as (context: unknown, moduleName: string, platform: string) => { filePath: string };
+    return resolveRequest({ resolveRequest: (context: { originModulePath: string }, request: string) => library(context as never, request), originModulePath: origin, unstable_conditionNames: [] }, name, platform).filePath;
+  };
+
+  test("push off (the plugin with no options, or push: false): the client resolves to the stand-in by any import of it, on both platforms; nothing else moves", () => {
+    for (const options of [undefined, {}, { capabilities: { push: false } }]) {
+      using project = app(options);
+      const config = withSvelteNative(fakeConfig(project.directory), {});
+      expect(pushPlatforms(project.directory)).toEqual({ android: false, ios: false });
+      expect([resolveOn(config, "android"), resolveOn(config, "ios")]).toEqual([absent, absent]);
+      expect(resolveOn(config, "android", sourceFile("push/index.ts"))).toBe(absent);
+      expect(resolveOn(config, "android", fromLoad, "./client.ts")).toBe(sourceFile("push/client.ts"));
+      // A file of the app's own with the same name is the app's.
+      expect(resolveOn(config, "android", project.path("src/lib/a.ts"))).toBe(project.path("src/lib/push.svelte.ts"));
+    }
+  });
+
+  test("push on for one platform: that platform bundles the client, the other the stand-in", () => {
+    using android = app({ capabilities: { push: { android: { googleServicesFile: "./google-services.json" } } } });
+    const forAndroid = withSvelteNative(fakeConfig(android.directory), {});
+    expect(pushPlatforms(android.directory)).toEqual({ android: true, ios: false });
+    expect([resolveOn(forAndroid, "android"), resolveOn(forAndroid, "ios")]).toEqual([client, absent]);
+    using both = app({ capabilities: { push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } } } }, "@alfayez/svelte-native/app.plugin");
+    const forBoth = withSvelteNative(fakeConfig(both.directory), {});
+    expect([resolveOn(forBoth, "android"), resolveOn(forBoth, "ios")]).toEqual([client, client]);
+  });
+
+  test("a config that cannot be read, or push settings the plugin refuses, keep the client: the device's own flag decides then", () => {
+    using unreadable = createProject({}, "metro-push-");
+    unreadable.write("app.config.js", "throw new Error('broken config');");
+    expect(pushPlatforms(unreadable.directory)).toBeUndefined();
+    expect(resolveOn(withSvelteNative(fakeConfig(unreadable.directory), {}), "android")).toBe(client);
+    using refused = app({ capabilities: { push: {} } });
+    expect(pushPlatforms(refused.directory)).toBeUndefined();
+    expect(resolveOn(withSvelteNative(fakeConfig(refused.directory), {}), "ios")).toBe(client);
   });
 });

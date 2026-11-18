@@ -5,15 +5,14 @@
  */
 import { build } from "esbuild";
 import { afterAll, beforeAll } from "bun:test";
-import { createRequire } from "node:module";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { evaluate } from "../../support/bundle.ts";
 import { snapshotGlobals } from "../../support/globals.ts";
+import { vendored } from "../../support/paths.ts";
 
-const require = createRequire(import.meta.url);
-const root = join(dirname(require.resolve("react-native-gesture-handler/package.json")), "src");
+const root = join(vendored("react-native-gesture-handler"), "src");
 
 const reactNative = `
 export const Platform = { OS: 'android', Version: 34, select: (o) => o.android ?? o.default };

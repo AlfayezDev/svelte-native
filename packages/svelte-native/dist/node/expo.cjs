@@ -1,9 +1,11 @@
 "use strict";
 var __importMetaUrl = require("node:url").pathToFileURL(__filename).href;
 "use strict";
+var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -17,6 +19,14 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // src/expo.ts
@@ -25,10 +35,14 @@ __export(expo_exports, {
   androidFeatureFlagsFor: () => androidFeatureFlagsFor,
   applyAppDelegate: () => applyAppDelegate,
   applyFeatureFlags: () => applyFeatureFlags,
+  applyGradleSodium: () => applyGradleSodium,
   applyHeadlessApplication: () => applyHeadlessApplication,
   applyHeadlessSettings: () => applyHeadlessSettings,
   applyMainActivity: () => applyMainActivity,
   applyPodfileAutolinkingExclude: () => applyPodfileAutolinkingExclude,
+  applyPodfileSodium: () => applyPodfileSodium,
+  applyPodfileVendoredLinking: () => applyPodfileVendoredLinking,
+  assertNoVendoredOriginals: () => assertNoVendoredOriginals,
   baselineProfile: () => baselineProfile,
   default: () => expo_default,
   defaultAndroidFeatureFlags: () => defaultAndroidFeatureFlags,
@@ -36,12 +50,14 @@ __export(expo_exports, {
   headlessExcludedPackages: () => headlessExcludedPackages,
   headlessPackageSource: () => headlessPackageSource,
   leaveOutOfAutoPlugins: () => leaveOutOfAutoPlugins,
-  onDemandPackageSource: () => onDemandPackageSource
+  onDemandForLibraries: () => onDemandForLibraries,
+  onDemandPackageSource: () => onDemandPackageSource,
+  withLibraries: () => withLibraries
 });
 module.exports = __toCommonJS(expo_exports);
-var import_promises = require("node:fs/promises");
-var import_node_path5 = require("node:path");
-var import_config_plugins2 = require("expo/config-plugins");
+var import_promises2 = require("node:fs/promises");
+var import_node_path7 = require("node:path");
+var import_config_plugins3 = require("expo/config-plugins");
 
 // src/build.ts
 var import_node_fs2 = require("node:fs");
@@ -103,16 +119,16 @@ function buildTree(files) {
     const found = /* @__PURE__ */ new Map();
     for (const source of everyDirectory) {
       if (!source.key.startsWith(`${tabs.key}/`)) continue;
-      const relative2 = source.directory.slice(tabs.directory.length);
+      const relative3 = source.directory.slice(tabs.directory.length);
       let groups = 0;
-      while (groups < relative2.length && isGroup(relative2[groups])) groups++;
-      if (groups === relative2.length) {
+      while (groups < relative3.length && isGroup(relative3[groups])) groups++;
+      if (groups === relative3.length) {
         const isPage = pages.get(source.key) === source;
         if (isPage || navigators.has(source.key)) throw new Error(`${source.path}: a ${isPage ? "page" : "navigator layout"} directly under a tabs layout has no pane to show in; move it into a pane directory`);
         continue;
       }
-      const key = relative2[groups];
-      const directory = tabs.directory.concat(relative2.slice(0, groups + 1));
+      const key = relative3[groups];
+      const directory = tabs.directory.concat(relative3.slice(0, groups + 1));
       const known = found.get(key);
       if (known && known.directory.join("/") !== directory.join("/")) throw new Error(`pane ${key} of ${tabs.key} is defined twice: ${known.directory.join("/")} and ${directory.join("/")}`);
       if (key.startsWith("[")) throw new Error(`${source.path}: a pane is a fixed directory, not a parameter`);
@@ -382,26 +398,139 @@ async function syncNative(root, options = {}) {
 
 // src/capabilities.ts
 var import_node_fs3 = require("node:fs");
-var import_node_module2 = require("node:module");
+var import_promises = require("node:fs/promises");
 var import_node_path4 = require("node:path");
+var import_config_plugins = __toESM(require("expo/config-plugins.js"), 1);
+
+// src/push/common.ts
+var isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+
+// src/push/config.ts
+var otherPushLibraries = ["expo-notifications", "@react-native-firebase/messaging"];
+var apsEnvironmentEntitlement = "aps-environment";
+var remoteNotificationMode = "remote-notification";
+var pemKey = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
+var serviceAccountJson = /"type"\s*:\s*"service_account"|"private_key"\s*:/;
+var privateKeyName = /^private[_-]?key$/i;
+function findPushSecret(value, where) {
+  if (typeof value === "string") {
+    if (serviceAccountJson.test(value)) return { where, what: "a service account key" };
+    if (pemKey.test(value)) return { where, what: "a PEM private key" };
+    if (/\.p8$/i.test(value.trim())) return { where, what: "the path of a .p8 file (an APNs key)" };
+    return void 0;
+  }
+  if (typeof value !== "object" || value === null) return void 0;
+  for (const [key, item] of Object.entries(value)) {
+    const at = Array.isArray(value) ? `${where}[${key}]` : `${where}.${key}`;
+    if (privateKeyName.test(key)) return { where: at, what: "a private key" };
+    if (key === "type" && item === "service_account") return { where, what: "a service account key" };
+    const found = findPushSecret(item, at);
+    if (found) return found;
+  }
+  return void 0;
+}
+function googleServicesPackages(parsed) {
+  const clients = parsed?.client;
+  if (!Array.isArray(clients)) return [];
+  return clients.flatMap((client) => {
+    const name = client?.client_info?.android_client_info?.package_name;
+    return typeof name === "string" ? [name] : [];
+  });
+}
+var pushSecretMessage = ({ where, what }) => `${where} is ${what}: a key that can send to every user must never be in the app or its build. Keep it in the server's environment (the FCM service account, the APNs .p8 with its key id and team id) and give the app identifiers only.`;
+var Refusal = class extends Error {
+};
+var refuse = (message) => {
+  throw new Refusal(message);
+};
+function section(value, where, example) {
+  if (!isRecord(value)) return refuse(`${where} takes an object: ${example}`);
+  return value;
+}
+function optionalText(value, where) {
+  if (value === void 0) return void 0;
+  if (typeof value !== "string" || value.trim() === "") return refuse(`${where} must be a text that is not empty.`);
+  return value;
+}
+function readIos(value) {
+  const ios = section(value, "capabilities.push.ios", '`ios: { mode: "production" }`');
+  if (ios.mode !== "development" && ios.mode !== "production")
+    return refuse(
+      'capabilities.push.ios.mode must be "development" or "production": it is the aps-environment entitlement, "development" for a build signed for development and "production" for TestFlight and the App Store.'
+    );
+  return { mode: ios.mode };
+}
+function readAndroid(value) {
+  const android = section(value, "capabilities.push.android", '`android: { googleServicesFile: "./google-services.json" }`');
+  const file = android.googleServicesFile;
+  if (typeof file !== "string" || file.trim() === "")
+    return refuse(
+      'capabilities.push.android needs googleServicesFile, the path of the Firebase project\'s google-services.json (Firebase console, Project settings, your Android app): `android: { googleServicesFile: "./google-services.json" }`. Leave `android` out for an app that has no push on Android.'
+    );
+  const settings = { googleServicesFile: file };
+  const icon = optionalText(android.icon, "capabilities.push.android.icon");
+  if (icon !== void 0) {
+    if (!/\.png$/i.test(icon)) return refuse(`capabilities.push.android.icon ("${icon}") must be a PNG file: the notification's small icon, white on a transparent background.`);
+    settings.icon = icon;
+  }
+  const color = optionalText(android.color, "capabilities.push.android.color");
+  if (color !== void 0) {
+    if (!/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color)) return refuse(`capabilities.push.android.color ("${color}") must be a hex color such as "#0a7f5a": the notification's accent color.`);
+    settings.color = color;
+  }
+  if (android.channel !== void 0) {
+    const channel = section(android.channel, "capabilities.push.android.channel", '`channel: { name: "Updates" }`');
+    if (typeof channel.name !== "string" || channel.name.trim() === "")
+      return refuse('capabilities.push.android.channel needs a name, as the user will read it in the app\'s notification settings: `channel: { name: "Updates" }`.');
+    const id = optionalText(channel.id, "capabilities.push.android.channel.id");
+    const description = optionalText(channel.description, "capabilities.push.android.channel.description");
+    settings.channel = { ...id === void 0 ? {} : { id }, name: channel.name, ...description === void 0 ? {} : { description } };
+  }
+  return settings;
+}
+function checkPushConfig(push) {
+  try {
+    const platforms = section(push, "capabilities.push", '`push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } }`, or `push: false`');
+    if (platforms.android === void 0 && platforms.ios === void 0)
+      return refuse(
+        "capabilities.push names no platform: give `android` (its google-services.json), `ios` (its aps-environment mode) or both, or turn the capability off with `push: false`."
+      );
+    const config = {};
+    if (platforms.android !== void 0) config.android = readAndroid(platforms.android);
+    if (platforms.ios !== void 0) config.ios = readIos(platforms.ios);
+    return { config };
+  } catch (error) {
+    if (error instanceof Refusal) return { problem: error.message };
+    throw error;
+  }
+}
+var pushIsOn = (push) => push !== void 0 && push !== null && push !== false;
+
+// src/capabilities.ts
+var { AndroidConfig: expoAndroid } = import_config_plugins.default;
 var CapabilityConfigError = class extends Error {
   name = "CapabilityConfigError";
 };
-function locationPluginProps(location) {
-  const { whenInUse, background, motion } = typeof location === "string" ? { whenInUse: location, background: void 0, motion: void 0 } : location;
+var locationMetaData = {
+  enabled: "expo.modules.sveltelocation.enabled"
+};
+var locationInfoPlistFlag = "SvelteLocationEnabled";
+var locationPodfileProperty = "svelteNative.location";
+var locationUsageKey = "NSLocationWhenInUseUsageDescription";
+var locationAndroidPermissions = ["android.permission.ACCESS_COARSE_LOCATION", "android.permission.ACCESS_FINE_LOCATION"];
+function locationSettings(location) {
+  const options = typeof location === "string" ? { whenInUse: location } : location;
+  if (typeof options !== "object" || options === null)
+    throw new CapabilityConfigError('capabilities.location needs the reason the app uses the location, as the user will read it: `capabilities: { location: "Shows the stores near you." }`');
+  for (const [key, what] of [["background", "Background location"], ["motion", "The motion activity"]])
+    if (key in options)
+      throw new CapabilityConfigError(
+        `capabilities.location.${key} is not an option any more: ${what} is not part of capabilities.location, which is \`navigator.geolocation\` while the app is in use. An app that needs it installs expo-location and lists its own plugin in \`plugins\` with its texts (\`["expo-location", { … }]\`); the two do not conflict, they are other modules with other events.`
+      );
+  const { whenInUse } = options;
   if (typeof whenInUse !== "string" || whenInUse.trim() === "")
     throw new CapabilityConfigError('capabilities.location needs the reason the app uses the location, as the user will read it: `capabilities: { location: "Shows the stores near you." }`');
-  for (const [key, text] of [["background", background], ["motion", motion]])
-    if (text !== void 0 && (typeof text !== "string" || text.trim() === ""))
-      throw new CapabilityConfigError(`capabilities.location.${key} needs the reason, as the user will read it`);
-  return {
-    locationWhenInUsePermission: whenInUse,
-    locationAlwaysAndWhenInUsePermission: background ?? false,
-    locationAlwaysPermission: background ?? false,
-    isIosBackgroundLocationEnabled: background !== void 0,
-    isAndroidBackgroundLocationEnabled: background !== void 0,
-    ...motion === void 0 ? {} : { motionUsagePermission: motion }
-  };
+  return { whenInUse };
 }
 function linkedDependencies(projectRoot) {
   let manifest = {};
@@ -414,50 +543,711 @@ function linkedDependencies(projectRoot) {
   const linked = new Set([...Object.keys(manifest.dependencies ?? {}), ...Object.keys(manifest.devDependencies ?? {})].filter((name) => !excluded.has(name)));
   return { linked, excluded };
 }
-function listsPlugin(config, name) {
-  return (config.plugins ?? []).some((entry) => (Array.isArray(entry) ? entry[0] : entry) === name);
-}
 function withCapabilities(config, capabilities, options = {}) {
   const projectRoot = options.projectRoot ?? config._internal?.projectRoot ?? process.cwd();
-  const load = options.load ?? ((request) => (0, import_node_module2.createRequire)((0, import_node_path4.join)(projectRoot, "package.json"))(request));
-  const location = capabilities?.location;
-  const on = location !== void 0 && location !== null && location !== false;
   const dependencies = linkedDependencies(projectRoot);
-  const excluded = (options.excluded ?? []).includes("expo-location") || dependencies.excluded.has("expo-location");
-  const installed = dependencies.linked.has("expo-location") && !excluded;
-  if (listsPlugin(config, "expo-location")) {
-    if (on)
-      throw new CapabilityConfigError("The app config sets capabilities.location and also lists expo-location's own plugin: keep one. capabilities.location gives expo-location its texts; its own plugin entry takes all of its options.");
-    return config;
+  const excluded = /* @__PURE__ */ new Set([...options.excluded ?? [], ...dependencies.excluded]);
+  const linked = new Set([...dependencies.linked].filter((name) => !excluded.has(name)));
+  const context = { projectRoot, linked };
+  return withPush(withLocation(config, capabilities?.location, context), capabilities?.push, context);
+}
+function locationIsOn(location) {
+  return location !== void 0 && location !== null && location !== false;
+}
+function hasLocationFlag(application) {
+  return (application["meta-data"] ?? []).some((item) => item.$["android:name"] === locationMetaData.enabled);
+}
+function removeLocationFlag(application) {
+  const items = application["meta-data"];
+  if (items !== void 0) application["meta-data"] = items.filter((item) => item.$["android:name"] !== locationMetaData.enabled);
+}
+var spellings = (permission) => [permission, permission.replace("android.permission.", "")];
+function removeLocationPermissions(manifest, appPermissions) {
+  const ours = locationAndroidPermissions.filter((permission) => !appPermissions?.some((name) => spellings(permission).includes(name)));
+  if (ours.length > 0) expoAndroid.Permissions.removePermissions(manifest, ours);
+}
+function withLocationOn(config, location) {
+  const { whenInUse } = locationSettings(location);
+  const existing = config.ios?.infoPlist?.[locationUsageKey];
+  if (existing !== void 0 && existing !== whenInUse)
+    throw new CapabilityConfigError(
+      `The app config sets ios.infoPlist.${locationUsageKey} ("${String(existing)}") and capabilities.location says "${whenInUse}": keep one. capabilities.location writes ${locationUsageKey}.`
+    );
+  config = { ...config, ios: { ...config.ios, infoPlist: { ...config.ios?.infoPlist, [locationUsageKey]: whenInUse, [locationInfoPlistFlag]: true } } };
+  config = (0, import_config_plugins.withPodfileProperties)(config, (config2) => {
+    config2.modResults[locationPodfileProperty] = "true";
+    return config2;
+  });
+  return (0, import_config_plugins.withAndroidManifest)(config, (config2) => {
+    setMetaData(expoAndroid.Manifest.getMainApplicationOrThrow(config2.modResults), locationMetaData.enabled, "value", "true");
+    expoAndroid.Permissions.ensurePermissions(config2.modResults, [...locationAndroidPermissions]);
+    return config2;
+  });
+}
+function withoutLocation(config, context) {
+  if ((0, import_node_fs3.existsSync)((0, import_node_path4.join)(context.projectRoot, "android"))) {
+    config = (0, import_config_plugins.withAndroidManifest)(config, (config2) => {
+      const application = expoAndroid.Manifest.getMainApplication(config2.modResults);
+      if (application) {
+        const wasOn = hasLocationFlag(application);
+        removeLocationFlag(application);
+        if (wasOn) removeLocationPermissions(config2.modResults, config2.android?.permissions);
+      }
+      return config2;
+    });
   }
-  if (!on) {
-    if (installed)
-      throw new CapabilityConfigError(
-        'expo-location is installed, but the location capability is off. Say why the app uses the location (the text iOS shows when it asks) in the @alfayez/svelte-native plugin: `plugins: [["@alfayez/svelte-native", { capabilities: { location: "Shows the stores near you." } }]]`, or uninstall expo-location.'
-      );
-    return config;
+  if ((0, import_node_fs3.existsSync)((0, import_node_path4.join)(context.projectRoot, "ios"))) {
+    config = (0, import_config_plugins.withInfoPlist)(config, (config2) => {
+      delete config2.modResults[locationInfoPlistFlag];
+      return config2;
+    });
+    config = (0, import_config_plugins.withPodfileProperties)(config, (config2) => {
+      delete config2.modResults[locationPodfileProperty];
+      return config2;
+    });
   }
-  if (excluded)
-    throw new CapabilityConfigError("capabilities.location is on, but expo-location is left out of autolinking (`autolinkingExclude`, or `expo.autolinking.exclude` in package.json): take it out of that list, or turn the capability off.");
-  const props = locationPluginProps(location);
+  return config;
+}
+function withLocation(config, location, context) {
+  return locationIsOn(location) ? withLocationOn(config, location) : withoutLocation(config, context);
+}
+var defaultPushChannel = { id: "default", name: "Notifications" };
+var pushMetaData = {
+  enabled: "expo.modules.sveltepush.enabled",
+  icon: "com.google.firebase.messaging.default_notification_icon",
+  color: "com.google.firebase.messaging.default_notification_color",
+  firebaseChannel: "com.google.firebase.messaging.default_notification_channel_id",
+  channelId: "expo.modules.sveltepush.channel_id",
+  channelName: "expo.modules.sveltepush.channel_name",
+  channelDescription: "expo.modules.sveltepush.channel_description"
+};
+var pushResources = {
+  icon: "svelte_push_icon",
+  color: "svelte_push_color",
+  channelId: "svelte_push_channel_id",
+  channelName: "svelte_push_channel_name",
+  channelDescription: "svelte_push_channel_description"
+};
+var pushFirebaseDependency = "com.google.firebase:firebase-messaging:26.0.2";
+var pushMessagingService = "expo.modules.sveltepush.SveltePushMessagingService";
+var firebaseMessagingEvent = "com.google.firebase.MESSAGING_EVENT";
+var postNotificationsPermission = "android.permission.POST_NOTIFICATIONS";
+var pushInfoPlistFlag = "SveltePushEnabled";
+var pushPodfileProperty = "svelteNative.push";
+var secretError = (secret) => new CapabilityConfigError(pushSecretMessage(secret));
+var unreadable = (error) => error.code === "ENOENT" ? "does not exist" : `cannot be read: ${error instanceof Error ? error.message : String(error)}`;
+function checkGoogleServicesFile(file, appPackage, projectRoot) {
+  const name = `capabilities.push.android.googleServicesFile ("${file}")`;
+  const path = (0, import_node_path4.resolve)(projectRoot, file);
+  let text;
   try {
-    load("expo-location/package.json");
-  } catch {
-    throw new CapabilityConfigError("capabilities.location needs expo-location, which is not installed: `npx expo install expo-location`, then prebuild again.");
-  }
-  let plugin;
-  try {
-    plugin = load("expo-location/app.plugin.js");
+    text = (0, import_node_fs3.readFileSync)(path, "utf8");
   } catch (error) {
-    throw new CapabilityConfigError(`expo-location's config plugin (expo-location/app.plugin.js) failed to load: ${error instanceof Error ? error.message : String(error)}`);
+    throw new CapabilityConfigError(`${name} ${unreadable(error)} (looked for ${path}): download google-services.json from the Firebase console (Project settings, your Android app) and save it there, or point googleServicesFile at it.`);
   }
-  const apply = plugin.default ?? plugin;
-  if (typeof apply !== "function") throw new CapabilityConfigError("expo-location's config plugin (expo-location/app.plugin.js) is not a function: is the installed expo-location the one this Expo SDK uses?");
-  return apply(config, props);
+  const secret = findPushSecret(text, `the file of ${name}`);
+  if (secret) throw secretError(secret);
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new CapabilityConfigError(`${name} is not JSON (${error instanceof Error ? error.message : String(error)}): download google-services.json from the Firebase console again.`);
+  }
+  const packages = googleServicesPackages(parsed);
+  if (!packages.includes(appPackage))
+    throw new CapabilityConfigError(
+      `${name} has no client for the app's package "${appPackage}" (${packages.length === 0 ? "it has no Android client" : `it has ${packages.map((item) => `"${item}"`).join(", ")}`}): add an Android app with that package to the Firebase project and download google-services.json again, or fix android.package.`
+    );
+}
+function checkIconFile(icon, projectRoot) {
+  const name = `capabilities.push.android.icon ("${icon}")`;
+  const path = (0, import_node_path4.resolve)(projectRoot, icon);
+  let isFile;
+  try {
+    isFile = (0, import_node_fs3.statSync)(path).isFile();
+  } catch (error) {
+    throw new CapabilityConfigError(`${name} ${unreadable(error)} (looked for ${path}): point it at the PNG of the notification's small icon.`);
+  }
+  if (!isFile) throw new CapabilityConfigError(`${name} is not a file (${path}): point it at the PNG of the notification's small icon.`);
+}
+function pushSettings(push, appPackage, projectRoot) {
+  const checked = checkPushConfig(push);
+  if ("problem" in checked) throw new CapabilityConfigError(checked.problem);
+  const { android, ios } = checked.config;
+  const settings = {};
+  if (android) {
+    if (!appPackage) throw new CapabilityConfigError("capabilities.push.android needs android.package in the Expo config: the Google services file is checked against it, and Firebase delivers to that package.");
+    checkGoogleServicesFile(android.googleServicesFile, appPackage, projectRoot);
+    if (android.icon !== void 0) checkIconFile(android.icon, projectRoot);
+    const { id, name, description } = android.channel ?? {};
+    settings.android = {
+      googleServicesFile: android.googleServicesFile,
+      ...android.icon === void 0 ? {} : { icon: android.icon },
+      ...android.color === void 0 ? {} : { color: android.color },
+      channel: { id: id ?? defaultPushChannel.id, name: name ?? defaultPushChannel.name, ...description === void 0 ? {} : { description } }
+    };
+  }
+  if (ios) settings.ios = ios;
+  return settings;
+}
+var holdBegin = "    // Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
+var holdOpen = "      surface: { [self] in";
+var holdClose = "      })";
+var holdEnd = "    // Svelte native: end of the first screen of a launch in the background";
+var holdImportComment = "// Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
+var holdImport = `internal import SvelteCore ${holdImportComment}`;
+var escapeText = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var holdHead = new RegExp(`\\n${escapeText(holdBegin)}\\n[\\s\\S]*?${escapeText(holdOpen)}(?=\\n)`);
+var holdTail = new RegExp(`\\n${escapeText(holdClose)}\\n${escapeText(holdEnd)}(?=\\n)`);
+var holdImportLine = new RegExp(`^internal import (?:SvelteCore|SveltePush) ${escapeText(holdImportComment)}\\n`, "m");
+function removePushAppDelegate(contents) {
+  return contents.replace(holdHead, "").replace(holdTail, "").replace(holdImportLine, "");
+}
+function applyPushAppDelegate(contents) {
+  const stripped = removePushAppDelegate(contents);
+  const imports = [...stripped.matchAll(/^(?:(?:internal|public|package|private|fileprivate) |@_exported |@preconcurrency )*import [\w.]+[ \t]*$/gm)];
+  const lastImport = imports.at(-1);
+  const call = /^[ \t]*factory\.startReactNative\([^)]*\)[ \t]*$/m.exec(stripped);
+  const launching = /_ application: UIApplication,\s*didFinishLaunchingWithOptions launchOptions: \[UIApplication\.LaunchOptionsKey: Any\]\?/.test(stripped);
+  if (!lastImport || !call || !launching || !/withModuleName: "[^"]+",\s*in: window,\s*launchOptions: launchOptions\)/.test(call[0])) {
+    throw new Error(
+      "Svelte native could not find the imports and `factory.startReactNative(withModuleName: …, in: window, launchOptions: launchOptions)` in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift. Push needs the call to keep a launch in the background (a silent push) from mounting the first screen."
+    );
+  }
+  const head = [
+    holdBegin,
+    "    SveltePushBackgroundLaunch.start(",
+    "      application,",
+    "      host: {",
+    // `-initializeReactHostWithLaunchOptions:bundleConfiguration:devMenuConfiguration:` reaches Swift as `initializeReactHost(launchOptions:…)`
+    // (the compiler of Xcode 26.5 says so; `withLaunchOptions:` does not compile).
+    "        factory.rootViewFactory.initializeReactHost(",
+    "          launchOptions: launchOptions,",
+    "          bundleConfiguration: factory.bundleConfiguration,",
+    "          devMenuConfiguration: factory.devMenuConfiguration ?? RCTDevMenuConfiguration.default())",
+    "      },",
+    holdOpen,
+    ""
+  ].join("\n");
+  const tail = ["", holdClose, holdEnd].join("\n");
+  const callEnd = call.index + call[0].length;
+  const importEnd = lastImport.index + lastImport[0].length;
+  return `${stripped.slice(0, importEnd)}
+${holdImport}${stripped.slice(importEnd, call.index)}${head}${call[0]}${tail}${stripped.slice(callEnd)}`;
+}
+function withPushIos(config, mode) {
+  const existing = config.ios?.entitlements?.[apsEnvironmentEntitlement];
+  if (existing !== void 0 && existing !== mode)
+    throw new CapabilityConfigError(
+      `The app config sets ios.entitlements["aps-environment"] ("${String(existing)}") and capabilities.push.ios.mode is "${mode}": keep one. capabilities.push.ios.mode writes the entitlement.`
+    );
+  const existingModes = config.ios?.infoPlist?.UIBackgroundModes;
+  const modes = Array.isArray(existingModes) ? existingModes : [];
+  config = {
+    ...config,
+    ios: {
+      ...config.ios,
+      entitlements: { ...config.ios?.entitlements, [apsEnvironmentEntitlement]: mode },
+      infoPlist: { ...config.ios?.infoPlist, [pushInfoPlistFlag]: true, UIBackgroundModes: modes.includes(remoteNotificationMode) ? modes : [...modes, remoteNotificationMode] }
+    }
+  };
+  config = (0, import_config_plugins.withPodfileProperties)(config, (config2) => {
+    config2.modResults[pushPodfileProperty] = "true";
+    return config2;
+  });
+  return (0, import_config_plugins.withAppDelegate)(config, (config2) => {
+    if (config2.modResults.language !== "swift") throw new Error("Svelte native requires Expo's Swift AppDelegate");
+    config2.modResults.contents = applyPushAppDelegate(config2.modResults.contents);
+    return config2;
+  });
+}
+function setMetaData(application, name, attribute, content) {
+  const others = (application["meta-data"] ?? []).filter((item) => item.$["android:name"] !== name);
+  application["meta-data"] = [...others, { $: { "android:name": name, [`android:${attribute}`]: content } }];
+}
+function hasPushFlag(application) {
+  return (application["meta-data"] ?? []).some((item) => item.$["android:name"] === pushMetaData.enabled);
+}
+function pushService() {
+  return { $: { "android:name": pushMessagingService, "android:exported": "false" }, "intent-filter": [{ action: [{ $: { "android:name": firebaseMessagingEvent } }] }] };
+}
+function removePushManifest(application) {
+  if (application.service !== void 0) application.service = application.service.filter((item) => item.$["android:name"] !== pushMessagingService);
+  const items = application["meta-data"];
+  if (items === void 0) return;
+  const content = (item) => item.$["android:value"] ?? item.$["android:resource"];
+  const channelId = items.map((item) => item.$["android:name"] === pushMetaData.channelId ? content(item) : void 0).find((value) => value !== void 0);
+  const ours = (item) => {
+    switch (item.$["android:name"]) {
+      case pushMetaData.enabled:
+      case pushMetaData.channelId:
+      case pushMetaData.channelName:
+      case pushMetaData.channelDescription:
+        return true;
+      case pushMetaData.icon:
+        return content(item) === `@drawable/${pushResources.icon}`;
+      case pushMetaData.color:
+        return content(item) === `@color/${pushResources.color}`;
+      case pushMetaData.firebaseChannel:
+        return content(item) === `@string/${pushResources.channelId}` || channelId !== void 0 && content(item) === channelId;
+      default:
+        return false;
+    }
+  };
+  application["meta-data"] = items.filter((item) => !ours(item));
+}
+function applyPushManifest(application, android) {
+  removePushManifest(application);
+  setMetaData(application, pushMetaData.enabled, "value", "true");
+  application.service = [...application.service ?? [], pushService()];
+  if (android.icon !== void 0) setMetaData(application, pushMetaData.icon, "resource", `@drawable/${pushResources.icon}`);
+  if (android.color !== void 0) setMetaData(application, pushMetaData.color, "resource", `@color/${pushResources.color}`);
+  setMetaData(application, pushMetaData.firebaseChannel, "value", `@string/${pushResources.channelId}`);
+  setMetaData(application, pushMetaData.channelId, "value", `@string/${pushResources.channelId}`);
+  setMetaData(application, pushMetaData.channelName, "value", `@string/${pushResources.channelName}`);
+  if (android.channel.description !== void 0) setMetaData(application, pushMetaData.channelDescription, "value", `@string/${pushResources.channelDescription}`);
+}
+var postNotificationsNames = [postNotificationsPermission, postNotificationsPermission.replace("android.permission.", "")];
+function applyPushPermission(manifest) {
+  expoAndroid.Permissions.ensurePermissions(manifest, [postNotificationsPermission]);
+}
+function removePushPermission(manifest, appPermissions) {
+  if (appPermissions?.some((name) => postNotificationsNames.includes(name))) return;
+  expoAndroid.Permissions.removePermissions(manifest, [postNotificationsPermission]);
+}
+var gradleComment = "// Svelte native: push, Firebase Messaging (generated, do not edit)";
+var gradleLine = `    implementation("${pushFirebaseDependency}") ${gradleComment}`;
+var gradleLines = new RegExp(`^[ \\t]*implementation\\([^\\n]*\\) ${escapeText(gradleComment)}\\n`, "gm");
+function removePushGradle(contents) {
+  return contents.replace(gradleLines, "");
+}
+function applyPushGradle(contents) {
+  const stripped = removePushGradle(contents);
+  const block = /^dependencies \{[ \t]*\n/m.exec(stripped);
+  if (!block) {
+    throw new Error(
+      "Svelte native could not find the `dependencies {` block of android/app/build.gradle. Push needs it to add Firebase Messaging to the app: the library's messaging service is compiled against Firebase and runs on the app's copy of it."
+    );
+  }
+  const end = block.index + block[0].length;
+  return `${stripped.slice(0, end)}${gradleLine}
+${stripped.slice(end)}`;
+}
+function androidStringText(text) {
+  const escaped = text.replace(/[\\"]/g, "\\$&").replace(/^[@?]/, "\\$&").replace(new RegExp("\\p{Cc}", "gu"), (char) => char === "\n" ? "\\n" : char === "	" ? "\\t" : `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  return `"${escaped}"`;
+}
+var channelStringNames = [pushResources.channelId, pushResources.channelName, pushResources.channelDescription];
+function removePushStrings(strings) {
+  for (const name of channelStringNames) expoAndroid.Strings.removeStringItem(name, strings);
+  return strings;
+}
+function applyPushStrings(strings, channel) {
+  removePushStrings(strings);
+  const entries = [[pushResources.channelId, channel.id], [pushResources.channelName, channel.name], [pushResources.channelDescription, channel.description]];
+  const items = entries.flatMap(([name, text]) => {
+    if (text === void 0) return [];
+    const attributes = { name, translatable: "false", formatted: "false" };
+    return [{ $: attributes, _: androidStringText(text) }];
+  });
+  return expoAndroid.Strings.setStringItem(items, strings);
+}
+async function copyPushIcon(source, platformProjectRoot) {
+  const directory = (0, import_node_path4.join)(platformProjectRoot, "app/src/main/res/drawable");
+  await (0, import_promises.mkdir)(directory, { recursive: true });
+  await (0, import_promises.copyFile)(source, (0, import_node_path4.join)(directory, `${pushResources.icon}.png`));
+}
+async function removePushIcon(platformProjectRoot) {
+  await (0, import_promises.rm)((0, import_node_path4.join)(platformProjectRoot, "app/src/main/res/drawable", `${pushResources.icon}.png`), { force: true });
+}
+function withPushAndroid(config, android, projectRoot) {
+  if (android) {
+    const existing = config.android?.googleServicesFile;
+    if (existing !== void 0 && (0, import_node_path4.resolve)(projectRoot, existing) !== (0, import_node_path4.resolve)(projectRoot, android.googleServicesFile))
+      throw new CapabilityConfigError(
+        `The app config sets android.googleServicesFile ("${existing}") and capabilities.push.android.googleServicesFile is "${android.googleServicesFile}": keep one. capabilities.push.android.googleServicesFile sets android.googleServicesFile.`
+      );
+    config = { ...config, android: { ...config.android, googleServicesFile: android.googleServicesFile } };
+  }
+  config = (0, import_config_plugins.withAndroidManifest)(config, (config2) => {
+    if (android) {
+      applyPushManifest(expoAndroid.Manifest.getMainApplicationOrThrow(config2.modResults), android);
+      applyPushPermission(config2.modResults);
+    } else {
+      const application = expoAndroid.Manifest.getMainApplication(config2.modResults);
+      if (application) {
+        const wasOn = hasPushFlag(application);
+        removePushManifest(application);
+        if (wasOn) removePushPermission(config2.modResults, config2.android?.permissions);
+      }
+    }
+    return config2;
+  });
+  config = (0, import_config_plugins.withAppBuildGradle)(config, (config2) => {
+    config2.modResults.contents = android ? applyPushGradle(config2.modResults.contents) : removePushGradle(config2.modResults.contents);
+    return config2;
+  });
+  config = (0, import_config_plugins.withStringsXml)(config, (config2) => {
+    config2.modResults = android ? applyPushStrings(config2.modResults, android.channel) : removePushStrings(config2.modResults);
+    return config2;
+  });
+  config = (0, import_config_plugins.withAndroidColors)(config, (config2) => {
+    config2.modResults = expoAndroid.Colors.assignColorValue(config2.modResults, { name: pushResources.color, value: android?.color });
+    return config2;
+  });
+  const icon = android?.icon;
+  return (0, import_config_plugins.withDangerousMod)(config, ["android", async (config2) => {
+    if (icon === void 0) await removePushIcon(config2.modRequest.platformProjectRoot);
+    else await copyPushIcon((0, import_node_path4.resolve)(config2.modRequest.projectRoot, icon), config2.modRequest.platformProjectRoot);
+    return config2;
+  }]);
+}
+function withoutPushIos(config, context) {
+  if (!(0, import_node_fs3.existsSync)((0, import_node_path4.join)(context.projectRoot, "ios"))) return config;
+  config = (0, import_config_plugins.withInfoPlist)(config, (config2) => {
+    delete config2.modResults[pushInfoPlistFlag];
+    return config2;
+  });
+  config = (0, import_config_plugins.withPodfileProperties)(config, (config2) => {
+    delete config2.modResults[pushPodfileProperty];
+    return config2;
+  });
+  return (0, import_config_plugins.withAppDelegate)(config, (config2) => {
+    if (config2.modResults.language === "swift") config2.modResults.contents = removePushAppDelegate(config2.modResults.contents);
+    return config2;
+  });
+}
+function withoutPushAndroid(config, context) {
+  return (0, import_node_fs3.existsSync)((0, import_node_path4.join)(context.projectRoot, "android")) ? withPushAndroid(config, void 0, context.projectRoot) : config;
+}
+function withPush(config, push, context) {
+  if (!pushIsOn(push)) {
+    return withoutPushAndroid(withoutPushIos(config, context), context);
+  }
+  const secret = findPushSecret(push, "capabilities.push");
+  if (secret) throw secretError(secret);
+  const other = otherPushLibraries.find((name) => context.linked.has(name));
+  if (other !== void 0)
+    throw new CapabilityConfigError(
+      `capabilities.push is on, and ${other} is installed: an app has one push library (Android delivers a message to one FirebaseMessagingService, iOS has one notification center delegate). Uninstall ${other}, or turn the push capability off.`
+    );
+  const settings = pushSettings(push, config.android?.package, context.projectRoot);
+  config = settings.ios ? withPushIos(config, settings.ios.mode) : withoutPushIos(config, context);
+  return settings.android ? withPushAndroid(config, settings.android, context.projectRoot) : withoutPushAndroid(config, context);
 }
 
-// src/remote/plugin.ts
-var import_config_plugins = require("expo/config-plugins.js");
+// src/libraries.ts
+var import_node_module2 = require("node:module");
+var import_node_path6 = require("node:path");
+
+// src/vendored.ts
+var import_node_fs4 = require("node:fs");
+var import_node_path5 = require("node:path");
+
+// src/optional-libraries.ts
+var react = "react-native";
+var expo = "expo";
+var optionalLibraries = [
+  // Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module, so they have no `android` or `ios` entry here.
+  { name: "expo-blur", version: "57.0.3", optional: { kind: expo } },
+  { name: "expo-conic-gradient", version: "0.2.1", optional: { kind: expo } },
+  { name: "expo-image", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+  { name: "expo-linear-gradient", version: "57.0.2", optional: { kind: expo } },
+  { name: "expo-video", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+  // React Native packages: an entry of the autolinking config for each platform.
+  {
+    name: "@react-native-community/datetimepicker",
+    version: "9.1.0",
+    android: { packageImportPath: "import com.reactcommunity.rndatetimepicker.RNDateTimePickerPackage;", packageInstance: "new RNDateTimePickerPackage()" },
+    ios: { podspec: "RNDateTimePicker.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    name: "lottie-react-native",
+    version: "7.3.8",
+    android: { packageImportPath: "import com.airbnb.android.react.lottie.LottiePackage;", packageInstance: "new LottiePackage()", componentDescriptors: ["LottieAnimationViewComponentDescriptor"] },
+    ios: { podspec: "lottie-react-native.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-animateable-text",
+    version: "0.19.3",
+    android: {
+      packageImportPath: "import com.reactnativereanimatedtext.ReanimatedTextPackage;",
+      packageInstance: "new ReanimatedTextPackage()",
+      libraryName: "JBAnimatedText",
+      componentDescriptors: ["CParagraphComponentDescriptor"],
+      cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+    },
+    ios: { podspec: "react-native-animateable-text.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-blob-util",
+    version: "0.24.9",
+    android: { packageImportPath: "import com.ReactNativeBlobUtil.ReactNativeBlobUtilPackage;", packageInstance: "new ReactNativeBlobUtilPackage()" },
+    ios: { podspec: "react-native-blob-util.podspec" },
+    optional: { kind: react }
+  },
+  {
+    // No iOS code: `ShadowedView` is React Native's own `View` there (the layer's shadow), so the library has no podspec.
+    name: "react-native-fast-shadow",
+    version: "0.1.1",
+    android: { packageImportPath: "import com.reactnativefastshadow.FastShadowPackage;", packageInstance: "new FastShadowPackage()" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-maps",
+    version: "1.27.2",
+    android: {
+      packageImportPath: "import com.rnmaps.maps.MapsPackage;",
+      packageInstance: "new MapsPackage()",
+      componentDescriptors: [
+        "RNMapsCalloutComponentDescriptor",
+        "RNMapsCircleComponentDescriptor",
+        "RNMapsGoogleMapViewComponentDescriptor",
+        "RNMapsGooglePolygonComponentDescriptor",
+        "RNMapsMapViewComponentDescriptor",
+        "RNMapsMarkerComponentDescriptor",
+        "RNMapsOverlayComponentDescriptor",
+        "RNMapsPolylineComponentDescriptor",
+        "RNMapsUrlTileComponentDescriptor",
+        "RNMapsWMSTileComponentDescriptor"
+      ],
+      cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+    },
+    ios: { podspec: "react-native-maps.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    // The PDF view reads its files through react-native-blob-util's native module, so turning it on turns that one on.
+    name: "react-native-pdf",
+    version: "7.0.3",
+    android: { packageImportPath: "import org.wonday.pdf.RNPDFPackage;", packageInstance: "new RNPDFPackage()", componentDescriptors: ["RNPDFPdfViewComponentDescriptor"] },
+    ios: { podspec: "react-native-pdf.podspec" },
+    optional: { kind: react, requires: ["react-native-blob-util"] }
+  },
+  {
+    name: "react-native-video",
+    version: "6.19.3",
+    android: { packageImportPath: "import com.brentvatne.react.ReactVideoPackage;", packageInstance: "new ReactVideoPackage()" },
+    ios: { podspec: "react-native-video.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    name: "react-native-view-shot",
+    version: "5.1.0",
+    android: { packageImportPath: "import fr.greweb.reactnativeviewshot.RNViewShotPackage;", packageInstance: "new RNViewShotPackage()" },
+    ios: { podspec: "react-native-view-shot.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-webview",
+    version: "13.16.1",
+    android: { packageImportPath: "import com.reactnativecommunity.webview.RNCWebViewPackage;", packageInstance: "new RNCWebViewPackage()", componentDescriptors: ["RNCWebViewComponentDescriptor"] },
+    ios: { podspec: "react-native-webview.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "rive-react-native",
+    version: "9.7.1",
+    android: { packageImportPath: "import com.rivereactnative.RiveReactNativePackage;", packageInstance: "new RiveReactNativePackage()" },
+    ios: { podspec: "rive-react-native.podspec" },
+    optional: { kind: react }
+  }
+];
+
+// src/vendored.ts
+var vendoredPackages = [
+  // The optional view libraries (`optional-libraries.ts`).
+  ...optionalLibraries,
+  {
+    name: "react-native-nitro-modules",
+    version: "0.35.10",
+    android: { packageImportPath: "import com.margelo.nitro.NitroModulesPackage;", packageInstance: "new NitroModulesPackage()" },
+    ios: { podspec: "NitroModules.podspec" }
+  },
+  {
+    name: "react-native-mmkv",
+    version: "4.3.1",
+    android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
+    ios: { podspec: "NitroMmkv.podspec" }
+  },
+  {
+    // The base64 module quick-crypto and its Buffer ask for (`libraryName` QuickBase64 is the `react { }` block of its build.gradle).
+    name: "react-native-quick-base64",
+    version: "2.2.2",
+    android: { packageImportPath: "import com.reactnativequickbase64.QuickBase64Package;", packageInstance: "new QuickBase64Package()" },
+    ios: { podspec: "react-native-quick-base64.podspec" }
+  },
+  {
+    // `crypto` and `crypto.subtle`: a Nitro module over OpenSSL (and libsodium, when the plugin's `sodiumEnabled` is on). It links the vendored Nitro runtime by its project name and pod.
+    name: "react-native-quick-crypto",
+    version: "1.1.3",
+    android: { packageImportPath: "import com.margelo.nitro.quickcrypto.QuickCryptoPackage;", packageInstance: "new QuickCryptoPackage()" },
+    ios: { podspec: "QuickCrypto.podspec" }
+  },
+  {
+    // The `Intl` constructors Hermes lacks: a pure C++ TurboModule (no view, no module class: the `ReactPackage` is empty), so Android adds its CMake module to the app's build.
+    name: "hermes-intl",
+    version: "0.1.2",
+    android: { packageImportPath: "import dev.hermesintl.HermesIntlPackage;", packageInstance: "new HermesIntlPackage()", cxxModule: { cmakeListsModuleName: "hermesintl", cmakeListsPath: "android/CMakeLists.txt", headerName: "NativeHermesIntl" } },
+    ios: { podspec: "HermesIntl.podspec" }
+  },
+  {
+    name: "react-native-gesture-handler",
+    version: "2.32.0",
+    // The two components of its codegen (`RNGestureHandlerButton`, `RNGestureHandlerRootView`); `libraryName` is `codegenConfig.name`.
+    android: { packageImportPath: "import com.swmansion.gesturehandler.RNGestureHandlerPackage;", packageInstance: "new RNGestureHandlerPackage()", componentDescriptors: ["RNGestureHandlerButtonComponentDescriptor", "RNGestureHandlerRootViewComponentDescriptor"] },
+    ios: { podspec: "RNGestureHandler.podspec" }
+  },
+  {
+    name: "react-native-worklets",
+    version: "0.10.1",
+    android: { packageImportPath: "import com.swmansion.worklets.WorkletsPackage;", packageInstance: "new WorkletsPackage()" },
+    ios: { podspec: "RNWorklets.podspec" }
+  },
+  {
+    name: "react-native-reanimated",
+    version: "4.5.1",
+    android: { packageImportPath: "import com.swmansion.reanimated.ReanimatedPackage;", packageInstance: "new ReanimatedPackage()" },
+    ios: { podspec: "RNReanimated.podspec" }
+  },
+  {
+    name: "react-native-svg",
+    version: "15.15.4",
+    // The 29 components of its `react-native.config.js`, and its codegen CMake file, which is in the sources and not below `android/build/` (a test reads both from the copy).
+    android: {
+      packageImportPath: "import com.horcrux.svg.SvgPackage;",
+      packageInstance: "new SvgPackage()",
+      componentDescriptors: [
+        "RNSVGCircleComponentDescriptor",
+        "RNSVGClipPathComponentDescriptor",
+        "RNSVGDefsComponentDescriptor",
+        "RNSVGFeBlendComponentDescriptor",
+        "RNSVGFeColorMatrixComponentDescriptor",
+        "RNSVGFeCompositeComponentDescriptor",
+        "RNSVGFeFloodComponentDescriptor",
+        "RNSVGFeGaussianBlurComponentDescriptor",
+        "RNSVGFeMergeComponentDescriptor",
+        "RNSVGFeOffsetComponentDescriptor",
+        "RNSVGFilterComponentDescriptor",
+        "RNSVGEllipseComponentDescriptor",
+        "RNSVGForeignObjectComponentDescriptor",
+        "RNSVGGroupComponentDescriptor",
+        "RNSVGImageComponentDescriptor",
+        "RNSVGLinearGradientComponentDescriptor",
+        "RNSVGLineComponentDescriptor",
+        "RNSVGMarkerComponentDescriptor",
+        "RNSVGMaskComponentDescriptor",
+        "RNSVGPathComponentDescriptor",
+        "RNSVGPatternComponentDescriptor",
+        "RNSVGRadialGradientComponentDescriptor",
+        "RNSVGRectComponentDescriptor",
+        "RNSVGSvgViewAndroidComponentDescriptor",
+        "RNSVGSymbolComponentDescriptor",
+        "RNSVGTextComponentDescriptor",
+        "RNSVGTextPathComponentDescriptor",
+        "RNSVGTSpanComponentDescriptor",
+        "RNSVGUseComponentDescriptor"
+      ],
+      cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+    },
+    ios: { podspec: "RNSVG.podspec" }
+  }
+];
+var vendoredNames = vendoredPackages.map((vendored) => vendored.name);
+var optionalPackages = vendoredPackages.filter((vendored) => vendored.optional !== void 0);
+var alwaysLinkedPackages = vendoredPackages.filter((vendored) => vendored.optional === void 0);
+var vendoredPackage = (name) => vendoredPackages.find((vendored) => vendored.name === name);
+var vendorDirectory = (root = packageRoot) => (0, import_node_path5.join)(root, "vendor");
+var vendoredRoot = (name, root = packageRoot) => (0, import_node_path5.join)(vendorDirectory(root), name);
+var readJson = (file) => {
+  try {
+    const parsed = JSON.parse((0, import_node_fs4.readFileSync)(file, "utf8"));
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : void 0;
+  } catch {
+    return void 0;
+  }
+};
+function declaredVendored(appRoot) {
+  const manifest = readJson((0, import_node_path5.join)(appRoot, "package.json"));
+  if (!manifest) return [];
+  const declared = /* @__PURE__ */ new Set();
+  for (const group of ["dependencies", "devDependencies", "optionalDependencies"]) {
+    const entries = manifest[group];
+    if (typeof entries === "object" && entries !== null) for (const name of Object.keys(entries)) declared.add(name);
+  }
+  return vendoredNames.filter((name) => declared.has(name));
+}
+function collisionMessage(names, library = "@alfayez/svelte-native") {
+  const list = names.map((name) => `${name} ${vendoredPackage(name)?.version ?? ""}`.trim());
+  const them = names.length === 1 ? "it" : "them";
+  const optional = names.filter((name) => vendoredPackage(name)?.optional !== void 0);
+  const turnOn = optional.length === 0 ? "" : ` ${optional.length === 1 ? "It is" : "They are"} optional: turn ${optional.length === 1 ? "it" : "them"} on with \`libraries: { ${optional.map((name) => `"${name}": true`).join(", ")} }\` in the ${library} plugin's options (its own plugin options go there instead of in \`plugins\`).`;
+  return `${library} includes ${list.join(" and ")}; remove ${them} from the app's dependencies (package.json) and any \`patchedDependencies\` entry for ${them} (pnpm stops on a patch of a package it no longer installs), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it. A library of the app that asks for ${them} as a peer dependency is served by the copy (Metro resolves the name to it; the Gradle project and the pod keep the name), so nothing needs to take ${them === "it" ? "its" : "their"} place.${turnOn}`;
+}
+function withRequired(names) {
+  const all = /* @__PURE__ */ new Set();
+  const add = (name) => {
+    if (all.has(name)) return;
+    all.add(name);
+    for (const required of vendoredPackage(name)?.optional?.requires ?? []) add(required);
+  };
+  for (const name of names) add(name);
+  return [...all];
+}
+
+// src/libraries.ts
+var LibrariesConfigError = class extends Error {
+  name = "LibrariesConfigError";
+};
+var libraryNames = optionalPackages.map((vendored) => vendored.name);
+var isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+function checkLibraries(option) {
+  if (option === void 0 || option === null) return { listed: /* @__PURE__ */ new Map(), enabled: [] };
+  if (!isObject(option)) throw new LibrariesConfigError('`libraries` takes an object of library names: `libraries: { "react-native-maps": true }`');
+  const listed = /* @__PURE__ */ new Map();
+  for (const [name, value] of Object.entries(option)) {
+    const vendored = vendoredPackage(name);
+    if (vendored?.optional === void 0) {
+      const always = vendored !== void 0 ? ` ${name} is in every app: there is nothing to turn on.` : "";
+      throw new LibrariesConfigError(`\`libraries\` names "${name}", which is not one of the optional libraries @alfayez/svelte-native carries.${always} The libraries: ${libraryNames.join(", ")}.`);
+    }
+    if (value === false) continue;
+    if (value === true) {
+      listed.set(name, void 0);
+      continue;
+    }
+    if (!isObject(value)) throw new LibrariesConfigError(`libraries["${name}"] is \`true\`, \`false\` or the options of ${name}'s config plugin (an object), not ${JSON.stringify(value) ?? String(value)}`);
+    if (vendored.optional.plugin === void 0 && Object.keys(value).length > 0) {
+      throw new LibrariesConfigError(`libraries["${name}"] has options (${Object.keys(value).join(", ")}), and ${name} has no config plugin to give them to: write \`libraries: { "${name}": true }\``);
+    }
+    listed.set(name, value);
+  }
+  const wanted = withRequired(listed.keys());
+  return { listed, enabled: libraryNames.filter((name) => wanted.includes(name)) };
+}
+var kindOf = (name) => vendoredPackage(name)?.optional?.kind ?? "react-native";
+function libraryLinks(enabled) {
+  const on = new Set(withRequired(enabled));
+  const ordered = libraryNames.filter((name) => on.has(name));
+  return {
+    enabled: ordered,
+    reactNative: ordered.filter((name) => kindOf(name) === "react-native"),
+    expo: ordered.filter((name) => kindOf(name) === "expo"),
+    expoOff: libraryNames.filter((name) => kindOf(name) === "expo" && !on.has(name))
+  };
+}
+function libraryPlugin(vendored, root) {
+  const file = vendored.optional?.plugin;
+  if (file === void 0) return void 0;
+  const path = (0, import_node_path6.join)(vendoredRoot(vendored.name, root), file);
+  const loaded = (0, import_node_module2.createRequire)(__importMetaUrl)(path);
+  const plugin = typeof loaded === "function" ? loaded : loaded?.default;
+  if (typeof plugin !== "function") throw new LibrariesConfigError(`${path} is the config plugin of ${vendored.name} and exports no function`);
+  return plugin;
+}
 
 // src/remote/host.ts
 var RemoteConfigError = class extends Error {
@@ -493,6 +1283,7 @@ function normalizeAppDir(value) {
 }
 
 // src/remote/plugin.ts
+var import_config_plugins2 = require("expo/config-plugins.js");
 function remoteExtra(extra, remote) {
   const host = { origin: normalizeOrigin(remote.origin), base: normalizeBase(remote.base), appDir: normalizeAppDir(remote.appDir) };
   return { ...extra, [EXTRA_KEY]: { ...extra?.[EXTRA_KEY], remote: host } };
@@ -517,13 +1308,13 @@ var withRemoteHost = (config, remote) => {
   config.extra = remoteExtra(config.extra, remote);
   const { origin } = config.extra[EXTRA_KEY].remote;
   if (!isCleartext(origin)) return config;
-  config = (0, import_config_plugins.withAndroidManifest)(config, (config2) => {
+  config = (0, import_config_plugins2.withAndroidManifest)(config, (config2) => {
     const application = config2.modResults.manifest.application?.[0];
     if (!application) throw new Error("Svelte native could not find <application> in AndroidManifest.xml");
     allowAndroidCleartext(application);
     return config2;
   });
-  return (0, import_config_plugins.withInfoPlist)(config, (config2) => {
+  return (0, import_config_plugins2.withInfoPlist)(config, (config2) => {
     allowIosCleartext(config2.modResults, origin);
     return config2;
   });
@@ -746,40 +1537,55 @@ function applyAppDelegate(contents) {
 ${delegateImport}${stripped.slice(importEnd, propertyEnd)}
 ${block}${stripped.slice(propertyEnd)}`;
 }
-function applyHeadlessSettings(contents, extra = []) {
-  const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\((?:svelteNativeConfigCommand \+ )?expoAutolinking\.rnConfigCommand \+ svelteNativeExcludeArgs(?:, svelteNativeAppRoot\.asFile, svelteNativeLockFiles)?\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)");
+var communityCall = "svelteNativeConfigCommand + svelteNativeCommunityCommand, svelteNativeAppRoot.asFile, svelteNativeLockFiles";
+function applyHeadlessSettings(contents, extra = [], links) {
+  const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\((?:svelteNativeConfigCommand \+ )?expoAutolinking\.rnConfigCommand \+ svelteNativeExcludeArgs(?:, svelteNativeAppRoot\.asFile, svelteNativeLockFiles)?\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)").replace(`autolinkLibrariesFromCommand(${communityCall})`, "autolinkLibrariesFromCommand()");
   const anchor = /^extensions\.configure\(com\.facebook\.react\.ReactSettingsExtension\)/m.exec(stripped);
   if (!anchor || !stripped.includes("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)")) throw new Error("Svelte native could not find the autolinking block in settings.gradle");
-  const list = [.../* @__PURE__ */ new Set([...headlessExcludedPackages, ...extra])].map((name) => `"${name}"`).join(", ");
+  const quoted = (names) => names.map((name) => `"${name}"`).join(", ");
+  const list = quoted([.../* @__PURE__ */ new Set([...headlessExcludedPackages, ...extra, ...links?.expoOff ?? []])]);
+  const expoModules = links?.expo ?? [];
+  const reactNative = links?.reactNative ?? [];
   const block = [
     gradleBegin,
     `def svelteNativeExclude = [${list}]`,
     'def svelteNativeExcludeArgs = svelteNativeExclude.collectMany { ["--exclude", it] }',
     "expoAutolinking.exclude = svelteNativeExclude",
     `def svelteNativeCli = new File(providers.exec { workingDir(rootDir); commandLine("node", "--print", "require.resolve('${libraryPackage}/package.json')") }.standardOutput.asText.get().trim()).getParentFile().toPath().resolve("dist/node/cli.js").toString()`,
-    'def svelteNativeConfigCommand = ["node", svelteNativeCli, "android-autolinking"]',
-    // React Native keeps the command's output until a lockfile of the app changes: React Native's own list, and the CLI, so that a new version of the
-    // library (a workspace or file: dependency changes no lockfile) runs the command again.
+    ...expoModules.length === 0 ? [] : [
+      `// The Expo modules the app turned on (libraries): the directories of their copies in the library are Expo's search paths. "--" first: see applyHeadlessSettings.`,
+      `def svelteNativeExpoModules = [${quoted(expoModules)}]`,
+      "def svelteNativeLibrary = new File(svelteNativeCli).getParentFile().getParentFile().getParentFile()",
+      'expoAutolinking.searchPaths = ["--"] + svelteNativeExpoModules.collect { new File(svelteNativeLibrary, "vendor/" + it).toString() }'
+    ],
+    `def svelteNativeConfigCommand = ["node", svelteNativeCli, "android-autolinking"${reactNative.map((name) => `, "--link", "${name}"`).join("")}]`,
+    'def svelteNativeCommunityCommand = (System.getProperty("os.name").toLowerCase().contains("windows") ? ["cmd", "/c"] : []) + ["npx", "@react-native-community/cli", "config"]',
+    // React Native keeps the command's output until a lockfile of the app changes: React Native's own list, the CLI, and this file, so that a new version of the
+    // library (a workspace or file: dependency changes no lockfile) and a changed `libraries` (the `--link` arguments above) run the command again.
     'def svelteNativeAppRoot = settings.layout.rootDirectory.dir("../")',
-    'def svelteNativeLockFiles = svelteNativeAppRoot.files("yarn.lock", "package-lock.json", "package.json", "react-native.config.js", svelteNativeCli)',
+    'def svelteNativeLockFiles = svelteNativeAppRoot.files("yarn.lock", "package-lock.json", "package.json", "react-native.config.js", svelteNativeCli, new File(settingsDir, "settings.gradle").toString())',
     gradleEnd,
     ""
   ].join("\n");
-  return `${stripped.slice(0, anchor.index)}${block}${stripped.slice(anchor.index)}`.replace("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)", "autolinkLibrariesFromCommand(svelteNativeConfigCommand + expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs, svelteNativeAppRoot.asFile, svelteNativeLockFiles)");
+  return `${stripped.slice(0, anchor.index)}${block}${stripped.slice(anchor.index)}`.replace("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)", "autolinkLibrariesFromCommand(svelteNativeConfigCommand + expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs, svelteNativeAppRoot.asFile, svelteNativeLockFiles)").replace("autolinkLibrariesFromCommand()", `autolinkLibrariesFromCommand(${communityCall})`);
 }
 var podfileBegin = "  # Svelte native: autolinking excludes (generated, do not edit)";
 var podfileEnd = "  # Svelte native: end of autolinking excludes";
 var podfileCommandBegin = "  # Svelte native: autolinking excludes for React Native's config command (generated, do not edit)";
 var podfileCommandEnd = "  # Svelte native: end of config command excludes";
-function applyPodfileAutolinkingExclude(contents, names) {
-  const stripped = contents.replace(blockPattern(podfileBegin, podfileEnd), "").replace(blockPattern(podfileCommandBegin, podfileCommandEnd), "").replace(/use_expo_modules!\(exclude: svelte_native_exclude\)/, "use_expo_modules!");
-  if (names.length === 0) return stripped;
+function applyPodfileAutolinkingExclude(contents, names, expoModules = []) {
+  const stripped = contents.replace(blockPattern(podfileBegin, podfileEnd), "").replace(blockPattern(podfileCommandBegin, podfileCommandEnd), "").replace(/use_expo_modules!\((?:exclude: svelte_native_exclude)?(?:, )?(?:searchPaths: [^\n]*?)?\)(?=[ \t]*$)/m, "use_expo_modules!");
+  if (names.length === 0 && expoModules.length === 0) return stripped;
   const useAnchor = /^[ \t]*use_expo_modules!(?!\()[ \t]*$/m.exec(stripped);
   const commandAnchor = /^[ \t]*config = use_native_modules!\(config_command\)[ \t]*$/m.exec(stripped);
   if (!useAnchor || !commandAnchor || useAnchor.index > commandAnchor.index) throw new Error("Svelte native could not find use_expo_modules! and use_native_modules!(config_command) in the Podfile");
   const list = [
     podfileBegin,
     `  svelte_native_exclude = [${[...new Set(names)].map((name) => `"${name}"`).join(", ")}]`,
+    ...expoModules.length === 0 ? [] : [
+      `  svelte_native_expo_modules = [${expoModules.map((name) => `"${name}"`).join(", ")}]`,
+      `  svelte_native_library = File.dirname(\`node --print "require.resolve('${libraryPackage}/package.json')"\`)`
+    ],
     podfileEnd
   ].join("\n");
   const command = [
@@ -787,10 +1593,37 @@ function applyPodfileAutolinkingExclude(contents, names) {
     "  config_command += svelte_native_exclude.flat_map { |name| ['--exclude', name] } if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] != '1'",
     podfileCommandEnd
   ].join("\n");
+  const useCall = `use_expo_modules!(exclude: svelte_native_exclude${expoModules.length === 0 ? "" : ", searchPaths: svelte_native_expo_modules.map { |name| File.join(svelte_native_library, 'vendor', name) }"})`;
   const useEnd = useAnchor.index + useAnchor[0].length;
   return `${stripped.slice(0, useAnchor.index)}${list}
-${stripped.slice(useAnchor.index, useEnd).replace("use_expo_modules!", "use_expo_modules!(exclude: svelte_native_exclude)")}${stripped.slice(useEnd, commandAnchor.index)}${command}
+${stripped.slice(useAnchor.index, useEnd).replace("use_expo_modules!", useCall)}${stripped.slice(useEnd, commandAnchor.index)}${command}
 ${stripped.slice(commandAnchor.index)}`;
+}
+var podfileLinkBegin = "  # Svelte native: the packages the library carries are linked from its own directory (generated, do not edit)";
+var podfileLinkEnd = "  # Svelte native: end of the library's own packages";
+function applyPodfileVendoredLinking(contents, links = []) {
+  const stripped = contents.replace(blockPattern(podfileLinkBegin, podfileLinkEnd), "");
+  const anchor = /^[ \t]*config = use_native_modules!\(config_command\)[ \t]*$/m.exec(stripped);
+  if (!anchor) throw new Error("Svelte native could not find use_native_modules!(config_command) in the Podfile");
+  const block = [
+    podfileLinkBegin,
+    `  svelte_native_cli = File.join(File.dirname(\`node --print "require.resolve('${libraryPackage}/package.json')"\`), 'dist/node/cli.js')`,
+    `  config_command = ['node', svelte_native_cli, 'ios-autolinking'${links.map((name) => `, '--link', '${name}'`).join("")}] + config_command`,
+    podfileLinkEnd
+  ].join("\n");
+  return `${stripped.slice(0, anchor.index)}${block}
+${stripped.slice(anchor.index)}`;
+}
+var podfileSodiumBegin = "# Svelte native: libsodium for react-native-quick-crypto (generated, do not edit)";
+var podfileSodiumEnd = "# Svelte native: end of libsodium";
+function applyPodfileSodium(contents, enabled) {
+  const stripped = contents.replace(new RegExp(`(^|\\n)${escapeRegExp(podfileSodiumBegin)}[\\s\\S]*?${escapeRegExp(podfileSodiumEnd)}(?:\\n|$)`), "$1");
+  return enabled ? `${[podfileSodiumBegin, "ENV['SODIUM_ENABLED'] = '1'", podfileSodiumEnd].join("\n")}
+${stripped}` : stripped;
+}
+function applyGradleSodium(properties, enabled) {
+  const others = properties.filter((item) => !(item.type === "property" && item.key === "sodiumEnabled"));
+  return enabled ? [...others, { type: "property", key: "sodiumEnabled", value: "true" }] : others;
 }
 function headlessPackageSource(applicationId) {
   const dropped = headlessDroppedTurboModules.map((name) => `"${name}"`).join(", ");
@@ -904,27 +1737,60 @@ function leaveOutOfAutoPlugins(config, names) {
   for (const name of names) history[name] ??= { name, version: "left out of autolinking" };
   return config;
 }
+function assertNoVendoredOriginals(projectRoot) {
+  const declared = declaredVendored(projectRoot);
+  if (declared.length > 0) throw new Error(collisionMessage(declared, libraryPackage));
+}
+function onDemandForLibraries(onDemand, enabled) {
+  if (onDemand === void 0) return void 0;
+  const absent = optionalPackages.filter((vendored) => !enabled.includes(vendored.name)).map((vendored) => /^import ([\w.]+);$/.exec(vendored.android?.packageImportPath ?? "")?.[1]);
+  return Object.fromEntries(Object.entries(onDemand).filter(([packageClass]) => !absent.includes(packageClass)));
+}
+var withLibraries = (config, libraries) => {
+  const listedPlugins = (config.plugins ?? []).map((plugin) => String(Array.isArray(plugin) ? plugin[0] : plugin)).filter((name) => vendoredPackage(name) !== void 0);
+  const optionalPlugins = listedPlugins.filter((name) => vendoredPackage(name)?.optional !== void 0);
+  if (optionalPlugins.length > 0) {
+    throw new LibrariesConfigError(`\`plugins\` lists ${optionalPlugins.join(", ")}, which ${libraryPackage} carries and is not installed: its plugin runs from the library's copy, with its options under \`libraries\` (\`["${libraryPackage}", { libraries: { ${optionalPlugins.map((name) => `"${name}": { … }`).join(", ")} } }]\`). Remove it from \`plugins\`.`);
+  }
+  if (listedPlugins.length > 0) {
+    const sodium = listedPlugins.includes("react-native-quick-crypto") ? ` react-native-quick-crypto's \`sodiumEnabled\` is an option of ${libraryPackage}'s plugin: \`["${libraryPackage}", { sodiumEnabled: true }]\`.` : "";
+    throw new LibrariesConfigError(`\`plugins\` lists ${listedPlugins.join(", ")}, which ${libraryPackage} carries and links itself, and is not installed. Remove it from \`plugins\`.${sodium}`);
+  }
+  for (const name of libraries.enabled) {
+    const vendored = vendoredPackage(name);
+    const plugin = vendored && libraryPlugin(vendored);
+    if (plugin) config = plugin(config, libraries.listed.get(name));
+  }
+  const svelteNative = config.extra?.[EXTRA_KEY] ?? {};
+  return { ...config, extra: { ...config.extra, [EXTRA_KEY]: { ...svelteNative, libraries: [...libraries.enabled] } } };
+};
 var withSvelteNative = (config, options) => {
+  if (options?.sodiumEnabled !== void 0 && typeof options.sodiumEnabled !== "boolean") throw new Error(`Svelte native: sodiumEnabled must be true or false, not ${JSON.stringify(options.sodiumEnabled)}`);
+  const sodium = options?.sodiumEnabled === true;
+  const libraries = checkLibraries(options?.libraries);
+  const links = libraryLinks(libraries.enabled);
   config = leaveOutOfAutoPlugins(config, options?.autolinkingExclude ?? []);
+  config = withLibraries(config, libraries);
   config = withCapabilities(config, options?.capabilities, { excluded: options?.autolinkingExclude });
   if (options?.remote) config = withRemoteHost(config, options.remote);
   for (const platform of ["android", "ios"]) {
-    config = (0, import_config_plugins2.withDangerousMod)(config, [platform, async (config2) => {
+    config = (0, import_config_plugins3.withDangerousMod)(config, [platform, async (config2) => {
+      assertNoVendoredOriginals(config2.modRequest.projectRoot);
       await syncNative(config2.modRequest.projectRoot, { variant: options?.variant });
       return config2;
     }]);
   }
-  config = (0, import_config_plugins2.withDangerousMod)(config, ["android", async (config2) => {
+  config = (0, import_config_plugins3.withDangerousMod)(config, ["android", async (config2) => {
     const applicationId = config2.android?.package;
     if (!applicationId) throw new Error("Svelte native needs android.package in the Expo config");
-    const directory = (0, import_node_path5.join)(config2.modRequest.platformProjectRoot, "app/src/main/java", ...applicationId.split("."));
-    const file = (0, import_node_path5.join)(directory, `${headlessPackageName}.kt`);
-    await (0, import_promises.mkdir)(directory, { recursive: true });
-    await (0, import_promises.writeFile)(file, headlessPackageSource(applicationId));
-    await (0, import_promises.writeFile)((0, import_node_path5.join)(directory, `${onDemandPackageName}.kt`), onDemandPackageSource(applicationId));
+    const directory = (0, import_node_path7.join)(config2.modRequest.platformProjectRoot, "app/src/main/java", ...applicationId.split("."));
+    const file = (0, import_node_path7.join)(directory, `${headlessPackageName}.kt`);
+    await (0, import_promises2.mkdir)(directory, { recursive: true });
+    await (0, import_promises2.writeFile)(file, headlessPackageSource(applicationId));
+    await (0, import_promises2.writeFile)((0, import_node_path7.join)(directory, `${onDemandPackageName}.kt`), onDemandPackageSource(applicationId));
     return config2;
   }]);
-  config = (0, import_config_plugins2.withAndroidManifest)(config, (config2) => {
+  config = (0, import_config_plugins3.withAndroidManifest)(config, (config2) => {
     const manifest = config2.modResults.manifest;
     const application = manifest.application?.[0];
     if (!application) throw new Error("Svelte native could not find <application> in AndroidManifest.xml");
@@ -938,44 +1804,48 @@ var withSvelteNative = (config, options) => {
     application.provider = providers;
     return config2;
   });
-  config = (0, import_config_plugins2.withSettingsGradle)(config, (config2) => {
-    config2.modResults.contents = applyHeadlessSettings(config2.modResults.contents, options?.autolinkingExclude);
+  config = (0, import_config_plugins3.withSettingsGradle)(config, (config2) => {
+    config2.modResults.contents = applyHeadlessSettings(config2.modResults.contents, options?.autolinkingExclude, links);
     return config2;
   });
-  config = (0, import_config_plugins2.withPodfile)(config, (config2) => {
-    config2.modResults.contents = applyPodfileAutolinkingExclude(config2.modResults.contents, options?.autolinkingExclude ?? []);
+  config = (0, import_config_plugins3.withPodfile)(config, (config2) => {
+    config2.modResults.contents = applyPodfileSodium(applyPodfileVendoredLinking(applyPodfileAutolinkingExclude(config2.modResults.contents, [...options?.autolinkingExclude ?? [], ...links.expoOff], links.expo), links.reactNative), sodium);
+    return config2;
+  });
+  config = (0, import_config_plugins3.withGradleProperties)(config, (config2) => {
+    config2.modResults = applyGradleSodium(config2.modResults, sodium);
     return config2;
   });
   if (options?.androidProfileable) {
-    config = (0, import_config_plugins2.withAndroidManifest)(config, (config2) => {
+    config = (0, import_config_plugins3.withAndroidManifest)(config, (config2) => {
       const application = config2.modResults.manifest.application?.[0];
       if (!application) throw new Error("Svelte native could not find <application> in AndroidManifest.xml");
       application.profileable = [{ $: { "android:shell": "true" } }];
       return config2;
     });
   }
-  config = (0, import_config_plugins2.withDangerousMod)(config, ["android", async (config2) => {
-    const dir = (0, import_node_path5.join)(config2.modRequest.platformProjectRoot, "app", "src", "main");
-    await (0, import_promises.mkdir)(dir, { recursive: true });
-    await (0, import_promises.writeFile)((0, import_node_path5.join)(dir, "baseline-prof.txt"), baselineProfile());
+  config = (0, import_config_plugins3.withDangerousMod)(config, ["android", async (config2) => {
+    const dir = (0, import_node_path7.join)(config2.modRequest.platformProjectRoot, "app", "src", "main");
+    await (0, import_promises2.mkdir)(dir, { recursive: true });
+    await (0, import_promises2.writeFile)((0, import_node_path7.join)(dir, "baseline-prof.txt"), baselineProfile());
     return config2;
   }]);
-  config = (0, import_config_plugins2.withMainActivity)(config, (config2) => {
+  config = (0, import_config_plugins3.withMainActivity)(config, (config2) => {
     if (config2.modResults.language !== "kt") throw new Error("Svelte native requires Expo's Kotlin MainActivity");
     config2.modResults.contents = applyMainActivity(config2.modResults.contents);
     return config2;
   });
-  config = (0, import_config_plugins2.withAppDelegate)(config, (config2) => {
+  config = (0, import_config_plugins3.withAppDelegate)(config, (config2) => {
     if (config2.modResults.language !== "swift") throw new Error("Svelte native requires Expo's Swift AppDelegate");
     config2.modResults.contents = applyAppDelegate(config2.modResults.contents);
     return config2;
   });
-  config = (0, import_config_plugins2.withMainApplication)(config, (config2) => {
+  config = (0, import_config_plugins3.withMainApplication)(config, (config2) => {
     if (config2.modResults.language !== "kt") throw new Error("Svelte native requires Expo's Kotlin MainApplication");
-    config2.modResults.contents = applyHeadlessApplication(applyFeatureFlags(config2.modResults.contents, androidFeatureFlagsFor(options)), options?.androidOnDemandViewManagers);
+    config2.modResults.contents = applyHeadlessApplication(applyFeatureFlags(config2.modResults.contents, androidFeatureFlagsFor(options)), onDemandForLibraries(options?.androidOnDemandViewManagers, links.enabled));
     return config2;
   });
-  return (0, import_config_plugins2.withAppBuildGradle)(config, (config2) => {
+  return (0, import_config_plugins3.withAppBuildGradle)(config, (config2) => {
     if (config2.modResults.language !== "groovy") throw new Error("Svelte native requires Expo's Groovy Android template");
     if (!config2.modResults.contents.includes(bundleMarker)) {
       config2.modResults.contents += `
@@ -1003,15 +1873,21 @@ function baselineProfile() {
   androidFeatureFlagsFor,
   applyAppDelegate,
   applyFeatureFlags,
+  applyGradleSodium,
   applyHeadlessApplication,
   applyHeadlessSettings,
   applyMainActivity,
   applyPodfileAutolinkingExclude,
+  applyPodfileSodium,
+  applyPodfileVendoredLinking,
+  assertNoVendoredOriginals,
   baselineProfile,
   defaultAndroidFeatureFlags,
   headlessDroppedTurboModules,
   headlessExcludedPackages,
   headlessPackageSource,
   leaveOutOfAutoPlugins,
-  onDemandPackageSource
+  onDemandForLibraries,
+  onDemandPackageSource,
+  withLibraries
 });

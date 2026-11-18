@@ -1,6 +1,6 @@
 {
   "name": "@alfayez/svelte-native",
-  "version": "0.4.0-rc.8",
+  "version": "0.4.0-rc.9",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -75,6 +75,11 @@
       "types": "./dist/types/routes-table.d.ts",
       "default": "./dist/node/routes.js"
     },
+    "./push": {
+      "svelte-native-source": "./src/push/index.ts",
+      "types": "./dist/types/push/index.d.ts",
+      "default": "./src/push/index.ts"
+    },
     "./updates": {
       "svelte-native-source": "./src/updates/index.ts",
       "types": "./dist/types/updates/index.d.ts",
@@ -90,6 +95,11 @@
       "types": "./dist/types/remote/index.d.ts",
       "default": "./src/remote/index.ts"
     },
+    "./push/server": {
+      "svelte-native-source": "./src/push/server.ts",
+      "types": "./dist/types/push/server.d.ts",
+      "default": "./dist/node/push-server.js"
+    },
     "./remote/runtime": "./src/remote/runtime.ts",
     "./remote/globals": "./src/remote/globals.ts",
     "./package.json": "./package.json",
@@ -97,6 +107,41 @@
       "svelte-native-source": "./src/expo.ts",
       "types": "./dist/types/expo.d.ts",
       "default": "./app.plugin.js"
+    }
+  },
+  "imports": {
+    "#vendor/react-native-mmkv": {
+      "types": "./vendor/react-native-mmkv/lib/index.d.ts",
+      "default": "./vendor/react-native-mmkv/src/index.ts"
+    },
+    "#vendor/react-native-nitro-modules": {
+      "types": "./vendor/react-native-nitro-modules/lib/typescript/index.d.ts",
+      "default": "./vendor/react-native-nitro-modules/src/index.ts"
+    },
+    "#vendor/react-native-quick-crypto": "./vendor/react-native-quick-crypto/src/index.ts",
+    "#vendor/hermes-intl": "./vendor/hermes-intl/src/index.js",
+    "#vendor/expo-video/*": {
+      "types": "./vendor/expo-video/*.d.ts",
+      "default": "./vendor/expo-video/*.js"
+    },
+    "#vendor/react-native-gesture-handler": {
+      "types": "./vendor/react-native-gesture-handler/lib/typescript/index.d.ts",
+      "default": "./vendor/react-native-gesture-handler/src/index.ts"
+    },
+    "#vendor/react-native-gesture-handler/types/*": {
+      "types": "./vendor/react-native-gesture-handler/lib/typescript/*.d.ts"
+    },
+    "#vendor/react-native-reanimated": {
+      "types": "./vendor/react-native-reanimated/lib/typescript/index.d.ts",
+      "default": "./vendor/react-native-reanimated/src/index.ts"
+    },
+    "#vendor/react-native-svg": {
+      "types": "./vendor/react-native-svg/lib/typescript/index.d.ts",
+      "default": "./vendor/react-native-svg/src/index.ts"
+    },
+    "#vendor/react-native-worklets": {
+      "types": "./vendor/react-native-worklets/lib/typescript/index.d.ts",
+      "default": "./vendor/react-native-worklets/src/index.ts"
     }
   },
   "bin": {
@@ -107,6 +152,8 @@
     "dist/node",
     "dist/types",
     "native",
+    "vendor",
+    "vendor-patches",
     "patches",
     "expo-module.config.json",
     "app.plugin.js",
@@ -119,7 +166,14 @@
     "!native/**/build",
     "!native/**/.cxx",
     "!native/**/.gradle",
-    "!native/**/Pods"
+    "!native/**/Pods",
+    "!vendor/**/android/build",
+    "!vendor/**/ios/build",
+    "!vendor/**/.cxx",
+    "!vendor/**/.gradle",
+    "!vendor/**/Pods",
+    "!vendor/**/libsodium-stable",
+    "!vendor/**/libsodium.tar.gz"
   ],
   "scripts": {
     "typecheck": "svelte-check --tsconfig ./tsconfig.json",
@@ -128,100 +182,53 @@
     "build": "node scripts/build-node.ts"
   },
   "dependencies": {
+    "@babel/generator": "^7.27.1",
     "@babel/parser": "7.29.8",
+    "@babel/plugin-transform-arrow-functions": "^7.27.1",
+    "@babel/plugin-transform-class-properties": "^7.28.6",
+    "@babel/plugin-transform-classes": "^7.28.6",
+    "@babel/plugin-transform-nullish-coalescing-operator": "^7.28.6",
+    "@babel/plugin-transform-optional-chaining": "^7.28.6",
+    "@babel/plugin-transform-shorthand-properties": "^7.27.1",
+    "@babel/plugin-transform-template-literals": "^7.27.1",
+    "@babel/plugin-transform-unicode-regex": "^7.27.1",
+    "@babel/preset-typescript": "^7.28.5",
+    "@babel/traverse": "^7.27.1",
     "@babel/types": "7.29.8",
+    "@craftzdog/react-native-buffer": "6.1.0",
+    "@egjs/hammerjs": "^2.0.17",
     "@jridgewell/trace-mapping": "0.3.31",
-    "esbuild": "0.28.1"
+    "convert-source-map": "^2.0.0",
+    "css-select": "^5.1.0",
+    "css-tree": "^1.1.3",
+    "esbuild": "0.28.1",
+    "events": "3.3.0",
+    "hoist-non-react-statics": "^3.3.0",
+    "invariant": "^2.2.4",
+    "react-native-is-edge-to-edge": "^1.3.1",
+    "readable-stream": "4.7.0",
+    "safe-buffer": "^5.2.1",
+    "semver": "^7.7.4",
+    "string_decoder": "^1.3.0",
+    "util": "0.12.5",
+    "warn-once": "0.1.1"
   },
   "peerDependencies": {
-    "@react-native-community/datetimepicker": "9.1.0",
+    "@babel/core": "*",
     "@sveltejs/kit": "3.1.1",
     "expo": "~57.0.27",
-    "expo-blur": "~57.0.3",
-    "expo-conic-gradient": "~0.2.1",
     "expo-constants": "~57.0.21",
-    "expo-image": "~57.0.5",
-    "expo-linear-gradient": "~57.0.2",
-    "expo-location": "~57.0.21",
-    "expo-video": "~57.0.5",
-    "hermes-intl": "^0.1.2",
-    "lottie-react-native": "~7.3.8",
     "react": "19.2.7",
     "react-native": "0.86.3",
-    "react-native-animateable-text": "0.19.3",
-    "react-native-blob-util": "0.24.9",
-    "react-native-fast-shadow": "~0.1.1",
-    "react-native-gesture-handler": "~2.32.0",
-    "react-native-maps": "1.27.2",
-    "react-native-mmkv": "4.3.1",
-    "react-native-nitro-modules": "0.35.10",
-    "react-native-pdf": "7.0.3",
-    "react-native-quick-base64": "2.2.2",
-    "react-native-quick-crypto": "1.1.3",
-    "react-native-reanimated": "4.5.1",
-    "react-native-svg": "15.15.4",
-    "react-native-video": "6.19.3",
-    "react-native-view-shot": "5.1.0",
-    "react-native-webview": "13.16.1",
-    "react-native-worklets": "0.10.1",
-    "rive-react-native": "~9.7.1",
     "svelte": "5.56.7",
     "tailwindcss": "4.3.3",
     "vite": "^8.1.4"
   },
   "peerDependenciesMeta": {
-    "@react-native-community/datetimepicker": {
+    "@babel/core": {
       "optional": true
     },
     "@sveltejs/kit": {
-      "optional": true
-    },
-    "expo-blur": {
-      "optional": true
-    },
-    "expo-conic-gradient": {
-      "optional": true
-    },
-    "expo-image": {
-      "optional": true
-    },
-    "expo-linear-gradient": {
-      "optional": true
-    },
-    "expo-location": {
-      "optional": true
-    },
-    "expo-video": {
-      "optional": true
-    },
-    "lottie-react-native": {
-      "optional": true
-    },
-    "react-native-animateable-text": {
-      "optional": true
-    },
-    "react-native-blob-util": {
-      "optional": true
-    },
-    "react-native-fast-shadow": {
-      "optional": true
-    },
-    "react-native-maps": {
-      "optional": true
-    },
-    "react-native-pdf": {
-      "optional": true
-    },
-    "react-native-video": {
-      "optional": true
-    },
-    "react-native-view-shot": {
-      "optional": true
-    },
-    "react-native-webview": {
-      "optional": true
-    },
-    "rive-react-native": {
       "optional": true
     },
     "tailwindcss": {
@@ -244,7 +251,6 @@
     "eslint": "10.8.1",
     "eslint-plugin-svelte": "3.23.0",
     "globals": "17.11.0",
-    "hermes-intl": "^0.1.2",
     "svelte": "file:../../vendor/svelte-5.56.7-216f258.tgz",
     "svelte-check": "^4.6.0",
     "svelte2tsx": "0.7.63",

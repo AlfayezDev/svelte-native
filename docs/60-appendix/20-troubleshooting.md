@@ -98,6 +98,25 @@ A release build doesn't use Metro. If you see this on one, it was built without 
 
 Gradle needs a JDK 17 and the Android SDK packages the project asks for: platform 36, build-tools 36.0.0, NDK 27.1.12297006 and CMake 3.22.1. Install them from Android Studio's SDK Manager, set `ANDROID_HOME` to the SDK, and set `JAVA_HOME` to a JDK 17 if your default Java is another version. The first build downloads a lot.
 
+## Push notifications
+
+[Push notifications](push-notifications) are on when `capabilities.push` is set ([the config](push-notifications#the-config)). `expo prebuild` stops with one of these when the setup is half made, or when the config holds something it shouldn't:
+
+| It says | Do this |
+| --- | --- |
+| `capabilities.push is on, and expo-notifications is installed: an app has one push library` | Uninstall `expo-notifications` (or `@react-native-firebase/messaging`, which gets the same message), or turn `capabilities.push` off and use that library for push ([Push notifications](push-notifications) sets up each). Android delivers a message to one `FirebaseMessagingService` and iOS has one notification center delegate, so two libraries take messages from each other. |
+| `capabilities.push.android.googleServicesFile ("./google-services.json") has no client for the app's package "dev.example.myapp"` | Add an Android app with that package to the Firebase project and download `google-services.json` again, or fix `android.package`. |
+| `capabilities.push.android.googleServicesFile ("./google-services.json") does not exist` | Download `google-services.json` from the Firebase console (Project settings, your Android app) and save it at that path, or point the option at it. |
+| `… is a service account key: a key that can send to every user must never be in the app or its build` | A server secret is in the config or in the Google services file. The message names where. It can also say a PEM private key, a private key, or the path of a `.p8` file. Move it to the server's environment (`FCM_SERVICE_ACCOUNT`, `APNS_KEY`) and give the app identifiers only. |
+| `The app config sets ios.entitlements["aps-environment"] ("development") and capabilities.push.ios.mode is "production": keep one` | Remove the entitlement from `ios.entitlements`: `capabilities.push.ios.mode` writes it. `The app config sets android.googleServicesFile … keep one` is the same for the Google services file. |
+| `capabilities.push names no platform` | Give `android`, `ios` or both. |
+| `capabilities.push.android needs googleServicesFile` | Give the path of `google-services.json`, or leave `android` out for an app with no push on Android. |
+| `capabilities.push.android needs android.package in the Expo config` | Set `android.package`: the Google services file is checked against it. |
+| `capabilities.push.ios.mode must be "development" or "production"` | It is the `aps-environment` entitlement: `"development"` for a build signed for development, `"production"` for TestFlight and the App Store. |
+| `Svelte native could not find the imports and factory.startReactNative(…) in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift` | The app uses Expo's scene-based iOS template, which push doesn't support yet ([Push notifications](push-notifications#on-ios)). |
+
+A build that runs and logs `[Svelte push] push is not part of this app's build` doesn't have the native package: `push.permission` reads `"denied"` and `push.subscribe` resolves with `null`. Install the package, turn `capabilities.push` on, and make a new native build. An over-the-air update can't add it.
+
 ## Still stuck?
 
 [Open an issue](https://github.com/AlfayezDev/svelte-native/issues/new?template=bug.yml). The form asks for what makes it quick to fix: the output of `pnpm exec svelte-native doctor`, the library version, your device and the log. On Android, `adb logcat -d` right after the problem has the log.

@@ -83,7 +83,7 @@ SvelteKit's plugin, wrapped by `svelteNative()`. For `vite dev` and `vite build`
 
 ### pnpm-workspace.yaml and patches
 
-Svelte Native needs small changes to a few packages it depends on, such as SvelteKit (so that it ignores `.mobile.svelte` files) and Reanimated. They ship as pnpm patches. pnpm applies a patch only from your own project, so `init` copies the patch files into `patches/svelte-native/` and lists them in `pnpm-workspace.yaml`. Run `init` again after you upgrade Svelte Native, so the copies stay current. [Configuration](configuration#patches) lists them.
+Svelte Native needs small changes to a few packages it depends on, such as SvelteKit (so that it ignores `.mobile.svelte` files) and `expo-modules-core`. They ship as pnpm patches. (Reanimated, worklets and gesture handler need changes too, and the library carries its own patched copies of them: there is nothing to declare for those.) pnpm applies a patch only from your own project, so `init` copies the patch files into `patches/svelte-native/` and lists them in `pnpm-workspace.yaml`. Run `init` again after you upgrade Svelte Native, so the copies stay current. [Configuration](configuration#patches) lists them.
 
 ## Generated files
 

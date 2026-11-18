@@ -3,7 +3,7 @@
   import { createNativeProps } from "../../native-props.ts";
   import { feFloodNativeProps } from "../../fabric/foreign-svg.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
-  import type { FeFloodProps, FilterPrimitiveCommonProps } from "react-native-svg";
+  import type { FeFloodProps, FilterPrimitiveCommonProps } from "#vendor/react-native-svg";
 
   /** `react-native-svg`'s `FeFlood`: fills the filter region with `floodColor` at `floodOpacity`. */
   let { ref, animatedProps, ...props }: FeFloodProps & FilterPrimitiveCommonProps & SvgExtras = $props();

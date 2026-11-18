@@ -164,6 +164,20 @@ jobs:
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bash packages/svelte-native/native/svelte-core/android/src/test/blur.sh
 
+      # The Android side of push that needs no device: the message mapping, the launch-message and opened rule, the de-duplication of taps, the events kept for a
+      # JavaScript that is not listening, the background wait and its limit, the enabled flag every entry asks first, and that Firebase is compile-time only, svelte-core's
+      # manifest declares nothing of push, and the module and config plugin agree with src/push/client.ts. kotlinc only.
+      - name: Push host checks
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bash packages/svelte-native/native/svelte-core/android/src/test/push.sh
+
+      # The Android side of location that needs no device: which providers a request tries (the fused provider from API 31, the GPS only with the precise permission), the permission's
+      # state, the payloads, the registry of watches, the enabled flag every call asks first, and that no Google library is part of it and the module and config plugin agree with
+      # src/geolocation.ts. kotlinc only.
+      - name: Location host checks
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bash packages/svelte-native/native/svelte-core/android/src/test/location.sh
+
   docs:
     name: Documentation site
     runs-on: ubuntu-latest

@@ -38,11 +38,11 @@ __export(transformer_exports, {
   upstreamTransformerPath: () => upstreamTransformerPath
 });
 module.exports = __toCommonJS(transformer_exports);
-var import_node_module3 = require("node:module");
-var import_node_path7 = require("node:path");
+var import_node_module3 = __toESM(require("node:module"), 1);
+var import_node_path8 = require("node:path");
 var import_esbuild = require("esbuild");
 var import_node_crypto = require("node:crypto");
-var import_node_fs5 = require("node:fs");
+var import_node_fs6 = require("node:fs");
 var import_parser2 = require("@babel/parser");
 var import_types = require("@babel/types");
 
@@ -2382,7 +2382,8 @@ function cacheKeyFiles(transformer, directory) {
       ...["inline", "properties", "values", "color", "parse", "table"].map((name) => sourceFile(`css/${name}.ts`)),
       sourceFile("remote/transform.ts"),
       sourceFile("compile-options.ts"),
-      sourceFile("svelte-compiler.ts")
+      sourceFile("svelte-compiler.ts"),
+      sourceFile("vendored.ts")
     );
   }
   return files;
@@ -2428,19 +2429,267 @@ function assertCustomRenderer(what, from) {
   if (!inspection.ok) throw new Error(customRendererMessage(inspection, what));
 }
 
+// src/vendored.ts
+var import_node_fs5 = require("node:fs");
+var import_node_path5 = require("node:path");
+
+// src/optional-libraries.ts
+var react = "react-native";
+var expo = "expo";
+var optionalLibraries = [
+  // Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module, so they have no `android` or `ios` entry here.
+  { name: "expo-blur", version: "57.0.3", optional: { kind: expo } },
+  { name: "expo-conic-gradient", version: "0.2.1", optional: { kind: expo } },
+  { name: "expo-image", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+  { name: "expo-linear-gradient", version: "57.0.2", optional: { kind: expo } },
+  { name: "expo-video", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+  // React Native packages: an entry of the autolinking config for each platform.
+  {
+    name: "@react-native-community/datetimepicker",
+    version: "9.1.0",
+    android: { packageImportPath: "import com.reactcommunity.rndatetimepicker.RNDateTimePickerPackage;", packageInstance: "new RNDateTimePickerPackage()" },
+    ios: { podspec: "RNDateTimePicker.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    name: "lottie-react-native",
+    version: "7.3.8",
+    android: { packageImportPath: "import com.airbnb.android.react.lottie.LottiePackage;", packageInstance: "new LottiePackage()", componentDescriptors: ["LottieAnimationViewComponentDescriptor"] },
+    ios: { podspec: "lottie-react-native.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-animateable-text",
+    version: "0.19.3",
+    android: {
+      packageImportPath: "import com.reactnativereanimatedtext.ReanimatedTextPackage;",
+      packageInstance: "new ReanimatedTextPackage()",
+      libraryName: "JBAnimatedText",
+      componentDescriptors: ["CParagraphComponentDescriptor"],
+      cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+    },
+    ios: { podspec: "react-native-animateable-text.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-blob-util",
+    version: "0.24.9",
+    android: { packageImportPath: "import com.ReactNativeBlobUtil.ReactNativeBlobUtilPackage;", packageInstance: "new ReactNativeBlobUtilPackage()" },
+    ios: { podspec: "react-native-blob-util.podspec" },
+    optional: { kind: react }
+  },
+  {
+    // No iOS code: `ShadowedView` is React Native's own `View` there (the layer's shadow), so the library has no podspec.
+    name: "react-native-fast-shadow",
+    version: "0.1.1",
+    android: { packageImportPath: "import com.reactnativefastshadow.FastShadowPackage;", packageInstance: "new FastShadowPackage()" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-maps",
+    version: "1.27.2",
+    android: {
+      packageImportPath: "import com.rnmaps.maps.MapsPackage;",
+      packageInstance: "new MapsPackage()",
+      componentDescriptors: [
+        "RNMapsCalloutComponentDescriptor",
+        "RNMapsCircleComponentDescriptor",
+        "RNMapsGoogleMapViewComponentDescriptor",
+        "RNMapsGooglePolygonComponentDescriptor",
+        "RNMapsMapViewComponentDescriptor",
+        "RNMapsMarkerComponentDescriptor",
+        "RNMapsOverlayComponentDescriptor",
+        "RNMapsPolylineComponentDescriptor",
+        "RNMapsUrlTileComponentDescriptor",
+        "RNMapsWMSTileComponentDescriptor"
+      ],
+      cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+    },
+    ios: { podspec: "react-native-maps.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    // The PDF view reads its files through react-native-blob-util's native module, so turning it on turns that one on.
+    name: "react-native-pdf",
+    version: "7.0.3",
+    android: { packageImportPath: "import org.wonday.pdf.RNPDFPackage;", packageInstance: "new RNPDFPackage()", componentDescriptors: ["RNPDFPdfViewComponentDescriptor"] },
+    ios: { podspec: "react-native-pdf.podspec" },
+    optional: { kind: react, requires: ["react-native-blob-util"] }
+  },
+  {
+    name: "react-native-video",
+    version: "6.19.3",
+    android: { packageImportPath: "import com.brentvatne.react.ReactVideoPackage;", packageInstance: "new ReactVideoPackage()" },
+    ios: { podspec: "react-native-video.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    name: "react-native-view-shot",
+    version: "5.1.0",
+    android: { packageImportPath: "import fr.greweb.reactnativeviewshot.RNViewShotPackage;", packageInstance: "new RNViewShotPackage()" },
+    ios: { podspec: "react-native-view-shot.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-webview",
+    version: "13.16.1",
+    android: { packageImportPath: "import com.reactnativecommunity.webview.RNCWebViewPackage;", packageInstance: "new RNCWebViewPackage()", componentDescriptors: ["RNCWebViewComponentDescriptor"] },
+    ios: { podspec: "react-native-webview.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "rive-react-native",
+    version: "9.7.1",
+    android: { packageImportPath: "import com.rivereactnative.RiveReactNativePackage;", packageInstance: "new RiveReactNativePackage()" },
+    ios: { podspec: "rive-react-native.podspec" },
+    optional: { kind: react }
+  }
+];
+
+// src/vendored.ts
+var vendoredPackages = [
+  // The optional view libraries (`optional-libraries.ts`).
+  ...optionalLibraries,
+  {
+    name: "react-native-nitro-modules",
+    version: "0.35.10",
+    android: { packageImportPath: "import com.margelo.nitro.NitroModulesPackage;", packageInstance: "new NitroModulesPackage()" },
+    ios: { podspec: "NitroModules.podspec" }
+  },
+  {
+    name: "react-native-mmkv",
+    version: "4.3.1",
+    android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
+    ios: { podspec: "NitroMmkv.podspec" }
+  },
+  {
+    // The base64 module quick-crypto and its Buffer ask for (`libraryName` QuickBase64 is the `react { }` block of its build.gradle).
+    name: "react-native-quick-base64",
+    version: "2.2.2",
+    android: { packageImportPath: "import com.reactnativequickbase64.QuickBase64Package;", packageInstance: "new QuickBase64Package()" },
+    ios: { podspec: "react-native-quick-base64.podspec" }
+  },
+  {
+    // `crypto` and `crypto.subtle`: a Nitro module over OpenSSL (and libsodium, when the plugin's `sodiumEnabled` is on). It links the vendored Nitro runtime by its project name and pod.
+    name: "react-native-quick-crypto",
+    version: "1.1.3",
+    android: { packageImportPath: "import com.margelo.nitro.quickcrypto.QuickCryptoPackage;", packageInstance: "new QuickCryptoPackage()" },
+    ios: { podspec: "QuickCrypto.podspec" }
+  },
+  {
+    // The `Intl` constructors Hermes lacks: a pure C++ TurboModule (no view, no module class: the `ReactPackage` is empty), so Android adds its CMake module to the app's build.
+    name: "hermes-intl",
+    version: "0.1.2",
+    android: { packageImportPath: "import dev.hermesintl.HermesIntlPackage;", packageInstance: "new HermesIntlPackage()", cxxModule: { cmakeListsModuleName: "hermesintl", cmakeListsPath: "android/CMakeLists.txt", headerName: "NativeHermesIntl" } },
+    ios: { podspec: "HermesIntl.podspec" }
+  },
+  {
+    name: "react-native-gesture-handler",
+    version: "2.32.0",
+    // The two components of its codegen (`RNGestureHandlerButton`, `RNGestureHandlerRootView`); `libraryName` is `codegenConfig.name`.
+    android: { packageImportPath: "import com.swmansion.gesturehandler.RNGestureHandlerPackage;", packageInstance: "new RNGestureHandlerPackage()", componentDescriptors: ["RNGestureHandlerButtonComponentDescriptor", "RNGestureHandlerRootViewComponentDescriptor"] },
+    ios: { podspec: "RNGestureHandler.podspec" }
+  },
+  {
+    name: "react-native-worklets",
+    version: "0.10.1",
+    android: { packageImportPath: "import com.swmansion.worklets.WorkletsPackage;", packageInstance: "new WorkletsPackage()" },
+    ios: { podspec: "RNWorklets.podspec" }
+  },
+  {
+    name: "react-native-reanimated",
+    version: "4.5.1",
+    android: { packageImportPath: "import com.swmansion.reanimated.ReanimatedPackage;", packageInstance: "new ReanimatedPackage()" },
+    ios: { podspec: "RNReanimated.podspec" }
+  },
+  {
+    name: "react-native-svg",
+    version: "15.15.4",
+    // The 29 components of its `react-native.config.js`, and its codegen CMake file, which is in the sources and not below `android/build/` (a test reads both from the copy).
+    android: {
+      packageImportPath: "import com.horcrux.svg.SvgPackage;",
+      packageInstance: "new SvgPackage()",
+      componentDescriptors: [
+        "RNSVGCircleComponentDescriptor",
+        "RNSVGClipPathComponentDescriptor",
+        "RNSVGDefsComponentDescriptor",
+        "RNSVGFeBlendComponentDescriptor",
+        "RNSVGFeColorMatrixComponentDescriptor",
+        "RNSVGFeCompositeComponentDescriptor",
+        "RNSVGFeFloodComponentDescriptor",
+        "RNSVGFeGaussianBlurComponentDescriptor",
+        "RNSVGFeMergeComponentDescriptor",
+        "RNSVGFeOffsetComponentDescriptor",
+        "RNSVGFilterComponentDescriptor",
+        "RNSVGEllipseComponentDescriptor",
+        "RNSVGForeignObjectComponentDescriptor",
+        "RNSVGGroupComponentDescriptor",
+        "RNSVGImageComponentDescriptor",
+        "RNSVGLinearGradientComponentDescriptor",
+        "RNSVGLineComponentDescriptor",
+        "RNSVGMarkerComponentDescriptor",
+        "RNSVGMaskComponentDescriptor",
+        "RNSVGPathComponentDescriptor",
+        "RNSVGPatternComponentDescriptor",
+        "RNSVGRadialGradientComponentDescriptor",
+        "RNSVGRectComponentDescriptor",
+        "RNSVGSvgViewAndroidComponentDescriptor",
+        "RNSVGSymbolComponentDescriptor",
+        "RNSVGTextComponentDescriptor",
+        "RNSVGTextPathComponentDescriptor",
+        "RNSVGTSpanComponentDescriptor",
+        "RNSVGUseComponentDescriptor"
+      ],
+      cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+    },
+    ios: { podspec: "RNSVG.podspec" }
+  }
+];
+var vendoredNames = vendoredPackages.map((vendored) => vendored.name);
+var optionalPackages = vendoredPackages.filter((vendored) => vendored.optional !== void 0);
+var alwaysLinkedPackages = vendoredPackages.filter((vendored) => vendored.optional === void 0);
+var vendorDirectory = (root = packageRoot) => (0, import_node_path5.join)(root, "vendor");
+var vendoredRoot = (name, root = packageRoot) => (0, import_node_path5.join)(vendorDirectory(root), name);
+var real = (path) => {
+  try {
+    return (0, import_node_fs5.realpathSync)(path);
+  } catch {
+    return path;
+  }
+};
+var spellings = /* @__PURE__ */ new Map();
+function vendorSpellings(root) {
+  let found = spellings.get(root);
+  if (found === void 0) {
+    found = [.../* @__PURE__ */ new Set([vendorDirectory(root), real(vendorDirectory(root))])];
+    spellings.set(root, found);
+  }
+  return found;
+}
+function vendoredFileAs(path, root = packageRoot) {
+  for (const directory of vendorSpellings(root)) {
+    const relativePath = (0, import_node_path5.relative)(directory, path);
+    if (relativePath !== "" && !relativePath.startsWith("..") && !(0, import_node_path5.isAbsolute)(relativePath)) {
+      const inside = relativePath.split(import_node_path5.sep).join("/");
+      if (vendoredPackages.some((vendored) => inside === vendored.name || inside.startsWith(`${vendored.name}/`))) return inside;
+    }
+  }
+  return void 0;
+}
+
 // src/remote/transform.ts
-var import_node_path6 = require("node:path");
+var import_node_path7 = require("node:path");
 var import_parser = require("@babel/parser");
 
 // src/remote/kit.ts
 var import_node_module2 = require("node:module");
-var import_node_path5 = require("node:path");
+var import_node_path6 = require("node:path");
 var require3 = (0, import_node_module2.createRequire)(__importMetaUrl);
 var kitRootCache;
 function findKitRoot() {
   if (kitRootCache === void 0) {
     try {
-      kitRootCache = (0, import_node_path5.dirname)(require3.resolve("@sveltejs/kit/package.json"));
+      kitRootCache = (0, import_node_path6.dirname)(require3.resolve("@sveltejs/kit/package.json"));
     } catch {
       kitRootCache = null;
     }
@@ -2472,7 +2721,7 @@ function hash(value) {
   return (result >>> 0).toString(36);
 }
 function remoteHash(filename, root) {
-  return hash(posix((0, import_node_path6.relative)(root, filename)));
+  return hash(posix((0, import_node_path7.relative)(root, filename)));
 }
 var RemoteModuleError = class extends Error {
   constructor(filename, message, node) {
@@ -2618,9 +2867,28 @@ function upstreamTransformerPath(searchFrom = [process.cwd(), __dirname]) {
   } catch (cause) {
     throw new Error("The Metro transformer of @alfayez/svelte-native needs `expo`, which it could not resolve (from the app's directory or from the package). Install it: `npx expo install expo`.", { cause });
   }
-  return require4.resolve("@expo/metro-config/babel-transformer", { paths: [(0, import_node_path7.dirname)(expoManifest)] });
+  return require4.resolve("@expo/metro-config/babel-transformer", { paths: [(0, import_node_path8.dirname)(expoManifest)] });
 }
 var upstream = require4(upstreamTransformerPath());
+var workletsPluginFile = () => (0, import_node_path8.join)(vendoredRoot("react-native-worklets"), "plugin/index.js");
+var pluginFiles = {
+  "react-native-worklets/plugin": workletsPluginFile,
+  "react-native-reanimated/plugin": () => (0, import_node_path8.join)(vendoredRoot("react-native-reanimated"), "plugin/index.js")
+};
+var redirected = /* @__PURE__ */ Symbol.for("@alfayez/svelte-native/worklets-plugin");
+var internals = import_node_module3.default;
+if (process.versions.bun !== void 0 && process.env.NODE_ENV !== "test") {
+  console.warn("svelte-native: Metro runs under Bun, where the library cannot give Babel its copy of the Worklets plugin; animations and gestures need Metro on Node (`expo start`, not `bun --bun expo start`)");
+}
+if (process.versions.bun === void 0 && internals._resolveFilename[redirected] !== true) {
+  const resolveFilename = internals._resolveFilename;
+  const redirect = function(request, ...rest) {
+    const plugin = pluginFiles[request];
+    return plugin ? plugin() : resolveFilename.call(this, request, ...rest);
+  };
+  redirect[redirected] = true;
+  internals._resolveFilename = redirect;
+}
 function sourceOf(input) {
   const { filename, src } = input;
   if (isRemoteModule(filename)) {
@@ -2669,7 +2937,7 @@ function transform(input) {
     if (result.js.map) maps.push(new import_trace_mapping.TraceMap(result.js.map.toString()));
   } else {
     const svelteModule = /\.svelte\.[jt]s$/.test(filename);
-    const stripTypes = /\.tsx?$/.test(filename) && (svelteModule || !filename.includes("/node_modules/")) && !src.includes("codegenNativeComponent") && !src.includes("codegenNativeCommands");
+    const stripTypes = /\.tsx?$/.test(filename) && (svelteModule || !filename.includes("/node_modules/") && vendoredFileAs(filename) === void 0) && !src.includes("codegenNativeComponent") && !src.includes("codegenNativeCommands");
     if (stripTypes) {
       const stripped = (0, import_esbuild.transformSync)(src, { loader: filename.endsWith(".tsx") ? "tsx" : "ts", jsx: "preserve", target: "es2022", sourcemap: "external", sourcefile: filename });
       code = stripped.code;
@@ -2699,7 +2967,8 @@ function transform(input) {
 function getCacheKey(options) {
   const files = cacheKeyFiles(__filename, __dirname);
   const hash2 = (0, import_node_crypto.createHash)("sha256");
-  for (const file of files) hash2.update((0, import_node_fs5.readFileSync)(file));
+  for (const file of files) hash2.update((0, import_node_fs6.readFileSync)(file));
+  hash2.update((0, import_node_fs6.readFileSync)(workletsPluginFile()));
   hash2.update(`runes-default:${runesDefaultEnabled()}`);
   hash2.update(`async:${asyncEnabled()}`);
   return hash2.update(upstream.getCacheKey(options)).digest("hex");

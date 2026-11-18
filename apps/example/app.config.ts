@@ -26,14 +26,31 @@ export default {
     },
   },
   plugins: [
-    // The library's Expo plugin: autolinks its native modules and wires the Android and iOS hosts. The location capability (expo-location) is `navigator.geolocation`,
-    // which the Web APIs screen's device checks use; the text is what iOS shows when it asks.
+    // The library's Expo plugin: autolinks its native modules and wires the Android and iOS hosts. The location capability is `navigator.geolocation`, which the Web APIs
+    // screen's device checks use: the library's own native code does the work, so nothing is installed for it; the text is what iOS shows when it asks.
     ["@alfayez/svelte-native", {
       ...(remoteOrigin ? { remote: { origin: remoteOrigin } } : {}),
       capabilities: { location: "Svelte Native reads your location for the Web APIs screen's geolocation check." },
+      // The native view libraries the Native views screens use. The library carries them, and an app links only the ones it lists here: nothing is installed, and a library that is not listed
+      // is not in the build at all (expo-blur and expo-video, which no screen here uses, are not). Each is `true`, or the options of the library's own config plugin.
+      libraries: {
+        "expo-image": true,
+        "expo-linear-gradient": true,
+        "expo-conic-gradient": true,
+        "react-native-video": true,
+        "lottie-react-native": true,
+        // The PDF screen; react-native-blob-util, which it reads its files with, comes with it.
+        "react-native-pdf": true,
+        "rive-react-native": true,
+        "react-native-fast-shadow": true,
+        "react-native-animateable-text": true,
+        "react-native-view-shot": true,
+        "@react-native-community/datetimepicker": true,
+        "react-native-webview": true,
+        // The Map screen: Android's Maps SDK needs a key in the manifest. Set GOOGLE_MAPS_API_KEY for a build that draws tiles; the placeholder only mounts the map.
+        "react-native-maps": { androidGoogleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY ?? "svelte-native-example-placeholder-key" },
+      },
     }],
-    // The Map screen: Android's Maps SDK needs a key in the manifest. Set GOOGLE_MAPS_API_KEY for a build that draws tiles; the placeholder only mounts the map.
-    ["react-native-maps", { androidGoogleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY ?? "svelte-native-example-placeholder-key" }],
     // Embeds the font files in the app, so `fontFamily: "JetBrainsMono-Regular"` works without loading code (the text screen).
     ["expo-font", { fonts: ["./assets/fonts/JetBrainsMono-Regular.ttf"] }],
     // The Any Expo view screen shows expo-camera's preview and takes a picture: the camera permission and its prompt text. It records no video, so no microphone.

@@ -3,7 +3,7 @@
   import { createNativeProps } from "../../native-props.ts";
   import { lineNativeProps } from "../../fabric/foreign-svg.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
-  import type { LineProps } from "react-native-svg";
+  import type { LineProps } from "#vendor/react-native-svg";
 
   /** `react-native-svg`'s `Line`: `x1`, `y1`, `x2`, `y2`. */
   let { ref, animatedProps, ...props }: LineProps & SvgExtras = $props();

@@ -84,16 +84,16 @@ function buildTree(files) {
     const found = /* @__PURE__ */ new Map();
     for (const source of everyDirectory) {
       if (!source.key.startsWith(`${tabs.key}/`)) continue;
-      const relative4 = source.directory.slice(tabs.directory.length);
+      const relative5 = source.directory.slice(tabs.directory.length);
       let groups = 0;
-      while (groups < relative4.length && isGroup(relative4[groups])) groups++;
-      if (groups === relative4.length) {
+      while (groups < relative5.length && isGroup(relative5[groups])) groups++;
+      if (groups === relative5.length) {
         const isPage = pages.get(source.key) === source;
         if (isPage || navigators.has(source.key)) throw new Error(`${source.path}: a ${isPage ? "page" : "navigator layout"} directly under a tabs layout has no pane to show in; move it into a pane directory`);
         continue;
       }
-      const key = relative4[groups];
-      const directory = tabs.directory.concat(relative4.slice(0, groups + 1));
+      const key = relative5[groups];
+      const directory = tabs.directory.concat(relative5.slice(0, groups + 1));
       const known = found.get(key);
       if (known && known.directory.join("/") !== directory.join("/")) throw new Error(`pane ${key} of ${tabs.key} is defined twice: ${known.directory.join("/")} and ${directory.join("/")}`);
       if (key.startsWith("[")) throw new Error(`${source.path}: a pane is a fixed directory, not a parameter`);
@@ -424,7 +424,7 @@ export const tree: StackNode = ${nodeOf(tree, "").trimStart()};
 function staleEntry(source) {
   if (!/^import ['"]\.\/hooks['"];$/m.test(source)) return true;
   const manifest = JSON.parse(readFileSync(resolve3(packageRoot, "package.json"), "utf8"));
-  const literal = (text2) => text2.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+  const literal = (text3) => text3.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
   const patterns = Object.keys(manifest.exports);
   const exported = (key) => patterns.some((pattern) => pattern.includes("*") ? new RegExp(`^${pattern.split("*").map(literal).join(".*")}$`).test(key) : pattern === key);
   for (const [, , name, subpath] of source.matchAll(new RegExp(`(['"])(${literal(manifest.name)}|${literal(FORMER_NAME)})((?:/[^'"]*)?)\\1`, "g"))) {
@@ -548,9 +548,9 @@ var init_build = __esm({
 
 // src/doctor/shapes.ts
 function inFile(read2, path, checks, raw = false) {
-  const text2 = read2.read(path);
-  if (text2 === void 0) return [`${path} is not in the package`];
-  const code = raw ? text2 : stripComments(text2);
+  const text3 = read2.read(path);
+  if (text3 === void 0) return [`${path} is not in the package`];
+  const code = raw ? text3 : stripComments(text3);
   return checks.filter(([, holds2]) => !holds2(code)).map(([problem]) => `${path}: ${problem}`);
 }
 function kitProblems(read2) {
@@ -560,7 +560,14 @@ function kitProblems(read2) {
   ];
 }
 function pdfProblems(read2) {
-  return inFile(read2, "android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java", [["canCoalesce() is not overridden to return false", neverCoalesces]]);
+  return [
+    ...inFile(read2, "android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java", [["canCoalesce() is not overridden to return false", neverCoalesces]]),
+    // The library carries the package (`vendor/`), so react-native is not found from the package's own place beside it in node_modules but from the app's directory upwards.
+    ...inFile(read2, "android/build.gradle", [
+      ["does not look for react-native in the node_modules above the app's directory", has("reactNativeFromAncestor")],
+      ["still looks for react-native beside the package itself", (code) => !code.includes("reactNativeFromNodeModulesWithPDF")]
+    ], true)
+  ];
 }
 function videoEmitterProblems(emitter) {
   const code = stripComments(emitter);
@@ -588,6 +595,7 @@ function mapsProblems(read2) {
     const stream = mapsStreamEvents.includes(file.slice(0, -".java".length));
     problems.push(...inFile(read2, `${directory}/${file}`, [stream ? ["a stream event no longer coalesces", (code) => !code.includes("canCoalesce")] : ["canCoalesce() is not overridden to return false", neverCoalesces]]));
   }
+  problems.push(...inFile(read2, "plugin/build/ios.js", [["the Podfile line of its iOS plugin looks for an installed react-native-maps, not the library's copy", has("require.resolve(\\'@alfayez/svelte-native/package.json\\')")]], true));
   return problems;
 }
 function lottieProblems(read2) {
@@ -615,7 +623,11 @@ function reanimatedProblems(read2) {
       ["has no direct path for opacity and translate/scale transforms", has("private fun applySimpleProps(")]
     ]),
     ...inFile(read2, `${base}/cpp/reanimated/android/NativeProxy.cpp`, [["does not export reanimatedSetSynchronousPropsSink", has("reanimatedSetSynchronousPropsSink")], ["does not call the sink", has("synchronousPropsSink.load")]]),
-    ...inFile(read2, `${base}/cpp/reanimated/android/NativeProxy.h`, [["does not declare SynchronousPropsSink", has("SynchronousPropsSink")], ["does not keep the sink's rest buffers", has("sinkRestInts_")]])
+    ...inFile(read2, `${base}/cpp/reanimated/android/NativeProxy.h`, [["does not declare SynchronousPropsSink", has("SynchronousPropsSink")], ["does not keep the sink's rest buffers", has("sinkRestInts_")]]),
+    // The Gradle task and the podspec's script find Worklets by this path (`vendor/react-native-worklets`, beside the copy of Reanimated): by name it is not a package of the app.
+    ...inFile(read2, "scripts/validate-worklets-version.js", [["still looks for react-native-worklets by name", has("require('../../react-native-worklets/package.json')")]], true),
+    // The patched Android update (the sink above) is reached only through the synchronous update this flag turns on, which an app no longer sets itself.
+    ...inFile(read2, "src/featureFlags/staticFlags.json", [["has the synchronous Android update off by default", has('"ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true')]], true)
   ];
 }
 function workletsProblems(read2) {
@@ -653,12 +665,18 @@ function expoModulesCoreProblems(read2, patch) {
   const { lazyEntries, prewarm, startup } = lazyRegistry(patch);
   return [
     ...inFile(read2, moduleRegistryPath, [
-      ["does not list the lazy modules the patch defines", (text2) => lazyEntries.length > 10 && lazyEntries.every(([className, name]) => text2.includes(`"${className}" to "${name}"`))],
-      ["does not name the prewarmed and startup modules the patch defines", (text2) => [...prewarm, ...startup].every((name) => text2.includes(`"${name}"`))]
+      ["does not list the lazy modules the patch defines", (text3) => lazyEntries.length > 10 && lazyEntries.every(([className, name]) => text3.includes(`"${className}" to "${name}"`))],
+      ["does not name the prewarmed and startup modules the patch defines", (text3) => [...prewarm, ...startup].every((name) => text3.includes(`"${name}"`))]
     ], true),
     ...inFile(read2, "android/src/main/java/expo/modules/adapters/react/NativeModulesProxy.java", [["cannot build the interop registry in the background", has("startInteropInBackground")]], true),
     ...inFile(read2, "src/NativeViewManagerAdapter.native.tsx", [["imports the native component registry when it loads", adapterLoadsRegistryLazily]], true)
   ];
+}
+function riveProblems(read2) {
+  return inFile(read2, "android/src/main/java/com/rivereactnative/RiveReactNativeView.kt", [
+    ["an event still goes through the old architecture's event emitter (a soft exception for every event in a bridgeless app)", (code) => !code.includes("RCTEventEmitter")],
+    ["the view's events are not sent through the event dispatcher", (code) => code.includes("getEventDispatcherForReactTag")]
+  ]);
 }
 var stripComments, neverCoalescesPattern, neverCoalesces, has, count, mapsStreamEvents, rnghAdditions, rnghUses, rnghRegistration, strings, moduleRegistryPath;
 var init_shapes = __esm({
@@ -676,7 +694,7 @@ var init_shapes = __esm({
     };
     rnghUses = ["RNGHViewHasSurfaceTouchHandler(touchHandlerView)"];
     rnghRegistration = /\[self registerViewWithGestureRecognizerAttachedIfNeeded:view\];/;
-    strings = (text2) => [...text2.matchAll(/"([^"]+)"/g)].map((match) => match[1] ?? "");
+    strings = (text3) => [...text3.matchAll(/"([^"]+)"/g)].map((match) => match[1] ?? "");
     moduleRegistryPath = "android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt";
   }
 });
@@ -702,21 +720,22 @@ var init_patches = __esm({
     patchSpecs = [
       { package: "@sveltejs/kit", does: "SvelteKit leaves the `+mobile.svelte` files of a route directory alone", inspect: kitProblems },
       { package: "expo-modules-core", via: "expo", does: "Expo modules register lazily and the common ones are prewarmed (Android start)", inspect: expoModulesCoreProblems },
-      { package: "lottie-react-native", does: "Lottie's events are delivered one by one (Android) and a load or failure before the emitter exists is kept (iOS)", inspect: lottieProblems },
-      { package: "react-native-gesture-handler", does: "the root gesture recognizer can be registered for the screens the library presents (iOS)", inspect: rnghProblems },
-      { package: "react-native-maps", does: "the map's discrete events are delivered one by one, its streams still coalesce (Android)", inspect: mapsProblems },
-      { package: "react-native-pdf", does: "the pdf view's one event, which carries every message, no longer coalesces (Android)", inspect: pdfProblems },
-      { package: "react-native-reanimated", does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android)", inspect: reanimatedProblems },
-      { package: "react-native-video", does: "only progress and bandwidth events coalesce; every other video event is delivered (Android)", inspect: videoProblems },
-      { package: "react-native-worklets", does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems }
+      { package: "lottie-react-native", vendored: true, does: "Lottie's events are delivered one by one (Android) and a load or failure before the emitter exists is kept (iOS)", inspect: lottieProblems },
+      { package: "react-native-gesture-handler", vendored: true, does: "the root gesture recognizer can be registered for the screens the library presents (iOS)", inspect: rnghProblems },
+      { package: "react-native-maps", vendored: true, does: "the map's discrete events are delivered one by one, its streams still coalesce (Android); its iOS plugin points the Podfile at the library's copy", inspect: mapsProblems },
+      { package: "react-native-pdf", vendored: true, does: "the pdf view's one event, which carries every message, no longer coalesces, and react-native is found from the app's directory (Android)", inspect: pdfProblems },
+      { package: "react-native-reanimated", vendored: true, does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, and Worklets is the copy beside it", inspect: reanimatedProblems },
+      { package: "react-native-video", vendored: true, does: "only progress and bandwidth events coalesce; every other video event is delivered (Android)", inspect: videoProblems },
+      { package: "react-native-worklets", vendored: true, does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems },
+      { package: "rive-react-native", vendored: true, does: "the Rive view sends its events through the event dispatcher, not the old event emitter that a bridgeless app reports for every event (Android)", inspect: riveProblems }
     ];
     patchKey = (patch) => `${patch.package}@${patch.version}`;
   }
 });
 
 // src/doctor/semver.ts
-function parseVersion(text2) {
-  const match = VERSION.exec(text2.trim());
+function parseVersion(text3) {
+  const match = VERSION.exec(text3.trim());
   if (!match) return void 0;
   return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]), prerelease: match[4] ? match[4].split(".") : [] };
 }
@@ -822,6 +841,353 @@ var init_svelte_build = __esm({
   }
 });
 
+// src/optional-libraries.ts
+var react, expo, optionalLibraries;
+var init_optional_libraries = __esm({
+  "src/optional-libraries.ts"() {
+    "use strict";
+    react = "react-native";
+    expo = "expo";
+    optionalLibraries = [
+      // Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module, so they have no `android` or `ios` entry here.
+      { name: "expo-blur", version: "57.0.3", optional: { kind: expo } },
+      { name: "expo-conic-gradient", version: "0.2.1", optional: { kind: expo } },
+      { name: "expo-image", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+      { name: "expo-linear-gradient", version: "57.0.2", optional: { kind: expo } },
+      { name: "expo-video", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+      // React Native packages: an entry of the autolinking config for each platform.
+      {
+        name: "@react-native-community/datetimepicker",
+        version: "9.1.0",
+        android: { packageImportPath: "import com.reactcommunity.rndatetimepicker.RNDateTimePickerPackage;", packageInstance: "new RNDateTimePickerPackage()" },
+        ios: { podspec: "RNDateTimePicker.podspec" },
+        optional: { kind: react, plugin: "app.plugin.js" }
+      },
+      {
+        name: "lottie-react-native",
+        version: "7.3.8",
+        android: { packageImportPath: "import com.airbnb.android.react.lottie.LottiePackage;", packageInstance: "new LottiePackage()", componentDescriptors: ["LottieAnimationViewComponentDescriptor"] },
+        ios: { podspec: "lottie-react-native.podspec" },
+        optional: { kind: react }
+      },
+      {
+        name: "react-native-animateable-text",
+        version: "0.19.3",
+        android: {
+          packageImportPath: "import com.reactnativereanimatedtext.ReanimatedTextPackage;",
+          packageInstance: "new ReanimatedTextPackage()",
+          libraryName: "JBAnimatedText",
+          componentDescriptors: ["CParagraphComponentDescriptor"],
+          cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+        },
+        ios: { podspec: "react-native-animateable-text.podspec" },
+        optional: { kind: react }
+      },
+      {
+        name: "react-native-blob-util",
+        version: "0.24.9",
+        android: { packageImportPath: "import com.ReactNativeBlobUtil.ReactNativeBlobUtilPackage;", packageInstance: "new ReactNativeBlobUtilPackage()" },
+        ios: { podspec: "react-native-blob-util.podspec" },
+        optional: { kind: react }
+      },
+      {
+        // No iOS code: `ShadowedView` is React Native's own `View` there (the layer's shadow), so the library has no podspec.
+        name: "react-native-fast-shadow",
+        version: "0.1.1",
+        android: { packageImportPath: "import com.reactnativefastshadow.FastShadowPackage;", packageInstance: "new FastShadowPackage()" },
+        optional: { kind: react }
+      },
+      {
+        name: "react-native-maps",
+        version: "1.27.2",
+        android: {
+          packageImportPath: "import com.rnmaps.maps.MapsPackage;",
+          packageInstance: "new MapsPackage()",
+          componentDescriptors: [
+            "RNMapsCalloutComponentDescriptor",
+            "RNMapsCircleComponentDescriptor",
+            "RNMapsGoogleMapViewComponentDescriptor",
+            "RNMapsGooglePolygonComponentDescriptor",
+            "RNMapsMapViewComponentDescriptor",
+            "RNMapsMarkerComponentDescriptor",
+            "RNMapsOverlayComponentDescriptor",
+            "RNMapsPolylineComponentDescriptor",
+            "RNMapsUrlTileComponentDescriptor",
+            "RNMapsWMSTileComponentDescriptor"
+          ],
+          cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+        },
+        ios: { podspec: "react-native-maps.podspec" },
+        optional: { kind: react, plugin: "app.plugin.js" }
+      },
+      {
+        // The PDF view reads its files through react-native-blob-util's native module, so turning it on turns that one on.
+        name: "react-native-pdf",
+        version: "7.0.3",
+        android: { packageImportPath: "import org.wonday.pdf.RNPDFPackage;", packageInstance: "new RNPDFPackage()", componentDescriptors: ["RNPDFPdfViewComponentDescriptor"] },
+        ios: { podspec: "react-native-pdf.podspec" },
+        optional: { kind: react, requires: ["react-native-blob-util"] }
+      },
+      {
+        name: "react-native-video",
+        version: "6.19.3",
+        android: { packageImportPath: "import com.brentvatne.react.ReactVideoPackage;", packageInstance: "new ReactVideoPackage()" },
+        ios: { podspec: "react-native-video.podspec" },
+        optional: { kind: react, plugin: "app.plugin.js" }
+      },
+      {
+        name: "react-native-view-shot",
+        version: "5.1.0",
+        android: { packageImportPath: "import fr.greweb.reactnativeviewshot.RNViewShotPackage;", packageInstance: "new RNViewShotPackage()" },
+        ios: { podspec: "react-native-view-shot.podspec" },
+        optional: { kind: react }
+      },
+      {
+        name: "react-native-webview",
+        version: "13.16.1",
+        android: { packageImportPath: "import com.reactnativecommunity.webview.RNCWebViewPackage;", packageInstance: "new RNCWebViewPackage()", componentDescriptors: ["RNCWebViewComponentDescriptor"] },
+        ios: { podspec: "react-native-webview.podspec" },
+        optional: { kind: react }
+      },
+      {
+        name: "rive-react-native",
+        version: "9.7.1",
+        android: { packageImportPath: "import com.rivereactnative.RiveReactNativePackage;", packageInstance: "new RiveReactNativePackage()" },
+        ios: { podspec: "rive-react-native.podspec" },
+        optional: { kind: react }
+      }
+    ];
+  }
+});
+
+// src/vendored.ts
+import { readFileSync as readFileSync2, realpathSync } from "node:fs";
+import { isAbsolute, join as join3, relative as relative2, sep as sep4 } from "node:path";
+function gradleLibraryName(buildGradle) {
+  try {
+    return /^\s*libraryName\s*=\s*"([^"]+)"/m.exec(readFileSync2(buildGradle, "utf8"))?.[1];
+  } catch {
+    return void 0;
+  }
+}
+function vendoredDependency(vendored2, platform, root2 = packageRoot) {
+  const directory = vendoredRoot(vendored2.name, root2);
+  const manifest = readJson(join3(directory, "package.json")) ?? {};
+  if (platform === "android") {
+    const android = vendored2.android;
+    if (!android) return void 0;
+    const sourceDir = join3(directory, "android");
+    const codegen = manifest.codegenConfig;
+    const codegenName = typeof codegen === "object" && codegen !== null && "name" in codegen && typeof codegen.name === "string" ? codegen.name : void 0;
+    const libraryName = android.libraryName ?? codegenName ?? gradleLibraryName(join3(sourceDir, "build.gradle"));
+    const cxx = android.cxxModule;
+    return {
+      root: directory,
+      name: vendored2.name,
+      platforms: {
+        android: {
+          sourceDir,
+          packageImportPath: android.packageImportPath,
+          packageInstance: android.packageInstance,
+          buildTypes: [],
+          ...libraryName === void 0 ? {} : { libraryName },
+          componentDescriptors: [...android.componentDescriptors ?? []],
+          cmakeListsPath: join3(directory, android.cmakeListsPath ?? "android/build/generated/source/codegen/jni/CMakeLists.txt"),
+          cxxModuleCMakeListsModuleName: cxx?.cmakeListsModuleName ?? null,
+          cxxModuleCMakeListsPath: cxx ? join3(directory, cxx.cmakeListsPath) : null,
+          cxxModuleHeaderName: cxx?.headerName ?? null,
+          isPureCxxDependency: false
+        }
+      }
+    };
+  }
+  if (!vendored2.ios) return void 0;
+  return {
+    root: directory,
+    name: vendored2.name,
+    platforms: { ios: { podspecPath: join3(directory, vendored2.ios.podspec), version: typeof manifest.version === "string" ? manifest.version : vendored2.version, configurations: [], scriptPhases: [] } }
+  };
+}
+function declaredVendored(appRoot) {
+  const manifest = readJson(join3(appRoot, "package.json"));
+  if (!manifest) return [];
+  const declared = /* @__PURE__ */ new Set();
+  for (const group3 of ["dependencies", "devDependencies", "optionalDependencies"]) {
+    const entries = manifest[group3];
+    if (typeof entries === "object" && entries !== null) for (const name of Object.keys(entries)) declared.add(name);
+  }
+  return vendoredNames.filter((name) => declared.has(name));
+}
+function collisionMessage(names, library2 = "@alfayez/svelte-native") {
+  const list = names.map((name) => `${name} ${vendoredPackage(name)?.version ?? ""}`.trim());
+  const them = names.length === 1 ? "it" : "them";
+  const optional = names.filter((name) => vendoredPackage(name)?.optional !== void 0);
+  const turnOn = optional.length === 0 ? "" : ` ${optional.length === 1 ? "It is" : "They are"} optional: turn ${optional.length === 1 ? "it" : "them"} on with \`libraries: { ${optional.map((name) => `"${name}": true`).join(", ")} }\` in the ${library2} plugin's options (its own plugin options go there instead of in \`plugins\`).`;
+  return `${library2} includes ${list.join(" and ")}; remove ${them} from the app's dependencies (package.json) and any \`patchedDependencies\` entry for ${them} (pnpm stops on a patch of a package it no longer installs), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it. A library of the app that asks for ${them} as a peer dependency is served by the copy (Metro resolves the name to it; the Gradle project and the pod keep the name), so nothing needs to take ${them === "it" ? "its" : "their"} place.${turnOn}`;
+}
+function withRequired(names) {
+  const all = /* @__PURE__ */ new Set();
+  const add = (name) => {
+    if (all.has(name)) return;
+    all.add(name);
+    for (const required of vendoredPackage(name)?.optional?.requires ?? []) add(required);
+  };
+  for (const name of names) add(name);
+  return [...all];
+}
+function linkVendored(config, platform, root2 = packageRoot, linked = []) {
+  const on = new Set(withRequired(linked));
+  const entries = vendoredPackages.flatMap((vendored2) => {
+    if (vendored2.optional !== void 0 && !on.has(vendored2.name)) return [];
+    const dependency = vendoredDependency(vendored2, platform, root2);
+    return dependency ? [[vendored2.name, dependency]] : [];
+  });
+  const dependencies = { ...config.dependencies ?? {} };
+  const others = vendoredPackages.filter((vendored2) => dependencies[vendored2.name] !== void 0 && real(dependencies[vendored2.name]?.root ?? "") !== real(vendoredRoot(vendored2.name, root2))).map((vendored2) => vendored2.name);
+  if (others.length > 0 && typeof config.root === "string") {
+    const declared = declaredVendored(config.root).filter((name) => others.includes(name));
+    if (declared.length > 0) throw new VendoredCollision(declared);
+  }
+  for (const vendored2 of optionalPackages) if (!on.has(vendored2.name)) delete dependencies[vendored2.name];
+  const sorted = Object.entries({ ...dependencies, ...Object.fromEntries(entries) }).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+  return { ...config, dependencies: Object.fromEntries(sorted) };
+}
+var vendoredPackages, vendoredNames, optionalPackages, alwaysLinkedPackages, vendoredPackage, vendorDirectory, vendoredRoot, real, readJson, VendoredCollision;
+var init_vendored = __esm({
+  "src/vendored.ts"() {
+    "use strict";
+    init_optional_libraries();
+    init_package_root();
+    vendoredPackages = [
+      // The optional view libraries (`optional-libraries.ts`).
+      ...optionalLibraries,
+      {
+        name: "react-native-nitro-modules",
+        version: "0.35.10",
+        android: { packageImportPath: "import com.margelo.nitro.NitroModulesPackage;", packageInstance: "new NitroModulesPackage()" },
+        ios: { podspec: "NitroModules.podspec" }
+      },
+      {
+        name: "react-native-mmkv",
+        version: "4.3.1",
+        android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
+        ios: { podspec: "NitroMmkv.podspec" }
+      },
+      {
+        // The base64 module quick-crypto and its Buffer ask for (`libraryName` QuickBase64 is the `react { }` block of its build.gradle).
+        name: "react-native-quick-base64",
+        version: "2.2.2",
+        android: { packageImportPath: "import com.reactnativequickbase64.QuickBase64Package;", packageInstance: "new QuickBase64Package()" },
+        ios: { podspec: "react-native-quick-base64.podspec" }
+      },
+      {
+        // `crypto` and `crypto.subtle`: a Nitro module over OpenSSL (and libsodium, when the plugin's `sodiumEnabled` is on). It links the vendored Nitro runtime by its project name and pod.
+        name: "react-native-quick-crypto",
+        version: "1.1.3",
+        android: { packageImportPath: "import com.margelo.nitro.quickcrypto.QuickCryptoPackage;", packageInstance: "new QuickCryptoPackage()" },
+        ios: { podspec: "QuickCrypto.podspec" }
+      },
+      {
+        // The `Intl` constructors Hermes lacks: a pure C++ TurboModule (no view, no module class: the `ReactPackage` is empty), so Android adds its CMake module to the app's build.
+        name: "hermes-intl",
+        version: "0.1.2",
+        android: { packageImportPath: "import dev.hermesintl.HermesIntlPackage;", packageInstance: "new HermesIntlPackage()", cxxModule: { cmakeListsModuleName: "hermesintl", cmakeListsPath: "android/CMakeLists.txt", headerName: "NativeHermesIntl" } },
+        ios: { podspec: "HermesIntl.podspec" }
+      },
+      {
+        name: "react-native-gesture-handler",
+        version: "2.32.0",
+        // The two components of its codegen (`RNGestureHandlerButton`, `RNGestureHandlerRootView`); `libraryName` is `codegenConfig.name`.
+        android: { packageImportPath: "import com.swmansion.gesturehandler.RNGestureHandlerPackage;", packageInstance: "new RNGestureHandlerPackage()", componentDescriptors: ["RNGestureHandlerButtonComponentDescriptor", "RNGestureHandlerRootViewComponentDescriptor"] },
+        ios: { podspec: "RNGestureHandler.podspec" }
+      },
+      {
+        name: "react-native-worklets",
+        version: "0.10.1",
+        android: { packageImportPath: "import com.swmansion.worklets.WorkletsPackage;", packageInstance: "new WorkletsPackage()" },
+        ios: { podspec: "RNWorklets.podspec" }
+      },
+      {
+        name: "react-native-reanimated",
+        version: "4.5.1",
+        android: { packageImportPath: "import com.swmansion.reanimated.ReanimatedPackage;", packageInstance: "new ReanimatedPackage()" },
+        ios: { podspec: "RNReanimated.podspec" }
+      },
+      {
+        name: "react-native-svg",
+        version: "15.15.4",
+        // The 29 components of its `react-native.config.js`, and its codegen CMake file, which is in the sources and not below `android/build/` (a test reads both from the copy).
+        android: {
+          packageImportPath: "import com.horcrux.svg.SvgPackage;",
+          packageInstance: "new SvgPackage()",
+          componentDescriptors: [
+            "RNSVGCircleComponentDescriptor",
+            "RNSVGClipPathComponentDescriptor",
+            "RNSVGDefsComponentDescriptor",
+            "RNSVGFeBlendComponentDescriptor",
+            "RNSVGFeColorMatrixComponentDescriptor",
+            "RNSVGFeCompositeComponentDescriptor",
+            "RNSVGFeFloodComponentDescriptor",
+            "RNSVGFeGaussianBlurComponentDescriptor",
+            "RNSVGFeMergeComponentDescriptor",
+            "RNSVGFeOffsetComponentDescriptor",
+            "RNSVGFilterComponentDescriptor",
+            "RNSVGEllipseComponentDescriptor",
+            "RNSVGForeignObjectComponentDescriptor",
+            "RNSVGGroupComponentDescriptor",
+            "RNSVGImageComponentDescriptor",
+            "RNSVGLinearGradientComponentDescriptor",
+            "RNSVGLineComponentDescriptor",
+            "RNSVGMarkerComponentDescriptor",
+            "RNSVGMaskComponentDescriptor",
+            "RNSVGPathComponentDescriptor",
+            "RNSVGPatternComponentDescriptor",
+            "RNSVGRadialGradientComponentDescriptor",
+            "RNSVGRectComponentDescriptor",
+            "RNSVGSvgViewAndroidComponentDescriptor",
+            "RNSVGSymbolComponentDescriptor",
+            "RNSVGTextComponentDescriptor",
+            "RNSVGTextPathComponentDescriptor",
+            "RNSVGTSpanComponentDescriptor",
+            "RNSVGUseComponentDescriptor"
+          ],
+          cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+        },
+        ios: { podspec: "RNSVG.podspec" }
+      }
+    ];
+    vendoredNames = vendoredPackages.map((vendored2) => vendored2.name);
+    optionalPackages = vendoredPackages.filter((vendored2) => vendored2.optional !== void 0);
+    alwaysLinkedPackages = vendoredPackages.filter((vendored2) => vendored2.optional === void 0);
+    vendoredPackage = (name) => vendoredPackages.find((vendored2) => vendored2.name === name);
+    vendorDirectory = (root2 = packageRoot) => join3(root2, "vendor");
+    vendoredRoot = (name, root2 = packageRoot) => join3(vendorDirectory(root2), name);
+    real = (path) => {
+      try {
+        return realpathSync(path);
+      } catch {
+        return path;
+      }
+    };
+    readJson = (file) => {
+      try {
+        const parsed = JSON.parse(readFileSync2(file, "utf8"));
+        return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : void 0;
+      } catch {
+        return void 0;
+      }
+    };
+    VendoredCollision = class extends Error {
+      names;
+      constructor(names) {
+        super(collisionMessage(names));
+        this.name = "VendoredCollision";
+        this.names = names;
+      }
+    };
+  }
+});
+
 // src/init-app.ts
 var init_app_exports = {};
 __export(init_app_exports, {
@@ -836,11 +1202,11 @@ __export(init_app_exports, {
   svelteNativeViteConfig: () => svelteNativeViteConfig
 });
 import { spawnSync } from "node:child_process";
-import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync2, readdirSync as readdirSync4, writeFileSync as writeFileSync2 } from "node:fs";
+import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync3, readdirSync as readdirSync4, writeFileSync as writeFileSync2 } from "node:fs";
 import { createRequire as createRequire2 } from "node:module";
-import { dirname as dirname3, join as join3, relative as relative2 } from "node:path";
-function indentOf(text2) {
-  return /^([ \t]+)"/m.exec(text2)?.[1] ?? "	";
+import { dirname as dirname3, join as join4, relative as relative3 } from "node:path";
+function indentOf(text3) {
+  return /^([ \t]+)"/m.exec(text3)?.[1] ?? "	";
 }
 function setEntry(map, name, value) {
   if (name in map) {
@@ -863,10 +1229,10 @@ function appNames(packageName, options = {}) {
   return { title, slug, androidPackage: options.androidPackage ?? `dev.example.${id}`, iosBundleId: options.iosBundleId ?? `dev.example.${id}` };
 }
 function installedVersion(root2, name) {
-  const text2 = read(join3(root2, "node_modules", name, "package.json"));
-  if (text2 === void 0) return void 0;
+  const text3 = read(join4(root2, "node_modules", name, "package.json"));
+  if (text3 === void 0) return void 0;
   try {
-    return JSON.parse(text2).version;
+    return JSON.parse(text3).version;
   } catch {
     return void 0;
   }
@@ -916,10 +1282,9 @@ function planPackageJson(root2, original, patches2, options) {
   }
   let changedPeers = 0;
   for (const [name, version] of Object.entries(appDependencies)) if (setDependency(name, version, "dependencies")) changedPeers++;
-  for (const patch of patches2.filter((entry) => alwaysPatched.includes(entry.package) && entry.package !== "expo-modules-core")) {
-    if (appDependencies[patch.package] !== patch.version) warnings.push(`${patch.package}: the library's patch is for ${patch.version}, and init's version is ${appDependencies[patch.package] ?? "none"}; this is a bug in the library.`);
-  }
   if (changedPeers > 0) summary.push(`${plural(changedPeers, "dependency")} (the versions the library was exercised on)`);
+  const listed = vendoredNames.filter(has2);
+  if (listed.length > 0) warnings.push(`package.json: ${collisionMessage(listed)}`);
   const nextScripts = { ...manifest.scripts ?? {} };
   const addedScripts = [];
   for (const [name, command2] of Object.entries(scripts)) {
@@ -935,11 +1300,6 @@ function planPackageJson(root2, original, patches2, options) {
     next.scripts = nextScripts;
     summary.push(`scripts ${addedScripts.join(", ")}`);
   }
-  const reanimated = typeof next.reanimated === "object" && next.reanimated !== null ? next.reanimated : {};
-  if (reanimated.staticFeatureFlags?.ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS !== true) {
-    next.reanimated = { ...reanimated, staticFeatureFlags: { ...reanimated.staticFeatureFlags ?? {}, ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS: true } };
-    summary.push("the Reanimated flag");
-  }
   next.dependencies = dependencies;
   if (Object.keys(devDependencies).length > 0 || manifest.devDependencies !== void 0) next.devDependencies = devDependencies;
   const ordered = {};
@@ -949,12 +1309,12 @@ function planPackageJson(root2, original, patches2, options) {
     ordered[key] = next[key];
   }
   if (!("dependencies" in ordered)) ordered.dependencies = dependencies;
-  const text2 = `${JSON.stringify(ordered, null, indentOf(original))}${original.endsWith("\n") ? "\n" : ""}`;
-  return { text: text2, summary, warnings, kitVersion, hasKit, changed: text2 !== original, name: typeof manifest.name === "string" ? manifest.name : void 0 };
+  const text3 = `${JSON.stringify(ordered, null, indentOf(original))}${original.endsWith("\n") ? "\n" : ""}`;
+  return { text: text3, summary, warnings, kitVersion, hasKit, changed: text3 !== original, name: typeof manifest.name === "string" ? manifest.name : void 0 };
 }
-function mergeWorkspaceYaml(text2, blocks) {
-  const crlf = text2.includes("\r\n");
-  const lines = text2.replaceAll("\r\n", "\n").split("\n");
+function mergeWorkspaceYaml(text3, blocks) {
+  const crlf = text3.includes("\r\n");
+  const lines = text3.replaceAll("\r\n", "\n").split("\n");
   if (lines.at(-1) === "") lines.pop();
   const changes = [];
   const manual = [];
@@ -1003,24 +1363,24 @@ function mergeWorkspaceYaml(text2, blocks) {
 `;
   return { text: crlf ? merged.replaceAll("\n", "\r\n") : merged, changes, manual };
 }
-function closing(text2, open) {
+function closing(text3, open) {
   const pairs = { "(": ")", "[": "]", "{": "}" };
   const stack = [];
-  for (let index = open; index < text2.length; index++) {
-    const char = text2[index] ?? "";
-    if (char === "/" && text2[index + 1] === "/") {
-      index = text2.indexOf("\n", index);
+  for (let index = open; index < text3.length; index++) {
+    const char = text3[index] ?? "";
+    if (char === "/" && text3[index + 1] === "/") {
+      index = text3.indexOf("\n", index);
       if (index < 0) return -1;
       continue;
     }
-    if (char === "/" && text2[index + 1] === "*") {
-      index = text2.indexOf("*/", index + 2);
+    if (char === "/" && text3[index + 1] === "*") {
+      index = text3.indexOf("*/", index + 2);
       if (index < 0) return -1;
       index++;
       continue;
     }
     if (char === '"' || char === "'" || char === "`") {
-      for (index++; index < text2.length && text2[index] !== char; index++) if (text2[index] === "\\") index++;
+      for (index++; index < text3.length && text3[index] !== char; index++) if (text3[index] === "\\") index++;
       continue;
     }
     if (char in pairs) stack.push(pairs[char] ?? "");
@@ -1031,25 +1391,25 @@ function closing(text2, open) {
   }
   return -1;
 }
-function svelteNativeViteConfig(text2) {
-  const quote = quoteOf(text2);
+function svelteNativeViteConfig(text3) {
+  const quote = quoteOf(text3);
   const importLine = /import\s*\{\s*sveltekit\s*\}\s*from\s*['"]@sveltejs\/kit\/vite['"];?/;
-  const callAt = /\bsveltekit\s*\(/.exec(text2.replace(importLine, (line) => " ".repeat(line.length)));
-  if (!importLine.test(text2) || !callAt || !/\bdefineConfig\s*\(/.test(text2)) return void 0;
-  const unit = /^\t/m.test(text2) ? "	" : "  ";
+  const callAt = /\bsveltekit\s*\(/.exec(text3.replace(importLine, (line) => " ".repeat(line.length)));
+  if (!importLine.test(text3) || !callAt || !/\bdefineConfig\s*\(/.test(text3)) return void 0;
+  const unit = /^\t/m.test(text3) ? "	" : "  ";
   const open = callAt.index + callAt[0].length - 1;
-  const close = closing(text2, open);
+  const close = closing(text3, open);
   if (close < 0) return void 0;
-  const args2 = text2.slice(open + 1, close);
-  const lineStart = text2.lastIndexOf("\n", callAt.index) + 1;
-  const indent = /^\s*/.exec(text2.slice(lineStart, callAt.index))?.[0] ?? "";
+  const args2 = text3.slice(open + 1, close);
+  const lineStart = text3.lastIndexOf("\n", callAt.index) + 1;
+  const indent = /^\s*/.exec(text3.slice(lineStart, callAt.index))?.[0] ?? "";
   const target = `target: mode === ${quote}native${quote} ? ${quote}native${quote} : ${quote}web${quote}`;
   const replacement = args2.trim() === "" ? `svelteNative({ ${target} })` : `svelteNative({
 ${indent}${unit}${target},
 ${indent}${unit}kit: ${args2.trim().replace(/\n(?=[^\n])/g, `
 ${unit}`)}
 ${indent}})`;
-  let edited = `${text2.slice(0, callAt.index)}${replacement}${text2.slice(close + 1)}`;
+  let edited = `${text3.slice(0, callAt.index)}${replacement}${text3.slice(close + 1)}`;
   edited = edited.replace(importLine, `import { svelteNative } from ${quote}@alfayez/svelte-native/vite${quote};`);
   const define = /\bdefineConfig\s*\(/.exec(edited);
   if (!define) return void 0;
@@ -1067,15 +1427,15 @@ ${indent}})`;
   return edited;
 }
 function starterTheme(root2, manifest) {
-  const own2 = read(join3(root2, "src/lib/theme.ts"));
+  const own2 = read(join4(root2, "src/lib/theme.ts"));
   const name = own2 !== void 0 && !own2.includes("@alfayez/svelte-native") ? "native-theme.ts" : "theme.ts";
   const path = `src/lib/${name}`;
   const imports = manifest.imports;
   const mapped = typeof imports === "object" && imports !== null && "#lib/*" in imports;
   return {
     path,
-    exists: existsSync3(join3(root2, path)),
-    from: (directory) => mapped ? `#lib/${name}` : relative2(directory, path).split("\\").join("/")
+    exists: existsSync3(join4(root2, path)),
+    from: (directory) => mapped ? `#lib/${name}` : relative3(directory, path).split("\\").join("/")
   };
 }
 function mobileRoutes(routes) {
@@ -1084,12 +1444,12 @@ function mobileRoutes(routes) {
 }
 function planInit(root2, options = {}) {
   const plan = { root: root2, changes: [], warnings: [], problems: [] };
-  const packageText = read(join3(root2, "package.json"));
+  const packageText = read(join4(root2, "package.json"));
   if (packageText === void 0) {
     plan.problems.push(`${root2} has no package.json: run \`svelte-native init\` in the directory of your project (after \`npx sv create\`).`);
     return plan;
   }
-  if (!existsSync3(join3(root2, "pnpm-lock.yaml")) && !existsSync3(join3(root2, "pnpm-workspace.yaml")) && (existsSync3(join3(root2, "package-lock.json")) || existsSync3(join3(root2, "yarn.lock")) || existsSync3(join3(root2, "bun.lock")) || existsSync3(join3(root2, "bun.lockb")))) {
+  if (!existsSync3(join4(root2, "pnpm-lock.yaml")) && !existsSync3(join4(root2, "pnpm-workspace.yaml")) && (existsSync3(join4(root2, "package-lock.json")) || existsSync3(join4(root2, "yarn.lock")) || existsSync3(join4(root2, "bun.lock")) || existsSync3(join4(root2, "bun.lockb")))) {
     plan.problems.push("This project uses another package manager than pnpm. The library's patches are pnpm's (`patchedDependencies`): create the project with pnpm (`npx sv create`, then choose pnpm) or move it to pnpm first.");
     return plan;
   }
@@ -1107,18 +1467,12 @@ function planInit(root2, options = {}) {
   plan.changes.push(pkg.changed ? { path: "package.json", action: "edit", summary: pkg.summary.join(", "), text: pkg.text } : { path: "package.json", action: "keep", summary: "has everything" });
   const names = appNames(pkg.name, options);
   const manifest = JSON.parse(manifestText);
-  const declared = { ...manifest.devDependencies ?? {}, ...manifest.dependencies ?? {} };
   const needed = [];
   for (const patch of patches2) {
     if (alwaysPatched.includes(patch.package)) needed.push(patch);
-    else if (patch.package === "@sveltejs/kit") {
-      if (pkg.hasKit && patch.version === pkg.kitVersion) needed.push(patch);
-    } else if (patch.package in declared) {
-      if (declared[patch.package] === patch.version) needed.push(patch);
-      else plan.warnings.push(`${patch.package}: package.json asks for ${declared[patch.package]}, and the library's patch is for ${patch.version} (it is declared only for that version); pin it with \`pnpm add ${patch.package}@${patch.version}\` and run init again.`);
-    }
+    else if (patch.package === "@sveltejs/kit" && pkg.hasKit && patch.version === pkg.kitVersion) needed.push(patch);
   }
-  const workspacePath = join3(root2, "pnpm-workspace.yaml");
+  const workspacePath = join4(root2, "pnpm-workspace.yaml");
   const workspaceText = read(workspacePath);
   const overrides = {};
   const expoModules = patches2.find((patch) => patch.package === "expo-modules-core");
@@ -1148,27 +1502,27 @@ ${merged.manual.map((line) => `  ${line}`).join("\n")}`
   const copied = [];
   const replaced = [];
   for (const patch of needed) {
-    const target = join3(root2, "patches/svelte-native", patch.file);
-    const content = readFileSync2(patch.path);
-    const current = existsSync3(target) ? readFileSync2(target) : void 0;
+    const target = join4(root2, "patches/svelte-native", patch.file);
+    const content = readFileSync3(patch.path);
+    const current = existsSync3(target) ? readFileSync3(target) : void 0;
     if (current?.equals(content)) continue;
-    plan.changes.push({ path: relative2(root2, target), action: current === void 0 ? "create" : "edit", summary: current === void 0 ? "the library's patch" : "differs from the installed library's copy: replaced", text: content });
+    plan.changes.push({ path: relative3(root2, target), action: current === void 0 ? "create" : "edit", summary: current === void 0 ? "the library's patch" : "differs from the installed library's copy: replaced", text: content });
     (current === void 0 ? copied : replaced).push(patch.file);
   }
   if (copied.length === 0 && replaced.length === 0) plan.changes.push({ path: "patches/svelte-native", action: "keep", summary: `${plural(needed.length, "patch")} up to date` });
-  const metroPath = join3(root2, "metro.config.cjs");
-  const metroText = read(metroPath) ?? read(join3(root2, "metro.config.js"));
+  const metroPath = join4(root2, "metro.config.cjs");
+  const metroText = read(metroPath) ?? read(join4(root2, "metro.config.js"));
   if (metroText === void 0) plan.changes.push({ path: "metro.config.cjs", action: "create", summary: "withSvelteNative(getDefaultConfig(__dirname))", text: metroConfig });
   else if (metroText.includes("withSvelteNative")) plan.changes.push({ path: "metro.config.cjs", action: "keep", summary: "uses withSvelteNative" });
   else plan.changes.push({ path: "metro.config.cjs", action: "manual", summary: "exists and does not use withSvelteNative", instructions: `Wrap the config you export:
   const { withSvelteNative } = require("@alfayez/svelte-native/metro");
   module.exports = withSvelteNative(<your config>);` });
   planAppJson(root2, names, plan);
-  const viteName = ["vite.config.ts", "vite.config.js", "vite.config.mts", "vite.config.mjs"].find((file) => existsSync3(join3(root2, file)));
+  const viteName = ["vite.config.ts", "vite.config.js", "vite.config.mts", "vite.config.mjs"].find((file) => existsSync3(join4(root2, file)));
   if (pkg.hasKit && viteName === void 0) {
     plan.changes.push({ path: "vite.config.ts", action: "manual", summary: "none found", instructions: viteInstructions("vite.config.ts") });
   } else if (viteName !== void 0) {
-    const viteText = read(join3(root2, viteName)) ?? "";
+    const viteText = read(join4(root2, viteName)) ?? "";
     if (viteText.includes("svelteNative(")) plan.changes.push({ path: viteName, action: "keep", summary: "uses svelteNative()" });
     else {
       const edited = svelteNativeViteConfig(viteText);
@@ -1176,7 +1530,7 @@ ${merged.manual.map((line) => `  ${line}`).join("\n")}`
       else plan.changes.push({ path: viteName, action: "manual", summary: "not in a shape init edits safely", instructions: viteInstructions(viteName, quoteOf(viteText)) });
     }
   }
-  const routes = join3(root2, "src/routes");
+  const routes = join4(root2, "src/routes");
   const existing = mobileRoutes(routes);
   const createLayout = !existing.some((file) => file === "+layout.mobile.svelte");
   const createScreens = !existing.some((file) => /\+mobile\.svelte$/.test(file) && !/layout\.mobile/.test(file));
@@ -1188,7 +1542,7 @@ ${merged.manual.map((line) => `  ${line}`).join("\n")}`
     plan.changes.push({ path: "src/routes/+mobile.svelte", action: "create", summary: "a home screen", text: homeRoute(names.title, theme.from("src/routes")) });
     plan.changes.push({ path: "src/routes/details/+mobile.svelte", action: "create", summary: "a second screen", text: detailsRoute(theme.from("src/routes/details")) });
   } else plan.changes.push({ path: "src/routes", action: "keep", summary: `${plural(existing.filter((file) => !/layout/.test(file)).length, "native screen")} already` });
-  const ignorePath = join3(root2, ".gitignore");
+  const ignorePath = join4(root2, ".gitignore");
   const ignoreText = read(ignorePath);
   const lines = new Set((ignoreText ?? "").split(/\r?\n/).map((line) => line.trim().replace(/^\//, "").replace(/\/$/, "")));
   const missing = gitignore.filter((line) => !lines.has(line.replace(/^\//, "")));
@@ -1225,8 +1579,8 @@ function syntaxOk(source, file) {
   }
 }
 function planAppJson(root2, names, plan) {
-  const path = join3(root2, "app.json");
-  const text2 = read(path);
+  const path = join4(root2, "app.json");
+  const text3 = read(path);
   const wanted = () => ({
     name: names.title,
     slug: names.slug,
@@ -1236,10 +1590,10 @@ function planAppJson(root2, names, plan) {
     ios: { bundleIdentifier: names.iosBundleId },
     plugins: [plugin]
   });
-  if (text2 === void 0) {
-    const config = ["app.config.ts", "app.config.js", "app.config.mjs", "app.config.cjs"].find((file) => existsSync3(join3(root2, file)));
+  if (text3 === void 0) {
+    const config = ["app.config.ts", "app.config.js", "app.config.mjs", "app.config.cjs"].find((file) => existsSync3(join4(root2, file)));
     if (config !== void 0) {
-      const configText = read(join3(root2, config)) ?? "";
+      const configText = read(join4(root2, config)) ?? "";
       const names2 = [`"${removedPluginName}"`, `'${removedPluginName}'`, `\`${removedPluginName}\``].some((quoted) => configText.includes(quoted));
       const instructions = names2 ? `Replace "${removedPluginName}" in \`plugins\` in ${config} with "${plugin}" (that path no longer resolves and the package's name is the plugin's; keep its options):
   plugins: ["${plugin}"]
@@ -1255,47 +1609,47 @@ and give the app an \`android.package\` and \`ios.bundleIdentifier\`.`;
   }
   let json;
   try {
-    json = JSON.parse(text2);
+    json = JSON.parse(text3);
   } catch {
     plan.changes.push({ path: "app.json", action: "manual", summary: "is not valid JSON", instructions: `Add "${plugin}" to expo.plugins in app.json.` });
     return;
   }
-  const expo = json.expo ?? json;
+  const expo2 = json.expo ?? json;
   const done = [];
   const configured = wanted();
   for (const key of ["name", "slug", "scheme", "version"]) {
-    if (expo[key] === void 0) {
-      expo[key] = configured[key];
+    if (expo2[key] === void 0) {
+      expo2[key] = configured[key];
       done.push(key);
     }
   }
   for (const [block2, key] of [["android", "package"], ["ios", "bundleIdentifier"]]) {
-    const value = typeof expo[block2] === "object" && expo[block2] !== null ? expo[block2] : {};
+    const value = typeof expo2[block2] === "object" && expo2[block2] !== null ? expo2[block2] : {};
     if (value[key] === void 0) {
-      expo[block2] = { ...value, [key]: configured[block2][key] };
+      expo2[block2] = { ...value, [key]: configured[block2][key] };
       done.push(`${block2}.${key}`);
     }
   }
-  const listed = Array.isArray(expo.plugins) ? expo.plugins : [];
+  const listed = Array.isArray(expo2.plugins) ? expo2.plugins : [];
   const nameOf = (entry) => Array.isArray(entry) ? entry[0] : entry;
   const renamed = listed.some((entry) => nameOf(entry) === removedPluginName);
   const plugins = renamed ? listed.map((entry) => nameOf(entry) !== removedPluginName ? entry : Array.isArray(entry) ? [plugin, ...entry.slice(1)] : plugin) : listed;
   if (renamed) {
-    expo.plugins = plugins;
+    expo2.plugins = plugins;
     done.push(`the plugin's name (${removedPluginName} no longer resolves)`);
   }
   const has2 = plugins.some((entry) => pluginNames.includes(nameOf(entry)));
   if (!has2) {
-    expo.plugins = [...plugins, plugin];
+    expo2.plugins = [...plugins, plugin];
     done.push("the plugin");
   }
   if (done.length === 0) plan.changes.push({ path: "app.json", action: "keep", summary: "lists the plugin" });
-  else plan.changes.push({ path: "app.json", action: "edit", summary: done.join(", "), text: `${JSON.stringify(json, null, indentOf(text2))}${text2.endsWith("\n") ? "\n" : ""}` });
+  else plan.changes.push({ path: "app.json", action: "edit", summary: done.join(", "), text: `${JSON.stringify(json, null, indentOf(text3))}${text3.endsWith("\n") ? "\n" : ""}` });
 }
 function applyPlan(plan) {
   for (const change of plan.changes) {
     if (change.text === void 0 || change.action !== "create" && change.action !== "edit") continue;
-    const file = join3(plan.root, change.path);
+    const file = join4(plan.root, change.path);
     mkdirSync2(dirname3(file), { recursive: true });
     writeFileSync2(file, change.text);
   }
@@ -1386,30 +1740,22 @@ var init_init_app = __esm({
     init_patches();
     init_semver();
     init_svelte_build();
+    init_vendored();
     appDependencies = {
       expo: "57.0.30",
       "expo-constants": "57.0.22",
-      "hermes-intl": "^0.1.2",
       react: "19.2.7",
-      "react-native": "0.86.3",
-      "react-native-gesture-handler": "2.32.0",
-      "react-native-mmkv": "4.3.1",
-      "react-native-nitro-modules": "0.35.10",
-      "react-native-quick-base64": "2.2.2",
-      "react-native-quick-crypto": "1.1.3",
-      "react-native-reanimated": "4.5.1",
-      "react-native-svg": "15.15.4",
-      "react-native-worklets": "0.10.1"
+      "react-native": "0.86.3"
     };
-    alwaysPatched = ["expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"];
+    alwaysPatched = ["expo-modules-core"];
     plugin = "@alfayez/svelte-native";
     pluginNames = [plugin, `${plugin}/app.plugin`];
     removedPluginName = `${plugin}/expo`;
     scripts = { native: "svelte-native dev", android: "svelte-native android", ios: "svelte-native ios", "check-setup": "svelte-native doctor" };
     gitignore = [".svelte-native", ".expo", "/android", "/ios"];
-    read = (file) => existsSync3(file) ? readFileSync2(file, "utf8") : void 0;
+    read = (file) => existsSync3(file) ? readFileSync3(file, "utf8") : void 0;
     plural = (count2, word) => `${count2} ${word.endsWith("y") ? count2 === 1 ? word : `${word.slice(0, -1)}ies` : count2 === 1 ? word : `${word}s`}`;
-    quoteOf = (text2) => /from\s+"/.test(text2) ? '"' : "'";
+    quoteOf = (text3) => /from\s+"/.test(text3) ? '"' : "'";
     exactVersion = (spec) => spec !== void 0 && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(spec) ? spec : void 0;
     keyOf = (key) => key.startsWith("@") || key.includes(":") ? `"${key}"` : key;
     viteInstructions = (file, quote = "'") => [
@@ -1519,37 +1865,37 @@ dependencies, pnpm's settings and patches, the Metro and Expo config, the Vite p
   --android-package <id>  the Android application id (default: dev.example.<package name>)
   --ios-bundle-id <id>    the iOS bundle identifier (default: the same)
 `;
-    processIo = { out: (text2) => process.stdout.write(`${text2}
-`), err: (text2) => process.stderr.write(`${text2}
+    processIo = { out: (text3) => process.stdout.write(`${text3}
+`), err: (text3) => process.stderr.write(`${text3}
 `) };
     WORD = { create: "create", edit: "edit  ", keep: "keep  ", manual: "YOU   " };
   }
 });
 
 // src/doctor/resolve.ts
-import { existsSync as existsSync4, readdirSync as readdirSync5, readFileSync as readFileSync3, realpathSync } from "node:fs";
-import { basename, dirname as dirname4, join as join4, resolve as resolve5 } from "node:path";
+import { existsSync as existsSync4, readdirSync as readdirSync5, readFileSync as readFileSync4, realpathSync as realpathSync2 } from "node:fs";
+import { basename, dirname as dirname4, join as join5, resolve as resolve5 } from "node:path";
 function readerFor(directory) {
   return {
     read(path) {
       try {
-        return readFileSync3(join4(directory, path), "utf8");
+        return readFileSync4(join5(directory, path), "utf8");
       } catch {
         return void 0;
       }
     },
     list(path) {
       try {
-        return readdirSync5(join4(directory, path));
+        return readdirSync5(join5(directory, path));
       } catch {
         return [];
       }
     }
   };
 }
-function readJson(file) {
+function readJson2(file) {
   try {
-    const parsed = JSON.parse(readFileSync3(file, "utf8"));
+    const parsed = JSON.parse(readFileSync4(file, "utf8"));
     return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : void 0;
   } catch {
     return void 0;
@@ -1557,15 +1903,15 @@ function readJson(file) {
 }
 function findPackage(name, from) {
   for (let directory = resolve5(from); ; directory = dirname4(directory)) {
-    const candidate = join4(basename(directory) === "node_modules" ? directory : join4(directory, "node_modules"), name);
-    const json = readJson(join4(candidate, "package.json"));
-    if (json && typeof json.version === "string") return { name, version: json.version, directory: realpathSync(candidate), json };
+    const candidate = join5(basename(directory) === "node_modules" ? directory : join5(directory, "node_modules"), name);
+    const json = readJson2(join5(candidate, "package.json"));
+    if (json && typeof json.version === "string") return { name, version: json.version, directory: realpathSync2(candidate), json };
     if (dirname4(directory) === directory) return void 0;
   }
 }
 function findUp(file, from) {
   for (let directory = resolve5(from); ; directory = dirname4(directory)) {
-    if (existsSync4(join4(directory, file))) return directory;
+    if (existsSync4(join5(directory, file))) return directory;
     if (dirname4(directory) === directory) return void 0;
   }
 }
@@ -1576,12 +1922,12 @@ var init_resolve = __esm({
 });
 
 // src/doctor/declared.ts
-import { readFileSync as readFileSync4 } from "node:fs";
-import { dirname as dirname5, join as join5, resolve as resolve6 } from "node:path";
-function patchedDependenciesOfYaml(text2) {
+import { readFileSync as readFileSync5 } from "node:fs";
+import { dirname as dirname5, join as join6, resolve as resolve6 } from "node:path";
+function patchedDependenciesOfYaml(text3) {
   const entries = /* @__PURE__ */ new Map();
   let inside = false;
-  for (const line of text2.split(/\r?\n/)) {
+  for (const line of text3.split(/\r?\n/)) {
     if (/^patchedDependencies:\s*(#.*)?$/.test(line)) {
       inside = true;
       continue;
@@ -1606,13 +1952,13 @@ function declaredPatches(appRoot) {
   const workspace = findUp("pnpm-workspace.yaml", appRoot);
   if (workspace) {
     try {
-      add(patchedDependenciesOfYaml(readFileSync4(join5(workspace, "pnpm-workspace.yaml"), "utf8")), workspace, "pnpm-workspace.yaml");
+      add(patchedDependenciesOfYaml(readFileSync5(join6(workspace, "pnpm-workspace.yaml"), "utf8")), workspace, "pnpm-workspace.yaml");
     } catch {
     }
   }
   const top = workspace ?? resolve6(appRoot);
   for (let directory = resolve6(appRoot); ; directory = dirname5(directory)) {
-    add(fromJson(readJson(join5(directory, "package.json"))), directory, "package.json");
+    add(fromJson(readJson2(join6(directory, "package.json"))), directory, "package.json");
     if (directory === top || dirname5(directory) === directory) break;
   }
   return declared;
@@ -1625,15 +1971,15 @@ var init_declared = __esm({
 });
 
 // src/doctor/integration.ts
-import { existsSync as existsSync5, readFileSync as readFileSync5 } from "node:fs";
-import { join as join6 } from "node:path";
-function withoutJsComments(text2) {
-  return text2.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+import { existsSync as existsSync5, readFileSync as readFileSync6 } from "node:fs";
+import { join as join7 } from "node:path";
+function withoutJsComments(text3) {
+  return text3.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
 }
 function metroFinding(appRoot) {
   const file = firstExisting(appRoot, METRO_FILES);
   if (!file) return { state: "no-file" };
-  const code = withoutJsComments(readFileSync5(join6(appRoot, file), "utf8"));
+  const code = withoutJsComments(readFileSync6(join7(appRoot, file), "utf8"));
   return { state: /\bwithSvelteNative\b/.test(code) ? "found" : "unclear", file };
 }
 function expoPluginFinding(appRoot, library2) {
@@ -1641,11 +1987,11 @@ function expoPluginFinding(appRoot, library2) {
   const removed = `${library2}/expo`;
   const json = firstExisting(appRoot, ["app.json"]);
   const code = firstExisting(appRoot, APP_CONFIG_FILES);
-  const parsed = json ? readJson(join6(appRoot, json)) : void 0;
-  const expo = parsed?.expo ?? parsed;
-  const plugins = Array.isArray(expo?.plugins) ? expo.plugins : [];
+  const parsed = json ? readJson2(join7(appRoot, json)) : void 0;
+  const expo2 = parsed?.expo ?? parsed;
+  const plugins = Array.isArray(expo2?.plugins) ? expo2.plugins : [];
   const listedInJson = (name) => plugins.some((entry) => pluginName(entry) === name);
-  const source = code ? withoutJsComments(readFileSync5(join6(appRoot, code), "utf8")) : "";
+  const source = code ? withoutJsComments(readFileSync6(join7(appRoot, code), "utf8")) : "";
   const namedInCode = (name) => ['"', "'", "`"].some((quote) => source.includes(`${quote}${name}${quote}`));
   if (json && listedInJson(removed)) return { state: "removed", file: json, name: removed };
   if (code && namedInCode(removed)) return { state: "removed", file: code, name: removed };
@@ -1657,21 +2003,32 @@ function expoPluginFinding(appRoot, library2) {
   }
   return json ? { state: "absent", file: json } : { state: "no-file" };
 }
-var METRO_FILES, APP_CONFIG_FILES, firstExisting, pluginName;
+function appJson(appRoot, library2) {
+  const file = firstExisting(appRoot, ["app.json"]);
+  const parsed = file ? readJson2(join7(appRoot, file)) : void 0;
+  if (!file || !parsed) return void 0;
+  const expo2 = record(parsed.expo ?? parsed);
+  const names = [library2, `${library2}/app.plugin`];
+  const entry = (Array.isArray(expo2.plugins) ? expo2.plugins : []).find((candidate) => names.includes(pluginName(candidate) ?? ""));
+  return { file, expo: expo2, plugin: entry === void 0 ? void 0 : record(Array.isArray(entry) ? entry[1] : void 0) };
+}
+var METRO_FILES, APP_CONFIG_FILES, firstExisting, pluginName, record, codeConfig;
 var init_integration = __esm({
   "src/doctor/integration.ts"() {
     "use strict";
     init_resolve();
     METRO_FILES = ["metro.config.js", "metro.config.cjs", "metro.config.mjs", "metro.config.ts", "metro.config.mts", "metro.config.cts"];
     APP_CONFIG_FILES = ["app.config.ts", "app.config.js", "app.config.cjs", "app.config.mjs", "app.config.mts", "app.config.cts"];
-    firstExisting = (root2, names) => names.find((name) => existsSync5(join6(root2, name)));
+    firstExisting = (root2, names) => names.find((name) => existsSync5(join7(root2, name)));
     pluginName = (entry) => typeof entry === "string" ? entry : Array.isArray(entry) && typeof entry[0] === "string" ? entry[0] : void 0;
+    record = (value) => typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
+    codeConfig = (appRoot) => firstExisting(appRoot, APP_CONFIG_FILES);
   }
 });
 
 // src/doctor/hunks.ts
-function parsePatch(text2) {
-  const lines = text2.replace(/\r\n/g, "\n").split("\n");
+function parsePatch(text3) {
+  const lines = text3.replace(/\r\n/g, "\n").split("\n");
   const files = [];
   let current;
   for (let index = 0; index < lines.length; index++) {
@@ -1720,16 +2077,16 @@ function indexOfBlock(haystack, block2) {
 function missingFromPackage(patch, installed) {
   const missing = [];
   for (const file of parsePatch(patch)) {
-    const text2 = installed.read(file.path);
+    const text3 = installed.read(file.path);
     if (file.removed) {
-      if (text2 !== void 0) missing.push(`${file.path} should be gone`);
+      if (text3 !== void 0) missing.push(`${file.path} should be gone`);
       continue;
     }
-    if (text2 === void 0) {
+    if (text3 === void 0) {
       missing.push(`${file.path} is not there`);
       continue;
     }
-    const lines = text2.replace(/\r\n/g, "\n").split("\n");
+    const lines = text3.replace(/\r\n/g, "\n").split("\n");
     file.hunks.forEach((hunk, index) => {
       if (indexOfBlock(lines, hunk.after) < 0) missing.push(`${file.path}: hunk ${index + 1} of ${file.hunks.length} of the patch is not in the installed file`);
     });
@@ -1739,6 +2096,388 @@ function missingFromPackage(patch, installed) {
 var init_hunks = __esm({
   "src/doctor/hunks.ts"() {
     "use strict";
+  }
+});
+
+// src/push/common.ts
+function failure(reason, detail, status, retryAfter) {
+  return { ok: false, reason, ...status !== void 0 ? { status } : {}, ...retryAfter !== void 0 ? { retryAfter } : {}, detail };
+}
+function retryAfterOf(value) {
+  const header = (Array.isArray(value) ? value[0] : value)?.trim();
+  if (header === void 0 || header === "") return void 0;
+  if (/^\d+$/.test(header)) return Number(header) * 1e3;
+  const date = Date.parse(header);
+  return Number.isNaN(date) ? void 0 : Math.max(0, date - Date.now());
+}
+function describeNetworkError(error) {
+  if (!(error instanceof Error)) return withoutSecrets(String(error));
+  const cause = error.cause instanceof Error ? error.cause.message : void 0;
+  return withoutSecrets(cause === void 0 || cause === error.message ? error.message : `${error.message} (${cause})`);
+}
+function hostOf(url) {
+  try {
+    return new URL(url).host || "the endpoint";
+  } catch {
+    return "the endpoint";
+  }
+}
+function parseJson(text3) {
+  if (text3 === "") return void 0;
+  try {
+    return JSON.parse(text3);
+  } catch {
+    return void 0;
+  }
+}
+function httpUrl(value, name) {
+  let url;
+  try {
+    url = new URL(String(value));
+  } catch {
+    throw new TypeError(`${name} must be an http or https URL, not ${JSON.stringify(value)}.`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw new TypeError(`${name} must be an http or https URL, not ${JSON.stringify(value)}.`);
+  return url.href.replace(/\/+$/, "");
+}
+var withoutSecrets, isRecord;
+var init_common = __esm({
+  "src/push/common.ts"() {
+    "use strict";
+    withoutSecrets = (text3) => text3.replace(/\b([a-z][a-z\d+.-]*:\/\/)[^\s"'<>]+/gi, (url, scheme) => `${scheme}${hostOf(url)}`);
+    isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+});
+
+// src/push/config.ts
+function findPushSecret(value, where) {
+  if (typeof value === "string") {
+    if (serviceAccountJson.test(value)) return { where, what: "a service account key" };
+    if (pemKey.test(value)) return { where, what: "a PEM private key" };
+    if (/\.p8$/i.test(value.trim())) return { where, what: "the path of a .p8 file (an APNs key)" };
+    return void 0;
+  }
+  if (typeof value !== "object" || value === null) return void 0;
+  for (const [key, item] of Object.entries(value)) {
+    const at = Array.isArray(value) ? `${where}[${key}]` : `${where}.${key}`;
+    if (privateKeyName.test(key)) return { where: at, what: "a private key" };
+    if (key === "type" && item === "service_account") return { where, what: "a service account key" };
+    const found = findPushSecret(item, at);
+    if (found) return found;
+  }
+  return void 0;
+}
+function googleServicesPackages(parsed) {
+  const clients = parsed?.client;
+  if (!Array.isArray(clients)) return [];
+  return clients.flatMap((client) => {
+    const name = client?.client_info?.android_client_info?.package_name;
+    return typeof name === "string" ? [name] : [];
+  });
+}
+function section(value, where, example) {
+  if (!isRecord(value)) return refuse(`${where} takes an object: ${example}`);
+  return value;
+}
+function optionalText(value, where) {
+  if (value === void 0) return void 0;
+  if (typeof value !== "string" || value.trim() === "") return refuse(`${where} must be a text that is not empty.`);
+  return value;
+}
+function readIos(value) {
+  const ios = section(value, "capabilities.push.ios", '`ios: { mode: "production" }`');
+  if (ios.mode !== "development" && ios.mode !== "production")
+    return refuse(
+      'capabilities.push.ios.mode must be "development" or "production": it is the aps-environment entitlement, "development" for a build signed for development and "production" for TestFlight and the App Store.'
+    );
+  return { mode: ios.mode };
+}
+function readAndroid(value) {
+  const android = section(value, "capabilities.push.android", '`android: { googleServicesFile: "./google-services.json" }`');
+  const file = android.googleServicesFile;
+  if (typeof file !== "string" || file.trim() === "")
+    return refuse(
+      'capabilities.push.android needs googleServicesFile, the path of the Firebase project\'s google-services.json (Firebase console, Project settings, your Android app): `android: { googleServicesFile: "./google-services.json" }`. Leave `android` out for an app that has no push on Android.'
+    );
+  const settings = { googleServicesFile: file };
+  const icon = optionalText(android.icon, "capabilities.push.android.icon");
+  if (icon !== void 0) {
+    if (!/\.png$/i.test(icon)) return refuse(`capabilities.push.android.icon ("${icon}") must be a PNG file: the notification's small icon, white on a transparent background.`);
+    settings.icon = icon;
+  }
+  const color = optionalText(android.color, "capabilities.push.android.color");
+  if (color !== void 0) {
+    if (!/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color)) return refuse(`capabilities.push.android.color ("${color}") must be a hex color such as "#0a7f5a": the notification's accent color.`);
+    settings.color = color;
+  }
+  if (android.channel !== void 0) {
+    const channel = section(android.channel, "capabilities.push.android.channel", '`channel: { name: "Updates" }`');
+    if (typeof channel.name !== "string" || channel.name.trim() === "")
+      return refuse('capabilities.push.android.channel needs a name, as the user will read it in the app\'s notification settings: `channel: { name: "Updates" }`.');
+    const id = optionalText(channel.id, "capabilities.push.android.channel.id");
+    const description = optionalText(channel.description, "capabilities.push.android.channel.description");
+    settings.channel = { ...id === void 0 ? {} : { id }, name: channel.name, ...description === void 0 ? {} : { description } };
+  }
+  return settings;
+}
+function checkPushConfig(push) {
+  try {
+    const platforms = section(push, "capabilities.push", '`push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } }`, or `push: false`');
+    if (platforms.android === void 0 && platforms.ios === void 0)
+      return refuse(
+        "capabilities.push names no platform: give `android` (its google-services.json), `ios` (its aps-environment mode) or both, or turn the capability off with `push: false`."
+      );
+    const config = {};
+    if (platforms.android !== void 0) config.android = readAndroid(platforms.android);
+    if (platforms.ios !== void 0) config.ios = readIos(platforms.ios);
+    return { config };
+  } catch (error) {
+    if (error instanceof Refusal) return { problem: error.message };
+    throw error;
+  }
+}
+var otherPushLibraries, apsEnvironmentEntitlement, remoteNotificationMode, pemKey, serviceAccountJson, privateKeyName, pushSecretMessage, Refusal, refuse, pushIsOn;
+var init_config = __esm({
+  "src/push/config.ts"() {
+    "use strict";
+    init_common();
+    otherPushLibraries = ["expo-notifications", "@react-native-firebase/messaging"];
+    apsEnvironmentEntitlement = "aps-environment";
+    remoteNotificationMode = "remote-notification";
+    pemKey = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
+    serviceAccountJson = /"type"\s*:\s*"service_account"|"private_key"\s*:/;
+    privateKeyName = /^private[_-]?key$/i;
+    pushSecretMessage = ({ where, what }) => `${where} is ${what}: a key that can send to every user must never be in the app or its build. Keep it in the server's environment (the FCM service account, the APNs .p8 with its key id and team id) and give the app identifiers only.`;
+    Refusal = class extends Error {
+    };
+    refuse = (message) => {
+      throw new Refusal(message);
+    };
+    pushIsOn = (push) => push !== void 0 && push !== null && push !== false;
+  }
+});
+
+// src/doctor/push.ts
+import { join as join8 } from "node:path";
+function plistString(plist, key) {
+  return new RegExp(`<key>${key}</key>\\s*<string>([^<]*)</string>`).exec(plist)?.[1];
+}
+function plistStrings(plist, key) {
+  const array = new RegExp(`<key>${key}</key>\\s*<array>([\\s\\S]*?)</array>`).exec(plist)?.[1];
+  return array === void 0 ? void 0 : [...array.matchAll(/<string>([^<]*)<\/string>/g)].map((match) => match[1] ?? "");
+}
+function readConfig(context, library2) {
+  const json = appJson(context.appRoot, library2);
+  const code = codeConfig(context.appRoot);
+  if (!json) return { config: void 0, code };
+  const capabilities = record(json.plugin?.capabilities);
+  const push = pushIsOn(capabilities.push) ? record(capabilities.push) : void 0;
+  const android = record(json.expo.android);
+  return { config: { file: json.file, push, value: capabilities.push, androidPackage: text(android.package), googleServicesFile: text(android.googleServicesFile), conclusive: code === void 0 }, code };
+}
+function otherLibraries(context, dependencies) {
+  const found = otherPushLibraries.filter((name) => name in dependencies || findPackage(name, context.appRoot) !== void 0);
+  if (found.length === 0) return [{ group, status: "pass", message: `no other push library (${otherPushLibraries.join(", ")}) is installed` }];
+  return found.map((name) => ({
+    group,
+    status: "fail",
+    message: `${name} is installed and capabilities.push is on: an app has one push library (Android delivers a message to one FirebaseMessagingService, iOS has one notification center delegate), and the config plugin refuses the build`,
+    fix: `pnpm remove ${name}, or turn capabilities.push off and use ${name} for push (the guide's "Push notifications" page sets up each)`
+  }));
+}
+function capabilityCheck(config) {
+  if (!config) return [];
+  if (config.push) {
+    const secret = findPushSecret(config.value, "capabilities.push");
+    if (secret) {
+      return [{
+        group,
+        status: "fail",
+        message: `${config.file} turns capabilities.push on, and the config plugin refuses it: ${pushSecretMessage(secret)}`,
+        fix: "take it out of the config (and out of the repository's history), revoke the key if it was ever committed, and give it to the server's environment (FCM_SERVICE_ACCOUNT, APNS_KEY, APNS_KEY_ID, APNS_TEAM_ID); the app's config holds identifiers only"
+      }];
+    }
+    const checked = checkPushConfig(config.value);
+    if ("problem" in checked) {
+      const code = config.conclusive ? "" : ", unless the app's config code changes it";
+      return [{
+        group,
+        status: config.conclusive ? "fail" : "unknown",
+        message: `${config.file} turns capabilities.push on, and the config plugin refuses it${code}: ${checked.problem}`,
+        fix: `change capabilities.push in ${config.file} as the message says (PUSH.md, "The config"), or turn it off with \`push: false\``
+      }];
+    }
+    const platforms = ["android", "ios"].filter((name) => config.push?.[name] !== void 0);
+    return [{ group, status: "pass", message: `${config.file} turns capabilities.push on (${platforms.join(", ")})` }];
+  }
+  return [];
+}
+function gradleApplicationId(reader) {
+  for (const file of ["android/app/build.gradle", "android/app/build.gradle.kts"]) {
+    const gradle = reader.read(file);
+    const id = gradle === void 0 ? void 0 : /^\s*applicationId\s*=?\s*["']([^"']+)["']/m.exec(gradle)?.[1];
+    if (id) return id;
+  }
+  return void 0;
+}
+function locateGoogleServices(config, reader) {
+  const named = text(record(config?.push?.android).googleServicesFile) ?? config?.googleServicesFile;
+  if (named !== void 0) return named.replace(/^\.\//, "");
+  const inRoot = reader.list(".").filter((name) => /^google-services.*\.json$/.test(name)).sort((a, b) => a === "google-services.json" ? -1 : b === "google-services.json" ? 1 : a.localeCompare(b));
+  if (inRoot[0] !== void 0) return inRoot[0];
+  return reader.read("android/app/google-services.json") === void 0 ? void 0 : "android/app/google-services.json";
+}
+function androidChecks(context, config, code, reader) {
+  if (config?.conclusive) {
+    if (!config.push) return [];
+    if (!config.push.android) return [{ group, status: "skip", message: `${config.file} has no capabilities.push.android: no Google services file to check` }];
+  }
+  const file = locateGoogleServices(config, reader);
+  if (file === void 0) {
+    return [{
+      group,
+      status: "unknown",
+      message: `could not find the Google services file: ${code ?? "the app's config"} is code that the doctor does not run, and the app's directory has no google-services*.json`,
+      fix: `keep google-services.json in the app's directory, or name it in app.json (capabilities.push.android.googleServicesFile); ${FIREBASE_FIX}`
+    }];
+  }
+  const contents = reader.read(file);
+  if (contents === void 0) {
+    return [{ group, status: "fail", message: `${file} does not exist (${join8(context.appRoot, file)}), and ${config?.file ?? "the app's config"} names it as the Google services file`, fix: FIREBASE_FIX }];
+  }
+  const secret = findPushSecret(contents, file);
+  if (secret) {
+    return [{
+      group,
+      status: "fail",
+      message: `${file} holds ${secret.what}, which is a server secret: a key that can send to every user must never be in the app or its build, and the config plugin refuses it`,
+      fix: `delete it from the app (and from the repository's history, and from any build that carried it) and revoke the key in the Google Cloud console (IAM and admin, Service accounts, Keys); create a new one for the server's environment (FCM_SERVICE_ACCOUNT). The app needs the other file, which holds identifiers only: ${FIREBASE_FIX}`
+    }];
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(contents);
+  } catch {
+    return [{ group, status: "fail", message: `${file} is not JSON`, fix: `download google-services.json from the Firebase console again (Project settings, your Android app)` }];
+  }
+  const project = text(record(record(parsed).project_info).project_id);
+  const checks = [{ group, status: "pass", message: `${file} is JSON and holds no server secret${project ? ` (Firebase project ${project})` : ""}` }];
+  const clients = googleServicesPackages(parsed);
+  const appPackage = config?.androidPackage ?? gradleApplicationId(reader);
+  if (appPackage === void 0) {
+    checks.push({
+      group,
+      status: "unknown",
+      message: `could not tell the app's Android package to look for its client in ${file} (${config ? `${config.file} has no android.package` : "the config is code"}, and android/ has no build.gradle yet)`,
+      fix: `set android.package in app.json, or run npx expo prebuild; the file has ${clients.length === 0 ? "no Android client" : clients.map((name) => `"${name}"`).join(", ")}`
+    });
+  } else if (clients.includes(appPackage)) {
+    checks.push({ group, status: "pass", message: `${file} has a client for the app's package "${appPackage}"` });
+  } else {
+    checks.push({
+      group,
+      status: "fail",
+      message: `${file} has no client for the app's package "${appPackage}" (${clients.length === 0 ? "it has no Android client" : `it has ${clients.map((name) => `"${name}"`).join(", ")}`}): Firebase would not deliver to this app`,
+      fix: "add an Android app with that package to the Firebase project and download google-services.json again, or fix android.package"
+    });
+  }
+  return checks;
+}
+function iosAppDirectory(reader) {
+  const entries = reader.list("ios");
+  const project = entries.find((name) => name.endsWith(".xcodeproj"));
+  if (project !== void 0) return project.slice(0, -".xcodeproj".length);
+  const candidates = entries.filter((name) => !/^(Pods|build)$|\.(xcodeproj|xcworkspace)$|^\./.test(name) && reader.read(`ios/${name}/Info.plist`) !== void 0);
+  return candidates.length === 1 ? candidates[0] : void 0;
+}
+function iosChecks(config, reader) {
+  if (config?.conclusive) {
+    if (!config.push) return [];
+    if (!config.push.ios) return [{ group, status: "skip", message: `${config.file} has no capabilities.push.ios: no entitlement or background mode to check` }];
+  }
+  if (reader.list("ios").length === 0) {
+    return [{ group, status: "skip", message: "no ios/ directory yet: the aps-environment entitlement and the remote-notification background mode are written by `expo prebuild`, which has not run" }];
+  }
+  const directory = iosAppDirectory(reader);
+  const fix = "npx expo prebuild --platform ios (with capabilities.push.ios set), so that the entitlement and the background mode are written";
+  if (directory === void 0) {
+    return [{ group, status: "unknown", message: "could not find the iOS app in ios/ (no <name>.xcodeproj, and not one directory with an Info.plist): the entitlement and the background mode were not checked", fix: "run npx expo prebuild --platform ios" }];
+  }
+  const checks = [];
+  const base = `ios/${directory}`;
+  const entitlementsFile = reader.list(base).find((name) => name.endsWith(".entitlements"));
+  const entitlements = entitlementsFile === void 0 ? void 0 : reader.read(`${base}/${entitlementsFile}`);
+  if (entitlements === void 0) {
+    checks.push({ group, status: "fail", message: `${base} has no .entitlements file: the Push Notifications capability (aps-environment) was not written by the last prebuild`, fix });
+  } else {
+    const environment2 = plistString(entitlements, apsEnvironmentEntitlement);
+    const wanted = text(record(config?.push?.ios).mode);
+    if (environment2 === void 0) {
+      checks.push({ group, status: "fail", message: `${base}/${entitlementsFile} has no ${apsEnvironmentEntitlement}: the app cannot register with APNs`, fix });
+    } else if (wanted !== void 0 && wanted !== environment2) {
+      checks.push({ group, status: "fail", message: `${base}/${entitlementsFile} has ${apsEnvironmentEntitlement} ${environment2}, and capabilities.push.ios.mode is ${wanted}: the last prebuild is older than the config`, fix });
+    } else {
+      checks.push({ group, status: "pass", message: `${base}/${entitlementsFile} has ${apsEnvironmentEntitlement} ${environment2}` });
+    }
+  }
+  const infoPlist = reader.read(`${base}/Info.plist`);
+  if (infoPlist === void 0) {
+    checks.push({ group, status: "unknown", message: `could not read ${base}/Info.plist: the background modes were not checked`, fix: "run npx expo prebuild --platform ios" });
+  } else if (infoPlist.startsWith("bplist")) {
+    checks.push({ group, status: "unknown", message: `${base}/Info.plist is a binary plist: the background modes were not checked` });
+  } else if (plistStrings(infoPlist, "UIBackgroundModes")?.includes(remoteNotificationMode)) {
+    checks.push({ group, status: "pass", message: `${base}/Info.plist lists ${remoteNotificationMode} in UIBackgroundModes` });
+  } else {
+    checks.push({ group, status: "fail", message: `${base}/Info.plist does not list ${remoteNotificationMode} in UIBackgroundModes: a silent push would not wake the app`, fix });
+  }
+  return checks;
+}
+function prebuiltPush(reader) {
+  const manifest = reader.read("android/app/src/main/AndroidManifest.xml");
+  const directory = iosAppDirectory(reader);
+  const infoPlist = directory === void 0 ? void 0 : reader.read(`ios/${directory}/Info.plist`);
+  return {
+    android: manifest === void 0 ? void 0 : new RegExp(`android:name="${ANDROID_PUSH_FLAG.replaceAll(".", "\\.")}"\\s+android:value="true"`).test(manifest),
+    ios: infoPlist === void 0 ? void 0 : new RegExp(`<key>${IOS_PUSH_FLAG}</key>\\s*<true/>`).test(infoPlist)
+  };
+}
+function prebuildChecks(config, prebuilt) {
+  if (!config?.push) return [];
+  const checks = [];
+  for (const platform of ["android", "ios"]) {
+    if (config.push[platform] === void 0 || prebuilt[platform] === void 0) continue;
+    const where = platform === "android" ? `android/app/src/main/AndroidManifest.xml (${ANDROID_PUSH_FLAG})` : `ios/…/Info.plist (${IOS_PUSH_FLAG})`;
+    checks.push(prebuilt[platform] ? { group, status: "pass", message: `the last prebuild turned push on for ${platform}: ${where}` } : { group, status: "fail", message: `capabilities.push names ${platform}, and the last prebuild did not turn push on there (no ${where}): the prebuild is older than the config`, fix: `npx expo prebuild --platform ${platform}, then build the app again` });
+  }
+  return checks;
+}
+function pushChecks(context, library2, appPackage) {
+  const dependencies = { ...record(appPackage.dependencies), ...record(appPackage.devDependencies), ...record(appPackage.optionalDependencies) };
+  const { config, code } = readConfig(context, library2.name);
+  const reader = readerFor(context.appRoot);
+  const prebuilt = prebuiltPush(reader);
+  const inPlay = config?.push !== void 0 || config?.conclusive !== true && (prebuilt.android === true || prebuilt.ios === true);
+  if (!inPlay) return [];
+  return [
+    ...otherLibraries(context, dependencies),
+    ...capabilityCheck(config),
+    ...androidChecks(context, config, code, reader),
+    ...iosChecks(config, reader),
+    ...prebuildChecks(config, prebuilt)
+  ];
+}
+var ANDROID_PUSH_FLAG, IOS_PUSH_FLAG, group, text, FIREBASE_FIX;
+var init_push = __esm({
+  "src/doctor/push.ts"() {
+    "use strict";
+    init_config();
+    init_integration();
+    init_resolve();
+    ANDROID_PUSH_FLAG = "expo.modules.sveltepush.enabled";
+    IOS_PUSH_FLAG = "SveltePushEnabled";
+    group = "push";
+    text = (value) => typeof value === "string" && value !== "" ? value : void 0;
+    FIREBASE_FIX = "download google-services.json from the Firebase console (Project settings, your Android app) and save it in the app's directory, then name it in capabilities.push.android.googleServicesFile";
   }
 });
 
@@ -1761,9 +2500,69 @@ var init_requirements = __esm({
   }
 });
 
+// src/libraries.ts
+import { createRequire as createRequire3 } from "node:module";
+function checkLibraries(option) {
+  if (option === void 0 || option === null) return { listed: /* @__PURE__ */ new Map(), enabled: [] };
+  if (!isObject(option)) throw new LibrariesConfigError('`libraries` takes an object of library names: `libraries: { "react-native-maps": true }`');
+  const listed = /* @__PURE__ */ new Map();
+  for (const [name, value] of Object.entries(option)) {
+    const vendored2 = vendoredPackage(name);
+    if (vendored2?.optional === void 0) {
+      const always = vendored2 !== void 0 ? ` ${name} is in every app: there is nothing to turn on.` : "";
+      throw new LibrariesConfigError(`\`libraries\` names "${name}", which is not one of the optional libraries @alfayez/svelte-native carries.${always} The libraries: ${libraryNames.join(", ")}.`);
+    }
+    if (value === false) continue;
+    if (value === true) {
+      listed.set(name, void 0);
+      continue;
+    }
+    if (!isObject(value)) throw new LibrariesConfigError(`libraries["${name}"] is \`true\`, \`false\` or the options of ${name}'s config plugin (an object), not ${JSON.stringify(value) ?? String(value)}`);
+    if (vendored2.optional.plugin === void 0 && Object.keys(value).length > 0) {
+      throw new LibrariesConfigError(`libraries["${name}"] has options (${Object.keys(value).join(", ")}), and ${name} has no config plugin to give them to: write \`libraries: { "${name}": true }\``);
+    }
+    listed.set(name, value);
+  }
+  const wanted = withRequired(listed.keys());
+  return { listed, enabled: libraryNames.filter((name) => wanted.includes(name)) };
+}
+function isLibraryPlugin(entry) {
+  if (typeof entry !== "string") return false;
+  if (PLUGIN_NAMES.has(entry)) return true;
+  const path = entry.replace(/\\/g, "/").replace(/\/$/, "").replace(/\.js$/, "");
+  return [...PLUGIN_NAMES].some((name) => path.endsWith(`/node_modules/${name}`));
+}
+function appPluginOptions(projectRoot, from = import.meta.url) {
+  let plugins;
+  try {
+    const { getConfig } = createRequire3(from)("expo/config");
+    plugins = getConfig(projectRoot, { skipSDKVersionRequirement: true }).exp.plugins;
+  } catch (error) {
+    return { unknown: `could not read the app's config: ${error instanceof Error ? error.message : String(error)}`, error };
+  }
+  const entry = (Array.isArray(plugins) ? plugins : []).find((plugin2) => isLibraryPlugin(Array.isArray(plugin2) ? plugin2[0] : plugin2));
+  if (entry === void 0) return { unknown: "no entry of the app's `plugins` names @alfayez/svelte-native" };
+  const options = Array.isArray(entry) ? entry[1] : void 0;
+  return { options: isObject(options) ? options : void 0 };
+}
+var LibrariesConfigError, libraryNames, isObject, PLUGIN_NAMES;
+var init_libraries = __esm({
+  "src/libraries.ts"() {
+    "use strict";
+    init_config();
+    init_vendored();
+    LibrariesConfigError = class extends Error {
+      name = "LibrariesConfigError";
+    };
+    libraryNames = optionalPackages.map((vendored2) => vendored2.name);
+    isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+    PLUGIN_NAMES = /* @__PURE__ */ new Set(["@alfayez/svelte-native", "@alfayez/svelte-native/app.plugin", "@alfayez/svelte-native/expo"]);
+  }
+});
+
 // src/doctor/checks.ts
-import { existsSync as existsSync6, readFileSync as readFileSync6 } from "node:fs";
-import { join as join7 } from "node:path";
+import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
+import { join as join9 } from "node:path";
 function environment(context) {
   const checks = [];
   const scope = context.repository ? "repository" : "app";
@@ -1786,18 +2585,18 @@ function environment(context) {
 }
 function library(context, name, version, appPackage) {
   const dependencies = { ...record(appPackage.dependencies), ...record(appPackage.devDependencies), ...record(appPackage.optionalDependencies) };
-  return name in dependencies ? { group: "build integration", status: "pass", message: `${name} ${version} is a dependency of the app` } : { group: "build integration", status: "fail", message: `${name} is not a dependency of the app (${join7(context.appRoot, "package.json")})`, fix: `add it to the app's dependencies (README: "Install in an app"), or run \`pnpm exec svelte-native init\`` };
+  return name in dependencies ? { group: "build integration", status: "pass", message: `${name} ${version} is a dependency of the app` } : { group: "build integration", status: "fail", message: `${name} is not a dependency of the app (${join9(context.appRoot, "package.json")})`, fix: `add it to the app's dependencies (README: "Install in an app"), or run \`pnpm exec svelte-native init\`` };
 }
 function svelte(context, peers) {
   const installed = findPackage("svelte", context.appRoot);
   const fix = 'install the custom-renderer build of Svelte (sveltejs/svelte#18042, commit 216f258, 5.56.7): `pnpm exec svelte-native init` does it (docs/10-getting-started/20-creating-a-project.md), or by hand, README "Install in an app"';
   if (!installed) return { group: "svelte", status: "fail", message: "svelte is not installed", fix };
   const entry = record(installed.json.exports)["./renderer"];
-  const target = text(entry) ?? text(record(entry).default);
-  const exported = target !== void 0 && existsSync6(join7(installed.directory, target));
+  const target = text2(entry) ?? text2(record(entry).default);
+  const exported = target !== void 0 && existsSync6(join9(installed.directory, target));
   const compiler = ["src/compiler/validate-options.js", "compiler/index.js"].some((file) => {
     try {
-      return readFileSync6(join7(installed.directory, file), "utf8").includes("customRenderer");
+      return readFileSync7(join9(installed.directory, file), "utf8").includes("customRenderer");
     } catch {
       return false;
     }
@@ -1810,7 +2609,7 @@ function svelte(context, peers) {
       fix
     };
   }
-  const range = text(peers.svelte);
+  const range = text2(peers.svelte);
   if (range !== void 0 && satisfies(installed.version, range) === false) {
     return { group: "svelte", status: "fail", message: `svelte ${installed.version} has ./renderer but does not satisfy ${range}`, fix };
   }
@@ -1820,7 +2619,7 @@ function peerDependencies(context, peers, optional) {
   const checks = [];
   const absent = [];
   for (const [name, wanted] of Object.entries(peers).sort(([a], [b]) => a.localeCompare(b))) {
-    const range = text(wanted);
+    const range = text2(wanted);
     if (range === void 0 || name === "svelte") continue;
     const installed = findPackage(name, context.appRoot);
     if (!installed) {
@@ -1837,35 +2636,74 @@ function peerDependencies(context, peers, optional) {
   return checks;
 }
 function expoRuntime(context) {
-  const expo = findPackage("expo", context.appRoot);
-  if (!expo) return [];
-  const missing = EXPO_RUNTIME_FILES.filter((file) => !existsSync6(join7(expo.directory, file)));
-  if (missing.length === 0) return [{ group: "peer dependencies", status: "pass", message: `expo ${expo.version} has src/winter, the runtime (URL, fetch, TextDecoder) that the library's polyfills import` }];
+  const expo2 = findPackage("expo", context.appRoot);
+  if (!expo2) return [];
+  const missing = EXPO_RUNTIME_FILES.filter((file) => !existsSync6(join9(expo2.directory, file)));
+  if (missing.length === 0) return [{ group: "peer dependencies", status: "pass", message: `expo ${expo2.version} has src/winter, the runtime (URL, fetch, TextDecoder) that the library's polyfills import` }];
   return [{
     group: "peer dependencies",
     status: "fail",
-    message: `expo ${expo.version} has no ${missing.join(", ")} (${expo.directory}): the library's polyfills import expo/src/winter for the standard URL, and the router starts blank without it`,
+    message: `expo ${expo2.version} has no ${missing.join(", ")} (${expo2.directory}): the library's polyfills import expo/src/winter for the standard URL, and the router starts blank without it`,
     fix: `npx expo install expo (the version this library was exercised on is in its peerDependencies)`
   }];
 }
-function autolinkedPeers(context, peers, appPackage) {
-  const dependencies = { ...record(appPackage.dependencies), ...record(appPackage.devDependencies), ...record(appPackage.optionalDependencies) };
+function vendored(context, libraryName) {
+  const declared = new Set(declaredVendored(context.appRoot));
   const checks = [];
-  for (const name of AUTOLINKED_PEERS) {
-    const range = text(peers[name]);
-    if (range === void 0) continue;
-    if (name in dependencies) {
-      checks.push({ group: "peer dependencies", status: "pass", message: `${name} is a dependency of the app: React Native's autolinking links its native module` });
-    } else if (findPackage(name, context.appRoot)) {
-      checks.push({ group: "peer dependencies", status: "fail", message: `${name} is installed but is not a dependency of the app (${join7(context.appRoot, "package.json")}): React Native's autolinking links only the app's own dependencies, so the build would not have its native module`, fix: `pnpm add ${name}@${range}, then npx expo prebuild` });
-    }
+  const optionalCopies = [];
+  for (const { name, version, optional } of vendoredPackages) {
+    const directory = vendoredRoot(name, context.packageRoot);
+    const copy = readJson2(join9(directory, "package.json"));
+    if (copy === void 0 || copy.version !== version) {
+      checks.push({
+        group: "vendored packages",
+        status: "fail",
+        message: copy === void 0 ? `${libraryName} has no copy of ${name} (${directory}): the installed library is incomplete` : `${directory} is ${name} ${String(copy.version)}, the library pins ${version}`,
+        fix: `install ${libraryName} again (a package manager that dropped the library's vendor/ folder, or a stale cache, leaves it incomplete)`
+      });
+    } else if (declared.has(name)) {
+      checks.push({ group: "vendored packages", status: "fail", message: `${name} is a dependency of the app (${join9(context.appRoot, "package.json")}): ${collisionMessage([name], libraryName)}`, fix: `pnpm remove ${name}, then npx expo prebuild` });
+    } else if (optional === void 0) {
+      checks.push({ group: "vendored packages", status: "pass", message: `${name} ${version} comes with ${libraryName} (vendor/${name}); the app does not list it` });
+    } else optionalCopies.push(name);
+  }
+  if (optionalCopies.length > 0) checks.push({ group: "vendored packages", status: "pass", message: `the ${optionalCopies.length} optional libraries come with ${libraryName} (vendor/), at the versions it pins; the app lists none of them` });
+  checks.push(libraries(context, libraryName));
+  return checks;
+}
+function libraries(context, libraryName) {
+  const group3 = "vendored packages";
+  const fix = `fix \`libraries\` in the ${libraryName} plugin's options (app.json or app.config.*), then prebuild again`;
+  const read2 = appPluginOptions(context.appRoot, join9(context.appRoot, "package.json"));
+  if ("error" in read2 && read2.error instanceof Error && read2.error.name === "LibrariesConfigError") {
+    return { group: group3, status: "fail", message: read2.error.message, fix };
+  }
+  if ("unknown" in read2) return { group: group3, status: "skip", message: `${read2.unknown}, so the optional libraries it turns on were not checked (\`npx expo config\` shows the config)` };
+  try {
+    const { enabled, listed } = checkLibraries(read2.options?.libraries);
+    if (enabled.length === 0) return { group: group3, status: "pass", message: "no optional library is turned on (libraries): none of their native code is in the app" };
+    const implied = enabled.filter((name) => !listed.has(name));
+    return { group: group3, status: "pass", message: `libraries turned on: ${enabled.join(", ")}${implied.length > 0 ? ` (${implied.join(", ")}: needed by another)` : ""}; the others are not linked, and Metro stubs them` };
+  } catch (error) {
+    if (!(error instanceof LibrariesConfigError)) throw error;
+    return { group: group3, status: "fail", message: error.message, fix };
+  }
+}
+function vendoredPatches(context, libraryName) {
+  const checks = [];
+  for (const spec of patchSpecs) {
+    if (!spec.vendored) continue;
+    const directory = vendoredRoot(spec.package, context.packageRoot);
+    if (readJson2(join9(directory, "package.json")) === void 0) continue;
+    const problems = spec.inspect(readerFor(directory), "");
+    checks.push(problems.length === 0 ? { group: "vendored packages", status: "pass", message: `${spec.package}: ${spec.does} (in ${libraryName}'s copy)` } : { group: "vendored packages", status: "fail", message: `${spec.package} in ${libraryName}'s copy is not patched: ${spec.does}`, details: problems.slice(0, 4), fix: `install ${libraryName} again: the copy in vendor/${spec.package} is not the one the library was built with` });
   }
   return checks;
 }
 function patches(context, libraryName, optional) {
   const declared = declaredPatches(context.appRoot);
   const checks = [];
-  for (const patch of patchFiles(join7(context.packageRoot, "patches"))) {
+  for (const patch of patchFiles(join9(context.packageRoot, "patches"))) {
     const key = patchKey(patch);
     const spec = patchSpecs.find((candidate) => candidate.package === patch.package);
     if (!spec) continue;
@@ -1881,7 +2719,7 @@ function patches(context, libraryName, optional) {
       continue;
     }
     const reader = readerFor(installed.directory);
-    const patchText = readFileSync6(patch.path, "utf8");
+    const patchText = readFileSync7(patch.path, "utf8");
     const changed = spec.inspect(reader, patchText);
     const differing = changed.length === 0 ? missingFromPackage(patchText, reader) : [];
     if (changed.length === 0 && differing.length === 0) {
@@ -1920,9 +2758,9 @@ function integration(context, name) {
   return [metro(metroFinding(context.appRoot)), plugin2(expoPluginFinding(context.appRoot, name))];
 }
 function runChecks(context) {
-  const own2 = readJson(join7(context.packageRoot, "package.json")) ?? {};
-  const name = text(own2.name) ?? "@alfayez/svelte-native";
-  const appPackage = readJson(join7(context.appRoot, "package.json"));
+  const own2 = readJson2(join9(context.packageRoot, "package.json")) ?? {};
+  const name = text2(own2.name) ?? "@alfayez/svelte-native";
+  const appPackage = readJson2(join9(context.appRoot, "package.json"));
   if (!appPackage) {
     return [{ group: "environment", status: "fail", message: `${context.appRoot} has no package.json: this is not an app directory`, fix: "run svelte-native doctor from the app's directory" }];
   }
@@ -1932,14 +2770,16 @@ function runChecks(context) {
     ...environment(context),
     svelte(context, peers),
     ...peerDependencies(context, peers, optional),
-    ...autolinkedPeers(context, peers, appPackage),
     ...expoRuntime(context),
+    ...vendored(context, name),
+    ...vendoredPatches(context, name),
     ...patches(context, name, optional),
-    library(context, name, text(own2.version) ?? "?", appPackage),
-    ...integration(context, name)
+    library(context, name, text2(own2.version) ?? "?", appPackage),
+    ...integration(context, name),
+    ...pushChecks(context, { name, version: text2(own2.version) ?? "?" }, appPackage)
   ];
 }
-var record, text, EXPO_RUNTIME_FILES, AUTOLINKED_PEERS;
+var text2, EXPO_RUNTIME_FILES;
 var init_checks = __esm({
   "src/doctor/checks.ts"() {
     "use strict";
@@ -1947,13 +2787,686 @@ var init_checks = __esm({
     init_integration();
     init_hunks();
     init_patches();
+    init_push();
     init_requirements();
     init_resolve();
     init_semver();
-    record = (value) => typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
-    text = (value) => typeof value === "string" ? value : void 0;
+    init_libraries();
+    init_vendored();
+    text2 = (value) => typeof value === "string" ? value : void 0;
     EXPO_RUNTIME_FILES = ["src/winter/index.ts", "src/winter/runtime.native.ts"];
-    AUTOLINKED_PEERS = ["hermes-intl", "react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64", "react-native-quick-crypto"];
+  }
+});
+
+// src/push/jwt.ts
+import { createPrivateKey, sign } from "node:crypto";
+function privateKeyOf(pem, algorithm, name) {
+  let key;
+  try {
+    key = createPrivateKey(pemOf(pem));
+  } catch (error) {
+    throw new TypeError(`${name} is not a PEM private key (${error instanceof Error ? error.message : String(error)}).`, { cause: error });
+  }
+  const wanted = KEYS[algorithm];
+  if (key.asymmetricKeyType !== wanted.type || wanted.curve !== void 0 && key.asymmetricKeyDetails?.namedCurve !== wanted.curve) {
+    throw new TypeError(`${name} must be ${wanted.curve === void 0 ? "an RSA" : "a P-256 (prime256v1) elliptic-curve"} private key for ${algorithm}, not ${key.asymmetricKeyType ?? "another kind of key"}${key.asymmetricKeyDetails?.namedCurve ? ` on ${key.asymmetricKeyDetails.namedCurve}` : ""}.`);
+  }
+  return key;
+}
+function signJwt(algorithm, header, claims, key) {
+  const input = `${encode({ alg: algorithm, ...header })}.${encode(claims)}`;
+  const signature = sign("sha256", Buffer.from(input), algorithm === "ES256" ? { key, dsaEncoding: "ieee-p1363" } : key);
+  return `${input}.${signature.toString("base64url")}`;
+}
+var KEYS, pemOf, encode;
+var init_jwt = __esm({
+  "src/push/jwt.ts"() {
+    "use strict";
+    KEYS = {
+      RS256: { type: "rsa" },
+      ES256: { type: "ec", curve: "prime256v1" }
+    };
+    pemOf = (value) => (value.includes("\n") ? value : value.replaceAll("\\n", "\n")).trim();
+    encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  }
+});
+
+// src/push/apns.ts
+import { connect } from "node:http2";
+function createApns(options, timeout) {
+  const names = ["key", "keyId", "teamId"];
+  if (options === void 0 || names.every((name) => options[name] === void 0 || options[name] === "")) return void 0;
+  for (const name of names) {
+    if (typeof options[name] !== "string" || options[name] === "") throw new TypeError(`\`apns.${name}\` is needed beside the other two: the \`.p8\`'s contents, its key id and the team id.`);
+  }
+  return new ApnsSender({
+    key: privateKeyOf(String(options.key), "ES256", "`apns.key`"),
+    keyId: String(options.keyId),
+    teamId: String(options.teamId),
+    productionUrl: httpUrl(options.productionUrl ?? PRODUCTION_URL, "`apns.productionUrl`"),
+    sandboxUrl: httpUrl(options.sandboxUrl ?? SANDBOX_URL, "`apns.sandboxUrl`"),
+    timeout
+  });
+}
+function apnsRequest(token, message) {
+  const silent = message.silent === true;
+  const headers = {
+    ":method": "POST",
+    // A token that is not hex is APNs's to refuse (`BadDeviceToken`); encoded, it cannot add to the path.
+    ":path": `/3/device/${encodeURIComponent(token.token)}`,
+    "apns-topic": headerText(token.app, "The token's `app`"),
+    "apns-push-type": silent ? "background" : "alert"
+  };
+  const priority = silent ? "5" : message.priority === void 0 ? void 0 : message.priority === "high" ? "10" : "5";
+  if (priority !== void 0) headers["apns-priority"] = priority;
+  if (message.ttl !== void 0) headers["apns-expiration"] = String(message.ttl === 0 ? 0 : Math.floor(Date.now() / 1e3) + message.ttl);
+  if (message.collapseKey !== void 0) headers["apns-collapse-id"] = headerText(message.collapseKey, "`collapseKey`");
+  if (message.data !== void 0 && Object.hasOwn(message.data, "aps")) throw new TypeError("`data.aps` is APNs's own key and cannot carry data: name the key something else.");
+  const aps = {};
+  if (silent) {
+    aps["content-available"] = 1;
+  } else {
+    aps.alert = { ...message.title !== void 0 ? { title: message.title } : {}, ...message.body !== void 0 ? { body: message.body } : {} };
+    if (message.badge !== void 0) aps.badge = message.badge;
+    if (message.sound !== null) aps.sound = "default";
+  }
+  return { headers, body: JSON.stringify({ ...message.data, ...message.url !== void 0 ? { url: message.url } : {}, aps }) };
+}
+function apnsFailure(status, reason, retryAfter) {
+  const detail = reason ?? `HTTP ${status}`;
+  if (reason === "BadDeviceToken" || reason === "DeviceTokenNotForTopic") return failure("invalid-token", detail, status);
+  if (status === 410 && (reason === "Unregistered" || reason === "ExpiredToken")) return failure("gone", detail, status);
+  if (status === 401 || status === 403) return failure("auth", detail, status);
+  if (reason === "IdleTimeout") return failure("unavailable", detail, status, retryAfter);
+  if (status === 429) return failure("rate-limited", detail, status, retryAfter);
+  if (status >= 500) return failure("unavailable", detail, status, retryAfter);
+  if (status === 400 || status === 413) return failure("invalid-message", detail, status);
+  return failure("error", detail, status);
+}
+var PRODUCTION_URL, SANDBOX_URL, RENEW_AFTER, RENEW_NOT_BEFORE, headerText, Endpoint, ApnsSender;
+var init_apns = __esm({
+  "src/push/apns.ts"() {
+    "use strict";
+    init_common();
+    init_jwt();
+    PRODUCTION_URL = "https://api.push.apple.com";
+    SANDBOX_URL = "https://api.sandbox.push.apple.com";
+    RENEW_AFTER = 50 * 6e4;
+    RENEW_NOT_BEFORE = 20 * 6e4;
+    headerText = (value, name) => {
+      if (!/^[\x21-\x7e]+$/.test(value)) throw new TypeError(`${name} must be printable ASCII without spaces to be sent as an APNs header, not ${JSON.stringify(value)}.`);
+      return value;
+    };
+    Endpoint = class {
+      #origin;
+      #timeout;
+      /** The session new requests use: one that is open, or none. */
+      #current;
+      /** Every session that has not closed, including one that got a GOAWAY and is finishing its requests: `close` waits for them all. */
+      #sessions = /* @__PURE__ */ new Set();
+      constructor(origin, timeout) {
+        this.#origin = origin;
+        this.#timeout = timeout;
+      }
+      /** Sends one request and resolves with the answer, or with why there is none. It never rejects. */
+      request(headers, body) {
+        return new Promise((resolve12) => {
+          let session;
+          let timer;
+          let settled = false;
+          const finish = (answer) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve12(answer);
+          };
+          try {
+            session = this.#session();
+            const stream = session.request(headers);
+            const current = session;
+            let responseHeaders;
+            let text3 = "";
+            stream.setEncoding("utf8");
+            stream.on("response", (received) => {
+              responseHeaders = received;
+            });
+            stream.on("data", (chunk) => {
+              text3 += chunk;
+            });
+            stream.on(
+              "end",
+              () => finish(responseHeaders === void 0 ? failure("unavailable", "The stream to APNs ended before APNs answered.") : { ok: true, status: Number(responseHeaders[":status"]), headers: responseHeaders, body: text3 })
+            );
+            stream.on("error", (error) => finish(failure("unavailable", describeNetworkError(error))));
+            stream.on("close", () => finish(failure("unavailable", `The stream to APNs closed (code ${stream.rstCode}) before APNs answered.`)));
+            timer = setTimeout(() => {
+              finish(failure("unavailable", `APNs did not answer within ${this.#timeout} ms.`));
+              this.#drop(current);
+              current.destroy();
+            }, this.#timeout);
+            stream.end(body);
+          } catch (error) {
+            if (session !== void 0) this.#drop(session);
+            finish(failure("unavailable", describeNetworkError(error)));
+          }
+        });
+      }
+      /** Ends the connection once the requests in flight are answered. */
+      async close() {
+        const sessions = [...this.#sessions];
+        this.#current = void 0;
+        await Promise.all(
+          sessions.map(
+            (session) => new Promise((resolve12) => {
+              if (session.destroyed) return resolve12();
+              session.once("close", resolve12);
+              session.close();
+            })
+          )
+        );
+      }
+      #session() {
+        if (this.#current !== void 0 && !this.#current.closed && !this.#current.destroyed) return this.#current;
+        const session = connect(this.#origin);
+        this.#sessions.add(session);
+        this.#current = session;
+        session.on("error", () => this.#drop(session));
+        session.on("goaway", () => {
+          this.#drop(session);
+          if (!session.closed && !session.destroyed) session.close();
+        });
+        session.on("close", () => {
+          this.#drop(session);
+          this.#sessions.delete(session);
+        });
+        return session;
+      }
+      /** Stops new requests from using `session`. */
+      #drop(session) {
+        if (this.#current === session) this.#current = void 0;
+      }
+    };
+    ApnsSender = class {
+      #config;
+      #endpoints = /* @__PURE__ */ new Map();
+      #token;
+      constructor(config) {
+        this.#config = config;
+      }
+      async send(token, message) {
+        const { headers, body } = apnsRequest(token, message);
+        const endpoint = this.#endpoint(token.environment === "development" ? this.#config.sandboxUrl : this.#config.productionUrl);
+        let jwt = this.#providerToken();
+        for (let attempt = 0; ; attempt++) {
+          const answer = await endpoint.request({ ...headers, authorization: `bearer ${jwt}` }, body);
+          if (!answer.ok) return answer;
+          const parsed = parseJson(answer.body);
+          const reason = isRecord(parsed) && typeof parsed.reason === "string" ? parsed.reason : void 0;
+          if (answer.status === 200) {
+            const id = answer.headers["apns-id"];
+            return typeof id === "string" && id !== "" ? { ok: true, id } : failure("error", "APNs answered without an apns-id.", answer.status);
+          }
+          if (reason === "ExpiredProviderToken" && attempt === 0) {
+            const renewed = this.#renew(jwt);
+            if (renewed !== jwt) {
+              jwt = renewed;
+              continue;
+            }
+          }
+          return apnsFailure(answer.status, reason, retryAfterOf(answer.headers["retry-after"]));
+        }
+      }
+      async close() {
+        await Promise.all([...this.#endpoints.values()].map((endpoint) => endpoint.close()));
+      }
+      #endpoint(origin) {
+        let endpoint = this.#endpoints.get(origin);
+        if (endpoint === void 0) {
+          endpoint = new Endpoint(origin, this.#config.timeout);
+          this.#endpoints.set(origin, endpoint);
+        }
+        return endpoint;
+      }
+      /** The provider token: the one signed less than 50 minutes ago, else a new one. The same token serves the production and the sandbox host. */
+      #providerToken() {
+        const now = Date.now();
+        if (this.#token === void 0 || now - this.#token.issuedAt >= RENEW_AFTER) this.#token = this.#sign(now);
+        return this.#token.jwt;
+      }
+      /**
+       * Replaces `used`, the token a request was refused with, unless it is not the current one (another send already replaced it) or the current one is younger than the 20
+       * minutes Apple allows between tokens. Returns the token to send with now, which is `used` when nothing was replaced.
+       */
+      #renew(used) {
+        const now = Date.now();
+        if (this.#token !== void 0 && this.#token.jwt === used && now - this.#token.issuedAt >= RENEW_NOT_BEFORE) this.#token = this.#sign(now);
+        return this.#token?.jwt ?? used;
+      }
+      #sign(now) {
+        const { key, keyId, teamId } = this.#config;
+        return { jwt: signJwt("ES256", { kid: keyId }, { iss: teamId, iat: Math.floor(now / 1e3) }, key), issuedAt: now };
+      }
+    };
+  }
+});
+
+// src/push/fcm.ts
+function readAccount(value) {
+  let account = value;
+  if (typeof value === "string") {
+    try {
+      account = JSON.parse(value);
+    } catch {
+      throw new TypeError("`fcm.serviceAccount` is a string but not JSON: pass the service account key's file as it is, or the parsed object.");
+    }
+  }
+  if (!isRecord(account)) throw new TypeError("`fcm.serviceAccount` must be the service account key's JSON, a string or an object.");
+  for (const name of ["project_id", "client_email", "private_key"]) {
+    if (typeof account[name] !== "string" || account[name] === "") throw new TypeError(`\`fcm.serviceAccount\` has no \`${name}\`: it is not a service account key.`);
+  }
+  if (account.token_uri !== void 0 && typeof account.token_uri !== "string") throw new TypeError("`fcm.serviceAccount.token_uri` must be a string.");
+  return { projectId: String(account.project_id), clientEmail: String(account.client_email), privateKey: String(account.private_key), tokenUri: account.token_uri };
+}
+function createFcm(options, timeout) {
+  if (options === void 0 || options.serviceAccount === void 0 || options.serviceAccount === "") return void 0;
+  const account = readAccount(options.serviceAccount);
+  const base = httpUrl(options.baseUrl ?? FCM_URL, "`fcm.baseUrl`");
+  return new FcmSender({
+    projectId: account.projectId,
+    clientEmail: account.clientEmail,
+    key: privateKeyOf(account.privateKey, "RS256", "`fcm.serviceAccount.private_key`"),
+    tokenUrl: httpUrl(options.tokenUrl ?? account.tokenUri ?? TOKEN_URL, "`fcm.tokenUrl`"),
+    sendUrl: `${base}/v1/projects/${encodeURIComponent(account.projectId)}/messages:send`,
+    timeout
+  });
+}
+function fcmBody(token, message) {
+  const data = { ...message.data };
+  if (message.url !== void 0) data.url = message.url;
+  const android = {};
+  if (message.collapseKey !== void 0) android.collapse_key = message.collapseKey;
+  if (message.priority !== void 0) android.priority = message.priority === "high" ? "HIGH" : "NORMAL";
+  if (message.ttl !== void 0) android.ttl = `${message.ttl}s`;
+  if (!message.silent) {
+    const notification = {};
+    if (message.title !== void 0) notification.title = message.title;
+    if (message.body !== void 0) notification.body = message.body;
+    if (message.sound !== null) notification.sound = "default";
+    if (message.channel !== void 0) notification.channel_id = message.channel;
+    android.notification = notification;
+  }
+  return { message: { token: token.token, ...Object.keys(data).length > 0 ? { data } : {}, ...Object.keys(android).length > 0 ? { android } : {} } };
+}
+function readError(body) {
+  const error = isRecord(body) && isRecord(body.error) ? body.error : void 0;
+  if (error === void 0) return { aboutToken: false };
+  const details = Array.isArray(error.details) ? error.details.filter(isRecord) : [];
+  const fcm = details.find((detail) => typeof detail.errorCode === "string")?.errorCode;
+  const message = typeof error.message === "string" ? error.message : void 0;
+  const violations = details.flatMap((detail) => Array.isArray(detail.fieldViolations) ? detail.fieldViolations.filter(isRecord) : []);
+  const aboutToken = violations.some((violation) => violation.field === "message.token") || /registration token/i.test(message ?? "");
+  return { code: typeof fcm === "string" ? fcm : typeof error.status === "string" ? error.status : void 0, message, aboutToken };
+}
+function fcmFailure(status, body, text3, retryAfter) {
+  const { code, message, aboutToken } = readError(body);
+  const detail = message ?? code ?? (text3.trim() === "" ? `HTTP ${status}` : text3.trim().slice(0, 300));
+  switch (code) {
+    case "UNREGISTERED":
+      return failure("gone", detail, status);
+    case "SENDER_ID_MISMATCH":
+      return failure("auth", `${detail}: the token belongs to another Firebase project than the service account's; check the server's credentials before suspecting the token`, status);
+    case "INVALID_ARGUMENT":
+      return failure(aboutToken ? "invalid-token" : "invalid-message", detail, status);
+    case "QUOTA_EXCEEDED":
+    case "RESOURCE_EXHAUSTED":
+      return failure("rate-limited", detail, status, retryAfter);
+    case "UNAVAILABLE":
+    case "INTERNAL":
+      return failure("unavailable", detail, status, retryAfter);
+    case "UNAUTHENTICATED":
+    case "THIRD_PARTY_AUTH_ERROR":
+    case "PERMISSION_DENIED":
+      return failure("auth", detail, status);
+  }
+  if (status === 404) return failure("error", `FCM answered 404 (${detail}): the endpoint or the project was not found; check the service account's \`project_id\` and \`fcm.baseUrl\`.`, status);
+  if (status === 429) return failure("rate-limited", detail, status, retryAfter);
+  if (status >= 500) return failure("unavailable", detail, status, retryAfter);
+  if (status === 401 || status === 403) return failure("auth", detail, status);
+  if (status === 400) return failure(aboutToken ? "invalid-token" : "invalid-message", detail, status);
+  return failure("error", detail, status);
+}
+var SCOPE, FCM_URL, TOKEN_URL, ASSERTION_SECONDS, EXPIRY_MARGIN, FcmSender;
+var init_fcm = __esm({
+  "src/push/fcm.ts"() {
+    "use strict";
+    init_common();
+    init_jwt();
+    SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
+    FCM_URL = "https://fcm.googleapis.com";
+    TOKEN_URL = "https://oauth2.googleapis.com/token";
+    ASSERTION_SECONDS = 3600;
+    EXPIRY_MARGIN = 5 * 6e4;
+    FcmSender = class {
+      #config;
+      #access;
+      /** The token request in flight: sends that need a token while one is on its way wait for it, and one request serves them all. */
+      #pending;
+      constructor(config) {
+        this.#config = config;
+      }
+      async send(token, message) {
+        const access = await this.#accessToken();
+        if (typeof access !== "string") return access;
+        let response;
+        let text3;
+        try {
+          response = await fetch(this.#config.sendUrl, {
+            method: "POST",
+            headers: { authorization: `Bearer ${access}`, "content-type": "application/json; charset=utf-8" },
+            body: JSON.stringify(fcmBody(token, message)),
+            signal: AbortSignal.timeout(this.#config.timeout)
+          });
+          text3 = await response.text();
+        } catch (error) {
+          return failure("unavailable", describeNetworkError(error));
+        }
+        const body = parseJson(text3);
+        if (response.ok) {
+          const name = isRecord(body) && typeof body.name === "string" ? body.name : "";
+          const id = name.slice(name.lastIndexOf("/") + 1);
+          return id === "" ? failure("error", "FCM answered without a message name.", response.status) : { ok: true, id };
+        }
+        if (response.status === 401 && this.#access?.token === access) this.#access = void 0;
+        return fcmFailure(response.status, body, text3, retryAfterOf(response.headers.get("retry-after")));
+      }
+      /**
+       * Asks the token endpoint for an access token without sending anything: what `svelte-native doctor --server` checks the service account's key with. It resolves with the
+       * lifetime (seconds) of the token the endpoint gave, or with why there is none (`auth` for a key Google refuses: `invalid_grant`, with its description as the detail). The token
+       * is kept for the next send, and never returned.
+       */
+      async verify() {
+        const access = await this.#accessToken();
+        return typeof access === "string" ? { ok: true, expiresIn: this.#access?.lifetime ?? 0 } : access;
+      }
+      /** The access token: the cached one while it has more than the margin left, else a new one that every send waiting for it shares. */
+      #accessToken() {
+        if (this.#access !== void 0 && this.#access.usableUntil > Date.now()) return Promise.resolve(this.#access.token);
+        this.#pending ??= this.#exchange().finally(() => {
+          this.#pending = void 0;
+        });
+        return this.#pending;
+      }
+      /** Signs an assertion with the service account's key and exchanges it at the token endpoint (RFC 7523): the access token, or why there is none. */
+      async #exchange() {
+        const { clientEmail, key, tokenUrl, timeout } = this.#config;
+        const issuedAt = Math.floor(Date.now() / 1e3);
+        const assertion = signJwt("RS256", { typ: "JWT" }, { iss: clientEmail, scope: SCOPE, aud: tokenUrl, iat: issuedAt, exp: issuedAt + ASSERTION_SECONDS }, key);
+        let response;
+        let text3;
+        try {
+          response = await fetch(tokenUrl, {
+            method: "POST",
+            headers: { "content-type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion }),
+            signal: AbortSignal.timeout(timeout)
+          });
+          text3 = await response.text();
+        } catch (error) {
+          return failure("unavailable", `The token request to ${hostOf(tokenUrl)} failed: ${describeNetworkError(error)}`);
+        }
+        const body = parseJson(text3);
+        if (!response.ok) {
+          const reason = isRecord(body) ? typeof body.error_description === "string" ? body.error_description : typeof body.error === "string" ? body.error : void 0 : void 0;
+          const detail = reason ?? `The token endpoint answered ${response.status}.`;
+          if (response.status === 429) return failure("rate-limited", detail, response.status, retryAfterOf(response.headers.get("retry-after")));
+          if (response.status >= 500) return failure("unavailable", detail, response.status, retryAfterOf(response.headers.get("retry-after")));
+          return failure(response.status >= 400 && response.status < 500 ? "auth" : "error", detail, response.status);
+        }
+        if (!isRecord(body) || typeof body.access_token !== "string" || body.access_token === "") return failure("error", "The token endpoint answered without an access token.", response.status);
+        const lifetime = typeof body.expires_in === "number" ? body.expires_in : ASSERTION_SECONDS;
+        this.#access = { token: body.access_token, usableUntil: Date.now() + lifetime * 1e3 - EXPIRY_MARGIN, lifetime };
+        return body.access_token;
+      }
+    };
+  }
+});
+
+// src/push/credentials.ts
+import { readFileSync as readFileSync8 } from "node:fs";
+import { resolve as resolve7 } from "node:path";
+function textOrFile(env, name, cwd, isText, kind) {
+  const value = valueSet(env, name) ?? "";
+  if (isText(value)) return { text: value, source: { file: false } };
+  const path = resolve7(cwd, value.trim());
+  try {
+    return { text: readFileSync8(path, "utf8"), source: { file: true, path } };
+  } catch (error) {
+    const code = error.code;
+    return { problem: `is neither ${kind} nor the path of a file that can be read (${code === "ENOENT" ? `no such file, from ${cwd}` : code ?? "unreadable"}): set it to ${kind} itself, or to the path of its file` };
+  }
+}
+function urlOf(env, name) {
+  const value = valueSet(env, name);
+  if (value === void 0) return {};
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol === "http:" || url.protocol === "https:") return { url: value.trim() };
+  } catch {
+  }
+  return { problem: `${name} must be an http or https URL` };
+}
+function readFcm(env, cwd) {
+  const name = variables.fcmServiceAccount;
+  if (valueSet(env, name) === void 0) return { state: "unset" };
+  const read2 = textOrFile(env, name, cwd, (value) => /^\s*[{[]/.test(value), "the service account key's JSON");
+  if ("problem" in read2) return { state: "invalid", problem: `${name} ${read2.problem}` };
+  let parsed;
+  try {
+    parsed = JSON.parse(read2.text);
+  } catch {
+    return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) is not JSON: it must be the service account key's file as Google gave it` };
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) must be the service account key's JSON object` };
+  const account = parsed;
+  for (const field of ["project_id", "client_email", "private_key"]) {
+    if (typeof account[field] !== "string" || account[field] === "") return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) has no \`${field}\`: it is not a service account key` };
+  }
+  if (account.token_uri !== void 0 && typeof account.token_uri !== "string") return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) has a \`token_uri\` that is not a string` };
+  if (typeof account.token_uri === "string") {
+    try {
+      httpUrl(account.token_uri, "token_uri");
+    } catch {
+      return { state: "invalid", problem: `${name} (${describeSource(read2.source)}) has a \`token_uri\` that is not an http or https URL` };
+    }
+  }
+  try {
+    privateKeyOf(String(account.private_key), "RS256", `the private_key of ${name}`);
+  } catch (error) {
+    return { state: "invalid", problem: error instanceof Error ? error.message : String(error) };
+  }
+  const base = urlOf(env, variables.fcmBaseUrl);
+  const token = urlOf(env, variables.fcmTokenUrl);
+  const problem = base.problem ?? token.problem;
+  if (problem) return { state: "invalid", problem };
+  const tokenUrl = token.url ?? (typeof account.token_uri === "string" ? account.token_uri : TOKEN_URL);
+  return {
+    state: "ok",
+    options: { serviceAccount: account, ...base.url ? { baseUrl: base.url } : {}, ...token.url ? { tokenUrl: token.url } : {} },
+    projectId: String(account.project_id),
+    clientEmail: String(account.client_email),
+    source: read2.source,
+    tokenHost: hostOf(tokenUrl)
+  };
+}
+function readApns(env, cwd) {
+  const names = [variables.apnsKey, variables.apnsKeyId, variables.apnsTeamId];
+  const unset = names.filter((name) => valueSet(env, name) === void 0);
+  if (unset.length === names.length) return { state: "unset" };
+  if (unset.length > 0) return { state: "invalid", problem: `${unset.join(" and ")} ${unset.length > 1 ? "are" : "is"} not set: APNs needs ${names.join(", ")} together` };
+  const key = textOrFile(env, variables.apnsKey, cwd, (value) => value.includes("-----BEGIN"), "the .p8 key's PEM");
+  if ("problem" in key) return { state: "invalid", problem: `${variables.apnsKey} ${key.problem}` };
+  try {
+    privateKeyOf(key.text, "ES256", variables.apnsKey);
+  } catch (error) {
+    return { state: "invalid", problem: error instanceof Error ? error.message : String(error) };
+  }
+  const keyId = (valueSet(env, variables.apnsKeyId) ?? "").trim();
+  const teamId = (valueSet(env, variables.apnsTeamId) ?? "").trim();
+  for (const [name, value] of [[variables.apnsKeyId, keyId], [variables.apnsTeamId, teamId]]) {
+    if (!tenCharacters.test(value)) return { state: "invalid", problem: `${name} must be 10 letters and digits (it has ${value.length} characters)` };
+  }
+  const production = urlOf(env, variables.apnsProductionUrl);
+  const sandbox = urlOf(env, variables.apnsSandboxUrl);
+  const problem = production.problem ?? sandbox.problem;
+  if (problem) return { state: "invalid", problem };
+  return {
+    state: "ok",
+    options: { key: key.text, keyId, teamId, ...production.url ? { productionUrl: production.url } : {}, ...sandbox.url ? { sandboxUrl: sandbox.url } : {} },
+    keyId,
+    teamId,
+    source: key.source,
+    sandboxHost: hostOf(sandbox.url ?? SANDBOX_URL)
+  };
+}
+var variables, describeSource, valueSet, tenCharacters;
+var init_credentials = __esm({
+  "src/push/credentials.ts"() {
+    "use strict";
+    init_apns();
+    init_common();
+    init_fcm();
+    init_jwt();
+    variables = {
+      fcmServiceAccount: "FCM_SERVICE_ACCOUNT",
+      fcmBaseUrl: "FCM_BASE_URL",
+      fcmTokenUrl: "FCM_TOKEN_URL",
+      apnsKey: "APNS_KEY",
+      apnsKeyId: "APNS_KEY_ID",
+      apnsTeamId: "APNS_TEAM_ID",
+      apnsProductionUrl: "APNS_PRODUCTION_URL",
+      apnsSandboxUrl: "APNS_SANDBOX_URL"
+    };
+    describeSource = (source) => source.file ? `the file ${source.path}` : "the variable's text";
+    valueSet = (env, name) => {
+      const value = env[name];
+      return value === void 0 || value.trim() === "" ? void 0 : value;
+    };
+    tenCharacters = /^[A-Za-z0-9]{10}$/;
+  }
+});
+
+// src/doctor/server.ts
+function sourceDetails(source) {
+  return source.file ? [`read from ${describeSource(source)}`, "createPush takes the file's contents, not its path: the server's own variable must hold the text"] : [`read from ${describeSource(source)}`];
+}
+function fcmAdvice(detail) {
+  const text3 = detail.toLowerCase();
+  if (/short-lived|reasonable timeframe|\biat\b|\bexp\b|clock/.test(text3)) {
+    return "the assertion's timestamps were refused: this machine's clock is off (compare `date -u` with a time server and fix the clock; Google accepts about five minutes of drift)";
+  }
+  if (/signature/.test(text3)) {
+    return "Google does not accept the key's signature: the key was deleted or disabled (Google Cloud console, IAM and admin, Service accounts, Keys), or the private_key was changed; create a new key and set FCM_SERVICE_ACCOUNT again";
+  }
+  if (/invalid_client|oauth client|not a valid email|unauthorized_client/.test(text3)) {
+    return "Google does not know this client_email as a service account of the key; use the key file of the service account as Google gave it";
+  }
+  if (/account not found|deleted|disabled/.test(text3)) {
+    return "the service account was deleted or disabled (Google Cloud console, IAM and admin, Service accounts); use a key of a service account that exists";
+  }
+  return "Google refused the key: it was revoked or disabled, or the file was changed; create a new key (Google Cloud console, IAM and admin, Service accounts, Keys) and set FCM_SERVICE_ACCOUNT again";
+}
+async function fcmChecks(env, cwd, timeout) {
+  const name = variables.fcmServiceAccount;
+  const credential = readFcm(env, cwd);
+  if (credential.state === "unset") return [{ group: group2, status: "skip", message: `${name} is not set: FCM (Android) is not configured here, nothing to check` }];
+  if (credential.state === "invalid") return [{ group: group2, status: "fail", message: credential.problem, fix: `set ${name} to the service account key's JSON (or the path of its file): Firebase console, Project settings, Service accounts, Generate new private key (the role "Firebase Cloud Messaging API Admin")` }];
+  const checks = [{
+    group: group2,
+    status: "pass",
+    message: `${name} is a service account key for project ${credential.projectId} (${credential.clientEmail}) with a private key that loads as RSA`,
+    details: sourceDetails(credential.source)
+  }];
+  const sender = createFcm(credential.options, timeout);
+  if (sender === void 0) return checks;
+  const result = await sender.verify();
+  if (result.ok) {
+    checks.push({ group: group2, status: "pass", message: `${credential.tokenHost} gave an access token for ${credential.clientEmail} (valid ${result.expiresIn} s): Google accepts the key` });
+  } else if (result.reason === "auth") {
+    checks.push({ group: group2, status: "fail", message: `${credential.tokenHost} refused the key${result.status ? ` (HTTP ${result.status})` : ""}: ${result.detail}`, fix: fcmAdvice(result.detail) });
+  } else if (result.reason === "rate-limited") {
+    checks.push({ group: group2, status: "unknown", message: `${credential.tokenHost} is rate limiting token requests (${result.detail})`, fix: "try again in a while" });
+  } else {
+    checks.push({ group: group2, status: "fail", message: `could not get an access token from ${credential.tokenHost}: ${result.detail}`, fix: `the server must reach ${credential.tokenHost} over HTTPS (a firewall or proxy may be in the way); if the failure is the provider's, try again` });
+  }
+  return checks;
+}
+function apnsAdvice(reason) {
+  if (reason === "ExpiredProviderToken") return "APNs found the provider token expired: it is signed with the current time, so this machine's clock is off; fix the clock";
+  if (reason === "InvalidProviderToken") {
+    return "APNs does not accept the key with this key id and team id: APNS_KEY_ID must be the id of this very key (the .p8 is named AuthKey_<KEYID>.p8), APNS_TEAM_ID the team's (Apple Developer, Membership), and the key must not be revoked";
+  }
+  if (reason === "MissingProviderToken") return "APNs received no provider token: this is a fault of the doctor's request; report it";
+  return "APNs refused the credentials: check APNS_KEY, APNS_KEY_ID and APNS_TEAM_ID against the key in the Apple Developer account (Certificates, Identifiers and Profiles, Keys), which must have Apple Push Notifications service enabled";
+}
+async function apnsChecks(env, cwd, timeout, app) {
+  const credential = readApns(env, cwd);
+  if (credential.state === "unset") return [{ group: group2, status: "skip", message: `${variables.apnsKey} is not set: APNs (iOS) is not configured here, nothing to check` }];
+  if (credential.state === "invalid") return [{ group: group2, status: "fail", message: credential.problem, fix: `set ${variables.apnsKey} to the .p8's contents (or the path of the file), ${variables.apnsKeyId} to the key's id and ${variables.apnsTeamId} to the team's id (Apple Developer account, Keys: an APNs key with Apple Push Notifications service enabled)` }];
+  const checks = [{
+    group: group2,
+    status: "pass",
+    message: `${variables.apnsKey} loads as a P-256 key; key id ${credential.keyId}, team id ${credential.teamId}`,
+    details: sourceDetails(credential.source)
+  }];
+  const sender = createApns(credential.options, timeout);
+  if (sender === void 0) return checks;
+  const topic = app ?? placeholderTopic;
+  const host = credential.sandboxHost;
+  try {
+    const result = await sender.send({ provider: "apns", token: impossibleDeviceToken, environment: "development", app: topic }, { title: "svelte-native doctor", body: "This device token does not exist." });
+    if (result.ok) {
+      checks.push({ group: group2, status: "pass", message: `${host} accepted a request signed with the key (it answered ok to a device token that cannot exist)` });
+    } else if (result.reason === "invalid-token" && (result.detail === "BadDeviceToken" || result.detail === "DeviceTokenNotForTopic")) {
+      checks.push({ group: group2, status: "pass", message: `${host} accepted the credentials: it signed in the provider token and then answered ${result.detail} to a device token that cannot exist` });
+    } else if (result.reason === "auth") {
+      checks.push({ group: group2, status: "fail", message: `${host} refused the credentials (HTTP ${result.status ?? "?"}): ${result.detail}`, fix: apnsAdvice(result.detail) });
+    } else if (result.reason === "invalid-message" && /^(BadTopic|TopicDisallowed|MissingTopic)$/.test(result.detail)) {
+      checks.push(app === void 0 ? { group: group2, status: "unknown", message: `${host} answered ${result.detail} to the placeholder topic ${topic}: it did not get as far as the device token, so the credentials are not confirmed`, fix: "run again with --app <the app's bundle id>, a topic that the key's team owns" } : { group: group2, status: "fail", message: `${host} answered ${result.detail} for the topic ${topic}: the key's team cannot push to it`, fix: `check that ${topic} is the app's bundle id, and that APNS_TEAM_ID is the team that owns the app` });
+    } else if (result.reason === "rate-limited") {
+      checks.push({ group: group2, status: "unknown", message: `${host} is rate limiting requests (${result.detail})`, fix: "try again in a while" });
+    } else {
+      checks.push({ group: group2, status: "fail", message: `could not get an answer to the credentials from ${host}: ${result.detail}${result.status ? ` (HTTP ${result.status})` : ""}`, fix: `the server must reach ${host} over HTTP/2 on port 443 (a firewall or proxy may be in the way); if the failure is Apple's, try again` });
+    }
+  } finally {
+    await sender.close();
+  }
+  return checks;
+}
+async function serverChecks(options = {}) {
+  const env = options.env ?? process.env;
+  const cwd = options.cwd ?? process.cwd();
+  const timeout = options.timeout ?? 15e3;
+  const checks = [...await fcmChecks(env, cwd, timeout), ...await apnsChecks(env, cwd, timeout, options.app)];
+  if (checks.every((check) => check.status === "skip")) {
+    checks.push({
+      group: group2,
+      status: "fail",
+      message: "no push provider is configured in this environment: neither FCM_SERVICE_ACCOUNT nor APNS_KEY is set",
+      fix: "set FCM_SERVICE_ACCOUNT (Android) and/or APNS_KEY, APNS_KEY_ID and APNS_TEAM_ID (iOS) in the server's environment, as the sender reads them"
+    });
+  }
+  return checks;
+}
+var group2, placeholderTopic, impossibleDeviceToken;
+var init_server = __esm({
+  "src/doctor/server.ts"() {
+    "use strict";
+    init_apns();
+    init_credentials();
+    init_fcm();
+    group2 = "push server";
+    placeholderTopic = "com.example.svelte-native-doctor";
+    impossibleDeviceToken = "0".repeat(64);
   }
 });
 
@@ -1968,16 +3481,16 @@ __export(doctor_exports, {
   runDoctor: () => runDoctor
 });
 import { spawnSync as spawnSync2 } from "node:child_process";
-import { existsSync as existsSync7, realpathSync as realpathSync2 } from "node:fs";
-import { basename as basename2, dirname as dirname6, join as join8, resolve as resolve7 } from "node:path";
-function formatReport(checks, { color = false, appRoot = "" } = {}) {
+import { existsSync as existsSync7, realpathSync as realpathSync3 } from "node:fs";
+import { basename as basename2, dirname as dirname6, join as join10, resolve as resolve8 } from "node:path";
+function formatReport(checks, { color = false, appRoot = "", title = "svelte-native doctor" } = {}) {
   const paint = (status) => color ? `\x1B[${COLORS[status]}m${WORDS[status]}\x1B[0m` : WORDS[status];
-  const lines = [`svelte-native doctor${appRoot ? `: ${appRoot}` : ""}`];
-  let group;
+  const lines = [`${title}${appRoot ? `: ${appRoot}` : ""}`];
+  let group3;
   for (const check of checks) {
-    if (check.group !== group) {
-      group = check.group;
-      lines.push("", group);
+    if (check.group !== group3) {
+      group3 = check.group;
+      lines.push("", group3);
     }
     lines.push(`  ${paint(check.status)}  ${check.message}`);
     for (const detail of check.details ?? []) lines.push(`        ${detail}`);
@@ -1996,7 +3509,7 @@ function nodeVersion() {
 }
 function workspaceRoot(directory) {
   for (let current = directory; ; current = dirname6(current)) {
-    if (existsSync7(join8(current, "pnpm-workspace.yaml"))) return current;
+    if (existsSync7(join10(current, "pnpm-workspace.yaml"))) return current;
     if (dirname6(current) === current) return void 0;
   }
 }
@@ -2004,8 +3517,8 @@ function isRepositoryApp(appRoot, packageRoot2) {
   const packages = dirname6(packageRoot2);
   if (basename2(packages) !== "packages") return false;
   try {
-    const root2 = workspaceRoot(realpathSync2(appRoot));
-    return root2 !== void 0 && root2 === realpathSync2(dirname6(packages));
+    const root2 = workspaceRoot(realpathSync3(appRoot));
+    return root2 !== void 0 && root2 === realpathSync3(dirname6(packages));
   } catch {
     return false;
   }
@@ -2015,32 +3528,56 @@ function pnpmVersion(directory) {
   const version = result.status === 0 ? result.stdout.trim().split(/\r?\n/).pop() : void 0;
   return version && /^\d+\.\d+\.\d+/.test(version) ? version : void 0;
 }
-function runDoctor(root2, args2, out = process.stdout, context = {}) {
+function parseArguments(args2) {
+  const parsed = { json: false, server: false };
+  for (let index = 0; index < args2.length; index++) {
+    const arg = args2[index] ?? "";
+    if (arg === "--json") parsed.json = true;
+    else if (arg === "--server") parsed.server = true;
+    else if (arg === "--app" || arg.startsWith("--app=")) {
+      const value = arg === "--app" ? args2[++index] : arg.slice("--app=".length);
+      if (value === void 0 || value === "" || value.startsWith("--")) return { ...parsed, problem: "--app needs the app's bundle id" };
+      if (!/^[\x21-\x7e]+$/.test(value)) return { ...parsed, problem: "--app must be the app's bundle id (printable ASCII, no spaces)" };
+      parsed.app = value;
+    } else return { ...parsed, problem: `Unknown argument ${arg}` };
+  }
+  if (parsed.app !== void 0 && !parsed.server) return { ...parsed, problem: "--app goes with --server" };
+  return parsed;
+}
+function runDoctor(root2, args2, out = process.stdout, context = {}, server = {}) {
   if (args2.includes("--help") || args2.includes("-h")) {
     out.write(USAGE2);
     return 0;
   }
-  const unknown = args2.find((arg) => arg !== "--json");
-  if (unknown !== void 0) {
-    out.write(`Unknown argument ${unknown}
+  const parsed = parseArguments(args2);
+  if (parsed.problem !== void 0) {
+    out.write(`${parsed.problem}
 
 ${USAGE2}`);
     return 2;
   }
-  const appRoot = resolve7(root2);
-  const checks = runChecks({
-    appRoot,
-    packageRoot,
-    node: nodeVersion(),
-    pnpm: () => pnpmVersion(appRoot),
-    repository: isRepositoryApp(appRoot, packageRoot),
-    ...context
-  });
-  const failed = checks.some((check) => check.status === "fail");
-  if (args2.includes("--json")) out.write(`${JSON.stringify({ ok: !failed, appRoot, checks }, null, 2)}
+  const appRoot = resolve8(root2);
+  const report2 = (checks, options) => {
+    const failed = checks.some((check) => check.status === "fail");
+    if (parsed.json) out.write(`${JSON.stringify({ ok: !failed, ...options.appRoot ? { appRoot: options.appRoot } : { server: true }, checks }, null, 2)}
 `);
-  else out.write(formatReport(checks, { color: out.isTTY === true && !process.env.NO_COLOR, appRoot }));
-  return failed ? 1 : 0;
+    else out.write(formatReport(checks, { color: out.isTTY === true && !process.env.NO_COLOR, ...options }));
+    return failed ? 1 : 0;
+  };
+  if (parsed.server) {
+    return serverChecks({ cwd: appRoot, ...parsed.app === void 0 ? {} : { app: parsed.app }, ...server }).then((checks) => report2(checks, { title: "svelte-native doctor --server" }));
+  }
+  return report2(
+    runChecks({
+      appRoot,
+      packageRoot,
+      node: nodeVersion(),
+      pnpm: () => pnpmVersion(appRoot),
+      repository: isRepositoryApp(appRoot, packageRoot),
+      ...context
+    }),
+    { appRoot }
+  );
 }
 var USAGE2, WORDS, COLORS;
 var init_doctor = __esm({
@@ -2048,17 +3585,369 @@ var init_doctor = __esm({
     "use strict";
     init_package_root();
     init_checks();
+    init_server();
     init_checks();
     USAGE2 = `Usage: svelte-native doctor [--json]
+       svelte-native doctor --server [--app <bundle id>] [--json]
 
 Checks, from the app's directory, that the setup the library needs is complete: Node and pnpm, the custom-renderer Svelte, the peer
-dependencies, the patches applied to the installed packages, and the app's Metro and Expo configs. One line per check; the exit status is
-1 when a required check fails.
+dependencies, the patches applied to the installed packages, and the app's Metro and Expo configs; and, when the app has push
+(capabilities.push), its push setup: the Google services file, the iOS entitlement and background mode, and a prebuild as new as the config. One
+line per check; the exit status is 1 when a required check fails.
 
-  --json   print the checks as JSON instead of text
+  --json          print the checks as JSON instead of text
+  --server        check the push server's environment instead of the app: FCM_SERVICE_ACCOUNT (the service account key's JSON, or the path of
+                  its file), APNS_KEY (the .p8's PEM, or the path of its file), APNS_KEY_ID and APNS_TEAM_ID must load as the keys they are,
+                  and one request each goes to Google's token endpoint and to the APNs sandbox to see that they are accepted. A provider whose
+                  variables are unset is skipped. FCM_BASE_URL, FCM_TOKEN_URL, APNS_PRODUCTION_URL and APNS_SANDBOX_URL replace the endpoints.
+  --app <id>      with --server: the app's bundle id, the topic of the APNs request (default: a placeholder, which APNs may refuse as a topic)
 `;
     WORDS = { pass: "pass", fail: "FAIL", skip: "skip", unknown: "????" };
     COLORS = { pass: "32", fail: "31", skip: "2", unknown: "33" };
+  }
+});
+
+// src/push/server.ts
+import { inspect } from "node:util";
+function checkText(name, value) {
+  if (value !== void 0 && typeof value !== "string") throw new TypeError(`${name} must be a string, not ${show(value)}.`);
+}
+function checkName(name, value) {
+  if (typeof value !== "string" || value === "") throw new TypeError(`${name} must be a non-empty string, not ${show(value)}.`);
+}
+function checkToken(token) {
+  if (typeof token !== "object" || token === null) throw new TypeError(`A push token is the { provider, token, app } the device saved, not ${show(token)}.`);
+  if (token.provider !== "fcm" && token.provider !== "apns") throw new TypeError(`The token's \`provider\` must be "fcm" or "apns", not ${show(token.provider)}.`);
+  checkName("The token's `token`", token.token);
+  checkName("The token's `app`", token.app);
+  if (token.environment !== void 0 && token.environment !== "development" && token.environment !== "production") {
+    throw new TypeError(`The token's \`environment\` must be "development" or "production", not ${show(token.environment)}.`);
+  }
+}
+function checkMessage(message) {
+  if (typeof message !== "object" || message === null) throw new TypeError(`A message is an object such as { title, body, url }, not ${show(message)}.`);
+  checkText("`title`", message.title);
+  checkText("`body`", message.body);
+  checkText("`url`", message.url);
+  if (message.collapseKey !== void 0) checkName("`collapseKey`", message.collapseKey);
+  if (message.channel !== void 0) checkName("`channel`", message.channel);
+  if (message.silent !== void 0 && typeof message.silent !== "boolean") throw new TypeError(`\`silent\` must be a boolean, not ${show(message.silent)}.`);
+  if (message.badge !== void 0 && (!Number.isInteger(message.badge) || message.badge < 0)) throw new TypeError(`\`badge\` must be a whole number of 0 or more, not ${show(message.badge)}.`);
+  if (message.sound !== void 0 && message.sound !== null && message.sound !== "default") throw new TypeError(`\`sound\` must be "default" or null, not ${show(message.sound)}.`);
+  if (message.priority !== void 0 && message.priority !== "high" && message.priority !== "normal") throw new TypeError(`\`priority\` must be "high" or "normal", not ${show(message.priority)}.`);
+  if (message.ttl !== void 0 && (!Number.isInteger(message.ttl) || message.ttl < 0)) throw new TypeError(`\`ttl\` must be a whole number of seconds, 0 or more, not ${show(message.ttl)}.`);
+  if (message.data !== void 0) {
+    if (typeof message.data !== "object" || message.data === null || Array.isArray(message.data)) throw new TypeError(`\`data\` must be an object of strings, not ${show(message.data)}.`);
+    for (const [key, value] of Object.entries(message.data)) {
+      if (typeof value !== "string") throw new TypeError(`\`data.${key}\` must be a string (both providers carry strings only), not ${show(value)}.`);
+    }
+    if (message.url !== void 0 && Object.hasOwn(message.data, "url")) throw new TypeError("`url` is carried as the data key `url`: pass the link as `url`, not also in `data`.");
+  }
+  if (message.silent) {
+    for (const name of ["title", "body", "badge", "sound", "channel"]) {
+      if (message[name] !== void 0 && message[name] !== null) throw new TypeError(`A \`silent\` message shows nothing, so it has no \`${name}\`.`);
+    }
+  } else if (!message.title && !message.body) {
+    throw new TypeError("A notification needs a `title` or a `body`; a message for the app's background hook is `silent: true`.");
+  }
+}
+function createPush(options = {}) {
+  const timeout = options.timeout ?? DEFAULT_TIMEOUT;
+  if (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0 || timeout > MAX_TIMEOUT) throw new TypeError(`\`timeout\` must be a number of milliseconds above 0 and at most ${MAX_TIMEOUT}, not ${show(timeout)}.`);
+  const fcm = createFcm(options.fcm, timeout);
+  const apns = createApns(options.apns, timeout);
+  let closed = false;
+  const pending = /* @__PURE__ */ new Set();
+  return {
+    async send(token, message) {
+      checkToken(token);
+      checkMessage(message);
+      const sender = token.provider === "fcm" ? fcm : apns;
+      if (sender === void 0) {
+        throw new TypeError(token.provider === "fcm" ? "A send to an FCM token needs `fcm: { serviceAccount }` in createPush's options." : "A send to an APNs token needs `apns: { key, keyId, teamId }` in createPush's options.");
+      }
+      if (closed) return failure("unavailable", "The sender was closed.");
+      const work = deliver(sender, token, message);
+      const settled = work.then(
+        () => void 0,
+        () => void 0
+      );
+      pending.add(settled);
+      void settled.then(() => pending.delete(settled));
+      return work;
+    },
+    async close() {
+      closed = true;
+      await Promise.all(pending);
+      await apns?.close();
+    }
+  };
+}
+async function deliver(sender, token, message) {
+  try {
+    return await sender.send(token, message);
+  } catch (error) {
+    if (error instanceof TypeError) throw error;
+    return failure("error", error instanceof Error ? error.message : String(error));
+  }
+}
+var DEFAULT_TIMEOUT, MAX_TIMEOUT, show;
+var init_server2 = __esm({
+  "src/push/server.ts"() {
+    "use strict";
+    init_apns();
+    init_common();
+    init_fcm();
+    DEFAULT_TIMEOUT = 3e4;
+    MAX_TIMEOUT = 2147483647;
+    show = (value) => inspect(value, { depth: 0 });
+  }
+});
+
+// src/push/cli.ts
+var cli_exports = {};
+__export(cli_exports, {
+  runPush: () => runPush
+});
+import { resolve as resolve9 } from "node:path";
+function parseFlags(args2) {
+  const values = /* @__PURE__ */ new Map();
+  const switches = /* @__PURE__ */ new Set();
+  for (let index = 0; index < args2.length; index++) {
+    const arg = args2[index] ?? "";
+    if (!arg.startsWith("--")) throw new UsageError(arg.startsWith("-") ? `Unknown option ${arg}` : `Unexpected argument ${arg}`);
+    const equals = arg.indexOf("=");
+    const name = arg.slice(2, equals < 0 ? void 0 : equals);
+    if (SWITCHES.includes(name)) {
+      if (equals >= 0) throw new UsageError(`--${name} takes no value`);
+      switches.add(name);
+      continue;
+    }
+    if (!VALUE_FLAGS.includes(name)) throw new UsageError(`Unknown option --${name}`);
+    let value;
+    if (equals >= 0) value = arg.slice(equals + 1);
+    else {
+      value = args2[index + 1];
+      if (value === void 0 || value.startsWith("--")) throw new UsageError(`--${name} needs a value`);
+      index++;
+    }
+    const seen = values.get(name) ?? [];
+    if (seen.length > 0 && !REPEATED.has(name)) throw new UsageError(`--${name} is given twice`);
+    values.set(name, [...seen, value]);
+  }
+  return { values, switches };
+}
+function wholeNumber(flags, name) {
+  const value = flags.values.get(name)?.[0];
+  if (value === void 0) return void 0;
+  if (!/^\d+$/.test(value)) throw new UsageError(`--${name} must be a whole number of 0 or more`);
+  return Number(value);
+}
+function choice(flags, name, allowed) {
+  const value = flags.values.get(name)?.[0];
+  if (value === void 0) return void 0;
+  if (!allowed.includes(value)) throw new UsageError(`--${name} must be ${allowed.join(" or ")}`);
+  return value;
+}
+function tokenOf(flags) {
+  const given = flags.values.get("token")?.[0];
+  if (given === void 0) throw new UsageError("--token is needed: the device's token (the PushToken's JSON, or a raw token with --provider and --app)");
+  const provider = choice(flags, "provider", ["fcm", "apns"]);
+  const app = flags.values.get("app")?.[0];
+  const environment2 = choice(flags, "environment", ["development", "production"]);
+  if (given.trim().startsWith("{")) {
+    if (provider !== void 0 || app !== void 0 || environment2 !== void 0) throw new UsageError("--token is a PushToken's JSON, which has its provider, app and environment: --provider, --app and --environment are for a raw token");
+    let parsed;
+    try {
+      parsed = JSON.parse(given);
+    } catch {
+      throw new UsageError("--token starts with { but is not valid JSON: pass the PushToken as `push.subscribe`'s save received it");
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new UsageError("--token must be a PushToken's JSON object");
+    const token = parsed;
+    if (token.provider !== "fcm" && token.provider !== "apns") throw new UsageError(`The token's "provider" must be "fcm" or "apns"`);
+    if (typeof token.token !== "string" || token.token === "") throw new UsageError(`The token's "token" must be a text that is not empty`);
+    if (typeof token.app !== "string" || token.app === "") throw new UsageError(`The token's "app" must be a text that is not empty: the Android package or the iOS bundle id`);
+    if (token.environment !== void 0 && token.environment !== "development" && token.environment !== "production") throw new UsageError(`The token's "environment" must be "development" or "production"`);
+    return { provider: token.provider, token: token.token, app: token.app, ...token.environment === void 0 ? {} : { environment: token.environment } };
+  }
+  if (provider === void 0) throw new UsageError("A raw --token needs --provider fcm|apns (or pass the PushToken's JSON)");
+  if (app === void 0) throw new UsageError("A raw --token needs --app: the Android package or the iOS bundle id");
+  if (provider === "apns" && environment2 === void 0) throw new UsageError("An APNs --token needs --environment development|production: the token belongs to one APNs, and the other answers BadDeviceToken");
+  if (provider === "fcm" && environment2 !== void 0) throw new UsageError("--environment is for an APNs token");
+  return { provider, token: given, app, ...environment2 === void 0 ? {} : { environment: environment2 } };
+}
+function messageOf(flags) {
+  const message = {};
+  const text3 = (flag, key) => {
+    const value = flags.values.get(flag)?.[0];
+    if (value !== void 0) message[key] = value;
+  };
+  text3("title", "title");
+  text3("body", "body");
+  text3("url", "url");
+  text3("channel", "channel");
+  const collapseKey = flags.values.get("collapse-key")?.[0];
+  if (collapseKey !== void 0) message.collapseKey = collapseKey;
+  const data = flags.values.get("data");
+  if (data !== void 0) {
+    message.data = {};
+    for (const entry of data) {
+      const equals = entry.indexOf("=");
+      if (equals < 1) throw new UsageError("--data takes key=value, with a key");
+      const key = entry.slice(0, equals);
+      if (Object.hasOwn(message.data, key)) throw new UsageError(`--data ${key} is given twice`);
+      message.data[key] = entry.slice(equals + 1);
+    }
+  }
+  if (flags.switches.has("silent")) message.silent = true;
+  const badge = wholeNumber(flags, "badge");
+  if (badge !== void 0) message.badge = badge;
+  const ttl = wholeNumber(flags, "ttl");
+  if (ttl !== void 0) message.ttl = ttl;
+  const sound = choice(flags, "sound", ["default", "none"]);
+  if (sound !== void 0) message.sound = sound === "none" ? null : "default";
+  const priority = choice(flags, "priority", ["high", "normal"]);
+  if (priority !== void 0) message.priority = priority;
+  return message;
+}
+function optionsFor(token, io) {
+  const timeout = io.timeout === void 0 ? {} : { timeout: io.timeout };
+  if (token.provider === "fcm") {
+    const fcm = readFcm(io.env, io.cwd);
+    if (fcm.state === "unset") throw new UsageError(`${variables.fcmServiceAccount} is not set: an FCM token is sent with the service account key (its JSON, or the path of its file)`);
+    if (fcm.state === "invalid") throw new UsageError(fcm.problem);
+    return { fcm: fcm.options, ...timeout };
+  }
+  const apns = readApns(io.env, io.cwd);
+  if (apns.state === "unset") throw new UsageError(`${variables.apnsKey}, ${variables.apnsKeyId} and ${variables.apnsTeamId} are not set: an APNs token is sent with the .p8 key (its PEM, or the path of its file), its key id and the team id`);
+  if (apns.state === "invalid") throw new UsageError(apns.problem);
+  return { apns: apns.options, ...timeout };
+}
+function report(result, token, json) {
+  if (json) return `${JSON.stringify(result, null, 2)}
+`;
+  if (result.ok) return `sent to ${token.provider} (${token.app}): ${result.id}
+`;
+  const lines = [`not sent (${token.provider}, ${token.app}): ${result.reason}${result.status === void 0 ? "" : ` (HTTP ${result.status})`}: ${result.detail}`];
+  if (result.retryAfter !== void 0) lines.push(`retry after ${result.retryAfter} ms`);
+  lines.push(ADVICE[result.reason]);
+  return `${lines.join("\n")}
+`;
+}
+async function runPush(root2, args2, io = {}) {
+  const full = { out: process.stdout, err: process.stderr, env: process.env, cwd: resolve9(root2), ...io };
+  const [command2, ...rest] = args2;
+  if (command2 === "--help" || command2 === "-h" || command2 === "help") {
+    full.out.write(USAGE3);
+    return 0;
+  }
+  if (command2 === void 0) {
+    full.err.write(`Missing command
+
+${USAGE3}`);
+    return 2;
+  }
+  if (command2 !== "send") {
+    full.err.write(`Unknown command ${command2}
+
+${USAGE3}`);
+    return 2;
+  }
+  if (rest.includes("--help") || rest.includes("-h")) {
+    full.out.write(SEND_USAGE);
+    return 0;
+  }
+  let token;
+  let message;
+  let options;
+  let json;
+  try {
+    const flags = parseFlags(rest);
+    json = flags.switches.has("json");
+    token = tokenOf(flags);
+    message = messageOf(flags);
+    options = optionsFor(token, full);
+  } catch (error) {
+    if (!(error instanceof UsageError)) throw error;
+    full.err.write(`svelte-native push send: ${error.message}
+
+Run \`svelte-native push send --help\` for the options.
+`);
+    return 2;
+  }
+  let push;
+  try {
+    push = createPush(options);
+    const result = await push.send(token, message);
+    full.out.write(report(result, token, json));
+    return result.ok ? 0 : 1;
+  } catch (error) {
+    if (!(error instanceof TypeError)) throw error;
+    full.err.write(`svelte-native push send: ${error.message}
+`);
+    return 2;
+  } finally {
+    await push?.close();
+  }
+}
+var SEND_USAGE, USAGE3, VALUE_FLAGS, REPEATED, SWITCHES, UsageError, ADVICE;
+var init_cli = __esm({
+  "src/push/cli.ts"() {
+    "use strict";
+    init_credentials();
+    init_server2();
+    SEND_USAGE = `Usage: svelte-native push send --token <token> [options]
+
+Sends one message to one device with the credentials of the server's environment (the variables \`svelte-native doctor --server\` checks), and prints what the provider
+answered. Exits 0 when the message was accepted, 1 when it was not, and 2 when nothing was sent because an argument or the environment is not usable.
+
+Which device:
+  --token <token>        the device's token: the JSON of the PushToken exactly as \`push.subscribe\`'s save received it
+                         ({"provider":"fcm","token":"…","app":"io.example.app"}), or a raw token string, with the three options below
+  --provider fcm|apns    a raw token's provider
+  --app <id>             a raw token's app: the Android package or the iOS bundle id (the APNs topic)
+  --environment <env>    an APNs raw token's environment: development or production (which APNs host it is sent to)
+
+The message (a notification needs a title or a body; a silent one neither):
+  --title <text>         the notification's title
+  --body <text>          the notification's text
+  --url <link>           the link a tap opens: a path of the app (/orders/42) or a full link
+  --data key=value       a data entry (repeat it for more); strings only
+  --silent               a data message: nothing is shown, the app's background hook gets it
+  --badge <n>            iOS: the badge number
+  --sound default|none   default: the default sound; none: no sound
+  --channel <id>         Android: the notification channel's id
+  --collapse-key <key>   a newer message with the same key replaces the older one
+  --priority high|normal
+  --ttl <seconds>        how long the provider keeps the message for a device that is offline
+
+Output:
+  --json                 print the result as JSON ({"ok":true,"id":…} or {"ok":false,"reason":…,"detail":…})
+
+Environment (nothing is passed on the command line, so no key lands in a shell history):
+  FCM_SERVICE_ACCOUNT    the service account key's JSON, or the path of its file (Android tokens)
+  APNS_KEY               the .p8's PEM, or the path of its file; with APNS_KEY_ID and APNS_TEAM_ID (iOS tokens)
+  FCM_BASE_URL, FCM_TOKEN_URL, APNS_PRODUCTION_URL, APNS_SANDBOX_URL   replace the provider's endpoints (tests, proxies)
+`;
+    USAGE3 = `Usage: svelte-native push <command>
+
+  send     send one message to one device with the server's credentials; \`push send --help\` lists its options
+`;
+    VALUE_FLAGS = ["token", "provider", "app", "environment", "title", "body", "url", "data", "badge", "sound", "channel", "collapse-key", "priority", "ttl"];
+    REPEATED = /* @__PURE__ */ new Set(["data"]);
+    SWITCHES = ["silent", "json", "help"];
+    UsageError = class extends Error {
+    };
+    ADVICE = {
+      gone: "the token will never work again (uninstalled, expired, unregistered): delete it",
+      "invalid-token": "the provider does not take this token for this app or environment; do not retry it as it is",
+      "invalid-message": "the provider refused the message itself; do not retry it as it is",
+      "rate-limited": "try again later",
+      unavailable: "the provider could not be reached or did not answer: try again later",
+      auth: "the server's credentials are wrong or revoked: run `svelte-native doctor --server`",
+      error: "the provider answered something the sender cannot place; the detail is its own text"
+    };
   }
 });
 
@@ -2069,7 +3958,9 @@ __export(autolinking_exports, {
   deferredNitroPackages: () => deferredNitroPackages,
   nitroPackage: () => nitroPackage,
   relinkedPackage: () => relinkedPackage,
-  runAndroidAutolinking: () => runAndroidAutolinking
+  runAndroidAutolinking: () => runAndroidAutolinking,
+  runIosAutolinking: () => runIosAutolinking,
+  splitLinks: () => splitLinks
 });
 import { spawnSync as spawnSync3 } from "node:child_process";
 function relinkedPackage(name) {
@@ -2090,15 +3981,27 @@ function deferNitroLibraries(config) {
   }
   return { ...config, dependencies: relinked };
 }
-function runAndroidAutolinking(command2) {
+function splitLinks(argv) {
+  const link = [];
+  let index = 0;
+  while (argv[index] === "--link") {
+    const name = argv[index + 1];
+    if (name === void 0) break;
+    link.push(name);
+    index += 2;
+  }
+  return { link, command: argv.slice(index) };
+}
+function runAutolinking(name, platform, given, transform) {
+  const { link, command: command2 } = splitLinks(given);
   const [program, ...args2] = command2;
   if (!program) {
-    console.error("svelte-native android-autolinking: no command (settings.gradle gives it React Native's config command)");
+    console.error(`svelte-native ${name}: no command (${platform === "android" ? "settings.gradle" : "the Podfile"} gives it React Native's config command)`);
     return 2;
   }
   const result = spawnSync3(program, args2, { encoding: "utf8", stdio: ["inherit", "pipe", "inherit"], maxBuffer: 256 * 1024 * 1024 });
   if (result.error) {
-    console.error(`svelte-native android-autolinking: could not run ${program}: ${result.error.message}`);
+    console.error(`svelte-native ${name}: could not run ${program}: ${result.error.message}`);
     return 1;
   }
   if (result.status !== 0) {
@@ -2116,13 +4019,20 @@ function runAndroidAutolinking(command2) {
     process.stdout.write(result.stdout);
     return 0;
   }
-  process.stdout.write(JSON.stringify(deferNitroLibraries(config)));
+  try {
+    process.stdout.write(JSON.stringify(transform(linkVendored(config, platform, void 0, link))));
+  } catch (error) {
+    if (!(error instanceof VendoredCollision)) throw error;
+    console.error(`svelte-native ${name}: ${error.message}`);
+    return 1;
+  }
   return 0;
 }
-var core, deferredNitroPackages, nitroPackage, linkedAsDefault;
+var core, deferredNitroPackages, nitroPackage, linkedAsDefault, runAndroidAutolinking, runIosAutolinking;
 var init_autolinking = __esm({
   "src/autolinking.ts"() {
     "use strict";
+    init_vendored();
     core = "expo.modules.sveltecore";
     deferredNitroPackages = {
       "react-native-mmkv": { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()", library: "NitroMmkv" },
@@ -2130,12 +4040,14 @@ var init_autolinking = __esm({
     };
     nitroPackage = { name: "react-native-nitro-modules", packageImportPath: "import com.margelo.nitro.NitroModulesPackage;", packageInstance: "new NitroModulesPackage()" };
     linkedAsDefault = (android, linked) => android != null && android.packageImportPath === linked.packageImportPath && android.packageInstance === linked.packageInstance;
+    runAndroidAutolinking = (command2) => runAutolinking("android-autolinking", "android", command2, deferNitroLibraries);
+    runIosAutolinking = (command2) => runAutolinking("ios-autolinking", "ios", command2, (config) => config);
   }
 });
 
 // src/css/parse.ts
 function readChunk(css, from) {
-  let text2 = "";
+  let text3 = "";
   let depth = 0;
   let i = from;
   let space = false;
@@ -2148,18 +4060,18 @@ function readChunk(css, from) {
       continue;
     }
     if (c === "\\") {
-      if (space && text2 !== "") text2 += " ";
+      if (space && text3 !== "") text3 += " ";
       space = false;
-      text2 += c + (css[i + 1] ?? "");
+      text3 += c + (css[i + 1] ?? "");
       i += 2;
       continue;
     }
     if (c === '"' || c === "'") {
-      if (space && text2 !== "") text2 += " ";
+      if (space && text3 !== "") text3 += " ";
       space = false;
       let j = i + 1;
       while (j < css.length && css[j] !== c) j += css[j] === "\\" ? 2 : 1;
-      text2 += css.slice(i, j + 1);
+      text3 += css.slice(i, j + 1);
       i = j + 1;
       continue;
     }
@@ -2171,12 +4083,12 @@ function readChunk(css, from) {
       i++;
       continue;
     }
-    if (space && text2 !== "") text2 += " ";
+    if (space && text3 !== "") text3 += " ";
     space = false;
-    text2 += c;
+    text3 += c;
     i++;
   }
-  return { text: text2, end: i };
+  return { text: text3, end: i };
 }
 function skipBlank(css, from) {
   let i = from;
@@ -2203,10 +4115,10 @@ function parseBody(css, from, nested) {
       continue;
     }
     if (c === "@") {
-      const { text: text3, end: end2 } = readChunk(css, i + 1);
-      const space = text3.search(/[\s(]/);
-      const name = (space < 0 ? text3 : text3.slice(0, space)).toLowerCase();
-      const prelude = space < 0 ? "" : text3.slice(space).trim();
+      const { text: text4, end: end2 } = readChunk(css, i + 1);
+      const space = text4.search(/[\s(]/);
+      const name = (space < 0 ? text4 : text4.slice(0, space)).toLowerCase();
+      const prelude = space < 0 ? "" : text4.slice(space).trim();
       if (css[end2] === "{") {
         const inner = parseBody(css, end2 + 1, true);
         items.push({ kind: "at", name, prelude, body: inner.items });
@@ -2217,18 +4129,18 @@ function parseBody(css, from, nested) {
       }
       continue;
     }
-    const { text: text2, end } = readChunk(css, i);
+    const { text: text3, end } = readChunk(css, i);
     if (css[end] === "{") {
       const inner = parseBody(css, end + 1, true);
-      items.push({ kind: "rule", selector: text2, body: inner.items });
+      items.push({ kind: "rule", selector: text3, body: inner.items });
       i = inner.end;
       continue;
     }
     i = css[end] === ";" ? end + 1 : end;
-    const colon = indexOfTop(text2, ":");
+    const colon = indexOfTop(text3, ":");
     if (colon <= 0) continue;
-    const property = text2.slice(0, colon).trim();
-    let value = text2.slice(colon + 1).trim();
+    const property = text3.slice(0, colon).trim();
+    let value = text3.slice(colon + 1).trim();
     let important = false;
     const bang = /\s*!\s*important\s*$/i.exec(value);
     if (bang) {
@@ -2241,34 +4153,34 @@ function parseBody(css, from, nested) {
 function parseCss(css) {
   return parseBody(css, 0, false).items;
 }
-function indexOfTop(text2, char) {
+function indexOfTop(text3, char) {
   let depth = 0;
-  for (let i = 0; i < text2.length; i++) {
-    const c = text2[i];
+  for (let i = 0; i < text3.length; i++) {
+    const c = text3[i];
     if (c === "\\") i++;
     else if (c === '"' || c === "'") {
       i++;
-      while (i < text2.length && text2[i] !== c) i += text2[i] === "\\" ? 2 : 1;
+      while (i < text3.length && text3[i] !== c) i += text3[i] === "\\" ? 2 : 1;
     } else if (c === "(" || c === "[") depth++;
     else if (c === ")" || c === "]") depth--;
     else if (depth === 0 && c === char) return i;
   }
   return -1;
 }
-function splitTop(text2, separator) {
+function splitTop(text3, separator) {
   const parts = [];
   let depth = 0;
   let start = 0;
   const push = (end) => {
-    const part = text2.slice(start, end).trim();
+    const part = text3.slice(start, end).trim();
     if (part !== "" || separator === ",") parts.push(part);
   };
-  for (let i = 0; i < text2.length; i++) {
-    const c = text2[i];
+  for (let i = 0; i < text3.length; i++) {
+    const c = text3[i];
     if (c === "\\") i++;
     else if (c === '"' || c === "'") {
       i++;
-      while (i < text2.length && text2[i] !== c) i += text2[i] === "\\" ? 2 : 1;
+      while (i < text3.length && text3[i] !== c) i += text3[i] === "\\" ? 2 : 1;
     } else if (c === "(" || c === "[") depth++;
     else if (c === ")" || c === "]") depth--;
     else if (depth === 0 && (separator === "," ? c === "," : c === " ")) {
@@ -2276,23 +4188,23 @@ function splitTop(text2, separator) {
       start = i + 1;
     }
   }
-  push(text2.length);
+  push(text3.length);
   return parts;
 }
-function readIdent(text2, from) {
+function readIdent(text3, from) {
   let name = "";
   let i = from;
-  while (i < text2.length) {
-    const c = text2[i];
+  while (i < text3.length) {
+    const c = text3[i];
     if (c === "\\") {
-      const hex = /^[0-9a-fA-F]{1,6}/.exec(text2.slice(i + 1, i + 7));
+      const hex = /^[0-9a-fA-F]{1,6}/.exec(text3.slice(i + 1, i + 7));
       if (hex) {
         const code = Number.parseInt(hex[0], 16);
         name += String.fromCodePoint(code === 0 || code > 1114111 ? 65533 : code);
         i += 1 + hex[0].length;
-        if (/\s/.test(text2[i] ?? "")) i++;
+        if (/\s/.test(text3[i] ?? "")) i++;
       } else {
-        name += text2[i + 1] ?? "";
+        name += text3[i + 1] ?? "";
         i += 2;
       }
     } else if (/[\w-]/.test(c) || c.charCodeAt(0) > 127) {
@@ -2303,55 +4215,55 @@ function readIdent(text2, from) {
   return { name, end: i };
 }
 function classifySelector(selector) {
-  const text2 = selector.trim();
-  if (ROOT_SELECTORS.has(text2)) return { kind: "root" };
-  if (text2[0] === "." && text2.length > 1) {
-    const { name, end } = readIdent(text2, 1);
-    if (end === text2.length && name !== "") return { kind: "class", className: name };
+  const text3 = selector.trim();
+  if (ROOT_SELECTORS.has(text3)) return { kind: "root" };
+  if (text3[0] === "." && text3.length > 1) {
+    const { name, end } = readIdent(text3, 1);
+    if (end === text3.length && name !== "") return { kind: "class", className: name };
   }
-  return { kind: "unsupported", className: firstClass(text2), reason: describeSelector(text2) };
+  return { kind: "unsupported", className: firstClass(text3), reason: describeSelector(text3) };
 }
-function firstClass(text2) {
-  for (let i = 0; i < text2.length; i++) {
-    const c = text2[i];
+function firstClass(text3) {
+  for (let i = 0; i < text3.length; i++) {
+    const c = text3[i];
     if (c === "\\") i++;
     else if (c === '"' || c === "'") {
       i++;
-      while (i < text2.length && text2[i] !== c) i += text2[i] === "\\" ? 2 : 1;
+      while (i < text3.length && text3[i] !== c) i += text3[i] === "\\" ? 2 : 1;
     } else if (c === "[") {
-      const close = text2.indexOf("]", i);
-      i = close < 0 ? text2.length : close;
+      const close = text3.indexOf("]", i);
+      i = close < 0 ? text3.length : close;
     } else if (c === ".") {
-      const { name, end } = readIdent(text2, i + 1);
+      const { name, end } = readIdent(text3, i + 1);
       if (name !== "") return name;
       i = end;
     }
   }
   return null;
 }
-function describeSelector(text2) {
+function describeSelector(text3) {
   const pseudo = [];
-  for (let i = 0; i < text2.length; i++) {
-    const c = text2[i];
+  for (let i = 0; i < text3.length; i++) {
+    const c = text3[i];
     if (c === "\\") i++;
     else if (c === ":") {
-      const element2 = text2[i + 1] === ":";
-      const { name, end } = readIdent(text2, i + (element2 ? 2 : 1));
+      const element2 = text3[i + 1] === ":";
+      const { name, end } = readIdent(text3, i + (element2 ? 2 : 1));
       pseudo.push({ element: element2, name });
       i = end - 1;
     }
   }
   const element = pseudo.find((p) => p.element);
-  if (element) return `pseudo-element ::${element.name} (selector ${text2})`;
-  if (/[>~]|\s\+\s/.test(text2)) return `combinator in selector ${text2}`;
+  if (element) return `pseudo-element ::${element.name} (selector ${text3})`;
+  if (/[>~]|\s\+\s/.test(text3)) return `combinator in selector ${text3}`;
   const wrappers = /* @__PURE__ */ new Set(["is", "where", "not", "has", "matches"]);
   const named = pseudo.find((p) => !wrappers.has(p.name));
-  if (named) return `pseudo-class :${named.name} (selector ${text2})`;
-  if (pseudo.length > 0) return `functional pseudo-class :${pseudo[0].name}() depends on other elements (selector ${text2})`;
-  if (splitTop(text2, " ").length > 1) return `combinator in selector ${text2}`;
-  if (text2.startsWith(".") && text2.indexOf(".", 1) > 0) return `several classes in selector ${text2}`;
-  if (text2[0] !== ".") return `not a class selector (${text2})`;
-  return `selector ${text2} is not a single class`;
+  if (named) return `pseudo-class :${named.name} (selector ${text3})`;
+  if (pseudo.length > 0) return `functional pseudo-class :${pseudo[0].name}() depends on other elements (selector ${text3})`;
+  if (splitTop(text3, " ").length > 1) return `combinator in selector ${text3}`;
+  if (text3.startsWith(".") && text3.indexOf(".", 1) > 0) return `several classes in selector ${text3}`;
+  if (text3[0] !== ".") return `not a class selector (${text3})`;
+  return `selector ${text3} is not a single class`;
 }
 var ROOT_SELECTORS;
 var init_parse = __esm({
@@ -2411,16 +4323,16 @@ function toOklab(color) {
 function toSrgb(color) {
   return color.space === "srgb" ? color.c : oklabToSrgb(color.c);
 }
-function component(text2, percentScale) {
-  if (text2 === "none") return 0;
-  const match = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(%?)$/i.exec(text2);
+function component(text3, percentScale) {
+  if (text3 === "none") return 0;
+  const match = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(%?)$/i.exec(text3);
   if (!match) return null;
   const n = Number(match[1]);
   return match[2] === "%" ? n / 100 * percentScale : n;
 }
-function angle(text2) {
-  if (text2 === "none") return 0;
-  const match = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(deg|grad|rad|turn)?$/i.exec(text2);
+function angle(text3) {
+  if (text3 === "none") return 0;
+  const match = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(deg|grad|rad|turn)?$/i.exec(text3);
   if (!match) return null;
   const n = Number(match[1]);
   switch ((match[2] ?? "deg").toLowerCase()) {
@@ -2434,9 +4346,9 @@ function angle(text2) {
       return n;
   }
 }
-function alphaOf(text2) {
-  if (text2 === void 0) return 1;
-  const value = component(text2, 1);
+function alphaOf(text3) {
+  if (text3 === void 0) return 1;
+  const value = component(text3, 1);
   return value === null ? null : clamp01(value);
 }
 function functionArgs(inner) {
@@ -2498,15 +4410,15 @@ function hslToSrgb(h, s, l) {
   };
   return [f(0), f(8), f(4)];
 }
-function parseHex(text2) {
-  const digits = text2.slice(1);
-  if (!/^[0-9a-f]+$/i.test(digits) || ![3, 4, 6, 8].includes(digits.length)) return { error: `${text2} is not a hex color` };
+function parseHex(text3) {
+  const digits = text3.slice(1);
+  if (!/^[0-9a-f]+$/i.test(digits) || ![3, 4, 6, 8].includes(digits.length)) return { error: `${text3} is not a hex color` };
   const full = digits.length <= 4 ? [...digits].map((d) => d + d).join("") : digits;
   const byte = (i) => Number.parseInt(full.slice(i * 2, i * 2 + 2), 16) / 255;
   return { space: "srgb", c: [byte(0), byte(1), byte(2)], alpha: full.length === 8 ? byte(3) : 1 };
 }
-function parseColor(text2) {
-  const value = text2.trim();
+function parseColor(text3) {
+  const value = text3.trim();
   const lower = value.toLowerCase();
   if (value.startsWith("#")) return parseHex(value);
   if (lower === "transparent") return { space: "srgb", c: [0, 0, 0], alpha: 0 };
@@ -2532,17 +4444,17 @@ function parseColorMix(inner) {
   const entries = [];
   for (const part of parts.slice(1)) {
     let percent = null;
-    let text2 = part;
+    let text3 = part;
     const lead = /^(\d+\.?\d*|\.\d+)%\s+(.+)$/.exec(part);
     const tail = /^(.+?)\s+(\d+\.?\d*|\.\d+)%$/.exec(part);
     if (lead) {
       percent = Number(lead[1]);
-      text2 = lead[2];
+      text3 = lead[2];
     } else if (tail) {
       percent = Number(tail[2]);
-      text2 = tail[1];
+      text3 = tail[1];
     }
-    const color = parseColor(text2);
+    const color = parseColor(text3);
     if (isError(color)) return color;
     entries.push({ color, percent });
   }
@@ -2593,8 +4505,8 @@ function mixChannels(space, c1, c2, w1, w2, alpha) {
   const C = mixPremultiplied(p.C, q.C);
   return [L, C * Math.cos(hue), C * Math.sin(hue)];
 }
-function convertColor(text2) {
-  const parsed = parseColor(text2);
+function convertColor(text3) {
+  const parsed = parseColor(text3);
   if (isError(parsed)) return parsed;
   return { color: toRgbString(parsed) };
 }
@@ -2772,43 +4684,43 @@ var init_table = __esm({
 });
 
 // src/css/values.ts
-function closingParen(text2, open) {
+function closingParen(text3, open) {
   let depth = 0;
-  for (let i = open; i < text2.length; i++) {
-    const c = text2[i];
+  for (let i = open; i < text3.length; i++) {
+    const c = text3[i];
     if (c === "\\") i++;
     else if (c === '"' || c === "'") {
       i++;
-      while (i < text2.length && text2[i] !== c) i += text2[i] === "\\" ? 2 : 1;
+      while (i < text3.length && text3[i] !== c) i += text3[i] === "\\" ? 2 : 1;
     } else if (c === "(") depth++;
     else if (c === ")" && --depth === 0) return i;
   }
   return -1;
 }
-function nextVar(text2, from) {
-  for (let i = from; i < text2.length; i++) {
-    const c = text2[i];
+function nextVar(text3, from) {
+  for (let i = from; i < text3.length; i++) {
+    const c = text3[i];
     if (c === '"' || c === "'") {
       i++;
-      while (i < text2.length && text2[i] !== c) i += text2[i] === "\\" ? 2 : 1;
-    } else if (c === "v" && text2.startsWith("var(", i) && !/[\w-]/.test(text2[i - 1] ?? " ")) return i;
+      while (i < text3.length && text3[i] !== c) i += text3[i] === "\\" ? 2 : 1;
+    } else if (c === "v" && text3.startsWith("var(", i) && !/[\w-]/.test(text3[i - 1] ?? " ")) return i;
   }
   return -1;
 }
-function substituteVars(text2, lookup, depth = 0) {
+function substituteVars(text3, lookup, depth = 0) {
   if (depth > 32) return { error: "var() references itself" };
   let out = "";
   let i = 0;
-  while (i < text2.length) {
-    const at = nextVar(text2, i);
+  while (i < text3.length) {
+    const at = nextVar(text3, i);
     if (at < 0) {
-      out += text2.slice(i);
+      out += text3.slice(i);
       break;
     }
-    out += text2.slice(i, at);
-    const close = closingParen(text2, at + 3);
-    if (close < 0) return { error: `unbalanced var() in ${text2}` };
-    const inner = text2.slice(at + 4, close);
+    out += text3.slice(i, at);
+    const close = closingParen(text3, at + 3);
+    if (close < 0) return { error: `unbalanced var() in ${text3}` };
+    const inner = text3.slice(at + 4, close);
     const comma = indexOfTop(inner, ",");
     const name = (comma < 0 ? inner : inner.slice(0, comma)).trim();
     const fallback = comma < 0 ? void 0 : inner.slice(comma + 1).trim();
@@ -2822,8 +4734,8 @@ function substituteVars(text2, lookup, depth = 0) {
   }
   return { text: out };
 }
-function soleVar(text2) {
-  const match = /^var\(\s*(--[^\s,()]+)\s*\)$/.exec(text2.trim());
+function soleVar(text3) {
+  const match = /^var\(\s*(--[^\s,()]+)\s*\)$/.exec(text3.trim());
   return match ? match[1] : null;
 }
 function clean(x) {
@@ -2840,8 +4752,8 @@ function singleUnit(args2) {
   }
   return unit;
 }
-function evaluate(text2, remPx) {
-  return new Evaluator(text2.trim(), remPx).run();
+function evaluate(text3, remPx) {
+  return new Evaluator(text3.trim(), remPx).run();
 }
 function toLength(q, options) {
   const dims = Object.keys(q).filter((k) => q[k] !== 0);
@@ -2890,11 +4802,11 @@ var init_values = __esm({
     WINDOW_WIDTH_UNITS = /* @__PURE__ */ new Set(["vw", "svw", "lvw", "dvw"]);
     WINDOW_HEIGHT_UNITS = /* @__PURE__ */ new Set(["vh", "svh", "lvh", "dvh"]);
     isNumber = (q) => Object.keys(q).every((k) => k === "");
-    merge = (a, b, sign) => {
+    merge = (a, b, sign2) => {
       const hasPlain = (q) => "" in q;
       if (hasPlain(a) !== hasPlain(b)) return null;
       const out = { ...a };
-      for (const [k, v] of Object.entries(b)) out[k] = (out[k] ?? 0) + sign * v;
+      for (const [k, v] of Object.entries(b)) out[k] = (out[k] ?? 0) + sign2 * v;
       return out;
     };
     scale = (q, factor) => Object.fromEntries(Object.entries(q).map(([k, v]) => [k, v * factor]));
@@ -2903,8 +4815,8 @@ var init_values = __esm({
       // Fields, not parameter properties: Node strips the types of a file it loads itself (the transformer from the sources) and does not do those.
       text;
       remPx;
-      constructor(text2, remPx) {
-        this.text = text2;
+      constructor(text3, remPx) {
+        this.text = text3;
         this.remPx = remPx;
       }
       run() {
@@ -2955,11 +4867,11 @@ var init_values = __esm({
       }
       unary() {
         this.blank();
-        const sign = this.text[this.pos];
-        if ((sign === "+" || sign === "-") && !/[\d.]/.test(this.text[this.pos + 1] ?? "")) {
+        const sign2 = this.text[this.pos];
+        if ((sign2 === "+" || sign2 === "-") && !/[\d.]/.test(this.text[this.pos + 1] ?? "")) {
           this.pos++;
           const value = this.unary();
-          return sign === "-" ? scale(value, -1) : value;
+          return sign2 === "-" ? scale(value, -1) : value;
         }
         return this.primary();
       }
@@ -3013,8 +4925,8 @@ var init_values = __esm({
         if (unit === "turn") return { deg: n * 360 };
         throw new Error(`the unit ${unit} is not supported`);
       }
-      sub(text2) {
-        const result = new _Evaluator(text2, this.remPx).run();
+      sub(text3) {
+        const result = new _Evaluator(text3, this.remPx).run();
         if ("error" in result) throw new Error(result.error);
         return result.q;
       }
@@ -3066,21 +4978,21 @@ function pair(parts) {
   return [a, b ?? a];
 }
 function edges(keys, write) {
-  return (d, text2) => {
-    const values = around(splitTop(text2, " "));
-    if (values === null) return d.fail(`${text2} is not one to four values`);
+  return (d, text3) => {
+    const values = around(splitTop(text3, " "));
+    if (values === null) return d.fail(`${text3} is not one to four values`);
     for (const [i, key] of keys.entries()) write(d, key, values[i]);
   };
 }
 function twoEdges(keys, write) {
-  return (d, text2) => {
-    const values = pair(splitTop(text2, " "));
-    if (values === null) return d.fail(`${text2} is not one or two values`);
+  return (d, text3) => {
+    const values = pair(splitTop(text3, " "));
+    if (values === null) return d.fail(`${text3} is not one or two values`);
     for (const [i, key] of keys.entries()) write(d, key, values[i]);
   };
 }
 function one(key, write) {
-  return (d, text2) => write(d, key, text2);
+  return (d, text3) => write(d, key, text3);
 }
 function boxFamily(prefix, cssPrefix, suffix, cssSuffix, write, handlers2) {
   const [top, right, bottom, left] = SIDE_KEYS(prefix, suffix);
@@ -3099,8 +5011,8 @@ function noBorder(d) {
   for (const key of SIDE_KEYS("border", "Width")) d.set(key, 0);
 }
 function borderShorthand(widthKeys, colorKeys) {
-  return (d, text2) => {
-    for (const part of splitTop(text2, " ")) {
+  return (d, text3) => {
+    for (const part of splitTop(text3, " ")) {
       const word = part.toLowerCase();
       if (word === "solid" || word === "dashed" || word === "dotted") d.set("borderStyle", word);
       else if (word === "none" || word === "hidden") {
@@ -3112,9 +5024,9 @@ function borderShorthand(widthKeys, colorKeys) {
     }
   };
 }
-function components(d, text2) {
+function components(d, text3) {
   const out = [];
-  for (const part of splitTop(text2, " ")) {
+  for (const part of splitTop(text3, " ")) {
     const name = soleVar(part);
     if (name !== null && d.env.lookup(name)?.source === "default") {
       out.push(null);
@@ -3129,10 +5041,10 @@ function components(d, text2) {
   }
   return out;
 }
-function convertDeclaration(property, value, env, out, report) {
+function convertDeclaration(property, value, env, out, report2) {
   const raw = own(rawHandlers, property);
   const handler = raw ?? own(handlers, property);
-  const declaration = new Declaration(property, env, out, report);
+  const declaration = new Declaration(property, env, out, report2);
   if (handler === void 0) {
     declaration.fail(`no React Native style for ${property}`);
     return;
@@ -3148,10 +5060,10 @@ function convertDeclaration(property, value, env, out, report) {
     declaration.fail(resolved.error);
     return;
   }
-  const text2 = resolved.text.trim();
-  if (GLOBAL_KEYWORDS.has(text2.toLowerCase())) declaration.fail(`${text2} has no meaning in a class table`);
-  else if (text2 === "") declaration.fail("empty value");
-  else handler(declaration, text2);
+  const text3 = resolved.text.trim();
+  if (GLOBAL_KEYWORDS.has(text3.toLowerCase())) declaration.fail(`${text3} has no meaning in a class table`);
+  else if (text3 === "") declaration.fail("empty value");
+  else handler(declaration, text3);
 }
 var emptyResult, isEmptyResult, Declaration, same, spacing, margin, sizing, maxSizing, borderWidth, borderColor, radius, SIDE_KEYS, handlers, decorationLine, rawHandlers, GLOBAL_KEYWORDS;
 var init_properties = __esm({
@@ -3169,11 +5081,11 @@ var init_properties = __esm({
       env;
       out;
       report;
-      constructor(property, env, out, report) {
+      constructor(property, env, out, report2) {
         this.property = property;
         this.env = env;
         this.out = out;
-        this.report = report;
+        this.report = report2;
       }
       fail(reason) {
         this.report(this.property, reason);
@@ -3193,43 +5105,43 @@ var init_properties = __esm({
         this.out.fontRelative[key] = value;
       }
       /** Writes a length to `key`: dp, a percentage string, a keyword (`null` for one that resets the key), or a dynamic value. Returns false (after reporting) when it is none of them. */
-      length(key, text2, options = {}) {
-        const keyword = options.keywords === void 0 ? void 0 : own(options.keywords, text2.trim().toLowerCase());
+      length(key, text3, options = {}) {
+        const keyword = options.keywords === void 0 ? void 0 : own(options.keywords, text3.trim().toLowerCase());
         if (keyword !== void 0) {
           this.set(key, keyword);
           return true;
         }
-        if (/^[a-z][a-z-]*$/i.test(text2.trim()) && !/^(infinity|pi|e)$/i.test(text2.trim())) return this.bad(`${text2} has no React Native equivalent`);
-        const evaluated = evaluate(text2, this.env.remPx);
+        if (/^[a-z][a-z-]*$/i.test(text3.trim()) && !/^(infinity|pi|e)$/i.test(text3.trim())) return this.bad(`${text3} has no React Native equivalent`);
+        const evaluated = evaluate(text3, this.env.remPx);
         if ("error" in evaluated) return this.bad(evaluated.error);
         const length = toLength(evaluated.q, { percent: options.percent === true });
-        if ("error" in length) return this.bad(`${text2}: ${length.error}`);
+        if ("error" in length) return this.bad(`${text3}: ${length.error}`);
         if ("dynamic" in length) this.setDynamic(key, length.dynamic);
         else this.set(key, length.value);
         return true;
       }
-      number(key, text2, options = {}) {
-        const evaluated = evaluate(text2, this.env.remPx);
+      number(key, text3, options = {}) {
+        const evaluated = evaluate(text3, this.env.remPx);
         if ("error" in evaluated) return this.bad(evaluated.error);
         const number = toNumber(evaluated.q, options);
-        if ("error" in number) return this.bad(`${text2} is not a number`);
+        if ("error" in number) return this.bad(`${text3} is not a number`);
         this.set(key, number.value);
         return true;
       }
-      color(keys, text2) {
-        const color = convertColor(text2);
+      color(keys, text3) {
+        const color = convertColor(text3);
         if ("error" in color) return this.bad(color.error);
         for (const key of keys) this.set(key, color.color);
         return true;
       }
-      keyword(key, text2, map) {
-        const value = own(map, text2.trim().toLowerCase());
-        if (value === void 0) return this.bad(`${text2} has no React Native equivalent`);
+      keyword(key, text3, map) {
+        const value = own(map, text3.trim().toLowerCase());
+        if (value === void 0) return this.bad(`${text3} has no React Native equivalent`);
         this.set(key, value);
         return true;
       }
-      quantity(text2) {
-        const evaluated = evaluate(text2, this.env.remPx);
+      quantity(text3) {
+        const evaluated = evaluate(text3, this.env.remPx);
         if ("error" in evaluated) {
           this.bad(evaluated.error);
           return null;
@@ -3242,18 +5154,18 @@ var init_properties = __esm({
       }
     };
     same = (...words) => Object.fromEntries(words.map((word) => [word, word]));
-    spacing = (d, key, text2) => d.length(key, text2, { percent: true });
-    margin = (d, key, text2) => d.length(key, text2, { percent: true, keywords: { auto: "auto" } });
-    sizing = (d, key, text2) => d.length(key, text2, { percent: true, keywords: { auto: "auto" } });
-    maxSizing = (d, key, text2) => d.length(key, text2, { percent: true, keywords: { auto: "auto", none: null } });
-    borderWidth = (d, key, text2) => d.length(key, text2, { keywords: { thin: 1, medium: 3, thick: 5 } });
-    borderColor = (d, key, text2) => void d.color([key], text2);
-    radius = (d, key, text2) => {
-      const q = d.quantity(text2);
+    spacing = (d, key, text3) => d.length(key, text3, { percent: true });
+    margin = (d, key, text3) => d.length(key, text3, { percent: true, keywords: { auto: "auto" } });
+    sizing = (d, key, text3) => d.length(key, text3, { percent: true, keywords: { auto: "auto" } });
+    maxSizing = (d, key, text3) => d.length(key, text3, { percent: true, keywords: { auto: "auto", none: null } });
+    borderWidth = (d, key, text3) => d.length(key, text3, { keywords: { thin: 1, medium: 3, thick: 5 } });
+    borderColor = (d, key, text3) => void d.color([key], text3);
+    radius = (d, key, text3) => {
+      const q = d.quantity(text3);
       if (q === null) return;
       const px = q.px ?? 0;
       if (Object.keys(q).length === 1 && "px" in q && px > 1e6) d.set(key, 9999);
-      else d.length(key, text2, { percent: true });
+      else d.length(key, text3, { percent: true });
     };
     SIDE_KEYS = (prefix, suffix = "") => [`${prefix}Top${suffix}`, `${prefix}Right${suffix}`, `${prefix}Bottom${suffix}`, `${prefix}Left${suffix}`];
     handlers = {};
@@ -3277,10 +5189,10 @@ var init_properties = __esm({
     }
     handlers["max-width"] = one("maxWidth", maxSizing);
     handlers["max-height"] = one("maxHeight", maxSizing);
-    handlers["border-radius"] = (d, text2) => {
-      if (text2.includes("/")) return d.fail("elliptical radii (a / b) are not supported");
-      const values = around(splitTop(text2, " "));
-      if (values === null) return d.fail(`${text2} is not one to four values`);
+    handlers["border-radius"] = (d, text3) => {
+      if (text3.includes("/")) return d.fail("elliptical radii (a / b) are not supported");
+      const values = around(splitTop(text3, " "));
+      if (values === null) return d.fail(`${text3} is not one to four values`);
       const keys = ["borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius"];
       for (const [i, key] of keys.entries()) radius(d, key, values[i]);
     };
@@ -3294,13 +5206,13 @@ var init_properties = __esm({
       ["border-end-start-radius", "borderEndStartRadius"],
       ["border-end-end-radius", "borderEndEndRadius"]
     ]) {
-      handlers[property] = (d, text2) => {
-        if (splitTop(text2, " ").length > 1) return d.fail("elliptical radii (two values) are not supported");
-        radius(d, key, text2);
+      handlers[property] = (d, text3) => {
+        if (splitTop(text3, " ").length > 1) return d.fail("elliptical radii (two values) are not supported");
+        radius(d, key, text3);
       };
     }
-    handlers["border-style"] = (d, text2) => {
-      const values = splitTop(text2, " ");
+    handlers["border-style"] = (d, text3) => {
+      const values = splitTop(text3, " ");
       if (values.some((value) => value !== values[0])) return d.fail("a different border style per side is not supported");
       if (values[0] === "none" || values[0] === "hidden") return noBorder(d);
       d.keyword("borderStyle", values[0] ?? "", same("solid", "dashed", "dotted"));
@@ -3312,30 +5224,30 @@ var init_properties = __esm({
     for (const side of ["Top", "Right", "Bottom", "Left"]) handlers[`border-${side.toLowerCase()}`] = borderShorthand([`border${side}Width`], [`border${side}Color`]);
     handlers["border-inline"] = borderShorthand(["borderLeftWidth", "borderRightWidth"], ["borderLeftColor", "borderRightColor"]);
     handlers["border-block"] = borderShorthand(["borderTopWidth", "borderBottomWidth"], ["borderTopColor", "borderBottomColor"]);
-    handlers["background-color"] = (d, text2) => void d.color(["backgroundColor"], text2);
-    handlers.color = (d, text2) => void d.color(["color"], text2);
-    handlers.background = (d, text2) => {
-      if (splitTop(text2, " ").length > 1 || /^(url|linear-gradient|radial-gradient|conic-gradient)\(/i.test(text2)) return d.fail("only a background color is supported");
-      d.color(["backgroundColor"], text2);
+    handlers["background-color"] = (d, text3) => void d.color(["backgroundColor"], text3);
+    handlers.color = (d, text3) => void d.color(["color"], text3);
+    handlers.background = (d, text3) => {
+      if (splitTop(text3, " ").length > 1 || /^(url|linear-gradient|radial-gradient|conic-gradient)\(/i.test(text3)) return d.fail("only a background color is supported");
+      d.color(["backgroundColor"], text3);
     };
-    handlers.display = (d, text2) => {
-      if (d.keyword("display", text2, { flex: "flex", "inline-flex": "flex", block: "flex", "inline-block": "flex", inline: "flex", "flow-root": "flex", none: "none", contents: "contents" })) d.set("htmlDisplay", text2.trim().toLowerCase());
+    handlers.display = (d, text3) => {
+      if (d.keyword("display", text3, { flex: "flex", "inline-flex": "flex", block: "flex", "inline-block": "flex", inline: "flex", "flow-root": "flex", none: "none", contents: "contents" })) d.set("htmlDisplay", text3.trim().toLowerCase());
     };
-    handlers.position = (d, text2) => void d.keyword("position", text2, same("absolute", "relative", "static"));
-    handlers["z-index"] = (d, text2) => text2.trim() === "auto" ? d.set("zIndex", null) : void d.number("zIndex", text2);
-    handlers.overflow = (d, text2) => {
-      const values = splitTop(text2, " ");
+    handlers.position = (d, text3) => void d.keyword("position", text3, same("absolute", "relative", "static"));
+    handlers["z-index"] = (d, text3) => text3.trim() === "auto" ? d.set("zIndex", null) : void d.number("zIndex", text3);
+    handlers.overflow = (d, text3) => {
+      const values = splitTop(text3, " ");
       if (values.length > 1 && values[0] !== values[1]) return d.fail("a different overflow per axis is not supported");
       d.keyword("overflow", values[0] ?? "", { visible: "visible", hidden: "hidden", clip: "hidden", scroll: "scroll", auto: "scroll" });
     };
-    handlers.opacity = (d, text2) => void d.number("opacity", text2, { percent: true });
-    handlers["flex-direction"] = (d, text2) => void d.keyword("flexDirection", text2, same("row", "row-reverse", "column", "column-reverse"));
-    handlers["flex-wrap"] = (d, text2) => void d.keyword("flexWrap", text2, same("wrap", "nowrap", "wrap-reverse"));
-    handlers["flex-grow"] = (d, text2) => void d.number("flexGrow", text2);
-    handlers["flex-shrink"] = (d, text2) => void d.number("flexShrink", text2);
-    handlers["flex-basis"] = (d, text2) => void d.length("flexBasis", text2, { percent: true, keywords: { auto: "auto" } });
-    handlers.flex = (d, text2) => {
-      const word = text2.trim().toLowerCase();
+    handlers.opacity = (d, text3) => void d.number("opacity", text3, { percent: true });
+    handlers["flex-direction"] = (d, text3) => void d.keyword("flexDirection", text3, same("row", "row-reverse", "column", "column-reverse"));
+    handlers["flex-wrap"] = (d, text3) => void d.keyword("flexWrap", text3, same("wrap", "nowrap", "wrap-reverse"));
+    handlers["flex-grow"] = (d, text3) => void d.number("flexGrow", text3);
+    handlers["flex-shrink"] = (d, text3) => void d.number("flexShrink", text3);
+    handlers["flex-basis"] = (d, text3) => void d.length("flexBasis", text3, { percent: true, keywords: { auto: "auto" } });
+    handlers.flex = (d, text3) => {
+      const word = text3.trim().toLowerCase();
       const presets = { none: [0, 0, "auto"], auto: [1, 1, "auto"], initial: [0, 1, "auto"] };
       const preset = own(presets, word);
       if (preset !== void 0) {
@@ -3344,37 +5256,37 @@ var init_properties = __esm({
         d.set("flexBasis", preset[2]);
         return;
       }
-      const parts = splitTop(text2, " ");
+      const parts = splitTop(text3, " ");
       const isFactor = (part) => /^[+-]?(\d+\.?\d*|\.\d+)$/.test(part) || /^calc\(\s*[\d.\s*/+-]+\)$/.test(part);
       const factors = [];
       while (parts.length > 0 && factors.length < 2 && isFactor(parts[0])) factors.push(parts.shift());
-      if (parts.length > 1) return d.fail(`${text2} is not a flex shorthand`);
+      if (parts.length > 1) return d.fail(`${text3} is not a flex shorthand`);
       d.number("flexGrow", factors[0] ?? "1");
       d.number("flexShrink", factors[1] ?? "1");
       if (parts[0] === void 0) return d.set("flexBasis", 0);
       d.length("flexBasis", parts[0], { percent: true, keywords: { auto: "auto" } });
       if (d.out.style.flexBasis === "0%") d.set("flexBasis", 0);
     };
-    handlers["align-items"] = (d, text2) => void d.keyword("alignItems", text2, { "flex-start": "flex-start", start: "flex-start", "flex-end": "flex-end", end: "flex-end", center: "center", stretch: "stretch", normal: "stretch", baseline: "baseline" });
-    handlers["align-self"] = (d, text2) => void d.keyword("alignSelf", text2, { auto: "auto", "flex-start": "flex-start", start: "flex-start", "flex-end": "flex-end", end: "flex-end", center: "center", stretch: "stretch", baseline: "baseline" });
-    handlers["align-content"] = (d, text2) => {
-      d.keyword("alignContent", text2, { "flex-start": "flex-start", start: "flex-start", "flex-end": "flex-end", end: "flex-end", center: "center", stretch: "stretch", normal: "stretch", "space-between": "space-between", "space-around": "space-around", "space-evenly": "space-evenly" });
+    handlers["align-items"] = (d, text3) => void d.keyword("alignItems", text3, { "flex-start": "flex-start", start: "flex-start", "flex-end": "flex-end", end: "flex-end", center: "center", stretch: "stretch", normal: "stretch", baseline: "baseline" });
+    handlers["align-self"] = (d, text3) => void d.keyword("alignSelf", text3, { auto: "auto", "flex-start": "flex-start", start: "flex-start", "flex-end": "flex-end", end: "flex-end", center: "center", stretch: "stretch", baseline: "baseline" });
+    handlers["align-content"] = (d, text3) => {
+      d.keyword("alignContent", text3, { "flex-start": "flex-start", start: "flex-start", "flex-end": "flex-end", end: "flex-end", center: "center", stretch: "stretch", normal: "stretch", "space-between": "space-between", "space-around": "space-around", "space-evenly": "space-evenly" });
     };
-    handlers["justify-content"] = (d, text2) => {
-      d.keyword("justifyContent", text2, { "flex-start": "flex-start", start: "flex-start", normal: "flex-start", "flex-end": "flex-end", end: "flex-end", center: "center", "space-between": "space-between", "space-around": "space-around", "space-evenly": "space-evenly" });
+    handlers["justify-content"] = (d, text3) => {
+      d.keyword("justifyContent", text3, { "flex-start": "flex-start", start: "flex-start", normal: "flex-start", "flex-end": "flex-end", end: "flex-end", center: "center", "space-between": "space-between", "space-around": "space-around", "space-evenly": "space-evenly" });
     };
-    handlers.gap = (d, text2) => {
-      const values = pair(splitTop(text2, " "));
-      if (values === null) return d.fail(`${text2} is not one or two values`);
+    handlers.gap = (d, text3) => {
+      const values = pair(splitTop(text3, " "));
+      if (values === null) return d.fail(`${text3} is not one or two values`);
       d.length("rowGap", values[0]);
       d.length("columnGap", values[1]);
     };
-    handlers["row-gap"] = (d, text2) => void d.length("rowGap", text2);
-    handlers["column-gap"] = (d, text2) => void d.length("columnGap", text2);
-    handlers["aspect-ratio"] = (d, text2) => {
-      if (text2.trim() === "auto") return d.set("aspectRatio", null);
-      const [a, b, extra] = text2.split("/");
-      if (extra !== void 0 || a?.trim() === "auto") return d.fail(`${text2} has no React Native equivalent`);
+    handlers["row-gap"] = (d, text3) => void d.length("rowGap", text3);
+    handlers["column-gap"] = (d, text3) => void d.length("columnGap", text3);
+    handlers["aspect-ratio"] = (d, text3) => {
+      if (text3.trim() === "auto") return d.set("aspectRatio", null);
+      const [a, b, extra] = text3.split("/");
+      if (extra !== void 0 || a?.trim() === "auto") return d.fail(`${text3} has no React Native equivalent`);
       const ratio = (part) => {
         const q = d.quantity(part);
         const n = q === null ? null : toNumber(q);
@@ -3382,64 +5294,64 @@ var init_properties = __esm({
       };
       const numerator = ratio(a ?? "");
       const denominator = b === void 0 ? 1 : ratio(b);
-      if (numerator === null || denominator === null || denominator === 0) return d.fail(`${text2} is not a ratio`);
+      if (numerator === null || denominator === null || denominator === 0) return d.fail(`${text3} is not a ratio`);
       d.set("aspectRatio", numerator / denominator);
     };
-    handlers["font-size"] = (d, text2) => void d.length("fontSize", text2);
-    handlers["font-weight"] = (d, text2) => {
-      const word = text2.trim().toLowerCase();
+    handlers["font-size"] = (d, text3) => void d.length("fontSize", text3);
+    handlers["font-weight"] = (d, text3) => {
+      const word = text3.trim().toLowerCase();
       if (word === "normal") return d.set("fontWeight", "400");
       if (word === "bold") return d.set("fontWeight", "700");
-      const q = d.quantity(text2);
+      const q = d.quantity(text3);
       const n = q === null ? null : toNumber(q);
-      if (n === null || "error" in n) return d.fail(`font-weight ${text2} is not a number`);
+      if (n === null || "error" in n) return d.fail(`font-weight ${text3} is not a number`);
       d.set("fontWeight", String(n.value));
     };
-    handlers["font-style"] = (d, text2) => void d.keyword("fontStyle", text2, { normal: "normal", italic: "italic", oblique: "italic" });
-    handlers["font-family"] = (d, text2) => {
-      const first = (splitTop(text2, ",")[0] ?? "").replace(/^["']|["']$/g, "").trim();
+    handlers["font-style"] = (d, text3) => void d.keyword("fontStyle", text3, { normal: "normal", italic: "italic", oblique: "italic" });
+    handlers["font-family"] = (d, text3) => {
+      const first = (splitTop(text3, ",")[0] ?? "").replace(/^["']|["']$/g, "").trim();
       if (first === "") return d.fail("empty font-family");
       const alias = { "ui-monospace": "monospace", "ui-serif": "serif", "ui-sans-serif": "System", "ui-rounded": "System", "system-ui": "System", "-apple-system": "System", blinkmacsystemfont: "System" };
       d.set("fontFamily", own(alias, first.toLowerCase()) ?? first);
     };
-    handlers["line-height"] = (d, text2) => {
-      if (text2.trim().toLowerCase() === "normal") return d.set("lineHeight", null);
-      const q = d.quantity(text2);
+    handlers["line-height"] = (d, text3) => {
+      if (text3.trim().toLowerCase() === "normal") return d.set("lineHeight", null);
+      const q = d.quantity(text3);
       if (q === null) return;
       const dims = Object.keys(q).filter((k) => q[k] !== 0);
       if (dims.length === 1 && dims[0] === "") d.setRelative("lineHeight", clean(q[""]));
       else if (dims.length === 1 && dims[0] === "em") d.setRelative("lineHeight", clean(q.em));
       else if (dims.length === 1 && dims[0] === "%") d.setRelative("lineHeight", clean(q["%"] / 100));
-      else d.length("lineHeight", text2);
+      else d.length("lineHeight", text3);
     };
-    handlers["letter-spacing"] = (d, text2) => {
-      if (text2.trim().toLowerCase() === "normal") return d.set("letterSpacing", 0);
-      const q = d.quantity(text2);
+    handlers["letter-spacing"] = (d, text3) => {
+      if (text3.trim().toLowerCase() === "normal") return d.set("letterSpacing", 0);
+      const q = d.quantity(text3);
       if (q === null) return;
       const dims = Object.keys(q).filter((k) => q[k] !== 0);
       if (dims.length === 1 && dims[0] === "em") d.setRelative("letterSpacing", clean(q.em));
-      else d.length("letterSpacing", text2);
+      else d.length("letterSpacing", text3);
     };
-    handlers["text-align"] = (d, text2) => void d.keyword("textAlign", text2, { left: "left", right: "right", center: "center", justify: "justify", start: "auto" });
-    handlers["text-transform"] = (d, text2) => void d.keyword("textTransform", text2, same("none", "uppercase", "lowercase", "capitalize"));
-    decorationLine = (d, text2) => {
-      const words = splitTop(text2.toLowerCase(), " ");
-      if (words.some((word) => !["underline", "line-through", "none"].includes(word))) return d.fail(`${text2} is not supported (underline, line-through and none are)`);
+    handlers["text-align"] = (d, text3) => void d.keyword("textAlign", text3, { left: "left", right: "right", center: "center", justify: "justify", start: "auto" });
+    handlers["text-transform"] = (d, text3) => void d.keyword("textTransform", text3, same("none", "uppercase", "lowercase", "capitalize"));
+    decorationLine = (d, text3) => {
+      const words = splitTop(text3.toLowerCase(), " ");
+      if (words.some((word) => !["underline", "line-through", "none"].includes(word))) return d.fail(`${text3} is not supported (underline, line-through and none are)`);
       d.set("textDecorationLine", words.join(" "));
     };
     handlers["text-decoration-line"] = decorationLine;
-    handlers["text-decoration"] = (d, text2) => {
-      if (splitTop(text2, " ").length > 1) return d.fail("only the decoration line is supported in text-decoration");
-      decorationLine(d, text2);
+    handlers["text-decoration"] = (d, text3) => {
+      if (splitTop(text3, " ").length > 1) return d.fail("only the decoration line is supported in text-decoration");
+      decorationLine(d, text3);
     };
     rawHandlers = {
-      translate(d, text2) {
-        if (text2.trim() === "none") {
+      translate(d, text3) {
+        if (text3.trim() === "none") {
           d.set("transform:translateX", null);
           d.set("transform:translateY", null);
           return;
         }
-        const resolved = components(d, text2);
+        const resolved = components(d, text3);
         if (resolved === null) return;
         const [x, y, z] = resolved;
         for (const [key, part] of [["transform:translateX", x], ["transform:translateY", y]]) {
@@ -3457,13 +5369,13 @@ var init_properties = __esm({
         }
         if (z !== null && z !== void 0 && z !== "0" && z !== "0px") d.fail("translateZ has no React Native equivalent");
       },
-      scale(d, text2) {
-        if (text2.trim() === "none") {
+      scale(d, text3) {
+        if (text3.trim() === "none") {
           d.set("transform:scaleX", null);
           d.set("transform:scaleY", null);
           return;
         }
-        const resolved = components(d, text2);
+        const resolved = components(d, text3);
         if (resolved === null) return;
         const [x, y] = resolved;
         const factor = (part) => {
@@ -3487,12 +5399,12 @@ var init_properties = __esm({
           if (value !== null) d.set("transform:scaleY", value);
         }
       },
-      rotate(d, text2) {
-        if (text2.trim() === "none") {
+      rotate(d, text3) {
+        if (text3.trim() === "none") {
           for (const key of ["transform:rotate", "transform:rotateX", "transform:rotateY"]) d.set(key, null);
           return;
         }
-        const resolved = components(d, text2);
+        const resolved = components(d, text3);
         if (resolved === null) return;
         const words = resolved.filter((part) => part !== null).join(" ").split(/\s+/);
         const axis = /^[xyz]$/i.test(words[0] ?? "") ? words.shift().toLowerCase() : "z";
@@ -3503,10 +5415,10 @@ var init_properties = __esm({
         d.set(axis === "x" ? "transform:rotateX" : axis === "y" ? "transform:rotateY" : "transform:rotate", angle2.value);
       }
     };
-    handlers["box-shadow"] = (d, text2) => {
-      if (text2.trim().toLowerCase() === "none") return d.set("boxShadow", null);
+    handlers["box-shadow"] = (d, text3) => {
+      if (text3.trim().toLowerCase() === "none") return d.set("boxShadow", null);
       const layers = [];
-      for (const layer of splitTop(text2, ",")) {
+      for (const layer of splitTop(text3, ",")) {
         if (layer === "") continue;
         const tokens = splitTop(layer, " ");
         let inset = false;
@@ -3534,8 +5446,8 @@ var init_properties = __esm({
       }
       d.set("boxShadow", layers.length > 0 ? layers.join(", ") : null);
     };
-    handlers.transform = (d, text2) => {
-      if (text2.trim().toLowerCase() !== "none") return d.fail(`transform: ${text2} is not supported (the translate, rotate and scale properties are)`);
+    handlers.transform = (d, text3) => {
+      if (text3.trim().toLowerCase() !== "none") return d.fail(`transform: ${text3} is not supported (the translate, rotate and scale properties are)`);
       for (const key of TRANSFORM_KEYS) d.set(key, null);
     };
     GLOBAL_KEYWORDS = /* @__PURE__ */ new Set(["inherit", "initial", "unset", "revert", "revert-layer"]);
@@ -3562,9 +5474,9 @@ function narrow(base, prelude, remPx) {
   let when = base;
   const queries = splitTop(prelude.toLowerCase(), ",");
   if (queries.length !== 1) return { error: `media query list ${prelude} is not supported` };
-  const text2 = queries[0].replace(/^only\s+/, "");
-  if (/^not\s/.test(text2)) return { error: `@media ${prelude} is not supported` };
-  for (const part of text2.split(/\s+and\s+/)) {
+  const text3 = queries[0].replace(/^only\s+/, "");
+  if (/^not\s/.test(text3)) return { error: `@media ${prelude} is not supported` };
+  for (const part of text3.split(/\s+and\s+/)) {
     const word = part.trim();
     if (word === "all" || word === "screen") continue;
     const feature = /^\((.*)\)$/.exec(word);
@@ -3575,8 +5487,8 @@ function narrow(base, prelude, remPx) {
   }
   return { when };
 }
-function pixels(text2, remPx) {
-  const q = evaluate(text2, remPx);
+function pixels(text3, remPx) {
+  const q = evaluate(text3, remPx);
   if ("error" in q) return null;
   const dims = Object.keys(q.q).filter((k) => q.q[k] !== 0);
   if (dims.length === 0) return 0;
@@ -3805,11 +5717,11 @@ var init_convert = __esm({
       /** Converts one run of declarations (normal ones, then the `!important` ones above every layer) into rules, once per scheme the values depend on. */
       emitDeclarations(className, decls, ctx, own2) {
         for (const important of [false, true]) {
-          const group = decls.filter((decl) => decl.important === important);
-          if (group.length === 0) continue;
+          const group3 = decls.filter((decl) => decl.important === important);
+          if (group3.length === 0) continue;
           const seq = this.seq++;
           const rank = this.rank(ctx.layer, important);
-          const results = this.resultsFor(className, group, ctx.when.scheme, own2);
+          const results = this.resultsFor(className, group3, ctx.when.scheme, own2);
           for (const { scheme, result } of results) {
             if (isEmptyResult(result)) continue;
             const when = { ...ctx.when, ...scheme !== void 0 ? { scheme } : {} };
@@ -3892,20 +5804,20 @@ __export(build_exports, {
 });
 import { spawnSync as spawnSync4 } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync as existsSync8, mkdirSync as mkdirSync3, readdirSync as readdirSync6, readFileSync as readFileSync7, statSync as statSync2, watch as watch3, writeFileSync as writeFileSync3 } from "node:fs";
-import { createRequire as createRequire3 } from "node:module";
-import { dirname as dirname7, extname, isAbsolute, join as join9, relative as relative3, resolve as resolve8, sep as sep4 } from "node:path";
+import { existsSync as existsSync8, mkdirSync as mkdirSync3, readdirSync as readdirSync6, readFileSync as readFileSync9, statSync as statSync2, watch as watch3, writeFileSync as writeFileSync3 } from "node:fs";
+import { createRequire as createRequire4 } from "node:module";
+import { dirname as dirname7, extname, isAbsolute as isAbsolute2, join as join11, relative as relative4, resolve as resolve10, sep as sep5 } from "node:path";
 function sourceFiles(root2) {
   const files = [];
   const walk = (directory) => {
     for (const item of readdirSync6(directory, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : 1)) {
-      const path = join9(directory, item.name);
+      const path = join11(directory, item.name);
       if (item.isDirectory()) {
         if (!SKIPPED_DIRECTORIES.has(item.name)) walk(path);
       } else if (SOURCE_EXTENSIONS.has(extname(item.name))) files.push(path);
     }
   };
-  if (existsSync8(join9(root2, "src"))) walk(join9(root2, "src"));
+  if (existsSync8(join11(root2, "src"))) walk(join11(root2, "src"));
   return files;
 }
 function closingBracket(source, start) {
@@ -3946,18 +5858,18 @@ function candidatesIn(source, into = /* @__PURE__ */ new Set()) {
 }
 function candidatesOf(root2) {
   const candidates = /* @__PURE__ */ new Set();
-  for (const file of sourceFiles(root2)) candidatesIn(readFileSync7(file, "utf8"), candidates);
+  for (const file of sourceFiles(root2)) candidatesIn(readFileSync9(file, "utf8"), candidates);
   return [...candidates].sort();
 }
 function loadTailwind(root2) {
-  const fromApp = createRequire3(join9(root2, "package.json"));
+  const fromApp = createRequire4(join11(root2, "package.json"));
   const install = `pnpm add -D tailwindcss@${TAILWIND_VERSION}`;
   let directory;
   let manifest;
   try {
     const manifestFile = fromApp.resolve("tailwindcss/package.json");
     directory = dirname7(manifestFile);
-    manifest = JSON.parse(readFileSync7(manifestFile, "utf8"));
+    manifest = JSON.parse(readFileSync9(manifestFile, "utf8"));
   } catch (error) {
     throw new Error(`svelte-native: the css option needs Tailwind CSS in the app: ${install} (${error.message.split("\n")[0]})`, { cause: error });
   }
@@ -3983,17 +5895,17 @@ function packageStylesheet(id, base) {
   const name = id.startsWith("@") ? id.split("/").slice(0, 2).join("/") : id.split("/")[0];
   const subpath = id.slice(name.length);
   for (let directory = base; ; directory = dirname7(directory)) {
-    const packageDirectory = join9(directory, "node_modules", name);
-    const manifestFile = join9(packageDirectory, "package.json");
+    const packageDirectory = join11(directory, "node_modules", name);
+    const manifestFile = join11(packageDirectory, "package.json");
     if (existsSync8(manifestFile)) {
-      const manifest = JSON.parse(readFileSync7(manifestFile, "utf8"));
+      const manifest = JSON.parse(readFileSync9(manifestFile, "utf8"));
       let target;
       if (subpath === "") target = exportedStylesheet(manifest.exports, ".") ?? manifest.style ?? (manifest.main?.endsWith(".css") ? manifest.main : void 0);
       else {
-        for (const file of [join9(packageDirectory, subpath), join9(packageDirectory, `${subpath}.css`)]) if (existsSync8(file) && statSync2(file).isFile()) return file;
+        for (const file of [join11(packageDirectory, subpath), join11(packageDirectory, `${subpath}.css`)]) if (existsSync8(file) && statSync2(file).isFile()) return file;
         target = exportedStylesheet(manifest.exports, `.${subpath}`);
       }
-      return target === void 0 ? void 0 : resolve8(packageDirectory, target);
+      return target === void 0 ? void 0 : resolve10(packageDirectory, target);
     }
     if (dirname7(directory) === directory) return void 0;
   }
@@ -4001,15 +5913,15 @@ function packageStylesheet(id, base) {
 function stylesheetLoader(tailwindDirectory, read2) {
   return async (id, base) => {
     let file;
-    if (id === "tailwindcss") file = join9(tailwindDirectory, "index.css");
-    else if (id.startsWith("tailwindcss/")) file = join9(tailwindDirectory, `${id.slice("tailwindcss/".length).replace(/\.css$/, "")}.css`);
-    else if (id.startsWith(".") || isAbsolute(id)) file = resolve8(base, id);
+    if (id === "tailwindcss") file = join11(tailwindDirectory, "index.css");
+    else if (id.startsWith("tailwindcss/")) file = join11(tailwindDirectory, `${id.slice("tailwindcss/".length).replace(/\.css$/, "")}.css`);
+    else if (id.startsWith(".") || isAbsolute2(id)) file = resolve10(base, id);
     else {
-      const next = resolve8(base, id);
+      const next = resolve10(base, id);
       file = existsSync8(next) && statSync2(next).isFile() ? next : packageStylesheet(id, base);
       if (file === void 0) {
         try {
-          file = createRequire3(join9(base, "noop.js")).resolve(id);
+          file = createRequire4(join11(base, "noop.js")).resolve(id);
         } catch (error) {
           throw new Error(`svelte-native: cannot resolve @import "${id}" from ${base}: ${error.message.split("\n")[0]}`, { cause: error });
         }
@@ -4018,7 +5930,7 @@ function stylesheetLoader(tailwindDirectory, read2) {
     }
     let content;
     try {
-      content = readFileSync7(file, "utf8");
+      content = readFileSync9(file, "utf8");
     } catch (error) {
       throw new Error(`svelte-native: cannot read @import "${id}" from ${base}: ${error.code ?? error.message}`, { cause: error });
     }
@@ -4053,7 +5965,7 @@ function unsupportedReasons(unsupported) {
 function writeIfChanged(file, content) {
   let current;
   try {
-    current = readFileSync7(file, "utf8");
+    current = readFileSync9(file, "utf8");
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
@@ -4068,7 +5980,7 @@ function inputsOf(candidates, entry, stylesheets) {
   for (const sheet of /* @__PURE__ */ new Set([entry, ...stylesheets])) {
     hash.update("\0");
     try {
-      hash.update(readFileSync7(sheet));
+      hash.update(readFileSync9(sheet));
     } catch {
       hash.update("missing");
     }
@@ -4076,9 +5988,9 @@ function inputsOf(candidates, entry, stylesheets) {
   return hash.digest("hex");
 }
 async function buildClasses(options) {
-  const root2 = resolve8(options.root);
-  const entry = resolve8(root2, options.css);
-  const file = join9(root2, ".svelte-native", classesTableFile(options.variant));
+  const root2 = resolve10(options.root);
+  const entry = resolve10(root2, options.css);
+  const file = join11(root2, ".svelte-native", classesTableFile(options.variant));
   if (!existsSync8(entry)) throw new Error(`svelte-native: the css option names ${options.css}, which is not a file (relative to ${root2})`);
   const candidates = candidatesOf(root2);
   const previous = built.get(file);
@@ -4087,7 +5999,7 @@ async function buildClasses(options) {
   const { tailwind, directory } = loadTailwind(root2);
   const read2 = /* @__PURE__ */ new Set([entry]);
   const skipped = /* @__PURE__ */ new Set();
-  const compiler = await tailwind.compile(readFileSync7(entry, "utf8"), {
+  const compiler = await tailwind.compile(readFileSync9(entry, "utf8"), {
     base: dirname7(entry),
     from: entry,
     loadStylesheet: stylesheetLoader(directory, read2),
@@ -4104,14 +6016,14 @@ async function buildClasses(options) {
   return result;
 }
 function buildClassesSync(options) {
-  const root2 = resolve8(options.root);
-  const entry = resolve8(root2, options.css);
-  const file = join9(root2, ".svelte-native", classesTableFile(options.variant));
+  const root2 = resolve10(options.root);
+  const entry = resolve10(root2, options.css);
+  const file = join11(root2, ".svelte-native", classesTableFile(options.variant));
   const previous = built.get(file);
   const candidates = candidatesOf(root2);
   const inputs = existsSync8(entry) ? inputsOf(candidates, entry, previous?.result.stylesheets ?? []) : "";
   if (previous !== void 0 && previous.inputs === inputs && existsSync8(file)) return { ...previous.result, changed: false };
-  const cli = process.versions.bun !== void 0 && import.meta.filename.endsWith(".ts") ? sourceFile("cli.ts") : join9(packageRoot, "dist/node/cli.js");
+  const cli = process.versions.bun !== void 0 && import.meta.filename.endsWith(".ts") ? sourceFile("cli.ts") : join11(packageRoot, "dist/node/cli.js");
   const run = spawnSync4(process.execPath, [cli, "css", options.css, "--variant", options.variant, "--json"], { cwd: root2, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
   if (run.error) throw new Error(`svelte-native: could not run the CSS build (${run.error.message})`, { cause: run.error });
   if (run.status !== 0) throw new Error(run.stderr.trim() || `svelte-native: the CSS build exited with ${run.status}`);
@@ -4138,8 +6050,8 @@ function reportSkipped(skipped) {
   console.warn(`svelte-native: plugins and JS config do not apply on native: ${fresh.join(", ")} ${fresh.length === 1 ? "is" : "are"} ignored`);
 }
 function watchClasses(options, stylesheets = [], debounceMs = 100) {
-  const root2 = resolve8(options.root);
-  const source = join9(root2, "src");
+  const root2 = resolve10(options.root);
+  const source = join11(root2, "src");
   const watchers = /* @__PURE__ */ new Map();
   let timer;
   let running = Promise.resolve();
@@ -4152,7 +6064,7 @@ function watchClasses(options, stylesheets = [], debounceMs = 100) {
   };
   const followStylesheets = (files) => {
     for (const directory of new Set(files.map((file) => dirname7(file))))
-      if (!directory.split(sep4).includes("node_modules") && relative3(source, directory).startsWith("..")) watchDirectory(directory, false);
+      if (!directory.split(sep5).includes("node_modules") && relative4(source, directory).startsWith("..")) watchDirectory(directory, false);
   };
   function schedule() {
     clearTimeout(timer);
@@ -4173,7 +6085,7 @@ function watchClasses(options, stylesheets = [], debounceMs = 100) {
     });
   };
   const tree = watchTree(source, schedule, { debounceMs: 0, skip: (name) => SKIPPED_DIRECTORIES.has(name) });
-  followStylesheets([resolve8(root2, options.css), ...stylesheets]);
+  followStylesheets([resolve10(root2, options.css), ...stylesheets]);
   return {
     close() {
       closed = true;
@@ -4210,14 +6122,15 @@ var init_build2 = __esm({
 init_build();
 init_variant();
 import { watch as watch4 } from "node:fs";
-import { resolve as resolve9 } from "node:path";
+import { resolve as resolve11 } from "node:path";
 var [command = "dev", ...args] = process.argv.slice(2);
 var root = process.cwd();
 if (command === "help" || command === "--help" || command === "-h") {
   console.log(`Usage: svelte-native <command>
 
   init       turn a SvelteKit project (npx sv create) into a Svelte Native app; \`init --help\` lists its options
-  doctor     check the app's setup (peer versions, patches, Metro and Expo wiring)
+  doctor     check the app's setup (peer versions, patches, Metro and Expo wiring, push); \`doctor --server\` checks the push server's credentials instead
+  push       \`push send\` sends one push message to one device with the server's credentials; \`push --help\` and \`push send --help\` list the options
   android    sync, prebuild if android/ is missing, build and run on a device or emulator (arguments go to expo run:android)
   ios        the same for iOS (a Mac with Xcode)
   dev        regenerate .svelte-native/ when a route file changes and start Metro (arguments go to expo start)
@@ -4230,15 +6143,27 @@ if (command === "init") {
   const { runInit: runInit2 } = await Promise.resolve().then(() => (init_init_app(), init_app_exports));
   process.exit(runInit2(root, args));
 }
+async function exitAfterFlush(status) {
+  for (const stream of [process.stdout, process.stderr]) await new Promise((flushed) => stream.write("", () => flushed()));
+  process.exit(status);
+}
 if (command === "doctor") {
   const { runDoctor: runDoctor2 } = await Promise.resolve().then(() => (init_doctor(), doctor_exports));
-  process.exit(runDoctor2(root, args));
+  await exitAfterFlush(await runDoctor2(root, args));
+}
+if (command === "push") {
+  const { runPush: runPush2 } = await Promise.resolve().then(() => (init_cli(), cli_exports));
+  await exitAfterFlush(await runPush2(root, args));
 }
 if (command === "android-autolinking") {
   const { runAndroidAutolinking: runAndroidAutolinking2 } = await Promise.resolve().then(() => (init_autolinking(), autolinking_exports));
   const status = runAndroidAutolinking2(args);
   await new Promise((flushed) => process.stdout.write("", () => flushed()));
   process.exit(status);
+}
+if (command === "ios-autolinking") {
+  const { runIosAutolinking: runIosAutolinking2 } = await Promise.resolve().then(() => (init_autolinking(), autolinking_exports));
+  await exitAfterFlush(runIosAutolinking2(args));
 }
 if (command === "css") {
   const { buildClasses: buildClasses2 } = await Promise.resolve().then(() => (init_build2(), build_exports));
@@ -4279,7 +6204,7 @@ if (command === "build") {
 } else if (command === "dev") {
   await syncNative(root);
   let syncing = Promise.resolve();
-  const watcher = watch4(resolve9(root, "src/routes"), { recursive: true }, (_event, file) => {
+  const watcher = watch4(resolve11(root, "src/routes"), { recursive: true }, (_event, file) => {
     if (file && /\+(?:mobile|layout\.mobile)\.svelte$/.test(file)) {
       syncing = syncing.then(() => syncNative(root)).catch((error) => {
         console.error(error);
@@ -4303,5 +6228,5 @@ if (command === "build") {
     process.exitCode = code ?? 1;
   });
 } else if (command !== "sync") {
-  throw new Error(`Unknown command: ${command}. Use init, dev, android, ios, build, sync, css or doctor.`);
+  throw new Error(`Unknown command: ${command}. Use init, dev, android, ios, build, sync, css, doctor or push.`);
 }

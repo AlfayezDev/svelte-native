@@ -3,16 +3,17 @@ import { resolve } from "node:path";
 import { createHarness, find, settle, type FakeNode, type Natives } from "../../support/harness.ts";
 import { flattenFragments, panResponderKeys, type Oracle, type OracleNode } from "./oracle.ts";
 import type { Platform } from "../../../support/rn-reference.ts";
+import { vendorRoot } from "../../../support/paths.ts";
 
 /**
  * The Svelte components against the library's own elements (`oracle.ts`): the same element tree is mounted by both and the nodes,
  * view names and props that reach the fake Fabric binding are compared. Metro resolves the library's `react-native` import to the
  * host's shim; here that import is `processColor` (React Native's own) and `PanResponder`'s handler names (React Native's own, read once).
  */
-const modules = resolve(import.meta.dirname, "../../../../../../node_modules");
+
 /** The library's own sources by deep path (the harness stubs every other import that starts with `react-native`). */
 function libraryFile(path: string): string | undefined {
-  const base = resolve(modules, path);
+  const base = resolve(vendorRoot, path);
   return ["", ".ts", ".tsx", ".js", "/index.ts"].map((extension) => `${base}${extension}`).find((file) => /\.\w+$/.test(file) && existsSync(file));
 }
 
@@ -46,7 +47,7 @@ export async function svgHarness(platform: Platform, options: { natives?: Partia
     plugins: [...(options.colors ? [{
       name: "reanimated-colors",
       setup(builder: import("esbuild").PluginBuild) {
-        builder.onResolve({ filter: /^react-native-reanimated\/src\/common\/style\/processors\/colors$/ }, (args) => ({ path: resolve(modules, `${args.path}.ts`) }));
+        builder.onResolve({ filter: /^react-native-reanimated\/src\/common\/style\/processors\/colors$/ }, (args) => ({ path: resolve(vendorRoot, `${args.path}.ts`) }));
       },
     }] : []), {
       name: "svg-library-react-native",

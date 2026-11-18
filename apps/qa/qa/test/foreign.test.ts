@@ -245,6 +245,9 @@ describe("what the release bundle may hold", () => {
 	const sources = [
 		"/node_modules/react/index.js", "/node_modules/react/cjs/react.production.js", "/node_modules/react-native/Libraries/Core/setUpGlobals.js",
 		"/node_modules/react-native-svg/src/lib/extract/extractProps.ts", "/node_modules/expo-image-picker/src/ImagePicker.ts", "/node_modules/react-native-reanimated/src/hook/useSharedValue.ts",
+		// The libraries the package carries are in the bundle from its `vendor/` folder (in the workspace) or from `node_modules/@alfayez/svelte-native/vendor/` (installed).
+		"/packages/svelte-native/vendor/react-native-svg/src/lib/extract/extractProps.ts", "/node_modules/@alfayez/svelte-native/vendor/react-native-svg/src/lib/extract/extractTransform.ts",
+		"/packages/svelte-native/vendor/react-native-reanimated/src/hook/useSharedValue.ts",
 	];
 	test("react's own files are counted, the library extractors of react-native-svg and unrelated packages are not forbidden", () => {
 		const result = analyseSources(sources);
@@ -258,6 +261,12 @@ describe("what the release bundle may hold", () => {
 			"/node_modules/@react-native-community/datetimepicker/src/datetimepicker.android.js", "/node_modules/react-native-blob-util/index.js",
 		]);
 		expect(result.forbidden.map((value) => value.library).sort()).toEqual(["datetime", "pdf", "rive", "svg", "video"]);
+	});
+
+	test("react-native-svg's elements are forbidden from the library's copy of it as well (vendor/), in the workspace and installed", () => {
+		for (const path of ["/home/x/svelte-native/packages/svelte-native/vendor/react-native-svg/src/elements/Svg.tsx", "/app/node_modules/@alfayez/svelte-native/vendor/react-native-svg/src/elements/Path.tsx"]) {
+			expect([path, analyseSources([path]).forbidden.map((value) => value.library)]).toEqual([path, ["svg"]]);
+		}
 	});
 
 	test("expo-blur's JavaScript fails the `blur` library alone: the built-in blur has patterns of its own, which are other blur packages' and not expo-blur's", () => {

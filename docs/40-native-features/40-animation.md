@@ -39,7 +39,7 @@ There are three parts:
 - An **animation helper** such as `withSpring` or `withTiming` moves a shared value to a target over time, on the UI thread.
 - A **worklet** turns shared values into style. `animatedStyle` is a function marked `'worklet'`, which runs on the UI thread every frame the values change.
 
-Reanimated and its worklets are part of every Svelte Native app. They load the first time you call `createSharedValue` or another animation function.
+Reanimated and its worklets are part of every Svelte Native app: the library carries them (they are not dependencies of your app) and compiles your worklets with its copy of the Worklets plugin. They load the first time you call `createSharedValue` or another animation function.
 
 ## AnimatedView
 

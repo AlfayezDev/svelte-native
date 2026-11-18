@@ -129,7 +129,7 @@ function renameForCase(directory: string): void {
  * to the ones that only declare what the implementation imports. TypeScript drops a `/// <reference path>` from a declaration, so a file of `src/` that references one
  * of these has the line put back in its own: an app reaches the declaration through `/vite` and `/router`, as it did when the sources were what it checked.
  */
-const publicAmbient: readonly string[] = ["kit/modules.d.ts"];
+const publicAmbient: readonly string[] = ["kit/modules.d.ts", "vendor-types.d.ts", "vendor-types-ui.d.ts"];
 
 function carryReferences(directory: string): void {
   for (const name of filesUnder(join(packageRoot, "src")).filter((file) => file.endsWith(".ts") && !file.endsWith(".d.ts"))) {

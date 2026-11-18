@@ -70,11 +70,12 @@ const platform = (reanimated: Record<string, string>): Record<string, string> =>
 });
 
 async function load(table: unknown, mutations: readonly Mutation[] = []): Promise<{ bundle: Bundle; harness: Harness }> {
-	const [{ componentOptions, lowersHtml }, { lowerPrimitives }, harness, { reanimatedStubs }] = await Promise.all([
+	const [{ componentOptions, lowersHtml }, { lowerPrimitives }, harness, { reanimatedStubs }, { vendoredAliases }] = await Promise.all([
 		import(pathToFileURL(join(library, "src/compile-options.ts")).href) as Promise<{ componentOptions(path: string): Record<string, unknown>; lowersHtml(path: string): boolean }>,
 		import(pathToFileURL(join(library, "src/lower.ts")).href) as Promise<{ lowerPrimitives(source: string, options: { filename: string; html: boolean; warn: (message: string) => void }): string }>,
 		import(pathToFileURL(join(library, "tests/support/html-harness.ts")).href) as Promise<Harness>,
 		import(pathToFileURL(join(library, "tests/support/reanimated-stubs.ts")).href) as Promise<{ reanimatedStubs: Record<string, string> }>,
+		import(pathToFileURL(join(library, "tests/support/paths.ts")).href) as Promise<{ vendoredAliases: Record<string, string> }>,
 	]);
 	const stubs = platform(reanimatedStubs);
 	const components = ["TextInput", "Switch", "Modal"];
@@ -90,6 +91,8 @@ async function load(table: unknown, mutations: readonly Mutation[] = []): Promis
 			resolveDir: platformDir,
 		},
 		bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false, define: { __DEV__: "false" },
+		// What Metro does for every importer: the names of the packages the library carries (and every path below them) are its copies in vendor/.
+		alias: vendoredAliases,
 		plugins: [{
 			name: "html-probe",
 			setup(builder) {
@@ -103,8 +106,9 @@ async function load(table: unknown, mutations: readonly Mutation[] = []): Promis
 					}
 					return { contents, loader: "ts" };
 				});
-				builder.onResolve({ filter: /^(react-native|expo-modules-core|@alfayez\/svelte-native$)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
-				builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
+				// The packages the library carries are imported as `#vendor/<name>` by its own sources, and by name by the rest: the stand-ins are written for the names. Gesture handler is the one that is real.
+				builder.onResolve({ filter: /^(react-native|expo-modules-core|expo-constants$|@alfayez\/svelte-native$|#vendor\/)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
+				builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? stubs[args.path.replace(/^#vendor\//, "")] ?? "export {};", loader: "js" }));
 				builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: join(library, "tests/support/view-configs-stub.ts") }));
 				builder.onResolve({ filter: /^@alfayez\/svelte-native\/classes-table$/ }, (args) => ({ path: args.path, namespace: "classes-table" }));
 				builder.onLoad({ filter: /.*/, namespace: "classes-table" }, () => ({ contents: `export default ${JSON.stringify(table)};`, loader: "js" }));

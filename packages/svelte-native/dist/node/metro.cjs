@@ -29,15 +29,18 @@ __export(metro_exports, {
   RENDERER_STUBS: () => RENDERER_STUBS,
   closeWatchers: () => closeWatchers,
   isInPackage: () => isInPackage,
+  isLiteOrigin: () => isLiteOrigin,
   libraryChanged: () => libraryChanged,
+  libraryStubSource: () => libraryStubSource,
+  pushPlatforms: () => pushPlatforms,
   stubCoreSource: () => stubCoreSource,
   stubSource: () => stubSource,
   withSvelteNative: () => withSvelteNative
 });
 module.exports = __toCommonJS(metro_exports);
-var import_node_fs6 = require("node:fs");
-var import_node_module5 = require("node:module");
-var import_node_path9 = require("node:path");
+var import_node_fs7 = require("node:fs");
+var import_node_module6 = require("node:module");
+var import_node_path10 = require("node:path");
 
 // src/build.ts
 var import_node_fs3 = require("node:fs");
@@ -108,16 +111,16 @@ function buildTree(files) {
     const found = /* @__PURE__ */ new Map();
     for (const source of everyDirectory) {
       if (!source.key.startsWith(`${tabs.key}/`)) continue;
-      const relative4 = source.directory.slice(tabs.directory.length);
+      const relative5 = source.directory.slice(tabs.directory.length);
       let groups = 0;
-      while (groups < relative4.length && isGroup(relative4[groups])) groups++;
-      if (groups === relative4.length) {
+      while (groups < relative5.length && isGroup(relative5[groups])) groups++;
+      if (groups === relative5.length) {
         const isPage = pages.get(source.key) === source;
         if (isPage || navigators.has(source.key)) throw new Error(`${source.path}: a ${isPage ? "page" : "navigator layout"} directly under a tabs layout has no pane to show in; move it into a pane directory`);
         continue;
       }
-      const key = relative4[groups];
-      const directory = tabs.directory.concat(relative4.slice(0, groups + 1));
+      const key = relative5[groups];
+      const directory = tabs.directory.concat(relative5.slice(0, groups + 1));
       const known = found.get(key);
       if (known && known.directory.join("/") !== directory.join("/")) throw new Error(`pane ${key} of ${tabs.key} is defined twice: ${known.directory.join("/")} and ${directory.join("/")}`);
       if (key.startsWith("[")) throw new Error(`${source.path}: a pane is a fixed directory, not a parameter`);
@@ -2648,12 +2651,424 @@ function assertCustomRenderer(what, from) {
   if (!inspection.ok) throw new Error(customRendererMessage(inspection, what));
 }
 
+// src/libraries.ts
+var import_node_module5 = require("node:module");
+
+// src/push/common.ts
+var isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+
+// src/push/config.ts
+var Refusal = class extends Error {
+};
+var refuse = (message) => {
+  throw new Refusal(message);
+};
+function section(value, where, example) {
+  if (!isRecord(value)) return refuse(`${where} takes an object: ${example}`);
+  return value;
+}
+function optionalText(value, where) {
+  if (value === void 0) return void 0;
+  if (typeof value !== "string" || value.trim() === "") return refuse(`${where} must be a text that is not empty.`);
+  return value;
+}
+function readIos(value) {
+  const ios = section(value, "capabilities.push.ios", '`ios: { mode: "production" }`');
+  if (ios.mode !== "development" && ios.mode !== "production")
+    return refuse(
+      'capabilities.push.ios.mode must be "development" or "production": it is the aps-environment entitlement, "development" for a build signed for development and "production" for TestFlight and the App Store.'
+    );
+  return { mode: ios.mode };
+}
+function readAndroid(value) {
+  const android = section(value, "capabilities.push.android", '`android: { googleServicesFile: "./google-services.json" }`');
+  const file = android.googleServicesFile;
+  if (typeof file !== "string" || file.trim() === "")
+    return refuse(
+      'capabilities.push.android needs googleServicesFile, the path of the Firebase project\'s google-services.json (Firebase console, Project settings, your Android app): `android: { googleServicesFile: "./google-services.json" }`. Leave `android` out for an app that has no push on Android.'
+    );
+  const settings = { googleServicesFile: file };
+  const icon = optionalText(android.icon, "capabilities.push.android.icon");
+  if (icon !== void 0) {
+    if (!/\.png$/i.test(icon)) return refuse(`capabilities.push.android.icon ("${icon}") must be a PNG file: the notification's small icon, white on a transparent background.`);
+    settings.icon = icon;
+  }
+  const color = optionalText(android.color, "capabilities.push.android.color");
+  if (color !== void 0) {
+    if (!/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color)) return refuse(`capabilities.push.android.color ("${color}") must be a hex color such as "#0a7f5a": the notification's accent color.`);
+    settings.color = color;
+  }
+  if (android.channel !== void 0) {
+    const channel = section(android.channel, "capabilities.push.android.channel", '`channel: { name: "Updates" }`');
+    if (typeof channel.name !== "string" || channel.name.trim() === "")
+      return refuse('capabilities.push.android.channel needs a name, as the user will read it in the app\'s notification settings: `channel: { name: "Updates" }`.');
+    const id = optionalText(channel.id, "capabilities.push.android.channel.id");
+    const description = optionalText(channel.description, "capabilities.push.android.channel.description");
+    settings.channel = { ...id === void 0 ? {} : { id }, name: channel.name, ...description === void 0 ? {} : { description } };
+  }
+  return settings;
+}
+function checkPushConfig(push) {
+  try {
+    const platforms = section(push, "capabilities.push", '`push: { android: { googleServicesFile: "./google-services.json" }, ios: { mode: "production" } }`, or `push: false`');
+    if (platforms.android === void 0 && platforms.ios === void 0)
+      return refuse(
+        "capabilities.push names no platform: give `android` (its google-services.json), `ios` (its aps-environment mode) or both, or turn the capability off with `push: false`."
+      );
+    const config = {};
+    if (platforms.android !== void 0) config.android = readAndroid(platforms.android);
+    if (platforms.ios !== void 0) config.ios = readIos(platforms.ios);
+    return { config };
+  } catch (error) {
+    if (error instanceof Refusal) return { problem: error.message };
+    throw error;
+  }
+}
+var pushIsOn = (push) => push !== void 0 && push !== null && push !== false;
+
+// src/vendored.ts
+var import_node_fs6 = require("node:fs");
+var import_node_path9 = require("node:path");
+
+// src/optional-libraries.ts
+var react = "react-native";
+var expo = "expo";
+var optionalLibraries = [
+  // Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module, so they have no `android` or `ios` entry here.
+  { name: "expo-blur", version: "57.0.3", optional: { kind: expo } },
+  { name: "expo-conic-gradient", version: "0.2.1", optional: { kind: expo } },
+  { name: "expo-image", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+  { name: "expo-linear-gradient", version: "57.0.2", optional: { kind: expo } },
+  { name: "expo-video", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+  // React Native packages: an entry of the autolinking config for each platform.
+  {
+    name: "@react-native-community/datetimepicker",
+    version: "9.1.0",
+    android: { packageImportPath: "import com.reactcommunity.rndatetimepicker.RNDateTimePickerPackage;", packageInstance: "new RNDateTimePickerPackage()" },
+    ios: { podspec: "RNDateTimePicker.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    name: "lottie-react-native",
+    version: "7.3.8",
+    android: { packageImportPath: "import com.airbnb.android.react.lottie.LottiePackage;", packageInstance: "new LottiePackage()", componentDescriptors: ["LottieAnimationViewComponentDescriptor"] },
+    ios: { podspec: "lottie-react-native.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-animateable-text",
+    version: "0.19.3",
+    android: {
+      packageImportPath: "import com.reactnativereanimatedtext.ReanimatedTextPackage;",
+      packageInstance: "new ReanimatedTextPackage()",
+      libraryName: "JBAnimatedText",
+      componentDescriptors: ["CParagraphComponentDescriptor"],
+      cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+    },
+    ios: { podspec: "react-native-animateable-text.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-blob-util",
+    version: "0.24.9",
+    android: { packageImportPath: "import com.ReactNativeBlobUtil.ReactNativeBlobUtilPackage;", packageInstance: "new ReactNativeBlobUtilPackage()" },
+    ios: { podspec: "react-native-blob-util.podspec" },
+    optional: { kind: react }
+  },
+  {
+    // No iOS code: `ShadowedView` is React Native's own `View` there (the layer's shadow), so the library has no podspec.
+    name: "react-native-fast-shadow",
+    version: "0.1.1",
+    android: { packageImportPath: "import com.reactnativefastshadow.FastShadowPackage;", packageInstance: "new FastShadowPackage()" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-maps",
+    version: "1.27.2",
+    android: {
+      packageImportPath: "import com.rnmaps.maps.MapsPackage;",
+      packageInstance: "new MapsPackage()",
+      componentDescriptors: [
+        "RNMapsCalloutComponentDescriptor",
+        "RNMapsCircleComponentDescriptor",
+        "RNMapsGoogleMapViewComponentDescriptor",
+        "RNMapsGooglePolygonComponentDescriptor",
+        "RNMapsMapViewComponentDescriptor",
+        "RNMapsMarkerComponentDescriptor",
+        "RNMapsOverlayComponentDescriptor",
+        "RNMapsPolylineComponentDescriptor",
+        "RNMapsUrlTileComponentDescriptor",
+        "RNMapsWMSTileComponentDescriptor"
+      ],
+      cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+    },
+    ios: { podspec: "react-native-maps.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    // The PDF view reads its files through react-native-blob-util's native module, so turning it on turns that one on.
+    name: "react-native-pdf",
+    version: "7.0.3",
+    android: { packageImportPath: "import org.wonday.pdf.RNPDFPackage;", packageInstance: "new RNPDFPackage()", componentDescriptors: ["RNPDFPdfViewComponentDescriptor"] },
+    ios: { podspec: "react-native-pdf.podspec" },
+    optional: { kind: react, requires: ["react-native-blob-util"] }
+  },
+  {
+    name: "react-native-video",
+    version: "6.19.3",
+    android: { packageImportPath: "import com.brentvatne.react.ReactVideoPackage;", packageInstance: "new ReactVideoPackage()" },
+    ios: { podspec: "react-native-video.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    name: "react-native-view-shot",
+    version: "5.1.0",
+    android: { packageImportPath: "import fr.greweb.reactnativeviewshot.RNViewShotPackage;", packageInstance: "new RNViewShotPackage()" },
+    ios: { podspec: "react-native-view-shot.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-webview",
+    version: "13.16.1",
+    android: { packageImportPath: "import com.reactnativecommunity.webview.RNCWebViewPackage;", packageInstance: "new RNCWebViewPackage()", componentDescriptors: ["RNCWebViewComponentDescriptor"] },
+    ios: { podspec: "react-native-webview.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "rive-react-native",
+    version: "9.7.1",
+    android: { packageImportPath: "import com.rivereactnative.RiveReactNativePackage;", packageInstance: "new RiveReactNativePackage()" },
+    ios: { podspec: "rive-react-native.podspec" },
+    optional: { kind: react }
+  }
+];
+
+// src/vendored.ts
+var vendoredPackages = [
+  // The optional view libraries (`optional-libraries.ts`).
+  ...optionalLibraries,
+  {
+    name: "react-native-nitro-modules",
+    version: "0.35.10",
+    android: { packageImportPath: "import com.margelo.nitro.NitroModulesPackage;", packageInstance: "new NitroModulesPackage()" },
+    ios: { podspec: "NitroModules.podspec" }
+  },
+  {
+    name: "react-native-mmkv",
+    version: "4.3.1",
+    android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
+    ios: { podspec: "NitroMmkv.podspec" }
+  },
+  {
+    // The base64 module quick-crypto and its Buffer ask for (`libraryName` QuickBase64 is the `react { }` block of its build.gradle).
+    name: "react-native-quick-base64",
+    version: "2.2.2",
+    android: { packageImportPath: "import com.reactnativequickbase64.QuickBase64Package;", packageInstance: "new QuickBase64Package()" },
+    ios: { podspec: "react-native-quick-base64.podspec" }
+  },
+  {
+    // `crypto` and `crypto.subtle`: a Nitro module over OpenSSL (and libsodium, when the plugin's `sodiumEnabled` is on). It links the vendored Nitro runtime by its project name and pod.
+    name: "react-native-quick-crypto",
+    version: "1.1.3",
+    android: { packageImportPath: "import com.margelo.nitro.quickcrypto.QuickCryptoPackage;", packageInstance: "new QuickCryptoPackage()" },
+    ios: { podspec: "QuickCrypto.podspec" }
+  },
+  {
+    // The `Intl` constructors Hermes lacks: a pure C++ TurboModule (no view, no module class: the `ReactPackage` is empty), so Android adds its CMake module to the app's build.
+    name: "hermes-intl",
+    version: "0.1.2",
+    android: { packageImportPath: "import dev.hermesintl.HermesIntlPackage;", packageInstance: "new HermesIntlPackage()", cxxModule: { cmakeListsModuleName: "hermesintl", cmakeListsPath: "android/CMakeLists.txt", headerName: "NativeHermesIntl" } },
+    ios: { podspec: "HermesIntl.podspec" }
+  },
+  {
+    name: "react-native-gesture-handler",
+    version: "2.32.0",
+    // The two components of its codegen (`RNGestureHandlerButton`, `RNGestureHandlerRootView`); `libraryName` is `codegenConfig.name`.
+    android: { packageImportPath: "import com.swmansion.gesturehandler.RNGestureHandlerPackage;", packageInstance: "new RNGestureHandlerPackage()", componentDescriptors: ["RNGestureHandlerButtonComponentDescriptor", "RNGestureHandlerRootViewComponentDescriptor"] },
+    ios: { podspec: "RNGestureHandler.podspec" }
+  },
+  {
+    name: "react-native-worklets",
+    version: "0.10.1",
+    android: { packageImportPath: "import com.swmansion.worklets.WorkletsPackage;", packageInstance: "new WorkletsPackage()" },
+    ios: { podspec: "RNWorklets.podspec" }
+  },
+  {
+    name: "react-native-reanimated",
+    version: "4.5.1",
+    android: { packageImportPath: "import com.swmansion.reanimated.ReanimatedPackage;", packageInstance: "new ReanimatedPackage()" },
+    ios: { podspec: "RNReanimated.podspec" }
+  },
+  {
+    name: "react-native-svg",
+    version: "15.15.4",
+    // The 29 components of its `react-native.config.js`, and its codegen CMake file, which is in the sources and not below `android/build/` (a test reads both from the copy).
+    android: {
+      packageImportPath: "import com.horcrux.svg.SvgPackage;",
+      packageInstance: "new SvgPackage()",
+      componentDescriptors: [
+        "RNSVGCircleComponentDescriptor",
+        "RNSVGClipPathComponentDescriptor",
+        "RNSVGDefsComponentDescriptor",
+        "RNSVGFeBlendComponentDescriptor",
+        "RNSVGFeColorMatrixComponentDescriptor",
+        "RNSVGFeCompositeComponentDescriptor",
+        "RNSVGFeFloodComponentDescriptor",
+        "RNSVGFeGaussianBlurComponentDescriptor",
+        "RNSVGFeMergeComponentDescriptor",
+        "RNSVGFeOffsetComponentDescriptor",
+        "RNSVGFilterComponentDescriptor",
+        "RNSVGEllipseComponentDescriptor",
+        "RNSVGForeignObjectComponentDescriptor",
+        "RNSVGGroupComponentDescriptor",
+        "RNSVGImageComponentDescriptor",
+        "RNSVGLinearGradientComponentDescriptor",
+        "RNSVGLineComponentDescriptor",
+        "RNSVGMarkerComponentDescriptor",
+        "RNSVGMaskComponentDescriptor",
+        "RNSVGPathComponentDescriptor",
+        "RNSVGPatternComponentDescriptor",
+        "RNSVGRadialGradientComponentDescriptor",
+        "RNSVGRectComponentDescriptor",
+        "RNSVGSvgViewAndroidComponentDescriptor",
+        "RNSVGSymbolComponentDescriptor",
+        "RNSVGTextComponentDescriptor",
+        "RNSVGTextPathComponentDescriptor",
+        "RNSVGTSpanComponentDescriptor",
+        "RNSVGUseComponentDescriptor"
+      ],
+      cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+    },
+    ios: { podspec: "RNSVG.podspec" }
+  }
+];
+var vendoredNames = vendoredPackages.map((vendored) => vendored.name);
+var optionalPackages = vendoredPackages.filter((vendored) => vendored.optional !== void 0);
+var alwaysLinkedPackages = vendoredPackages.filter((vendored) => vendored.optional === void 0);
+var vendoredPackage = (name) => vendoredPackages.find((vendored) => vendored.name === name);
+var vendorDirectory = (root = packageRoot) => (0, import_node_path9.join)(root, "vendor");
+var vendoredRoot = (name, root = packageRoot) => (0, import_node_path9.join)(vendorDirectory(root), name);
+function vendoredImport(request) {
+  for (const vendored of vendoredPackages) {
+    if (request === vendored.name) return { vendored, subpath: "" };
+    if (request.startsWith(`${vendored.name}/`)) return { vendored, subpath: request.slice(vendored.name.length + 1) };
+  }
+  return void 0;
+}
+var real = (path) => {
+  try {
+    return (0, import_node_fs6.realpathSync)(path);
+  } catch {
+    return path;
+  }
+};
+var spellings = /* @__PURE__ */ new Map();
+function vendorSpellings(root) {
+  let found = spellings.get(root);
+  if (found === void 0) {
+    found = [.../* @__PURE__ */ new Set([vendorDirectory(root), real(vendorDirectory(root))])];
+    spellings.set(root, found);
+  }
+  return found;
+}
+function vendoredFileAs(path, root = packageRoot) {
+  for (const directory of vendorSpellings(root)) {
+    const relativePath = (0, import_node_path9.relative)(directory, path);
+    if (relativePath !== "" && !relativePath.startsWith("..") && !(0, import_node_path9.isAbsolute)(relativePath)) {
+      const inside = relativePath.split(import_node_path9.sep).join("/");
+      if (vendoredPackages.some((vendored) => inside === vendored.name || inside.startsWith(`${vendored.name}/`))) return inside;
+    }
+  }
+  return void 0;
+}
+function withRequired(names) {
+  const all = /* @__PURE__ */ new Set();
+  const add = (name) => {
+    if (all.has(name)) return;
+    all.add(name);
+    for (const required of vendoredPackage(name)?.optional?.requires ?? []) add(required);
+  };
+  for (const name of names) add(name);
+  return [...all];
+}
+
+// src/libraries.ts
+var LibrariesConfigError = class extends Error {
+  name = "LibrariesConfigError";
+};
+var libraryNames = optionalPackages.map((vendored) => vendored.name);
+var enableMessage = (name) => `${name} is not in this app: turn it on with \`libraries: { "${name}": true }\` in the @alfayez/svelte-native plugin options (app.json or app.config.*), then prebuild and build the app again`;
+var isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+function checkLibraries(option) {
+  if (option === void 0 || option === null) return { listed: /* @__PURE__ */ new Map(), enabled: [] };
+  if (!isObject(option)) throw new LibrariesConfigError('`libraries` takes an object of library names: `libraries: { "react-native-maps": true }`');
+  const listed = /* @__PURE__ */ new Map();
+  for (const [name, value] of Object.entries(option)) {
+    const vendored = vendoredPackage(name);
+    if (vendored?.optional === void 0) {
+      const always = vendored !== void 0 ? ` ${name} is in every app: there is nothing to turn on.` : "";
+      throw new LibrariesConfigError(`\`libraries\` names "${name}", which is not one of the optional libraries @alfayez/svelte-native carries.${always} The libraries: ${libraryNames.join(", ")}.`);
+    }
+    if (value === false) continue;
+    if (value === true) {
+      listed.set(name, void 0);
+      continue;
+    }
+    if (!isObject(value)) throw new LibrariesConfigError(`libraries["${name}"] is \`true\`, \`false\` or the options of ${name}'s config plugin (an object), not ${JSON.stringify(value) ?? String(value)}`);
+    if (vendored.optional.plugin === void 0 && Object.keys(value).length > 0) {
+      throw new LibrariesConfigError(`libraries["${name}"] has options (${Object.keys(value).join(", ")}), and ${name} has no config plugin to give them to: write \`libraries: { "${name}": true }\``);
+    }
+    listed.set(name, value);
+  }
+  const wanted = withRequired(listed.keys());
+  return { listed, enabled: libraryNames.filter((name) => wanted.includes(name)) };
+}
+var PLUGIN_NAMES = /* @__PURE__ */ new Set(["@alfayez/svelte-native", "@alfayez/svelte-native/app.plugin", "@alfayez/svelte-native/expo"]);
+function isLibraryPlugin(entry) {
+  if (typeof entry !== "string") return false;
+  if (PLUGIN_NAMES.has(entry)) return true;
+  const path = entry.replace(/\\/g, "/").replace(/\/$/, "").replace(/\.js$/, "");
+  return [...PLUGIN_NAMES].some((name) => path.endsWith(`/node_modules/${name}`));
+}
+function appPluginOptions(projectRoot, from = __importMetaUrl) {
+  let plugins;
+  try {
+    const { getConfig } = (0, import_node_module5.createRequire)(from)("expo/config");
+    plugins = getConfig(projectRoot, { skipSDKVersionRequirement: true }).exp.plugins;
+  } catch (error) {
+    return { unknown: `could not read the app's config: ${error instanceof Error ? error.message : String(error)}`, error };
+  }
+  const entry = (Array.isArray(plugins) ? plugins : []).find((plugin) => isLibraryPlugin(Array.isArray(plugin) ? plugin[0] : plugin));
+  if (entry === void 0) return { unknown: "no entry of the app's `plugins` names @alfayez/svelte-native" };
+  const options = Array.isArray(entry) ? entry[1] : void 0;
+  return { options: isObject(options) ? options : void 0 };
+}
+function pushPlatformsOf(options) {
+  const push = isObject(options?.capabilities) ? options.capabilities.push : void 0;
+  if (!pushIsOn(push)) return { android: false, ios: false };
+  const checked = checkPushConfig(push);
+  return "config" in checked ? { android: checked.config.android !== void 0, ios: checked.config.ios !== void 0 } : void 0;
+}
+function enabledLibraries(options) {
+  try {
+    return checkLibraries(options?.libraries);
+  } catch (error) {
+    if (error instanceof LibrariesConfigError) return void 0;
+    throw error;
+  }
+}
+
 // src/metro.ts
-var require4 = (0, import_node_module5.createRequire)(__importMetaUrl);
-var nativeSvelte = (0, import_node_path9.dirname)(require4.resolve("svelte/package.json"));
+var require4 = (0, import_node_module6.createRequire)(__importMetaUrl);
+var nativeSvelte = (0, import_node_path10.dirname)(require4.resolve("svelte/package.json"));
 var LITE_ORIGINS = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:hermes-intl|expo|expo-modules-core|expo-file-system|react-native-reanimated|react-native-worklets|react-native-is-edge-to-edge|expo-secure-store|expo-image-picker|expo-localization|expo-crypto|expo-constants|expo-font|expo-asset|expo-splash-screen|expo-status-bar|expo-system-ui|expo-keep-awake|expo-application|react-native-nitro-modules|react-native-mmkv|react-native-quick-crypto|react-native-quick-base64|react-native-svg)[\\/]/;
 var NODE_CRYPTO = /* @__PURE__ */ new Set(["crypto", "node:crypto"]);
 var QUICK_CRYPTO = "react-native-quick-crypto";
+function isLiteOrigin(path) {
+  if (LITE_ORIGINS.test(path)) return true;
+  const vendored = vendoredFileAs(path);
+  return vendored !== void 0 && LITE_ORIGINS.test(`/node_modules/${vendored}`);
+}
 var INITIALIZE_CORE = /react-native[\\/]Libraries[\\/]Core[\\/]InitializeCore\.js$/;
 var RENDERER_STUBS = {
   "react-native/Libraries/ReactNative/RendererProxy.js": "./fabric/renderer-stub.ts",
@@ -2669,8 +3084,8 @@ function closeWatchers() {
 }
 var stubCoreSource = `// Generated by @alfayez/svelte-native/metro: what stands in for a package this app does not link.
 "use strict";
-module.exports = (name, variant) => {
-  const fail = () => { throw new Error(name + " is not in this app (APP_VARIANT=" + variant + ")"); };
+module.exports = (name, variant, message) => {
+  const fail = () => { throw new Error(message || name + " is not in this app (APP_VARIANT=" + variant + ")"); };
   // A bound function: callable and constructible, and without the non-configurable prototype property that ownKeys below would have to report.
   return new Proxy(function () {}.bind(null), {
     get: (_target, key) => (key === "__esModule" ? false : typeof key === "symbol" ? undefined : fail()),
@@ -2687,56 +3102,73 @@ function stubSource(name, variant) {
 module.exports = require("./_core.js")(${JSON.stringify(name)}, ${JSON.stringify(variant)});
 `;
 }
+function libraryStubSource(name) {
+  return `// Generated by @alfayez/svelte-native/metro: ${name} is an optional library this app did not turn on (libraries).
+module.exports = require("./_core.js")(${JSON.stringify(name)}, "", ${JSON.stringify(enableMessage(name))});
+`;
+}
 var isInPackage = (moduleName, name) => moduleName === name || moduleName.startsWith(`${name}/`);
 var resetForLibrary;
-function libraryChanged(projectRoot, library = (0, import_node_fs6.realpathSync)(packageRoot)) {
-  const record = (0, import_node_path9.join)(projectRoot, ".svelte-native", "metro-library");
+function libraryChanged(projectRoot, library = (0, import_node_fs7.realpathSync)(packageRoot)) {
+  const record = (0, import_node_path10.join)(projectRoot, ".svelte-native", "metro-library");
   let previous;
   try {
-    previous = (0, import_node_fs6.readFileSync)(record, "utf8").trim();
+    previous = (0, import_node_fs7.readFileSync)(record, "utf8").trim();
   } catch {
     previous = void 0;
   }
   if (previous === library) return false;
-  (0, import_node_fs6.mkdirSync)((0, import_node_path9.dirname)(record), { recursive: true });
-  (0, import_node_fs6.writeFileSync)(record, `${library}
+  (0, import_node_fs7.mkdirSync)((0, import_node_path10.dirname)(record), { recursive: true });
+  (0, import_node_fs7.writeFileSync)(record, `${library}
 `);
   return true;
 }
+var realOr = (path) => {
+  try {
+    return (0, import_node_fs7.realpathSync)(path);
+  } catch {
+    return path;
+  }
+};
+function pushPlatforms(projectRoot) {
+  const read = appPluginOptions(projectRoot);
+  return "unknown" in read ? void 0 : pushPlatformsOf(read.options);
+}
+var unknownConfigWarned = false;
 function withSvelteNative(config, options = {}) {
   assertCustomRenderer("withSvelteNative (@alfayez/svelte-native/metro)");
   Object.assign(process.env, runesEnvironment(options.runes), asyncEnvironment(options.async));
   const resolveRequest = config.resolver.resolveRequest;
   const stubbed = options.stubbedPackages ?? [];
   const variant = options.variant ?? variantName();
-  const stubDirectory = (0, import_node_path9.join)(config.projectRoot, ".svelte-native", "stubs", variant.replace(/[^A-Za-z0-9_-]/g, "_"));
+  const stubDirectory = (0, import_node_path10.join)(config.projectRoot, ".svelte-native", "stubs", variant.replace(/[^A-Za-z0-9_-]/g, "_"));
   const write = (file, content) => {
     let current;
     try {
-      current = (0, import_node_fs6.readFileSync)(file, "utf8");
+      current = (0, import_node_fs7.readFileSync)(file, "utf8");
     } catch {
       current = void 0;
     }
-    if (current !== content) (0, import_node_fs6.writeFileSync)(file, content);
+    if (current !== content) (0, import_node_fs7.writeFileSync)(file, content);
   };
   const stubs = /* @__PURE__ */ new Map();
   if (stubbed.length > 0) {
-    (0, import_node_fs6.mkdirSync)(stubDirectory, { recursive: true });
-    write((0, import_node_path9.join)(stubDirectory, "_core.js"), stubCoreSource);
+    (0, import_node_fs7.mkdirSync)(stubDirectory, { recursive: true });
+    write((0, import_node_path10.join)(stubDirectory, "_core.js"), stubCoreSource);
   }
   for (const name of stubbed) {
-    const file = (0, import_node_path9.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
-    (0, import_node_fs6.mkdirSync)(stubDirectory, { recursive: true });
+    const file = (0, import_node_path10.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
+    (0, import_node_fs7.mkdirSync)(stubDirectory, { recursive: true });
     write(file, stubSource(name, variant));
     stubs.set(name, file);
   }
   const withoutExtension = (path) => path.replace(/\.[cm]?[jt]sx?$/, "");
   const nameOf = (path) => withoutExtension(path).slice(config.projectRoot.length + 1);
-  const writeStub = (name) => {
-    const file = (0, import_node_path9.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
-    (0, import_node_fs6.mkdirSync)(stubDirectory, { recursive: true });
-    write((0, import_node_path9.join)(stubDirectory, "_core.js"), stubCoreSource);
-    write(file, stubSource(name, variant));
+  const writeStub = (name, source = stubSource(name, variant)) => {
+    const file = (0, import_node_path10.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
+    (0, import_node_fs7.mkdirSync)(stubDirectory, { recursive: true });
+    write((0, import_node_path10.join)(stubDirectory, "_core.js"), stubCoreSource);
+    write(file, source);
     return file;
   };
   const files = /* @__PURE__ */ new Map();
@@ -2744,17 +3176,17 @@ function withSvelteNative(config, options = {}) {
   const directories = /* @__PURE__ */ new Map();
   for (const path of options.stubbedDirectories ?? []) {
     const directory = path.replace(/[\\/]+$/, "");
-    directories.set(directory + import_node_path9.sep, writeStub(`${nameOf(directory)}/`));
+    directories.set(directory + import_node_path10.sep, writeStub(`${nameOf(directory)}/`));
   }
   const lab = labIncludedFor(variant);
-  const entryFile = (0, import_node_path9.join)(config.projectRoot, ".svelte-native", "entry.ts");
-  const routesTable = (0, import_node_path9.join)(config.projectRoot, ".svelte-native", routesTableFile(variant));
-  if (options.syncRoutes ?? (0, import_node_fs6.existsSync)((0, import_node_path9.join)(config.projectRoot, "src/routes"))) {
+  const entryFile = (0, import_node_path10.join)(config.projectRoot, ".svelte-native", "entry.ts");
+  const routesTable = (0, import_node_path10.join)(config.projectRoot, ".svelte-native", routesTableFile(variant));
+  if (options.syncRoutes ?? (0, import_node_fs7.existsSync)((0, import_node_path10.join)(config.projectRoot, "src/routes"))) {
     const syncing = { variant, lab, entry: "keep" };
     syncRoutes(config.projectRoot, syncing);
     if (process.env.NODE_ENV === "development") watchers.add(watchRoutes(config.projectRoot, syncing));
   }
-  const classesTable = options.css === void 0 ? sourceFile("css/empty-table.ts") : (0, import_node_path9.join)(config.projectRoot, ".svelte-native", classesTableFile(variant));
+  const classesTable = options.css === void 0 ? sourceFile("css/empty-table.ts") : (0, import_node_path10.join)(config.projectRoot, ".svelte-native", classesTableFile(variant));
   if (options.css !== void 0) {
     const building = { root: config.projectRoot, css: options.css, variant };
     const built2 = buildClassesSync(building);
@@ -2762,10 +3194,24 @@ function withSvelteNative(config, options = {}) {
     reportUnsupported(built2.unsupported);
     if (process.env.NODE_ENV === "development") watchers.add(watchClasses(building, built2.stylesheets));
   }
+  const pushClient = (0, import_node_fs7.realpathSync)(sourceFile("push/push.svelte.ts"));
+  const read = appPluginOptions(config.projectRoot);
+  if ("unknown" in read && options.libraries === void 0 && !unknownConfigWarned) {
+    unknownConfigWarned = true;
+    console.warn(`svelte-native: ${read.unknown}; every optional library and the push client are bundled`);
+  }
+  const pushOn = "unknown" in read ? void 0 : pushPlatformsOf(read.options);
+  const libraries = options.libraries !== void 0 ? withRequired(options.libraries) : "unknown" in read ? void 0 : enabledLibraries(read.options)?.enabled;
+  const libraryStubs = /* @__PURE__ */ new Map();
+  if (libraries !== void 0) {
+    for (const name of libraryNames.filter((candidate) => !libraries.includes(candidate))) libraryStubs.set(name, writeStub(name, libraryStubSource(name)));
+  }
+  const pushAbsent = sourceFile("push/absent.ts");
+  const pushOff = (platform) => pushOn !== void 0 && (platform === "ios" ? !pushOn.ios : platform === "android" ? !pushOn.android : !pushOn.android && !pushOn.ios);
   const stubFor = (moduleName, origin) => {
     const name = stubbed.find((candidate) => isInPackage(moduleName, candidate));
     if (name !== void 0) return stubs.get(name) ?? null;
-    if (files.size > 0 && (moduleName.startsWith("./") || moduleName.startsWith("../"))) return files.get(withoutExtension((0, import_node_path9.resolve)((0, import_node_path9.dirname)(origin), moduleName))) ?? null;
+    if (files.size > 0 && (moduleName.startsWith("./") || moduleName.startsWith("../"))) return files.get(withoutExtension((0, import_node_path10.resolve)((0, import_node_path10.dirname)(origin), moduleName))) ?? null;
     return null;
   };
   const stubForFile = (filePath) => {
@@ -2783,7 +3229,7 @@ function withSvelteNative(config, options = {}) {
     resolveRequest: (given, requested, platform) => {
       const aliased = NODE_CRYPTO.has(requested);
       const moduleName = aliased ? QUICK_CRYPTO : requested;
-      const context = aliased ? { ...given, originModulePath: (0, import_node_path9.join)(config.projectRoot, "package.json") } : given;
+      const context = aliased ? { ...given, originModulePath: (0, import_node_path10.join)(config.projectRoot, "package.json") } : given;
       if (moduleName === "@alfayez/svelte-native/routes" || moduleName === "./routes" && context.originModulePath === entryFile) return { type: "sourceFile", filePath: routesTable };
       if (moduleName === "@alfayez/svelte-native/classes-table") return { type: "sourceFile", filePath: classesTable };
       const stub = stubFor(moduleName, context.originModulePath);
@@ -2797,19 +3243,25 @@ function withSvelteNative(config, options = {}) {
       if (kit !== void 0) return { type: "sourceFile", filePath: kit };
       if (moduleName === "svelte/reactivity/window") return { type: "sourceFile", filePath: sourceFile("reactivity-window.ts") };
       if (moduleName === "svelte" || moduleName.startsWith("svelte/")) {
-        const nativeContext = { ...context, originModulePath: (0, import_node_path9.resolve)(nativeSvelte, "native-entry.js"), unstable_conditionNames: ["browser", "require"] };
+        const nativeContext = { ...context, originModulePath: (0, import_node_path10.resolve)(nativeSvelte, "native-entry.js"), unstable_conditionNames: ["browser", "require"] };
         return context.resolveRequest(nativeContext, moduleName, platform);
       }
-      if (moduleName === "react-native" && LITE_ORIGINS.test(context.originModulePath)) {
+      if (moduleName === "react-native" && isLiteOrigin(context.originModulePath)) {
         return { type: "sourceFile", filePath: sourceFile("fabric/react-native-lite.ts") };
       }
       if (moduleName === "esm-env") {
         return { type: "sourceFile", filePath: sourceFile("environment.ts") };
       }
-      const result = resolveRequest ? resolveRequest(context, moduleName, platform) : context.resolveRequest(context, moduleName, platform);
+      const vendoredName = vendoredImport(moduleName);
+      const stubbedName = vendoredName ?? (moduleName.startsWith("#vendor/") ? vendoredImport(moduleName.slice("#vendor/".length)) : void 0);
+      const libraryStub = stubbedName ? libraryStubs.get(stubbedName.vendored.name) : void 0;
+      if (libraryStub !== void 0) return { type: "sourceFile", filePath: libraryStub };
+      const target = vendoredName ? (0, import_node_path10.join)(vendoredRoot(vendoredName.vendored.name), vendoredName.subpath) : moduleName;
+      const result = resolveRequest ? resolveRequest(context, target, platform) : context.resolveRequest(context, target, platform);
       if (result.type === "sourceFile") {
         const stubbedFile = stubForFile(result.filePath);
         if (stubbedFile !== null) return { type: "sourceFile", filePath: stubbedFile };
+        if (result.filePath.endsWith("push.svelte.ts") && pushOff(platform) && realOr(result.filePath) === pushClient) return { type: "sourceFile", filePath: pushAbsent };
         const stub2 = Object.entries(RENDERER_STUBS).find(([suffix]) => result.filePath.endsWith(suffix));
         if (stub2) return { type: "sourceFile", filePath: sourceFile(stub2[1]) };
         if (INITIALIZE_CORE.test(result.filePath)) return { type: "sourceFile", filePath: sourceFile("init.ts") };
@@ -2828,7 +3280,7 @@ function withSvelteNative(config, options = {}) {
   };
   resetForLibrary ??= libraryChanged(config.projectRoot);
   if (resetForLibrary && !config.resetCache) console.log("svelte-native: the installed library changed since Metro last ran here; starting Metro with empty caches");
-  const configured = { ...config, resetCache: config.resetCache || resetForLibrary, cacheVersion: `${config.cacheVersion ?? ""}+svelte-native-2${stubbed.length + files.size + directories.size > 0 ? `+stubs-${variant}` : ""}`, resolver, serializer, transformer: { ...config.transformer, babelTransformerPath: require4.resolve("@alfayez/svelte-native/transformer") } };
+  const configured = { ...config, resetCache: config.resetCache || resetForLibrary, cacheVersion: `${config.cacheVersion ?? ""}+svelte-native-2${stubbed.length + files.size + directories.size > 0 ? `+stubs-${variant}` : ""}${libraryStubs.size > 0 ? `+libraries-${libraries?.join(",")}` : ""}`, resolver, serializer, transformer: { ...config.transformer, babelTransformerPath: require4.resolve("@alfayez/svelte-native/transformer") } };
   return configured;
 }
 // Annotate the CommonJS export names for ESM import in node:
@@ -2840,7 +3292,10 @@ function withSvelteNative(config, options = {}) {
   RENDERER_STUBS,
   closeWatchers,
   isInPackage,
+  isLiteOrigin,
   libraryChanged,
+  libraryStubSource,
+  pushPlatforms,
   stubCoreSource,
   stubSource,
   withSvelteNative

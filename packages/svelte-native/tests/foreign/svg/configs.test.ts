@@ -10,6 +10,7 @@ import { flattenFragments, type OracleNode } from "./support/oracle.ts";
 import { toReact } from "./support/harness.ts";
 import { cases, svgRoot } from "./support/cases.ts";
 import { svgKinds } from "../../../src/fabric/foreign-svg-kinds.ts";
+import { vendored } from "../../support/paths.ts";
 
 /**
  * The view configs of react-native-svg's 30 Fabric components (29 on Android: iOS has its own root view) (`foreign-svg-kinds.ts`) against the ones React Native generates from the library's own
@@ -18,7 +19,7 @@ import { svgKinds } from "../../../src/fabric/foreign-svg-kinds.ts";
  */
 const require = createRequire(import.meta.url);
 const codegen = require.resolve("@react-native/babel-plugin-codegen");
-const fabric = resolve(import.meta.dirname, "../../../../../node_modules/react-native-svg/src/fabric");
+const fabric = resolve(vendored("react-native-svg"), "src/fabric");
 const platforms: Platform[] = ["android", "ios"];
 const timeout = 60_000;
 type Table = Record<string, unknown>;

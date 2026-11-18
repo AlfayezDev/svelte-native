@@ -5,7 +5,7 @@
   import { textPathNativeProps } from "../../fabric/foreign-svg.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
   import TSpan from "./TSpan.svelte";
-  import type { TextPathProps } from "react-native-svg";
+  import type { TextPathProps } from "#vendor/react-native-svg";
 
   /**
    * `react-native-svg`'s `TextPath`: its text follows the path `href="#id"` names, from `startOffset`. A `href` that is not an `#id` is a warning and the

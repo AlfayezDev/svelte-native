@@ -5,6 +5,7 @@
  * date, as `DateTimePickerAndroid.open` does through its callbacks; `datePickerProps` is what the iOS component's native
  * props are made of. Nothing here imports the library.
  */
+import { assertLibrary } from "./foreign-libraries.ts";
 import { processColorValue } from "./view-configs.ts";
 
 export type PickerMode = "date" | "time";
@@ -45,6 +46,7 @@ type PickerModule = { open(options: Record<string, unknown>): Promise<PickerResu
 
 const moduleNames = { date: "RNCDatePicker", time: "RNCTimePicker", materialDate: "RNCMaterialDatePicker", materialTime: "RNCMaterialTimePicker" } as const;
 function pickerModule(mode: PickerMode, design: "default" | "material" | undefined): PickerModule {
+  assertLibrary("@react-native-community/datetimepicker");
   const name = design === "material" ? (mode === "time" ? moduleNames.materialTime : moduleNames.materialDate) : mode === "time" ? moduleNames.time : moduleNames.date;
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   return (require("react-native/Libraries/TurboModule/TurboModuleRegistry") as { getEnforcing<T>(name: string): T }).getEnforcing<PickerModule>(name);

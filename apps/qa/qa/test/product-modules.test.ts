@@ -103,7 +103,8 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 	test("iOS: the product links the capture sweep with its launch subscriber (react-native-view-shot's tmpfile leftovers are deleted when a process starts, as Android's engine does), and the QA build does too", () => {
 		for (const variant of ["production", "qa"] as const) {
 			const sweep = resolved("apple", configuredExclude(variant)).modules.find((module) => module.packageName === library) as { appDelegateSubscribers?: string[]; swiftModuleNames?: string[] } | undefined;
-			expect(sweep?.appDelegateSubscribers).toEqual(["SvelteCaptureSubscriber"]);
+			// and push's, which is a stub that forwards nothing in a build without push (SVELTE_PUSH, the config plugin's capabilities.push)
+			expect(sweep?.appDelegateSubscribers).toEqual(["SvelteCaptureSubscriber", "SveltePushAppDelegateSubscriber"]);
 			// the Swift module the generated provider imports: the library's one pod (its Objective-C++ screens are in it too, outside the module's headers)
 			expect(sweep?.swiftModuleNames).toEqual(["SvelteCore"]);
 		}

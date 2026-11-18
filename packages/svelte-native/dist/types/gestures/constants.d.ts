@@ -1,5 +1,5 @@
-export { State } from "react-native-gesture-handler/lib/typescript/State";
-export { Directions } from "react-native-gesture-handler/lib/typescript/Directions";
-export { PointerType } from "react-native-gesture-handler/lib/typescript/PointerType";
-export { TouchEventType } from "react-native-gesture-handler/lib/typescript/TouchEventType";
-export { ActionType } from "react-native-gesture-handler/lib/typescript/ActionType";
+export { State } from "#vendor/react-native-gesture-handler/types/State";
+export { Directions } from "#vendor/react-native-gesture-handler/types/Directions";
+export { PointerType } from "#vendor/react-native-gesture-handler/types/PointerType";
+export { TouchEventType } from "#vendor/react-native-gesture-handler/types/TouchEventType";
+export { ActionType } from "#vendor/react-native-gesture-handler/types/ActionType";

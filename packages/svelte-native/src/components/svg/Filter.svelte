@@ -4,7 +4,7 @@
   import { createNativeProps } from "../../native-props.ts";
   import { filterNativeProps } from "../../fabric/foreign-svg.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
-  import type { FilterProps } from "react-native-svg";
+  import type { FilterProps } from "#vendor/react-native-svg";
 
   /** `react-native-svg`'s `Filter`: its primitives (`FeGaussianBlur`, `FeOffset`, `FeColorMatrix`, ...) are its children; `filter="url(#id)"` applies it. */
   let { children, ref, animatedProps, ...props }: Omit<FilterProps, "children"> & { children?: Snippet } & SvgExtras = $props();

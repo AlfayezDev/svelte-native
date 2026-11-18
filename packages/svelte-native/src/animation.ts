@@ -1,12 +1,14 @@
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- a script of `declare module`s (the vendored packages' names, VENDORING.md): it cannot be imported, only referenced
+/// <reference path="./vendor-types-ui.d.ts" />
 import { onDestroy } from "svelte";
-import type * as Reanimated from "react-native-reanimated";
-import type * as Worklets from "react-native-worklets";
+import type * as Reanimated from "#vendor/react-native-reanimated";
+import type * as Worklets from "#vendor/react-native-worklets";
 import { lazyObject } from "./lazy-object.ts";
 import { loadReanimated, onReanimatedLoaded } from "./fabric/reanimated-load.ts";
 
 // The main entry (`@alfayez/svelte-native`) re-exports everything here.
 export { default as AnimatedView } from "./components/AnimatedView.svelte";
-export type { SharedValue } from "react-native-reanimated";
+export type { SharedValue } from "#vendor/react-native-reanimated";
 
 /**
  * Reanimated and worklets load on the first call into this module (or on the first animated node the Fabric host

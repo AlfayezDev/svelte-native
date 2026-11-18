@@ -8,9 +8,12 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 main="$here/../main/java/expo/modules/svelteblur"
 
-# expo-blur's own tint names, when it is installed (it is a development dependency of the repository).
+# expo-blur's own tint names: the library's copy of it (vendor/expo-blur), else an installed one.
 tints=""
-if blur="$(cd "$here" && node -p "require('path').dirname(require.resolve('expo-blur/package.json', { paths: [process.cwd()] }))" 2>/dev/null)"; then
+vendored="$here/../../../../../vendor/expo-blur"
+if [ -d "$vendored/android" ]; then
+  tints="$vendored/android/src/main/java/expo/modules/blur/enums/TintStyle.kt"
+elif blur="$(cd "$here" && node -p "require('path').dirname(require.resolve('expo-blur/package.json', { paths: [process.cwd()] }))" 2>/dev/null)"; then
   tints="$blur/android/src/main/java/expo/modules/blur/enums/TintStyle.kt"
 fi
 

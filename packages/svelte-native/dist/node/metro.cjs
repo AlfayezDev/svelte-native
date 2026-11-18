@@ -2654,6 +2654,9 @@ function assertCustomRenderer(what, from) {
 // src/libraries.ts
 var import_node_module5 = require("node:module");
 
+// src/push/common.ts
+var isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+
 // src/push/config.ts
 var Refusal = class extends Error {
 };
@@ -2661,7 +2664,7 @@ var refuse = (message) => {
   throw new Refusal(message);
 };
 function section(value, where, example) {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return refuse(`${where} takes an object: ${example}`);
+  if (!isRecord(value)) return refuse(`${where} takes an object: ${example}`);
   return value;
 }
 function optionalText(value, where) {
@@ -2731,13 +2734,13 @@ var import_node_path9 = require("node:path");
 var react = "react-native";
 var expo = "expo";
 var optionalLibraries = [
-  // ---- Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module ----
+  // Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module, so they have no `android` or `ios` entry here.
   { name: "expo-blur", version: "57.0.3", optional: { kind: expo } },
   { name: "expo-conic-gradient", version: "0.2.1", optional: { kind: expo } },
   { name: "expo-image", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
   { name: "expo-linear-gradient", version: "57.0.2", optional: { kind: expo } },
   { name: "expo-video", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
-  // ---- React Native packages: an entry of the autolinking config for each platform ----
+  // React Native packages: an entry of the autolinking config for each platform.
   {
     name: "@react-native-community/datetimepicker",
     version: "9.1.0",
@@ -2970,10 +2973,10 @@ function vendorSpellings(root) {
 }
 function vendoredFileAs(path, root = packageRoot) {
   for (const directory of vendorSpellings(root)) {
-    const inside = (0, import_node_path9.relative)(directory, path);
-    if (inside !== "" && !inside.startsWith("..") && !(0, import_node_path9.isAbsolute)(inside)) {
-      const name = vendoredPackages.find((vendored) => inside === vendored.name || inside.startsWith(`${vendored.name}${import_node_path9.sep}`))?.name;
-      if (name !== void 0) return inside.split(import_node_path9.sep).join("/");
+    const relativePath = (0, import_node_path9.relative)(directory, path);
+    if (relativePath !== "" && !relativePath.startsWith("..") && !(0, import_node_path9.isAbsolute)(relativePath)) {
+      const inside = relativePath.split(import_node_path9.sep).join("/");
+      if (vendoredPackages.some((vendored) => inside === vendored.name || inside.startsWith(`${vendored.name}/`))) return inside;
     }
   }
   return void 0;
@@ -3021,15 +3024,22 @@ function checkLibraries(option) {
   return { listed, enabled: libraryNames.filter((name) => wanted.includes(name)) };
 }
 var PLUGIN_NAMES = /* @__PURE__ */ new Set(["@alfayez/svelte-native", "@alfayez/svelte-native/app.plugin", "@alfayez/svelte-native/expo"]);
+function isLibraryPlugin(entry) {
+  if (typeof entry !== "string") return false;
+  if (PLUGIN_NAMES.has(entry)) return true;
+  const path = entry.replace(/\\/g, "/").replace(/\/$/, "").replace(/\.js$/, "");
+  return [...PLUGIN_NAMES].some((name) => path.endsWith(`/node_modules/${name}`));
+}
 function appPluginOptions(projectRoot, from = __importMetaUrl) {
   let plugins;
   try {
     const { getConfig } = (0, import_node_module5.createRequire)(from)("expo/config");
     plugins = getConfig(projectRoot, { skipSDKVersionRequirement: true }).exp.plugins;
-  } catch {
-    return void 0;
+  } catch (error) {
+    return { unknown: `could not read the app's config: ${error instanceof Error ? error.message : String(error)}`, error };
   }
-  const entry = (Array.isArray(plugins) ? plugins : []).find((plugin) => PLUGIN_NAMES.has(String(Array.isArray(plugin) ? plugin[0] : plugin)));
+  const entry = (Array.isArray(plugins) ? plugins : []).find((plugin) => isLibraryPlugin(Array.isArray(plugin) ? plugin[0] : plugin));
+  if (entry === void 0) return { unknown: "no entry of the app's `plugins` names @alfayez/svelte-native" };
   const options = Array.isArray(entry) ? entry[1] : void 0;
   return { options: isObject(options) ? options : void 0 };
 }
@@ -3122,8 +3132,9 @@ var realOr = (path) => {
 };
 function pushPlatforms(projectRoot) {
   const read = appPluginOptions(projectRoot);
-  return read === void 0 ? void 0 : pushPlatformsOf(read.options);
+  return "unknown" in read ? void 0 : pushPlatformsOf(read.options);
 }
+var unknownConfigWarned = false;
 function withSvelteNative(config, options = {}) {
   assertCustomRenderer("withSvelteNative (@alfayez/svelte-native/metro)");
   Object.assign(process.env, runesEnvironment(options.runes), asyncEnvironment(options.async));
@@ -3153,11 +3164,11 @@ function withSvelteNative(config, options = {}) {
   }
   const withoutExtension = (path) => path.replace(/\.[cm]?[jt]sx?$/, "");
   const nameOf = (path) => withoutExtension(path).slice(config.projectRoot.length + 1);
-  const writeStub = (name) => {
+  const writeStub = (name, source = stubSource(name, variant)) => {
     const file = (0, import_node_path10.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
     (0, import_node_fs7.mkdirSync)(stubDirectory, { recursive: true });
     write((0, import_node_path10.join)(stubDirectory, "_core.js"), stubCoreSource);
-    write(file, stubSource(name, variant));
+    write(file, source);
     return file;
   };
   const files = /* @__PURE__ */ new Map();
@@ -3185,17 +3196,15 @@ function withSvelteNative(config, options = {}) {
   }
   const pushClient = (0, import_node_fs7.realpathSync)(sourceFile("push/push.svelte.ts"));
   const read = appPluginOptions(config.projectRoot);
-  const pushOn = read === void 0 ? void 0 : pushPlatformsOf(read.options);
-  const libraries = options.libraries !== void 0 ? withRequired(options.libraries) : read === void 0 ? void 0 : enabledLibraries(read.options)?.enabled;
+  if ("unknown" in read && options.libraries === void 0 && !unknownConfigWarned) {
+    unknownConfigWarned = true;
+    console.warn(`svelte-native: ${read.unknown}; every optional library and the push client are bundled`);
+  }
+  const pushOn = "unknown" in read ? void 0 : pushPlatformsOf(read.options);
+  const libraries = options.libraries !== void 0 ? withRequired(options.libraries) : "unknown" in read ? void 0 : enabledLibraries(read.options)?.enabled;
   const libraryStubs = /* @__PURE__ */ new Map();
   if (libraries !== void 0) {
-    for (const name of libraryNames.filter((candidate) => !libraries.includes(candidate))) {
-      (0, import_node_fs7.mkdirSync)(stubDirectory, { recursive: true });
-      write((0, import_node_path10.join)(stubDirectory, "_core.js"), stubCoreSource);
-      const file = (0, import_node_path10.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
-      write(file, libraryStubSource(name));
-      libraryStubs.set(name, file);
-    }
+    for (const name of libraryNames.filter((candidate) => !libraries.includes(candidate))) libraryStubs.set(name, writeStub(name, libraryStubSource(name)));
   }
   const pushAbsent = sourceFile("push/absent.ts");
   const pushOff = (platform) => pushOn !== void 0 && (platform === "ios" ? !pushOn.ios : platform === "android" ? !pushOn.android : !pushOn.android && !pushOn.ios);
@@ -3244,7 +3253,8 @@ function withSvelteNative(config, options = {}) {
         return { type: "sourceFile", filePath: sourceFile("environment.ts") };
       }
       const vendoredName = vendoredImport(moduleName);
-      const libraryStub = vendoredName ? libraryStubs.get(vendoredName.vendored.name) : void 0;
+      const stubbedName = vendoredName ?? (moduleName.startsWith("#vendor/") ? vendoredImport(moduleName.slice("#vendor/".length)) : void 0);
+      const libraryStub = stubbedName ? libraryStubs.get(stubbedName.vendored.name) : void 0;
       if (libraryStub !== void 0) return { type: "sourceFile", filePath: libraryStub };
       const target = vendoredName ? (0, import_node_path10.join)(vendoredRoot(vendoredName.vendored.name), vendoredName.subpath) : moduleName;
       const result = resolveRequest ? resolveRequest(context, target, platform) : context.resolveRequest(context, target, platform);

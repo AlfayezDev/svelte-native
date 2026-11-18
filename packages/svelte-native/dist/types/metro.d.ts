@@ -2,7 +2,7 @@ import type { MetroConfig as ConfigT } from "expo/metro-config";
 /**
  * The libraries whose `react-native` import gets the lite shim: a module of a package that only needs the few names it takes from React Native (`TurboModuleRegistry`, `Platform`, ...)
  * and not the whole index. The origin is a file below the package in `node_modules` (the pattern), or in the library's own `vendor/` under that package's name (`isLiteOrigin`):
- * a vendored package gets the shim exactly when its name is in this list, as the installed one did.
+ * a vendored package gets the shim exactly when its name is in this list.
  */
 export declare const LITE_ORIGINS: RegExp;
 /**
@@ -95,8 +95,8 @@ export declare function libraryStubSource(name: string): string;
 export declare const isInPackage: (moduleName: string, name: string) => boolean;
 export declare function libraryChanged(projectRoot: string, library?: string): boolean;
 /**
- * The platforms `capabilities.push` names in the app's config, read as Expo reads it (`getConfig` from `expo/config`, which runs `app.config.*` and does not apply plugins). `undefined`
- * when the config cannot be read or its push settings are malformed (the prebuild refuses those): then the client is bundled, and the native module's `enabled` decides on the device.
+ * The platforms `capabilities.push` names in the app's config (`appPluginOptions`). `undefined` when the options are not known or its push settings are malformed (the prebuild refuses
+ * those): then the client is bundled, and the native module's `enabled` decides on the device.
  */
 export declare function pushPlatforms(projectRoot: string): {
     android: boolean;

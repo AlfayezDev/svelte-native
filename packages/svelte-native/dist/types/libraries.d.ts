@@ -40,24 +40,28 @@ export type LibraryLinks = {
 export declare function libraryLinks(enabled: readonly string[]): LibraryLinks;
 /** The directories of the Expo modules that are on, which Expo's autolinker gets as search paths (a directory with a `package.json` is one module). */
 export declare const expoModuleSearchPaths: (expo: readonly string[], root?: string) => string[];
-/** The packages whose options a plugin entry of the app's config may carry: the library's plugin under its own name, or under the names Expo resolves to the same file. */
-export declare const PLUGIN_NAMES: ReadonlySet<string>;
-/**
- * The options the app's config gives the library's plugin, read as Expo reads it (`getConfig` from `expo/config`, which runs `app.config.*` and does not apply plugins), or `undefined` when
- * the config cannot be read. `{ options: undefined }` is a config that lists the plugin without options (or not at all). `from` is where `expo/config` is found: the library's own location
- * by default (its peer `expo`), the app's for the doctor.
- */
-export declare function appPluginOptions(projectRoot: string, from?: string): {
+/** What `appPluginOptions` read: the options the app's config gives the library's plugin, or why they are not known (`unknown`). */
+export type PluginOptionsRead = {
     options: Record<string, unknown> | undefined;
-} | undefined;
+} | {
+    unknown: string;
+    error?: unknown;
+};
+/**
+ * The options the app's config gives the library's plugin, read as Expo reads it (`getConfig` from `expo/config`, which runs `app.config.*` and applies its plugins, this library's too:
+ * an invalid `libraries` throws there, as in a prebuild). `{ options: undefined }` is a config that lists the plugin without options. `unknown` says why the options are not known: the
+ * config could not be read (`error` is what it threw), or no entry of `plugins` is the plugin by a name or a path (a function, say). `from` is where `expo/config` is found: the
+ * library's own location by default (its peer `expo`), the app's for the doctor.
+ */
+export declare function appPluginOptions(projectRoot: string, from?: string): PluginOptionsRead;
 /** The platforms `capabilities.push` names in the plugin's options (`undefined` when its push settings are malformed: the prebuild refuses those). */
 export declare function pushPlatformsOf(options: Record<string, unknown> | undefined): {
     android: boolean;
     ios: boolean;
 } | undefined;
 /**
- * The libraries the app's config turns on, for the places that read the config and do not write a build (Metro, the doctor): `undefined` when the config cannot be read or its
- * `libraries` is malformed (the prebuild refuses that), and then every caller keeps the libraries, as Metro keeps the push client: what the build links decides on the device.
+ * The libraries the app's config turns on, for Metro, which reads the config and does not write a build: `undefined` when its `libraries` is malformed (the prebuild refuses that),
+ * and then Metro keeps every library, as it keeps the push client: what the build links decides on the device.
  */
 export declare function enabledLibraries(options: Record<string, unknown> | undefined): Libraries | undefined;
 /**

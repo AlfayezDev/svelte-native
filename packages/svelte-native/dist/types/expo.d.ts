@@ -122,8 +122,8 @@ export declare function applyAppDelegate(contents: string): string;
 /**
  * `settings.gradle`: excludes packages from Expo and React Native autolinking, the headless ones and `extra`, and runs React Native's config command
  * through the library's `android-autolinking` (`autolinking.ts`: the packages the library carries are linked from its directory, and the Nitro modules' native libraries load
- * after the start). With
- * `EXPO_USE_COMMUNITY_AUTOLINKING=1` the community CLI's command runs as it is. Idempotent.
+ * after the start). With `EXPO_USE_COMMUNITY_AUTOLINKING=1` the community CLI's command goes through it too: the copies are in no app's `package.json`, so the community CLI alone
+ * would link none of them. Idempotent.
  *
  * The optional libraries the app turned on (`links`, `libraries.ts`): the React Native ones are `--link` arguments of `android-autolinking`, and the Expo modules are search paths of Expo's
  * autolinker (`expoAutolinking.searchPaths`: the directory of each copy, under the library's own directory, which the block finds from the CLI's path). The Expo modules that are off join

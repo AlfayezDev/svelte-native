@@ -2437,13 +2437,13 @@ var import_node_path5 = require("node:path");
 var react = "react-native";
 var expo = "expo";
 var optionalLibraries = [
-  // ---- Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module ----
+  // Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module, so they have no `android` or `ios` entry here.
   { name: "expo-blur", version: "57.0.3", optional: { kind: expo } },
   { name: "expo-conic-gradient", version: "0.2.1", optional: { kind: expo } },
   { name: "expo-image", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
   { name: "expo-linear-gradient", version: "57.0.2", optional: { kind: expo } },
   { name: "expo-video", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
-  // ---- React Native packages: an entry of the autolinking config for each platform ----
+  // React Native packages: an entry of the autolinking config for each platform.
   {
     name: "@react-native-community/datetimepicker",
     version: "9.1.0",
@@ -2668,10 +2668,10 @@ function vendorSpellings(root) {
 }
 function vendoredFileAs(path, root = packageRoot) {
   for (const directory of vendorSpellings(root)) {
-    const inside = (0, import_node_path5.relative)(directory, path);
-    if (inside !== "" && !inside.startsWith("..") && !(0, import_node_path5.isAbsolute)(inside)) {
-      const name = vendoredPackages.find((vendored) => inside === vendored.name || inside.startsWith(`${vendored.name}${import_node_path5.sep}`))?.name;
-      if (name !== void 0) return inside.split(import_node_path5.sep).join("/");
+    const relativePath = (0, import_node_path5.relative)(directory, path);
+    if (relativePath !== "" && !relativePath.startsWith("..") && !(0, import_node_path5.isAbsolute)(relativePath)) {
+      const inside = relativePath.split(import_node_path5.sep).join("/");
+      if (vendoredPackages.some((vendored) => inside === vendored.name || inside.startsWith(`${vendored.name}/`))) return inside;
     }
   }
   return void 0;
@@ -2870,14 +2870,21 @@ function upstreamTransformerPath(searchFrom = [process.cwd(), __dirname]) {
   return require4.resolve("@expo/metro-config/babel-transformer", { paths: [(0, import_node_path8.dirname)(expoManifest)] });
 }
 var upstream = require4(upstreamTransformerPath());
-var WORKLETS_PLUGIN = "react-native-worklets/plugin";
 var workletsPluginFile = () => (0, import_node_path8.join)(vendoredRoot("react-native-worklets"), "plugin/index.js");
+var pluginFiles = {
+  "react-native-worklets/plugin": workletsPluginFile,
+  "react-native-reanimated/plugin": () => (0, import_node_path8.join)(vendoredRoot("react-native-reanimated"), "plugin/index.js")
+};
 var redirected = /* @__PURE__ */ Symbol.for("@alfayez/svelte-native/worklets-plugin");
 var internals = import_node_module3.default;
+if (process.versions.bun !== void 0 && process.env.NODE_ENV !== "test") {
+  console.warn("svelte-native: Metro runs under Bun, where the library cannot give Babel its copy of the Worklets plugin; animations and gestures need Metro on Node (`expo start`, not `bun --bun expo start`)");
+}
 if (process.versions.bun === void 0 && internals._resolveFilename[redirected] !== true) {
   const resolveFilename = internals._resolveFilename;
   const redirect = function(request, ...rest) {
-    return request === WORKLETS_PLUGIN ? workletsPluginFile() : resolveFilename.call(this, request, ...rest);
+    const plugin = pluginFiles[request];
+    return plugin ? plugin() : resolveFilename.call(this, request, ...rest);
   };
   redirect[redirected] = true;
   internals._resolveFilename = redirect;

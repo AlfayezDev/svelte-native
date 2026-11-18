@@ -86,7 +86,7 @@ describe("the payloads, the refusals and the permission have the shapes the clie
     const coords = members(between(client, "type NativeCoords = {", "\n};"));
     expect(coords).toEqual(["latitude", "longitude", "altitude", "accuracy", "altitudeAccuracy", "heading", "speed"]);
     const written = between(payload, "func payload() -> [String: Any] {", "\n  }");
-    expect([...new Set([...written.matchAll(/(?:coords\["(\w+)"\]|"(latitude|longitude)":)/g)].flatMap((match) => [match[1] ?? match[2]]))].sort()).toEqual([...coords].sort());
+    expect([...new Set([...written.matchAll(/(?:coords\["(\w+)"\]|"(latitude|longitude)":)/g)].map((match) => match[1] ?? match[2]))].sort()).toEqual([...coords].sort());
     expect(written).toContain('"timestamp": (timestamp * 1000).rounded()');
     for (const optional of ["accuracy", "altitude", "heading", "speed"]) expect(written).toContain(`coords["${optional}"] =`);
     expect(written).toContain("if horizontalAccuracy >= 0");

@@ -1,12 +1,11 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { createRequire } from "node:module";
 import { mkdirSync, readFileSync, readdirSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { enableMessage, libraryNames } from "../../../src/libraries.ts";
 import { libraryStubSource, withSvelteNative } from "../../../src/metro.ts";
-import { vendoredRoot } from "../../../src/vendored.ts";
 import { type RealResolver, fakeConfig, resolveFrom as resolveWith } from "../../support/metro.ts";
-import { packageRoot } from "../../support/paths.ts";
+import { packageRoot, vendored } from "../../support/paths.ts";
 import { createProject, type Project } from "../../support/project.ts";
 
 /**
@@ -15,11 +14,7 @@ import { createProject, type Project } from "../../support/project.ts";
  */
 const real: RealResolver = (context, moduleName) => ({ type: "sourceFile", filePath: `/real/${moduleName} (from ${context.originModulePath})` });
 const resolveFrom = (config: ReturnType<typeof withSvelteNative>, origin: string, moduleName: string): string => resolveWith(config, origin, moduleName, real);
-const copy = (name: string, path = "") => join(vendoredRoot(name), path);
-
-// Expo's plugin resolver `require`s the library's `app.plugin.js` (an ES module) when it reads the config; Bun with a cold transpiler cache gives it an object without its default
-// export the first time, and the config then cannot be read. Metro runs on Node, where it is right every time (`stubs.test.ts`: the same).
-beforeAll(async () => { await import(join(packageRoot, "app.plugin.js")); });
+const copy = (name: string, path = "") => join(vendored(name), path);
 
 /** A project whose app.json gives the library's plugin these options; the library is linked into its node_modules, as `expo/config` reads the plugin from there. */
 function app(options?: object): Project {

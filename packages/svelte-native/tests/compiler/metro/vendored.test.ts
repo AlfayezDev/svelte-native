@@ -3,8 +3,8 @@ import { realpathSync, symlinkSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
 import { isLiteOrigin, withSvelteNative } from "../../../src/metro.ts";
-import { vendoredFileAs, vendoredImport, vendoredRoot, vendorDirectory } from "../../../src/vendored.ts";
-import { packageRoot } from "../../support/paths.ts";
+import { vendoredFileAs, vendoredImport, vendorDirectory } from "../../../src/vendored.ts";
+import { packageRoot, vendored } from "../../support/paths.ts";
 import { type RealResolver, fakeConfig, resolveFrom as resolveWith } from "../../support/metro.ts";
 import { createProject } from "../../support/project.ts";
 
@@ -14,13 +14,13 @@ import { createProject } from "../../support/project.ts";
  */
 const real: RealResolver = (context, moduleName) => ({ type: "sourceFile", filePath: `/real/${moduleName} (from ${context.originModulePath})` });
 const resolveFrom = (config: ConfigT, origin: string, moduleName: string): string => resolveWith(config, origin, moduleName, real);
-const copy = (name: string, path = "") => join(vendoredRoot(name), path);
+const copy = (name: string, path = "") => join(vendored(name), path);
 
 describe("the names of the vendored packages", () => {
   const project = createProject({}, "metro-vendored-");
   afterAll(() => project.remove());
   const config = withSvelteNative(fakeConfig(project.directory), { variant: "qa" });
-  const origins = [join(project.directory, "src/lib/storage.ts"), join(project.directory, "node_modules/react-native-quick-crypto/src/random.ts"), join(vendoredRoot("react-native-mmkv"), "src/getMMKVFactory.ts"), "/elsewhere/anything.js"];
+  const origins = [join(project.directory, "src/lib/storage.ts"), join(project.directory, "node_modules/react-native-quick-crypto/src/random.ts"), copy("react-native-mmkv", "src/getMMKVFactory.ts"), "/elsewhere/anything.js"];
 
   test("a bare name resolves to the copy, whoever imports it", () => {
     for (const origin of origins) {

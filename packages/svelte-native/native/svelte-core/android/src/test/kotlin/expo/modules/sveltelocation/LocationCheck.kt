@@ -149,7 +149,7 @@ private fun fixes() {
       "timestamp" to 1_800_000_000_123.0,
     ),
   )
-  expect("the timestamp is a double", (full.toMap()["timestamp"]), 1_800_000_000_123.0)
+  expect("the timestamp is a double", full.toMap()["timestamp"], 1_800_000_000_123.0)
   // Android reports 0 for a bearing, a speed and an altitude it does not have: the has...() says which are real, and the rest is left out.
   val bare = LocationFix.of(1.0, 2.0, false, 0.0, true, 25f, false, 0f, false, 0f, false, 0f, 1_800_000_000_000L)
   expect("what the platform does not have is left out, not 0", bare.toMap(), mapOf("coords" to mapOf("latitude" to 1.0, "longitude" to 2.0, "accuracy" to 25.0), "timestamp" to 1_800_000_000_000.0))

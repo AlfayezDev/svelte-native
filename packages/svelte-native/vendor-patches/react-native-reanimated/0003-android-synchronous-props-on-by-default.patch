@@ -1,0 +1,13 @@
+diff --git a/src/featureFlags/staticFlags.json b/src/featureFlags/staticFlags.json
+index a9b65dd..9145d1c 100644
+--- a/src/featureFlags/staticFlags.json
++++ b/src/featureFlags/staticFlags.json
+@@ -1,7 +1,7 @@
+ {
+   "RUNTIME_TEST_FLAG": false,
+   "DISABLE_COMMIT_PAUSING_MECHANISM": false,
+-  "ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": false,
++  "ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true,
+   "IOS_SYNCHRONOUSLY_UPDATE_UI_PROPS": false,
+   "EXPERIMENTAL_CSS_ANIMATIONS_FOR_SVG_COMPONENTS": true,
+   "IOS_CSS_CORE_ANIMATION": false,

@@ -364,12 +364,24 @@ describe("three apps: the product and the QA app link the product's native modul
 		const plugin = config(variant).plugins.find((entry) => pluginName(entry) === "@alfayez/svelte-native") as [string, { autolinkingExclude: string[] }];
 		return plugin[1].autolinkingExclude;
 	}
-	/** The packages each autolinker would link for a platform, given the excludes the build passes both (settings.gradle's `--exclude` list / the Podfile's). */
+	/** The optional libraries the library carries that a variant turns on (`libraries` of the Svelte native plugin's options, which the evaluated config keeps), and the Expo modules among them. */
+	function libraries(variant: keyof typeof variantEnv): { names: string[]; expo: string[] } {
+		const plugin = config(variant).plugins.find((entry) => pluginName(entry) === "@alfayez/svelte-native") as [string, { libraries?: Record<string, unknown> }];
+		const names = Object.entries(plugin[1].libraries ?? {}).filter(([, value]) => value !== false).map(([name]) => name);
+		return { names, expo: names.filter((name) => /^expo-/.test(name)) };
+	}
+	/**
+	 * The packages each autolinker would link for a platform, given what the build passes both: settings.gradle's `--exclude` list / the Podfile's, the libraries the app turned on (`--link` for the
+	 * library's own `android-autolinking` / `ios-autolinking` around React Native's command, and the directory of each Expo module as a search path of Expo's, after the `--` the generated block writes).
+	 */
 	function linked(platform: "android" | "ios", variant: keyof typeof variantEnv): { rn: string[]; expo: string[]; all: Set<string> } {
 		const flags = configuredExclude(variant).flatMap((name) => ["--exclude", name]);
 		const env = { APP_VARIANT: variantEnv[variant], EXPO_NO_TELEMETRY: "1", CI: "1" };
-		const rn = JSON.parse(run("node", [autolinking, "react-native-config", "--json", "--platform", platform, ...flags], env)) as { dependencies: Record<string, unknown> };
-		const expo = JSON.parse(run("node", [autolinking, "resolve", "--json", "--platform", platform === "ios" ? "apple" : "android", ...flags], env)) as { modules: { packageName: string }[] };
+		const on = libraries(variant);
+		const cli = join(platformDir, "../../packages/svelte-native/dist/node/cli.js");
+		const vendor = (name: string) => join(platformDir, "../../packages/svelte-native/vendor", name);
+		const rn = JSON.parse(run("node", [cli, `${platform}-autolinking`, ...on.names.flatMap((name) => ["--link", name]), "node", autolinking, "react-native-config", "--json", "--platform", platform, ...flags], env)) as { dependencies: Record<string, unknown> };
+		const expo = JSON.parse(run("node", [autolinking, "resolve", "--json", "--platform", platform === "ios" ? "apple" : "android", ...flags, ...(on.expo.length === 0 ? [] : ["--", ...on.expo.map(vendor)])], env)) as { modules: { packageName: string }[] };
 		const names = { rn: Object.keys(rn.dependencies), expo: expo.modules.map((entry) => entry.packageName) };
 		return { ...names, all: new Set([...names.rn, ...names.expo]) };
 	}

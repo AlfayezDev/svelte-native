@@ -165,88 +165,24 @@
     "esbuild": "0.28.1"
   },
   "peerDependencies": {
-    "@react-native-community/datetimepicker": "9.1.0",
     "@sveltejs/kit": "3.1.1",
     "expo": "~57.0.27",
-    "expo-blur": "~57.0.3",
-    "expo-conic-gradient": "~0.2.1",
     "expo-constants": "~57.0.21",
-    "expo-image": "~57.0.5",
-    "expo-linear-gradient": "~57.0.2",
-    "expo-video": "~57.0.5",
     "hermes-intl": "^0.1.2",
-    "lottie-react-native": "~7.3.8",
     "react": "19.2.7",
     "react-native": "0.86.3",
-    "react-native-animateable-text": "0.19.3",
-    "react-native-blob-util": "0.24.9",
-    "react-native-fast-shadow": "~0.1.1",
     "react-native-gesture-handler": "~2.32.0",
-    "react-native-maps": "1.27.2",
-    "react-native-pdf": "7.0.3",
     "react-native-quick-base64": "2.2.2",
     "react-native-quick-crypto": "1.1.3",
     "react-native-reanimated": "4.5.1",
     "react-native-svg": "15.15.4",
-    "react-native-video": "6.19.3",
-    "react-native-view-shot": "5.1.0",
-    "react-native-webview": "13.16.1",
     "react-native-worklets": "0.10.1",
-    "rive-react-native": "~9.7.1",
     "svelte": "5.56.7",
     "tailwindcss": "4.3.3",
     "vite": "^8.1.4"
   },
   "peerDependenciesMeta": {
-    "@react-native-community/datetimepicker": {
-      "optional": true
-    },
     "@sveltejs/kit": {
-      "optional": true
-    },
-    "expo-blur": {
-      "optional": true
-    },
-    "expo-conic-gradient": {
-      "optional": true
-    },
-    "expo-image": {
-      "optional": true
-    },
-    "expo-linear-gradient": {
-      "optional": true
-    },
-    "expo-video": {
-      "optional": true
-    },
-    "lottie-react-native": {
-      "optional": true
-    },
-    "react-native-animateable-text": {
-      "optional": true
-    },
-    "react-native-blob-util": {
-      "optional": true
-    },
-    "react-native-fast-shadow": {
-      "optional": true
-    },
-    "react-native-maps": {
-      "optional": true
-    },
-    "react-native-pdf": {
-      "optional": true
-    },
-    "react-native-video": {
-      "optional": true
-    },
-    "react-native-view-shot": {
-      "optional": true
-    },
-    "react-native-webview": {
-      "optional": true
-    },
-    "rive-react-native": {
       "optional": true
     },
     "tailwindcss": {

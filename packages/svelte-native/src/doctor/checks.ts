@@ -175,10 +175,11 @@ function vendored(context: Context, libraryName: string): Check[] {
 /** The libraries the app's config turns on (`libraries` of the plugin options): which they are, or what is wrong with the option or why it could not be read. */
 function libraries(context: Context, libraryName: string): Check {
   const group = "vendored packages";
+  const fix = `fix \`libraries\` in the ${libraryName} plugin's options (app.json or app.config.*), then prebuild again`;
   const read = appPluginOptions(context.appRoot, join(context.appRoot, "package.json"));
   // The plugin checks `libraries` while Expo reads the config, so an invalid one is what made the config unreadable.
   if ("error" in read && read.error instanceof Error && read.error.name === "LibrariesConfigError") {
-    return { group, status: "fail", message: read.error.message, fix: `fix \`libraries\` in the ${libraryName} plugin's options (app.json or app.config.*), then prebuild again` };
+    return { group, status: "fail", message: read.error.message, fix };
   }
   if ("unknown" in read) return { group, status: "skip", message: `${read.unknown}, so the optional libraries it turns on were not checked (\`npx expo config\` shows the config)` };
   try {
@@ -188,7 +189,7 @@ function libraries(context: Context, libraryName: string): Check {
     return { group, status: "pass", message: `libraries turned on: ${enabled.join(", ")}${implied.length > 0 ? ` (${implied.join(", ")}: needed by another)` : ""}; the others are not linked, and Metro stubs them` };
   } catch (error) {
     if (!(error instanceof LibrariesConfigError)) throw error;
-    return { group, status: "fail", message: error.message, fix: `fix \`libraries\` in the ${libraryName} plugin's options (app.json or app.config.*), then prebuild again` };
+    return { group, status: "fail", message: error.message, fix };
   }
 }
 

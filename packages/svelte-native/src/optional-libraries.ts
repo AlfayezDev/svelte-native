@@ -13,13 +13,13 @@ const react = "react-native" as const;
 const expo = "expo" as const;
 
 export const optionalLibraries: readonly VendoredPackage[] = [
-  // ---- Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module ----
+  // Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module, so they have no `android` or `ios` entry here.
   { name: "expo-blur", version: "57.0.3", optional: { kind: expo } },
   { name: "expo-conic-gradient", version: "0.2.1", optional: { kind: expo } },
   { name: "expo-image", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
   { name: "expo-linear-gradient", version: "57.0.2", optional: { kind: expo } },
   { name: "expo-video", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
-  // ---- React Native packages: an entry of the autolinking config for each platform ----
+  // React Native packages: an entry of the autolinking config for each platform.
   {
     name: "@react-native-community/datetimepicker",
     version: "9.1.0",

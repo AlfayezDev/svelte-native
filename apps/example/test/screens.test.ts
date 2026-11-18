@@ -148,12 +148,15 @@ let directory: string;
 /** The files the screens' bundle holds (esbuild's metafile: paths from the working directory, so `../../packages/svelte-native/src/...`). */
 let inputs: string[] = [];
 
+let vendorAliases: () => Record<string, string>;
+
 beforeAll(async () => {
   // The library loads Reanimated when a screen first animates, and its bundle always names it: the library's own stand-ins for it.
   const { reanimatedStubs } = (await import(join(libraryTests, "support/reanimated-stubs.ts"))) as { reanimatedStubs: Record<string, string> };
   Object.assign(stubs, reanimatedStubs);
   // The main entry exports the SVG components: the library's host modules for them import react-native-svg's extraction code, which these bundles stub.
   const { svgLibraryStubs } = (await import(join(libraryTests, "support/svg-library-stubs.ts"))) as { svgLibraryStubs: Record<string, string> };
+  ({ vendorAliases } = (await import(join(libraryTests, "support/paths.ts"))) as { vendorAliases(): Record<string, string> });
   Object.assign(stubs, svgLibraryStubs);
   // The library's stand-in knows `withTiming` only; the animation and gestures screens also spring and repeat, which the stand-in treats like a timing: the animation is recorded, not played.
   stubs["react-native-reanimated"] += "\nexport const withSpring = (to, config, callback) => withTiming(to, config, callback); export const withRepeat = (animation) => animation;";
@@ -187,12 +190,15 @@ beforeAll(async () => {
       resolveDir: join(directory, "fixture"),
     },
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false, metafile: true, nodePaths: [join(app, "node_modules"), join(app, "../../node_modules")],
+    // What Metro does for every importer: the names of the packages the library carries (and every path below them) are its copies in vendor/.
+    alias: vendorAliases(),
     loader: { ".png": "dataurl" },
     plugins: [svelteCompiler, {
       name: "fabric-fixture",
       setup(builder) {
-        builder.onResolve({ filter: /^(react-native|expo-modules-core|expo-constants)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
-        builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
+        // The packages the library carries are `#vendor/<name>` to its own sources and the name to the rest: the stand-ins are written for the names. Gesture handler is the one that is real.
+        builder.onResolve({ filter: /^(react-native|expo-modules-core|expo-constants|#vendor\/)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
+        builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? stubs[args.path.replace(/^#vendor\//, "")] ?? "export {};", loader: "js" }));
         builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: join(libraryTests, "support/view-configs-stub.ts") }));
         builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));
         builder.onResolve({ filter: /^@alfayez\/svelte-native\/routes$/ }, () => ({ path: join(directory, ".svelte-native/routes.test.ts") }));

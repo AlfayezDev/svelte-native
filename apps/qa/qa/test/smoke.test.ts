@@ -14,6 +14,7 @@ import { parseSmokeBody, parseSmokeCompletion, parseSmokeResults } from "../pars
 import { moduleResults, parseSmokeResultsFile } from "../commands/ios-smoke.ts";
 import { ascii, decodeBase64, encodeBase64, hex, looksRandom } from "../../src/lib/native/dev/smoke-bytes.ts";
 import { smokeModules } from "../../src/lib/native/dev/smoke-rules.ts";
+import { vendoredNames } from "../../../../packages/svelte-native/src/vendored.ts";
 import { formatSmokeLine as format, formatSmokeSummary as summarize, oneLine, type SmokePath } from "../../src/lib/native/dev/smoke-log.ts";
 
 /** The packages only the smoke app links or bundles: the CommonJS file app.config.ts and react-native.config.js read. */
@@ -310,8 +311,9 @@ describe("the pinned list, the module table and the checks agree", () => {
 		// The two the library requires: exactly the versions its peerDependencies pin.
 		expect(libraryPeerPackages).toHaveLength(2);
 		for (const name of libraryPeerPackages) expect([name, used[name]]).toEqual([name, libraryPackageJson.peerDependencies[name]]);
-		// The two the library carries itself (packages/svelte-native/VENDORING.md) are not stand-ins here any more: the smoke app takes the vendored copy, so no variant lists them, and the table has the modules without a package.
-		expect(libraryVendoredPackages).toEqual(["react-native-mmkv", "react-native-nitro-modules"]);
+		// The packages the library carries itself (packages/svelte-native/VENDORING.md) are not stand-ins here any more: the smoke app takes the vendored copy, so no variant lists them, and the table has the
+		// modules without a package (the nitro and mmkv ones; the animation, gesture and svg packages have no module of the smoke test). The list is the library's own.
+		expect([...libraryVendoredPackages].toSorted()).toEqual([...vendoredNames].toSorted());
 		for (const name of libraryVendoredPackages) {
 			expect([name, name in used, name in libraryPackageJson.peerDependencies, table.modules.some((entry) => entry.packages.includes(name))]).toEqual([name, false, false, false]);
 		}
@@ -398,7 +400,9 @@ describe("three apps: the product and the QA app link the product's native modul
 			// What the product (and so the QA app) keeps: Expo's own modules, the shared packages, and the library's native modules (one package, `@alfayez/svelte-native`: the engine on Android, the screens pod on iOS) the app ships.
 			const kept = ["expo-secure-store", "expo-localization", "expo-constants", "expo-asset", "expo-splash-screen", "expo-system-ui", "@alfayez/svelte-native"];
 			for (const name of kept) expect([name, qa.expo.includes(name)]).toEqual([name, true]);
-			for (const name of ["react-native-reanimated", "react-native-webview", "react-native-maps", ...libraryPeerPackages]) expect([name, qa.rn.includes(name)]).toEqual([name, true]);
+			// Reanimated, gesture handler, Worklets, svg, MMKV and the Nitro runtime are not the app's (the library carries them): its own autolinking command links the copies, and this raw autolinker
+			// lists them only as far as a package manager installed an original beside another library's peer (Expo Router's), which that command replaces.
+			for (const name of ["react-native-webview", "react-native-maps", ...libraryPeerPackages]) expect([name, qa.rn.includes(name)]).toEqual([name, true]);
 			for (const name of libraryPeerPackages) expect([name, product.rn.includes(name), smoke.rn.includes(name)]).toEqual([name, true, true]);
 		}, 60_000); // runs both real autolinkers three times: seconds on a busy machine
 	}

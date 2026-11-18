@@ -13,7 +13,7 @@ const app = join(import.meta.dirname, "..");
 const made: string[] = [];
 afterAll(() => { for (const directory of made) rmSync(directory, { recursive: true, force: true }); });
 
-type Bundle = { bytes: number; modules: string[] };
+type Bundle = { bytes: number; modules: string[]; text: string };
 function bundle(platform: "android" | "ios"): Bundle {
   const directory = mkdtempSync(join(tmpdir(), `example-bundle-${platform}-`));
   const cache = mkdtempSync(join(tmpdir(), "example-metro-"));
@@ -30,7 +30,7 @@ function bundle(platform: "android" | "ios"): Bundle {
   );
   if (done.status !== 0) throw new Error(`export:embed (${platform}) failed: ${(done.stderr || done.stdout).slice(-800)}`);
   const { sources } = JSON.parse(readFileSync(sourceMap, "utf8")) as { sources: string[] };
-  return { bytes: statSync(output).size, modules: sources.map((source) => source.replace(/^\//, "")) };
+  return { bytes: statSync(output).size, modules: sources.map((source) => source.replace(/^\//, "")), text: readFileSync(output, "utf8") };
 }
 
 /** Every `+mobile.svelte` and `+layout.mobile.svelte` of src/routes, as the paths the source map names (from the repository root). */
@@ -41,7 +41,7 @@ const routeModules = (): string[] => readdirSync(join(app, "src/routes"), { recu
 for (const platform of ["android", "ios"] as const) {
   describe(`the ${platform} bundle`, () => {
     test("is made, holds every screen of the app, and carries nothing of the QA app or the library's tests", () => {
-      const { bytes, modules } = bundle(platform);
+      const { bytes, modules, text } = bundle(platform);
       console.log(`[example bundle] ${platform}: ${bytes} bytes in ${modules.length} modules`);
       expect(bytes).toBeGreaterThan(100_000);
       expect(routeModules().filter((module) => !modules.includes(module))).toEqual([]);
@@ -62,10 +62,14 @@ for (const platform of ["android", "ios"] as const) {
       // is the library's lite shim (`LITE_ORIGINS`): the index that lists every component of React Native (and the 238 modules it brings) is not in the bundle. MMKV and the Nitro runtime are the
       // library's own copies (`vendor/`, VENDORING.md), whoever imports them, and the app has no original of either.
       for (const name of ["react-native-quick-crypto", "react-native-quick-base64"]) expect([name, modules.some((module) => module.includes(`node_modules/${name}/`))]).toEqual([name, true]);
-      for (const name of ["react-native-mmkv", "react-native-nitro-modules"]) {
+      // The animation, gestures and svg libraries are the library's copies too: its own imports, a library's and the app's all reach `vendor/`, and no original is bundled beside them (a package manager installs one of gesture
+      // handler, Reanimated and Worklets for Expo Router's peers: Metro never reaches it, and the Worklets plugin that Babel runs is the copy's, `tests/compiler/worklets-plugin.test.ts`).
+      for (const name of ["react-native-mmkv", "react-native-nitro-modules", "react-native-gesture-handler", "react-native-worklets", "react-native-reanimated", "react-native-svg"]) {
         expect([name, modules.some((module) => module.includes(`packages/svelte-native/vendor/${name}/`))]).toEqual([name, true]);
         expect([name, modules.filter((module) => module.includes(`node_modules/${name}/`))]).toEqual([name, []]);
       }
+      // The worklets of the copies and of the app went through the Worklets Babel plugin: the babel preset adds the copy's (the transformer makes `react-native-worklets/plugin` resolve to it), and the app has no package of that name to add.
+      expect(text.match(/__workletHash/g)?.length ?? 0).toBeGreaterThan(50);
       expect(modules.some((module) => /node_modules\/react-native\/index\.js$/.test(module))).toBe(false);
     }, 300_000);
   });

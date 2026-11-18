@@ -77,7 +77,9 @@ kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/CaptureFiles.kt" \
 java -cp "$work/capture-files-check.jar" expo.modules.svelteengine.CaptureFilesCheckKt
 
 # RNGH's own Pan source: the distance rule the edge swipe and the sheet's drag are tied to is read from it, not copied.
-rngh="$(node -p "require('path').dirname(require.resolve('react-native-gesture-handler/package.json', { paths: [process.argv[1]] }))" "$here")"
+# The library's copy (vendor/react-native-gesture-handler), which apps link; an installed one only outside the repository's layout.
+rngh="$here/../../../../../vendor/react-native-gesture-handler"
+[ -d "$rngh/android" ] || rngh="$(node -p "require('path').dirname(require.resolve('react-native-gesture-handler/package.json', { paths: [process.argv[1]] }))" "$here")"
 views="$here/../main/java/expo/modules/svelteengine/views"
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/GestureRules.kt" \
   "$here/../main/java/expo/modules/svelteengine/ClaimRules.kt" \

@@ -10,8 +10,6 @@ import { patchesDirectory, patchFiles, patchKey, patchSpecs } from "../../src/do
 import { requirements } from "../../src/doctor/requirements.ts";
 import { library, repository } from "./support/doctor-fixture.ts";
 
-
-
 // The doctor and the repository it comes from: the patches in `patches/` are the ones the repository's own install applies, each has a doctor entry,
 // the tools it asks for are the ones the repository names, and the example app passes it.
 

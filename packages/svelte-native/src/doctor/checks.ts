@@ -141,33 +141,10 @@ function expoRuntime(context: Context): Check[] {
 }
 
 /**
- * Required peers that carry a native module React Native's autolinking must link. It reads the app's own `dependencies`, not whatever is installed
- * below `node_modules`, so a library that only comes with another package (or a hoisted install) is in the JavaScript bundle and missing from the build. `hermes-intl` is
- * the library's `Intl` constructors (`PluralRules`, `RelativeTimeFormat`, `ListFormat`, `Locale`: Hermes lacks them); the others are what the web's `crypto` is made of:
- * react-native-quick-crypto and the base64 module it asks for (`react-native-quick-base64`). The Nitro runtime they share, and MMKV (`localStorage`), are not here: the library
- * carries them (`vendored`, VENDORING.md).
- */
-const AUTOLINKED_PEERS = ["hermes-intl", "react-native-quick-base64", "react-native-quick-crypto"] as const;
-
-function autolinkedPeers(context: Context, peers: Record<string, unknown>, appPackage: Record<string, unknown>): Check[] {
-  const dependencies = { ...record(appPackage.dependencies), ...record(appPackage.devDependencies), ...record(appPackage.optionalDependencies) };
-  const checks: Check[] = [];
-  for (const name of AUTOLINKED_PEERS) {
-    const range = text(peers[name]);
-    if (range === undefined) continue;
-    if (name in dependencies) {
-      checks.push({ group: "peer dependencies", status: "pass", message: `${name} is a dependency of the app: React Native's autolinking links its native module` });
-    } else if (findPackage(name, context.appRoot)) {
-      checks.push({ group: "peer dependencies", status: "fail", message: `${name} is installed but is not a dependency of the app (${join(context.appRoot, "package.json")}): React Native's autolinking links only the app's own dependencies, so the build would not have its native module`, fix: `pnpm add ${name}@${range}, then npx expo prebuild` });
-    }
-    // Not installed and not declared: the peer dependency check above already fails it.
-  }
-  return checks;
-}
-
-/**
  * The packages the library carries (`vendored.ts`): present in the installed library at the version it pins, and not among the app's own dependencies. An app that lists one
- * links it twice (its own native module beside the library's copy), which the config plugin and the autolinking command refuse as well.
+ * links it twice (its own native module beside the library's copy), which the config plugin and the autolinking command refuse as well. React Native's autolinking links a native
+ * module only from the app's own dependencies, which is why the library adds its copies to the config itself (`autolinking.ts`) and why an app has nothing to install for
+ * `crypto` (react-native-quick-crypto and the base64 module it asks for), the `Intl` constructors Hermes lacks (`hermes-intl`) or `localStorage` (MMKV and the Nitro runtime).
  */
 function vendored(context: Context, libraryName: string): Check[] {
   const declared = new Set(declaredVendored(context.appRoot));
@@ -275,7 +252,6 @@ export function runChecks(context: Context): Check[] {
     ...environment(context),
     svelte(context, peers),
     ...peerDependencies(context, peers, optional),
-    ...autolinkedPeers(context, peers, appPackage),
     ...expoRuntime(context),
     ...vendored(context, name),
     ...patches(context, name, optional),

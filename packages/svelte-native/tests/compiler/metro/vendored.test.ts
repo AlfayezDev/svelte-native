@@ -37,7 +37,7 @@ describe("the names of the vendored packages", () => {
 
   test("the library's own import (#vendor/<name>), a relative path and every other name are resolved as before, from where they are imported", () => {
     const origin = origins[0] ?? "";
-    for (const name of ["#vendor/react-native-mmkv", "./react-native-mmkv", "react-native-mmkv-storage", "react-native-mmkv-extra/lib", "react-native-nitro-modules-extra", "react-native-quick-crypto", "mmkv", "@scope/react-native-mmkv"]) {
+    for (const name of ["#vendor/react-native-mmkv", "./react-native-mmkv", "react-native-mmkv-storage", "react-native-mmkv-extra/lib", "react-native-nitro-modules-extra", "react-native-quick-crypto-extra", "mmkv", "@scope/react-native-mmkv"]) {
       expect(resolveFrom(config, origin, name), name).toBe(`/real/${name} (from ${origin})`);
     }
   });

@@ -21,12 +21,9 @@ What `svelte-native init` writes, file by file, and the options of the Vite, Met
 		"@alfayez/svelte-native": "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native",
 		"expo": "57.0.30",
 		"expo-constants": "57.0.22",
-		"hermes-intl": "^0.1.2",
 		"react": "19.2.7",
 		"react-native": "0.86.3",
 		"react-native-gesture-handler": "2.32.0",
-		"react-native-quick-base64": "2.2.2",
-		"react-native-quick-crypto": "1.1.3",
 		"react-native-reanimated": "4.5.1",
 		"react-native-svg": "15.15.4",
 		"react-native-worklets": "0.10.1"
@@ -47,9 +44,8 @@ What `svelte-native init` writes, file by file, and the options of the Vite, Met
 - `svelte` is a build of Svelte with a custom-renderer export, from a [pull request](https://github.com/sveltejs/svelte/pull/18042) that isn't merged yet. The registry's Svelte has the same version number but not that export. The web app compiles with this build too.
 - `@sveltejs/kit` is exact, because a patch is made for that version. A native-only app doesn't need SvelteKit at all.
 - The other versions are exact for the same reason. `react` is there because React Native needs it; your code doesn't use it.
-- `hermes-intl` adds the `Intl` APIs Hermes lacks. It must be a dependency of the app itself, so that its native code is linked.
 - `react-native-svg` draws the [SVG components](svg) the main entry exports. It is a required dependency, with native code, so it must be one of the app itself too.
-- `react-native-quick-crypto` is what the web's [`crypto`](web-apis#crypto) is made of on the device, and it asks for `react-native-quick-base64`. Both are required, with native code, so they must be dependencies of the app itself. [`localStorage`](web-apis#storage) is MMKV, which shares the Nitro runtime with quick-crypto: the library carries `react-native-mmkv` and `react-native-nitro-modules` itself and links them, so they are not dependencies of the app, and an app that lists either is refused (the prebuild stops, and `svelte-native doctor` fails).
+- `crypto` ([`crypto`](web-apis#crypto): react-native-quick-crypto, and the base64 module it asks for), the `Intl` APIs Hermes lacks (`hermes-intl`) and [`localStorage`](web-apis#storage) (MMKV, which shares the Nitro runtime with quick-crypto) are made of native packages that the library carries itself: `react-native-quick-crypto`, `react-native-quick-base64`, `hermes-intl`, `react-native-mmkv` and `react-native-nitro-modules` are copied into `@alfayez/svelte-native`, which links them, so none of them is a dependency of the app. An app that lists one is refused (the prebuild stops, and `svelte-native doctor` fails).
 - `main` points at the entry point Svelte Native generates. Without it, Expo looks for `expo/AppEntry.js`.
 - The `reanimated` flag turns on the fast path Svelte Native uses for animations on Android.
 - `dev`, `build`, `preview` and `check` stay the web app's. Don't name a script `doctor`: `pnpm doctor` is pnpm's own command.
@@ -188,6 +184,7 @@ export default {
 | `remote` | `{ origin, base?, appDir? }`: the SvelteKit server your [remote functions](loading-data#remote-functions) call. An `http:` origin also allows plain HTTP to it. |
 | `androidOnDemandViewManagers` | Android: create a package's views on first use instead of at startup, by the package's class name: `{ "com.brentvatne.react.ReactVideoPackage": ["RCTVideo"] }`. Shortens startup when you link libraries with many views. |
 | `autolinkingExclude` | Packages and local modules to leave out of this build's native code. |
+| `sodiumEnabled` | `true` adds libsodium to [`crypto`](web-apis#crypto) (XSalsa20 and the other libsodium ciphers, which OpenSSL lacks): the option of the same name that react-native-quick-crypto's own Expo plugin took. An app that listed that plugin, `['react-native-quick-crypto', { sodiumEnabled: true }]`, removes it and sets the option here. Off by default; it makes the iOS build download and compile libsodium. |
 | `capabilities` | What needs a permission or a service of the system, each on once you give what it needs. `{ location: 'Shows the stores near you.' }` turns on `navigator.geolocation`, with nothing to install ([Geolocation](web-apis#geolocation)). A capability that is off isn't compiled into the iOS app at all, so App Store Connect sees none of its APIs. `{ push: { … } }` turns on push notifications (below). |
 
 Run `expo prebuild` after changing the plugin's options ([Development builds](development-builds#when-to-run-expo-prebuild)).

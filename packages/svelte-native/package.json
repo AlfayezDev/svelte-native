@@ -117,7 +117,9 @@
     "#vendor/react-native-nitro-modules": {
       "types": "./vendor/react-native-nitro-modules/lib/typescript/index.d.ts",
       "default": "./vendor/react-native-nitro-modules/src/index.ts"
-    }
+    },
+    "#vendor/react-native-quick-crypto": "./vendor/react-native-quick-crypto/src/index.ts",
+    "#vendor/hermes-intl": "./vendor/hermes-intl/src/index.js"
   },
   "bin": {
     "svelte-native": "./dist/node/cli.js"
@@ -144,7 +146,9 @@
     "!vendor/**/build",
     "!vendor/**/.cxx",
     "!vendor/**/.gradle",
-    "!vendor/**/Pods"
+    "!vendor/**/Pods",
+    "!vendor/**/libsodium-stable",
+    "!vendor/**/libsodium.tar.gz"
   ],
   "scripts": {
     "typecheck": "svelte-check --tsconfig ./tsconfig.json",
@@ -155,8 +159,14 @@
   "dependencies": {
     "@babel/parser": "7.29.8",
     "@babel/types": "7.29.8",
+    "@craftzdog/react-native-buffer": "6.1.0",
     "@jridgewell/trace-mapping": "0.3.31",
-    "esbuild": "0.28.1"
+    "esbuild": "0.28.1",
+    "events": "3.3.0",
+    "readable-stream": "4.7.0",
+    "safe-buffer": "^5.2.1",
+    "string_decoder": "^1.3.0",
+    "util": "0.12.5"
   },
   "peerDependencies": {
     "@react-native-community/datetimepicker": "9.1.0",
@@ -168,7 +178,6 @@
     "expo-image": "~57.0.5",
     "expo-linear-gradient": "~57.0.2",
     "expo-video": "~57.0.5",
-    "hermes-intl": "^0.1.2",
     "lottie-react-native": "~7.3.8",
     "react": "19.2.7",
     "react-native": "0.86.3",
@@ -178,8 +187,6 @@
     "react-native-gesture-handler": "~2.32.0",
     "react-native-maps": "1.27.2",
     "react-native-pdf": "7.0.3",
-    "react-native-quick-base64": "2.2.2",
-    "react-native-quick-crypto": "1.1.3",
     "react-native-reanimated": "4.5.1",
     "react-native-svg": "15.15.4",
     "react-native-video": "6.19.3",
@@ -263,7 +270,6 @@
     "eslint": "10.8.1",
     "eslint-plugin-svelte": "3.23.0",
     "globals": "17.11.0",
-    "hermes-intl": "^0.1.2",
     "svelte": "file:../../vendor/svelte-5.56.7-216f258.tgz",
     "svelte-check": "^4.6.0",
     "svelte2tsx": "0.7.63",

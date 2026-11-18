@@ -4,6 +4,7 @@
  * before the prebuild, and about the files of the last one). Nothing here reads a file or imports Expo: the doctor is bundled into the CLI, which has to start in an app that has no
  * Expo installed yet.
  */
+import { isRecord } from "./common.ts";
 
 /**
  * The push libraries of other makers. Android delivers every message to one `FirebaseMessagingService` and iOS has one notification center delegate, so a second
@@ -71,8 +72,8 @@ const refuse = (message: string): never => {
 
 /** `value` as an object of the config, or the refusal that says what the config takes there. */
 function section(value: unknown, where: string, example: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return refuse(`${where} takes an object: ${example}`);
-  return value as Record<string, unknown>;
+  if (!isRecord(value)) return refuse(`${where} takes an object: ${example}`);
+  return value;
 }
 
 /** A text of the config that is given: not empty, as the user or the build will read it. */

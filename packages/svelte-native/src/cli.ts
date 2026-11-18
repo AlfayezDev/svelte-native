@@ -51,9 +51,7 @@ if (command === "android-autolinking") {
 if (command === "ios-autolinking") {
   // Not a command for people either: the Podfile runs it around React Native's autolinking config command, as settings.gradle runs the Android one. Before the sync: it needs no routes.
   const { runIosAutolinking } = await import("./autolinking.ts");
-  const status = runIosAutolinking(args);
-  await new Promise<void>((flushed) => process.stdout.write("", () => flushed()));
-  process.exit(status);
+  await exitAfterFlush(runIosAutolinking(args));
 }
 if (command === "css") {
   // What the Metro integration runs in a process of its own (`buildClassesSync`), and a way to see what a CSS file compiles to. Before the sync: it needs no routes.

@@ -26,8 +26,8 @@ export default {
     },
   },
   plugins: [
-    // The library's Expo plugin: autolinks its native modules and wires the Android and iOS hosts. The location capability (expo-location) is `navigator.geolocation`,
-    // which the Web APIs screen's device checks use; the text is what iOS shows when it asks.
+    // The library's Expo plugin: autolinks its native modules and wires the Android and iOS hosts. The location capability is `navigator.geolocation`, which the Web APIs
+    // screen's device checks use: the library's own native code does the work, so nothing is installed for it; the text is what iOS shows when it asks.
     ["@alfayez/svelte-native", {
       ...(remoteOrigin ? { remote: { origin: remoteOrigin } } : {}),
       capabilities: { location: "Svelte Native reads your location for the Web APIs screen's geolocation check." },

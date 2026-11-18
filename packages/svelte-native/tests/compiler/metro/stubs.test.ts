@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { createRequire } from "node:module";
 import { mkdirSync, readFileSync, readdirSync, symlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -153,6 +153,9 @@ describe("what a stub does", () => {
 });
 
 describe("a platform whose push is off bundles push's stand-in, not its client", () => {
+  // Bun (1.3) with a cold transpiler cache gives Expo's plugin resolver, which `require`s the library's `app.plugin.js` (an ES module), an object without its default
+  // export the first time, and the config then cannot be read. Loading the plugin once first avoids it; Metro runs on Node, where `require` of it is right every time.
+  beforeAll(async () => { await import(join(packageRoot, "app.plugin.js")); });
   // The library's own file, as Metro finds it from `push/load.ts` and from the `./push` entry.
   const library: RealResolver = (context, moduleName) => ({ type: "sourceFile", filePath: moduleName.startsWith(".") ? join(dirname(context.originModulePath), moduleName) : `/real/${moduleName}` });
   const fromLoad = sourceFile("push/load.ts");

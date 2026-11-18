@@ -1,14 +1,18 @@
 require 'json'
 
-# What the config plugin's capabilities turned on, from `ios/Podfile.properties.json` (written at prebuild). A feature that is off is not compiled
-# at all, so its system APIs are not in the app's binary: App Store Connect refuses or warns about a binary that references an API without the
-# purpose string or entitlement it needs, whether or not the app calls it.
-svelte_properties = begin
-  JSON.parse(File.read(File.join(Pod::Config.instance.installation_root.to_s, 'Podfile.properties.json')))
+# The features an app turned on are compile conditions of this pod, so that an app that did not has no code of them in its binary (App Store Connect refuses a binary that uses an API without its usage text:
+# for location, CoreLocation without NSLocationWhenInUseUsageDescription; for push, a warning about the remote-notification APIs without the aps-environment entitlement). The config plugin writes `"<key>": "true"` into Expo's ios/Podfile.properties.json for a capability that is on for iOS and
+# takes the key away when it is off (`locationPodfileProperty` and `pushPodfileProperty` in src/capabilities.ts); each Swift file of such a feature is `#if <condition> ... #endif`, and a stub module stands in for it
+# (ios/location/SvelteLocationModule.swift). The file is read when the pod is installed, so `pod install` (a prebuild does it) is what changes the build.
+podfile_properties = begin
+  JSON.parse(File.read(File.join(Pod::Config.instance.installation_root, 'Podfile.properties.json')))
 rescue StandardError
   {}
 end
-svelte_conditions = { 'svelteNative.push' => 'SVELTE_PUSH' }.select { |key, _| svelte_properties[key] == 'true' }.values
+compile_conditions = {
+  'svelteNative.location' => 'SVELTE_LOCATION',
+  'svelteNative.push' => 'SVELTE_PUSH',
+}.select { |key, _| podfile_properties[key] == 'true' }.values
 
 Pod::Spec.new do |s|
   s.name           = 'SvelteCore'
@@ -34,7 +38,7 @@ Pod::Spec.new do |s|
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
     'SWIFT_COMPILATION_MODE' => 'wholemodule',
-    'SWIFT_ACTIVE_COMPILATION_CONDITIONS' => (['$(inherited)'] + svelte_conditions).join(' ')
+    'SWIFT_ACTIVE_COMPILATION_CONDITIONS' => (['$(inherited)'] + compile_conditions).join(' ')
   }
 
   # React-RCTFabric, React-Fabric, folly and the C++ language level for the Fabric components (merged into the settings above).

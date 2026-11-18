@@ -167,7 +167,6 @@
     "expo-constants": "~57.0.21",
     "expo-image": "~57.0.5",
     "expo-linear-gradient": "~57.0.2",
-    "expo-location": "~57.0.21",
     "expo-video": "~57.0.5",
     "hermes-intl": "^0.1.2",
     "lottie-react-native": "~7.3.8",
@@ -209,9 +208,6 @@
       "optional": true
     },
     "expo-linear-gradient": {
-      "optional": true
-    },
-    "expo-location": {
       "optional": true
     },
     "expo-video": {

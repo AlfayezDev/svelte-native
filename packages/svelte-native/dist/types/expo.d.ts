@@ -53,10 +53,11 @@ export type SvelteNativeOptions = {
      */
     variant?: string;
     /**
-     * The web APIs that need a permission of the system, each turned on by saying why the app uses it. `location` (with expo-location installed) is
-     * `navigator.geolocation`: `{ location: "Shows the stores near you." }`, the text iOS shows when it asks, or `{ location: { whenInUse, background } }` for the
-     * background too. `push` is push notifications (its native code is part of the library), from the app's identifiers: `{ push: { android: { googleServicesFile },
-     * ios: { mode } } }`, and never a server key. A capability on without its library, and a library installed without its capability, stop the prebuild (`capabilities.ts`).
+     * The web APIs that need a permission of the system, each turned on by saying why the app uses it. Their native code is part of the library, in every app, and does nothing
+     * until the prebuild turns it on: nothing is installed. `location` is `navigator.geolocation` while the app is in use: `{ location: "Shows the stores near you." }`, the
+     * text iOS shows when it asks, or `{ location: { whenInUse } }` (Android gets the two location permissions; background location is not part of it). `push` is push
+     * notifications, from the app's identifiers: `{ push: { android: { googleServicesFile }, ios: { mode } } }`, and never a server key. A config that cannot be built as
+     * it stands (a secret, an empty reason, two answers to one question) stops the prebuild (`capabilities.ts`).
      */
     capabilities?: Capabilities;
 };
@@ -124,8 +125,8 @@ export declare function headlessPackageSource(applicationId: string): string;
 /** Kotlin source of the wrapper that makes a package's view managers on demand (`androidOnDemandViewManagers`). */
 export declare function onDemandPackageSource(applicationId: string): string;
 /**
- * Expo's prebuild applies a built-in plugin for every installed package it thinks is autolinked (expo-location's location
- * permissions, expo-local-authentication's biometric ones, …), and it asks the autolinker with `package.json`'s options only, so
+ * Expo's prebuild applies a built-in plugin for every installed package it thinks is autolinked (expo-local-authentication's biometric
+ * permissions, expo-notifications', …), and it asks the autolinker with `package.json`'s options only, so
  * it never sees the excludes this plugin passes on the command line: a package left out of the build would still add its manifest
  * permissions and Info.plist texts. Every Expo plugin runs once per config (`createRunOncePlugin`, keyed by package name), so the
  * excluded packages are entered in the config's plugin history here, before the prebuild applies its own, and those plugins

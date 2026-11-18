@@ -233,7 +233,7 @@ export function vendoredDependency(vendored: VendoredPackage, platform: LinkPlat
     if (!android) return undefined;
     const sourceDir = join(directory, "android");
     const codegen = manifest.codegenConfig;
-    const codegenName = typeof codegen === "object" && codegen !== null && typeof (codegen as Json).name === "string" ? ((codegen as Json).name as string) : undefined;
+    const codegenName = typeof codegen === "object" && codegen !== null && "name" in codegen && typeof codegen.name === "string" ? codegen.name : undefined;
     const libraryName = android.libraryName ?? codegenName ?? gradleLibraryName(join(sourceDir, "build.gradle"));
     const cxx = android.cxxModule;
     return {
@@ -336,5 +336,5 @@ export function linkVendored<Config extends LinkableConfig>(config: Config, plat
   for (const vendored of optionalPackages) if (!on.has(vendored.name)) delete dependencies[vendored.name];
   // The config command lists its dependencies by name; so does this.
   const sorted = Object.entries({ ...dependencies, ...Object.fromEntries(entries) }).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return { ...config, dependencies: Object.fromEntries(sorted) } as Config;
+  return { ...config, dependencies: Object.fromEntries(sorted) };
 }

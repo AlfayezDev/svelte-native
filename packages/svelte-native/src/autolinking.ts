@@ -66,15 +66,17 @@ export function deferNitroLibraries(config: AutolinkingConfig): AutolinkingConfi
 export function splitLinks(argv: readonly string[]): { link: string[]; command: string[] } {
   const link: string[] = [];
   let index = 0;
-  while (argv[index] === "--link" && argv[index + 1] !== undefined) {
-    link.push(argv[index + 1] as string);
+  while (argv[index] === "--link") {
+    const name = argv[index + 1];
+    if (name === undefined) break;
+    link.push(name);
     index += 2;
   }
   return { link, command: argv.slice(index) };
 }
 
 /**
- * Runs `command`, and prints what it printed with the vendored packages linked and `transform` applied; its standard error and its exit status are its own. Output that is
+ * Runs the config command in `given` (after its `--link` pairs), and prints what it printed with the vendored packages linked and `transform` applied; its standard error and its exit status are its own. Output that is
  * not a JSON object is printed as it came (the build then fails on it where it would have). An app that declares a vendored package itself is refused (`VendoredCollision`).
  */
 function runAutolinking(name: string, platform: LinkPlatform, given: readonly string[], transform: (config: AutolinkingConfig) => AutolinkingConfig): number {

@@ -347,6 +347,9 @@ export function applyAppDelegate(contents: string): string {
   return `${stripped.slice(0, importEnd)}\n${delegateImport}${stripped.slice(importEnd, propertyEnd)}\n${block}${stripped.slice(propertyEnd)}`;
 }
 
+/** The community CLI's command (`EXPO_USE_COMMUNITY_AUTOLINKING=1`) through the library's: React Native's default, `cmd /c` first on Windows as React Native's `windowsAwareCommandLine` does. */
+const communityCall = "svelteNativeConfigCommand + svelteNativeCommunityCommand, svelteNativeAppRoot.asFile, svelteNativeLockFiles";
+
 /**
  * `settings.gradle`: excludes packages from Expo and React Native autolinking, the headless ones and `extra`, and runs React Native's config command
  * through the library's `android-autolinking` (`autolinking.ts`: the packages the library carries are linked from its directory, and the Nitro modules' native libraries load
@@ -359,16 +362,13 @@ export function applyAppDelegate(contents: string): string {
  * number of values, so without a `--` in front the paths would be read as names to leave out and the modules would not be found: the first search path is that `--`. The block's
  * lock files include `settings.gradle` itself: React Native keeps the command's output until a lock file changes, and a changed `libraries` changes the `--link` arguments.
  */
-/** The community CLI's command (`EXPO_USE_COMMUNITY_AUTOLINKING=1`) through the library's: React Native's default, `cmd /c` first on Windows as React Native's `windowsAwareCommandLine` does. */
-const communityCall = "svelteNativeConfigCommand + svelteNativeCommunityCommand, svelteNativeAppRoot.asFile, svelteNativeLockFiles";
-
 export function applyHeadlessSettings(contents: string, extra: readonly string[] = [], links?: LibraryLinks): string {
   const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\((?:svelteNativeConfigCommand \+ )?expoAutolinking\.rnConfigCommand \+ svelteNativeExcludeArgs(?:, svelteNativeAppRoot\.asFile, svelteNativeLockFiles)?\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)")
     .replace(`autolinkLibrariesFromCommand(${communityCall})`, "autolinkLibrariesFromCommand()");
   const anchor = /^extensions\.configure\(com\.facebook\.react\.ReactSettingsExtension\)/m.exec(stripped);
   if (!anchor || !stripped.includes("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)")) throw new Error("Svelte native could not find the autolinking block in settings.gradle");
-  const list = [...new Set([...headlessExcludedPackages, ...extra, ...(links?.expoOff ?? [])])].map((name) => `"${name}"`).join(", ");
   const quoted = (names: readonly string[]) => names.map((name) => `"${name}"`).join(", ");
+  const list = quoted([...new Set([...headlessExcludedPackages, ...extra, ...(links?.expoOff ?? [])])]);
   const expoModules = links?.expo ?? [];
   const reactNative = links?.reactNative ?? [];
   const block = [

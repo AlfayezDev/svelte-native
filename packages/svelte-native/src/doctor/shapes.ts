@@ -123,7 +123,7 @@ export function rnghProblems(read: Reader): string[] {
     ], true));
 }
 
-// ---- react-native-reanimated: the sink and the engine hook of the Android views, the Worklets copy beside it, the flag the sink is reached through ----
+// ---- react-native-reanimated: the sink and the engine hook of the Android views ----
 
 export function reanimatedProblems(read: Reader): string[] {
   const base = "android/src/main";

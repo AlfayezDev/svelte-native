@@ -111,6 +111,10 @@ describe("an app with no push", () => {
 });
 
 describe("one push library", () => {
+  test("the libraries refused are the two this describe goes over", () => {
+    expect(otherPushLibraries).toEqual(["expo-notifications", "@react-native-firebase/messaging"]);
+  });
+
   for (const other of otherPushLibraries) {
     test(`${other} with capabilities.push on is a failure: an app has one push library`, () => {
       const installed = run({ installed: [other] }).push;
@@ -143,7 +147,7 @@ describe("the prebuild", () => {
     expect(run({ files: code }).push).toEqual([]);
     const { push } = run({ files: { ...code, ...androidManifest(true) } });
     expect(find(push, "could not find the Google services file")).toMatchObject({ status: "unknown" });
-    expect(find(push, "app.config.ts is code that the doctor does not run")).toBeDefined();
+    expect(find(push, "app.config.ts is code that the doctor does not run")).toMatchObject({ status: "unknown" });
   });
 });
 

@@ -3,8 +3,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
 import { isLiteOrigin, LITE_ORIGINS, NODE_CRYPTO, QUICK_CRYPTO, withSvelteNative } from "../../../src/metro.ts";
-import { vendoredFileAs, vendoredImport, vendoredRoot } from "../../../src/vendored.ts";
-import { packageRoot } from "../../support/paths.ts";
+import { vendoredFileAs, vendoredImport } from "../../../src/vendored.ts";
+import { packageRoot, vendored } from "../../support/paths.ts";
 import { type RealResolver, fakeConfig, resolveFrom as resolveWith } from "../../support/metro.ts";
 import { createProject } from "../../support/project.ts";
 
@@ -14,7 +14,7 @@ import { createProject } from "../../support/project.ts";
  */
 const real: RealResolver = (context, moduleName) => ({ type: "sourceFile", filePath: `/real/${moduleName} (from ${context.originModulePath})` });
 const resolveFrom = (config: ConfigT, origin: string, moduleName: string): string => resolveWith(config, origin, moduleName, real);
-const copy = (name: string, path = "") => join(vendoredRoot(name), path);
+const copy = (name: string, path = "") => join(vendored(name), path);
 const names = ["react-native-quick-crypto", "react-native-quick-base64", "hermes-intl"] as const;
 
 describe("the names of the three resolve to the copies, whoever imports them", () => {

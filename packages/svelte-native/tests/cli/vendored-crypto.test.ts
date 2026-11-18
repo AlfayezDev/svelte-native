@@ -153,19 +153,20 @@ describe("quick-crypto keeps linking the vendored Nitro runtime, and stays defer
     expect(read("react-native-quick-crypto", "android/src/main/java/com/margelo/nitro/quickcrypto/QuickCryptoPackage.java")).toContain('private static final String TAG = "QuickCrypto";');
   });
 
-  test("the commands print the three among the vendored entries and defer quick-crypto's library, from the sources and from the shipped dist/node/cli.js", () => {
-    const node = Bun.which("node");
-    if (!node) return;
-    const printing = (config: unknown) => [node, "-e", `process.stdout.write(JSON.stringify(${JSON.stringify(config)}))`];
+  const node = Bun.which("node");
+
+  test.skipIf(!node)("the commands print the three among the vendored entries and defer quick-crypto's library, from the sources and from the shipped dist/node/cli.js", () => {
+    const executable = node ?? "node";
+    const printing = (config: unknown) => [executable, "-e", `process.stdout.write(JSON.stringify(${JSON.stringify(config)}))`];
     for (const cli of [resolve(import.meta.dirname, "../../src/cli.ts"), resolve(import.meta.dirname, "../../dist/node/cli.js")]) {
       for (const [command, platform] of [["android-autolinking", "android"], ["ios-autolinking", "ios"]] as const) {
-        const result = Bun.spawnSync([node, cli, command, ...printing({ root: app(), dependencies: {} })], { cwd: import.meta.dirname });
+        const result = Bun.spawnSync([executable, cli, command, ...printing({ root: app(), dependencies: {} })], { cwd: import.meta.dirname });
         expect([cli, command, result.exitCode]).toEqual([cli, command, 0]);
         const printed = JSON.parse(result.stdout.toString()) as AutolinkingConfig;
         for (const name of names) expect([cli, command, name, rootOf(printed, name)]).toEqual([cli, command, name, vendoredRoot(name)]);
         if (platform === "android") expect(platformOf<{ packageInstance: string }>(printed, "react-native-quick-crypto", "android").packageInstance).toBe('new DeferredNitroPackage("QuickCrypto")');
         // An app that lists quick-crypto is refused by both, with nothing on standard output.
-        const refused = Bun.spawnSync([node, cli, command, ...printing({ root: app({ "react-native-quick-crypto": "1.1.3" }), dependencies: { "react-native-quick-crypto": { root: "/app/node_modules/react-native-quick-crypto", name: "react-native-quick-crypto", platforms: {} } } })], { cwd: import.meta.dirname });
+        const refused = Bun.spawnSync([executable, cli, command, ...printing({ root: app({ "react-native-quick-crypto": "1.1.3" }), dependencies: { "react-native-quick-crypto": { root: "/app/node_modules/react-native-quick-crypto", name: "react-native-quick-crypto", platforms: {} } } })], { cwd: import.meta.dirname });
         expect([cli, command, refused.exitCode, refused.stdout.toString()]).toEqual([cli, command, 1, ""]);
         expect(refused.stderr.toString()).toContain(collisionMessage(["react-native-quick-crypto"]));
       }
@@ -228,7 +229,7 @@ describe("`sodiumEnabled`, the option of quick-crypto's Expo plugin that moved i
     // The vendored-package block of the same prebuild is still there: the two do not disturb each other.
     expect(on.podfile).toContain("'ios-autolinking'");
     expect(on.gradle.filter((item) => item.key === "sodiumEnabled")).toEqual([{ type: "property", key: "sodiumEnabled", value: "true" }]);
-    expect(on.gradle.find((item) => item.key === "org.gradle.daemon")).toBeDefined();
+    expect(on.gradle.find((item) => item.key === "org.gradle.daemon")).toEqual({ type: "property", key: "org.gradle.daemon", value: "true" });
     for (const options of [undefined, {}, { sodiumEnabled: false }]) {
       const off = await prebuilt(options);
       expect(off.podfile).not.toContain("SODIUM_ENABLED");

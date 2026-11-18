@@ -1,16 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test } from "bun:test";
-import { vendorRoot } from "../support/paths.ts";
+import { vendored } from "../support/paths.ts";
 
 /**
  * A colour in `animatedProps` reaches react-native-svg's native views as the platform's ARGB integer (`foreign/svg/colors.test.ts` runs Reanimated's `processColorsInProps` on our elements).
  * That the library's views read a number as a solid colour is a property of the library's Java and Objective-C, which this reads as text: a change to it fails here until the colours are looked at again.
  */
-const modules = vendorRoot;
-
 test("the native views take that integer: RenderableView.setFill/setStroke and FeFlood.setFloodColor read a number, and iOS's RNSVGBrush converts an NSNumber", () => {
-  const library = resolve(modules, "react-native-svg");
+  const library = vendored("react-native-svg");
   const read = (file: string) => (existsSync(resolve(library, file)) ? readFileSync(resolve(library, file), "utf8") : "");
   const java = (name: string, method: string) => {
     const source = read(`android/src/main/java/com/horcrux/svg/${name}.java`);

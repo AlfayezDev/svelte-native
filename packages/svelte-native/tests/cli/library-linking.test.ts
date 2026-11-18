@@ -56,9 +56,8 @@ describe("linkVendored: the libraries that are on", () => {
     for (const platform of ["android", "ios"] as const) {
       const linked = linkVendored({ root: app(), dependencies: {} }, platform, undefined, [...reactNative, ...expoModules]);
       for (const name of expoModules) expect([name, linked.dependencies[name]]).toEqual([name, undefined]);
-      for (const name of reactNative) {
-        const entry = vendoredDependency(optionalPackages.find((vendored) => vendored.name === name) ?? optionalPackages[0]!, platform);
-        expect([platform, name, linked.dependencies[name]]).toEqual([platform, name, entry]);
+      for (const vendored of optionalPackages.filter((candidate) => candidate.optional?.kind === "react-native")) {
+        expect([platform, vendored.name, linked.dependencies[vendored.name]]).toEqual([platform, vendored.name, vendoredDependency(vendored, platform)]);
       }
     }
   });

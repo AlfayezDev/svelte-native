@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
 import { isInPackage, pushPlatforms, stubCoreSource, stubSource, withSvelteNative } from "../../../src/metro.ts";
 import { packageRoot, sourceFile } from "../../../src/package-root.ts";
-import { vendoredRoot } from "../../../src/vendored.ts";
+import { vendored } from "../../support/paths.ts";
 import { type RealResolver, fakeConfig, resolveFrom, watchUntouched } from "../../support/metro.ts";
 import { createProject } from "../../support/project.ts";
 
@@ -62,7 +62,7 @@ describe("Metro resolves the packages an app does not link to stubs", () => {
     expect(readdirSync(root)).toEqual([]);
     expect(plain.cacheVersion).toBe("+svelte-native-2");
     // Not stubbed, and not the app's to resolve either: the library carries react-native-mmkv, so its name is the copy's (vendored.test.ts).
-    expect(resolve(plain, "react-native-mmkv")).toBe(`/real/${vendoredRoot("react-native-mmkv")}`);
+    expect(resolve(plain, "react-native-mmkv")).toBe(`/real/${vendored("react-native-mmkv")}`);
     expect(resolve(plain, "react-native-mmkv-extra")).toBe("/real/react-native-mmkv-extra");
     expect(withSvelteNative(fakeConfig(root), { stubbedPackages: ["x"], variant: "qa" }).cacheVersion).toBe("+svelte-native-2+stubs-qa");
     expect(withSvelteNative(fakeConfig(root), { stubbedPackages: ["x"], variant: "production" }).cacheVersion).toBe("+svelte-native-2+stubs-production");

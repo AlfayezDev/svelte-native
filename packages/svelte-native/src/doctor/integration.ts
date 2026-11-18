@@ -57,7 +57,8 @@ export function expoPluginFinding(appRoot: string, library: string): Finding {
   return json ? { state: "absent", file: json } : { state: "no-file" };
 }
 
-const record = (value: unknown): Record<string, unknown> => (typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
+/** `value` as a plain object, or `{}` for anything else: a section of a JSON file that is missing or of another shape reads as empty. */
+export const record = (value: unknown): Record<string, unknown> => (typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
 
 /**
  * What `app.json` says, for the checks that need more than the plugin's name: its `expo` object (the file's top level when it has no `expo`, as Expo reads it), and the

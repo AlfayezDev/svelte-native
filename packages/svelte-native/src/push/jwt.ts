@@ -16,7 +16,7 @@ const KEYS: Record<Algorithm, { type: string; curve?: string }> = {
  * A PEM that came through an environment variable often has its line breaks written as the two characters `\n`, which no PEM parser reads. A key that has real line
  * breaks is left alone.
  */
-export const pemOf = (value: string): string => (value.includes("\n") ? value : value.replaceAll("\\n", "\n")).trim();
+const pemOf = (value: string): string => (value.includes("\n") ? value : value.replaceAll("\\n", "\n")).trim();
 
 /**
  * The key of a PEM, checked to be what `algorithm` signs with, so that a wrong key (an RSA key where the `.p8` is expected, a P-384 key) fails when the sender is made and

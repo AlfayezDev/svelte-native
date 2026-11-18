@@ -182,16 +182,17 @@ function messageOf(flags: Flags): PushSend {
 
 /** The sender's options for the token's provider, from the environment, or why they cannot be made. Only that provider's variables matter to a send to it. */
 function optionsFor(token: PushToken, io: PushIo): PushOptions {
+  const timeout = io.timeout === undefined ? {} : { timeout: io.timeout };
   if (token.provider === "fcm") {
     const fcm = readFcm(io.env, io.cwd);
     if (fcm.state === "unset") throw new UsageError(`${variables.fcmServiceAccount} is not set: an FCM token is sent with the service account key (its JSON, or the path of its file)`);
     if (fcm.state === "invalid") throw new UsageError(fcm.problem);
-    return { fcm: fcm.options, ...(io.timeout === undefined ? {} : { timeout: io.timeout }) };
+    return { fcm: fcm.options, ...timeout };
   }
   const apns = readApns(io.env, io.cwd);
   if (apns.state === "unset") throw new UsageError(`${variables.apnsKey}, ${variables.apnsKeyId} and ${variables.apnsTeamId} are not set: an APNs token is sent with the .p8 key (its PEM, or the path of its file), its key id and the team id`);
   if (apns.state === "invalid") throw new UsageError(apns.problem);
-  return { apns: apns.options, ...(io.timeout === undefined ? {} : { timeout: io.timeout }) };
+  return { apns: apns.options, ...timeout };
 }
 
 /** What to do about a failure, in a sentence (the reasons are PUSH.md's). */
@@ -215,7 +216,7 @@ function report(result: SendResult, token: PushToken, json: boolean): string {
 }
 
 /**
- * `svelte-native push <command>`: only `send` so far. Returns the exit status. `root` is where a relative path in a credential variable is resolved from; `io` is for tests.
+ * `svelte-native push <command>`; `send` is its one command. Returns the exit status. `root` is where a relative path in a credential variable is resolved from; `io` is for tests.
  */
 export async function runPush(root: string, args: readonly string[], io: Partial<PushIo> = {}): Promise<number> {
   const full: PushIo = { out: process.stdout, err: process.stderr, env: process.env, cwd: resolve(root), ...io };

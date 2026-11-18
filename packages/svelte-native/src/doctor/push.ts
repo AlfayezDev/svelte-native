@@ -10,7 +10,7 @@
 import { join } from "node:path";
 import { apsEnvironmentEntitlement, checkPushConfig, findPushSecret, googleServicesPackages, otherPushLibraries, pushIsOn, pushSecretMessage, remoteNotificationMode } from "../push/config.ts";
 import type { Check, Context } from "./checks.ts";
-import { appJson, codeConfig } from "./integration.ts";
+import { appJson, codeConfig, record } from "./integration.ts";
 import { findPackage, readerFor, type Reader } from "./resolve.ts";
 
 /** What a prebuild with push on writes, and the native side reads: the Android manifest's meta-data and the iOS Info.plist's key (`capabilities.ts`). */
@@ -19,7 +19,6 @@ export const IOS_PUSH_FLAG = "SveltePushEnabled";
 
 const group = "push";
 
-const record = (value: unknown): Record<string, unknown> => (typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
 const text = (value: unknown): string | undefined => (typeof value === "string" && value !== "" ? value : undefined);
 
 /** A string value of a plist (`<key>name</key><string>value</string>`), or undefined. The files Expo writes are XML plists. */
@@ -106,7 +105,7 @@ function gradleApplicationId(reader: Reader): string | undefined {
 
 /** The Google services file the app has, by the way the doctor can tell: the config's own word for it, else the app root, else the prebuild's copy. */
 function locateGoogleServices(config: Config | undefined, reader: Reader): string | undefined {
-  const named = text(config?.push?.android === undefined ? undefined : record(config.push.android).googleServicesFile) ?? config?.googleServicesFile;
+  const named = text(record(config?.push?.android).googleServicesFile) ?? config?.googleServicesFile;
   if (named !== undefined) return named.replace(/^\.\//, "");
   const inRoot = reader.list(".").filter((name) => /^google-services.*\.json$/.test(name)).sort((a, b) => (a === "google-services.json" ? -1 : b === "google-services.json" ? 1 : a.localeCompare(b)));
   if (inRoot[0] !== undefined) return inRoot[0];
@@ -228,7 +227,7 @@ function iosChecks(config: Config | undefined, reader: Reader): Check[] {
 /** Whether the last prebuild turned push on: the flag it writes in the Android manifest or the iOS Info.plist (undefined for a platform with no native project yet). */
 function prebuiltPush(reader: Reader): { android: boolean | undefined; ios: boolean | undefined } {
   const manifest = reader.read("android/app/src/main/AndroidManifest.xml");
-  const directory = reader.list("ios").length === 0 ? undefined : iosAppDirectory(reader);
+  const directory = iosAppDirectory(reader);
   const infoPlist = directory === undefined ? undefined : reader.read(`ios/${directory}/Info.plist`);
   return {
     android: manifest === undefined ? undefined : new RegExp(`android:name="${ANDROID_PUSH_FLAG.replaceAll(".", "\\.")}"\\s+android:value="true"`).test(manifest),

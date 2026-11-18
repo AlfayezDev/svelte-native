@@ -28,7 +28,7 @@ export type ServerOptions = {
 };
 
 /** The topic of the APNs probe when none is given: it names no app, so a key can only be judged by what APNs says of its provider token. */
-export const placeholderTopic = "com.example.svelte-native-doctor";
+const placeholderTopic = "com.example.svelte-native-doctor";
 
 /** A device token that cannot be a real one: APNs answers `BadDeviceToken` once it has accepted the provider token. */
 const impossibleDeviceToken = "0".repeat(64);

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { declaredPatches } from "./declared.ts";
-import { expoPluginFinding, metroFinding, type Finding } from "./integration.ts";
+import { expoPluginFinding, metroFinding, record, type Finding } from "./integration.ts";
 import { missingFromPackage } from "./hunks.ts";
 import { patchFiles, patchKey, patchSpecs } from "./patches.ts";
 import { pushChecks } from "./push.ts";
@@ -35,7 +35,6 @@ export type Context = {
   repository?: boolean;
 };
 
-const record = (value: unknown): Record<string, unknown> => (typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
 const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 
 function environment(context: Context): Check[] {

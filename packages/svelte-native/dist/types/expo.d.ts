@@ -1,4 +1,4 @@
-import { type ConfigPlugin } from "expo/config-plugins";
+import { type AndroidConfig, type ConfigPlugin } from "expo/config-plugins";
 import { type Capabilities } from "./capabilities.js";
 export type { Capabilities, LocationCapability, PushCapability } from "./capabilities.js";
 import { type Libraries, type LibraryLinks, type LibrariesOption } from "./libraries.js";
@@ -72,6 +72,13 @@ export type SvelteNativeOptions = {
      * one in its `package.json` or `plugins` is refused. Prebuild again after changing it.
      */
     libraries?: LibrariesOption;
+    /**
+     * libsodium in `crypto` and in Node's `crypto` (react-native-quick-crypto, which the library carries: `vendor/react-native-quick-crypto`): the algorithms OpenSSL lacks (XSalsa20 and the other
+     * libsodium ciphers). It is the option of the same name that react-native-quick-crypto's own Expo plugin took, and an app that lists that plugin moves the option here, since the package is not
+     * the app's any more. Android: `sodiumEnabled=true` in `gradle.properties`, which links `io.github.ronickg:sodium`; iOS: `ENV['SODIUM_ENABLED'] = '1'` at the top of the Podfile, which makes
+     * the pod download libsodium's source (1.0.20) and compile it. Default `false`: neither platform has libsodium. The plugin owns the setting: it is written again, or removed, on every prebuild.
+     */
+    sodiumEnabled?: boolean;
 };
 /**
  * The Android build is headless: no React host, so native boot is trimmed. AndroidX `EmojiCompatInitializer` is removed,
@@ -136,11 +143,22 @@ export declare function applyHeadlessSettings(contents: string, extra?: readonly
 export declare function applyPodfileAutolinkingExclude(contents: string, names: readonly string[], expoModules?: readonly string[]): string;
 /**
  * `Podfile`: the config command that `use_native_modules!` runs goes through the library's `ios-autolinking` (`autolinking.ts`), which adds the packages the library carries
- * (`vendored.ts`: the Nitro runtime and MMKV, and the optional libraries `links` names, `libraries.ts`) to its output, with the podspecs of `vendor/` in the library's directory, so the app's
- * package.json lists none of them. The block goes in front of the line that reads the config, after anything that already extended the command; stripped and written again on every
- * prebuild, so an update of the library moves it. With `EXPO_USE_COMMUNITY_AUTOLINKING=1` the command underneath is the community CLI's, and its output gets the same entries.
+ * (`vendored.ts`: the Nitro runtime, MMKV, quick-crypto and the base64 module it asks for, the `Intl` module, and the optional libraries `links` names, `libraries.ts`) to its output, with the podspecs
+ * of `vendor/` in the library's directory, so the app's package.json lists none of them. The block goes in front of the line that reads the config, after anything that already extended the
+ * command; stripped and written again on every prebuild, so an update of the library moves it. With `EXPO_USE_COMMUNITY_AUTOLINKING=1` the command underneath is the community CLI's, and its output
+ * gets the same entries.
  */
 export declare function applyPodfileVendoredLinking(contents: string, links?: readonly string[]): string;
+/**
+ * `Podfile`: `ENV['SODIUM_ENABLED'] = '1'` before anything else, which the podspec of react-native-quick-crypto reads when CocoaPods evaluates it (what quick-crypto's own Expo plugin wrote
+ * at the top of the Podfile when `sodiumEnabled` was its option). Stripped and written again on every prebuild, so a project prebuilt with the option and then without it loses the line.
+ */
+export declare function applyPodfileSodium(contents: string, enabled: boolean): string;
+/**
+ * `gradle.properties`: `sodiumEnabled=true`, which the Gradle project of react-native-quick-crypto reads (`hasProperty('sodiumEnabled')`: it passes `-DSODIUM_ENABLED` to CMake and adds
+ * `io.github.ronickg:sodium`). Without the option the property is removed, so the setting is the plugin's alone and one directory can be prebuilt with and without it.
+ */
+export declare function applyGradleSodium(properties: AndroidConfig.Properties.PropertiesItem[], enabled: boolean): AndroidConfig.Properties.PropertiesItem[];
 /** Kotlin source for the package that replaces `MainReactPackage` in headless builds. */
 export declare function headlessPackageSource(applicationId: string): string;
 /** Kotlin source of the wrapper that makes a package's view managers on demand (`androidOnDemandViewManagers`). */

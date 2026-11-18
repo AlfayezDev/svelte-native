@@ -75,6 +75,27 @@ export const vendoredPackages: readonly VendoredPackage[] = [
     android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
     ios: { podspec: "NitroMmkv.podspec" },
   },
+  {
+    // The base64 module quick-crypto and its Buffer ask for (`libraryName` QuickBase64 is the `react { }` block of its build.gradle).
+    name: "react-native-quick-base64",
+    version: "2.2.2",
+    android: { packageImportPath: "import com.reactnativequickbase64.QuickBase64Package;", packageInstance: "new QuickBase64Package()" },
+    ios: { podspec: "react-native-quick-base64.podspec" },
+  },
+  {
+    // `crypto` and `crypto.subtle`: a Nitro module over OpenSSL (and libsodium, when the plugin's `sodiumEnabled` is on). It links the vendored Nitro runtime by its project name and pod.
+    name: "react-native-quick-crypto",
+    version: "1.1.3",
+    android: { packageImportPath: "import com.margelo.nitro.quickcrypto.QuickCryptoPackage;", packageInstance: "new QuickCryptoPackage()" },
+    ios: { podspec: "QuickCrypto.podspec" },
+  },
+  {
+    // The `Intl` constructors Hermes lacks: a pure C++ TurboModule (no view, no module class: the `ReactPackage` is empty), so Android adds its CMake module to the app's build.
+    name: "hermes-intl",
+    version: "0.1.2",
+    android: { packageImportPath: "import dev.hermesintl.HermesIntlPackage;", packageInstance: "new HermesIntlPackage()", cxxModule: { cmakeListsModuleName: "hermesintl", cmakeListsPath: "android/CMakeLists.txt", headerName: "NativeHermesIntl" } },
+    ios: { podspec: "HermesIntl.podspec" },
+  },
 ];
 
 /** The names of the vendored packages. */

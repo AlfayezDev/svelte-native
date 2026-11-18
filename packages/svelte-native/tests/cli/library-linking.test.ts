@@ -15,7 +15,7 @@ import { createProject } from "../support/project.ts";
  * generated `settings.gradle` and Podfile carry the decision. The entries are the ones Expo printed for the installed packages (`fixtures/vendored-autolinking/`).
  */
 const fixtures = resolve(import.meta.dirname, "fixtures/vendored-autolinking");
-const optionalReference = (platform: "android" | "ios"): Record<string, { root: string; name: string; platforms: Record<string, unknown> }> => JSON.parse(readFileSync(join(fixtures, `expo-sdk57-${platform}-optional.json`), "utf8"));
+const optionalReference = (platform: "android" | "ios"): Record<string, { root: string; name: string; platforms: Record<string, unknown> }> => JSON.parse(readFileSync(join(fixtures, `expo-sdk57-optional-${platform}.json`), "utf8"));
 const withRoot = (value: unknown, root: string): unknown => JSON.parse(JSON.stringify(value).replaceAll("$PACKAGE", root.replaceAll("\\", "\\\\")));
 
 const reactNative = optionalPackages.filter((vendored) => vendored.optional?.kind === "react-native").map((vendored) => vendored.name);
@@ -71,8 +71,8 @@ describe("linkVendored: the libraries that are on", () => {
   test("an original of a library that is off, found by autolinking all the same (a copy another package asked for), is taken out; one that is on is replaced by the library's", () => {
     for (const platform of ["android", "ios"] as const) {
       const originals = Object.fromEntries(["react-native-maps", "react-native-video", "react-native-webview"].map((name) => [name, originalOf(name, platform)]));
-      const linked = linkVendored({ root: app(), dependencies: { ...originals, "react-native-quick-base64": { root: "/q", name: "react-native-quick-base64", platforms: {} } } }, platform, undefined, ["react-native-video"]);
-      expect(Object.keys(linked.dependencies).filter((name) => !alwaysNames.includes(name)).sort()).toEqual(["react-native-quick-base64", "react-native-video"]);
+      const linked = linkVendored({ root: app(), dependencies: { ...originals, "react-native-get-random-values": { root: "/q", name: "react-native-get-random-values", platforms: {} } } }, platform, undefined, ["react-native-video"]);
+      expect(Object.keys(linked.dependencies).filter((name) => !alwaysNames.includes(name)).sort()).toEqual(["react-native-get-random-values", "react-native-video"]);
       expect(linked.dependencies["react-native-video"]?.root).toBe(vendoredRoot("react-native-video"));
       expect(JSON.stringify(linked.dependencies)).not.toContain("/app/node_modules/");
     }

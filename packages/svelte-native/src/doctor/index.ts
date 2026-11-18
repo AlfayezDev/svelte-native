@@ -87,9 +87,11 @@ export function pnpmVersion(directory: string): string | undefined {
 
 export type Output = { write(text: string): unknown; isTTY?: boolean };
 
-/** The arguments of `doctor`: its flags, or the first one it does not know (`problem`). */
-function parseArguments(args: readonly string[]): { json: boolean; server: boolean; app?: string; problem?: string } {
-  const parsed: { json: boolean; server: boolean; app?: string; problem?: string } = { json: false, server: false };
+/** The arguments of `doctor`: its flags, or the first one it cannot use (`problem`). */
+type DoctorArguments = { json: boolean; server: boolean; app?: string; problem?: string };
+
+function parseArguments(args: readonly string[]): DoctorArguments {
+  const parsed: DoctorArguments = { json: false, server: false };
   for (let index = 0; index < args.length; index++) {
     const arg = args[index] ?? "";
     if (arg === "--json") parsed.json = true;
@@ -108,7 +110,7 @@ function parseArguments(args: readonly string[]): { json: boolean; server: boole
 
 /**
  * `svelte-native doctor`: runs the checks for the app in `root`, prints them and returns the exit status (0 when no check failed, 1 when one
- * did, 2 for an argument it does not know). `unknown` checks (a config it can only read, not run) and skipped ones do not fail it.
+ * did, 2 for an argument it cannot use). `unknown` checks (a config it can only read, not run) and skipped ones do not fail it.
  *
  * `--server` checks the server's push environment instead (`server.ts`), which makes requests to the providers: it returns a promise, and every other run returns the status itself.
  */

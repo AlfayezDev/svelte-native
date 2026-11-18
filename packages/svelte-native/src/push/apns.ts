@@ -11,7 +11,7 @@ import type { ApnsOptions, PushSend, SendResult } from "./server.ts";
 import type { PushToken } from "./types.ts";
 
 const PRODUCTION_URL = "https://api.push.apple.com";
-const SANDBOX_URL = "https://api.sandbox.push.apple.com";
+export const SANDBOX_URL = "https://api.sandbox.push.apple.com";
 /** Apple refuses a provider token older than an hour, so it is replaced before 50 minutes... */
 const RENEW_AFTER = 50 * 60_000;
 /** ...and refuses a sender that replaces it more often than every 20 minutes (`TooManyProviderTokenUpdates`). */
@@ -46,7 +46,7 @@ const headerText = (value: string, name: string): string => {
 };
 
 /** The headers and the body of the request for a message (PUSH.md, "How a message maps"). */
-export function apnsRequest(token: PushToken, message: PushSend): { headers: OutgoingHttpHeaders; body: string } {
+function apnsRequest(token: PushToken, message: PushSend): { headers: OutgoingHttpHeaders; body: string } {
   const silent = message.silent === true;
   const headers: OutgoingHttpHeaders = {
     ":method": "POST",
@@ -79,7 +79,7 @@ export function apnsRequest(token: PushToken, message: PushSend): { headers: Out
  * they are decided by APNs's reason for it (`Unregistered`, `BadDeviceToken`...) and never by a status alone: a bare 400 is a fault of the message, and a 410 with no
  * reason (a proxy's) is not a token that is gone. Every 403 is a credential: the provider token or the key's right to the topic.
  */
-export function apnsFailure(status: number, reason: string | undefined, retryAfter: number | undefined): Failure {
+function apnsFailure(status: number, reason: string | undefined, retryAfter: number | undefined): Failure {
   const detail = reason ?? `HTTP ${status}`;
   if (reason === "BadDeviceToken" || reason === "DeviceTokenNotForTopic") return failure("invalid-token", detail, status);
   if (status === 410 && (reason === "Unregistered" || reason === "ExpiredToken")) return failure("gone", detail, status);

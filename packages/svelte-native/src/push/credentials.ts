@@ -11,7 +11,9 @@
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { SANDBOX_URL } from "./apns.ts";
 import { hostOf, httpUrl } from "./common.ts";
+import { TOKEN_URL } from "./fcm.ts";
 import { privateKeyOf } from "./jwt.ts";
 import type { ApnsOptions, FcmOptions, ServiceAccount } from "./server.ts";
 
@@ -73,12 +75,6 @@ function urlOf(env: Env, name: string): { url?: string; problem?: string } {
   return { problem: `${name} must be an http or https URL` };
 }
 
-/** A URL's host, which is what a report says of an endpoint (the rest may hold a password or a query). */
-export { hostOf };
-
-const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
-const APNS_SANDBOX_URL = "https://api.sandbox.push.apple.com";
-
 export function readFcm(env: Env, cwd: string): FcmCredential {
   const name = variables.fcmServiceAccount;
   if (valueSet(env, name) === undefined) return { state: "unset" };
@@ -107,13 +103,13 @@ export function readFcm(env: Env, cwd: string): FcmCredential {
   try {
     privateKeyOf(String(account.private_key), "RS256", `the private_key of ${name}`);
   } catch (error) {
-    return { state: "invalid", problem: `${error instanceof Error ? error.message : String(error)}` };
+    return { state: "invalid", problem: error instanceof Error ? error.message : String(error) };
   }
   const base = urlOf(env, variables.fcmBaseUrl);
   const token = urlOf(env, variables.fcmTokenUrl);
   const problem = base.problem ?? token.problem;
   if (problem) return { state: "invalid", problem };
-  const tokenUrl = token.url ?? (typeof account.token_uri === "string" ? account.token_uri : GOOGLE_TOKEN_URL);
+  const tokenUrl = token.url ?? (typeof account.token_uri === "string" ? account.token_uri : TOKEN_URL);
   return {
     state: "ok",
     options: { serviceAccount: account as ServiceAccount, ...(base.url ? { baseUrl: base.url } : {}), ...(token.url ? { tokenUrl: token.url } : {}) },
@@ -154,6 +150,6 @@ export function readApns(env: Env, cwd: string): ApnsCredential {
     keyId,
     teamId,
     source: key.source,
-    sandboxHost: hostOf(sandbox.url ?? APNS_SANDBOX_URL),
+    sandboxHost: hostOf(sandbox.url ?? SANDBOX_URL),
   };
 }

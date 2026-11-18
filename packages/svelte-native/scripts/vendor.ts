@@ -54,7 +54,7 @@ export type VendorOptions = {
   into?: string;
   /** Paths of the package (relative to its root) the copy leaves out. */
   exclude?: readonly string[];
-  /** Patch files applied after the unpack (`patch -p1`), in the order given. */
+  /** Patch files applied after the unpack (`patch -p1`), in the order given: absolute, or relative to the package's root (what `VENDOR.md` records, so it names no machine). */
   patches?: readonly string[];
   /** The `--license-url` the command line gave, which `VENDOR.md` repeats in the command that reproduces the copy. */
   licenseUrl?: string;
@@ -104,8 +104,9 @@ export function vendorTarball(options: VendorOptions): Vendored {
 
     const patches: Vendored["patches"] = [];
     for (const patch of options.patches ?? []) {
-      execFileSync("patch", ["-p1", "--forward", "--no-backup-if-mismatch", "-d", unpacked, "-i", resolve(patch)], { stdio: ["ignore", "ignore", "inherit"] });
-      patches.push({ file: patch, sha256: sha256Of(readFileSync(patch)) });
+      const file = resolve(packageRoot, patch);
+      execFileSync("patch", ["-p1", "--forward", "--no-backup-if-mismatch", "-d", unpacked, "-i", file], { stdio: ["ignore", "ignore", "inherit"] });
+      patches.push({ file: patch, sha256: sha256Of(readFileSync(file)) });
     }
 
     const own = licenseFile(readdirSync(unpacked));
@@ -205,7 +206,8 @@ if (import.meta.main) {
     const holdsLicense = execFileSync("tar", ["-tzf", tarball], { encoding: "utf8" }).split("\n").some((entry) => /^package\/(?:license|licence)(?:\.(?:md|txt))?$/i.test(entry));
     const license = holdsLicense ? undefined : licenseUrl ? { text: await fetchText(licenseUrl), source: licenseUrl } : await repositoryLicense(name, version);
     const patchDirectory = join(patchesDirectory, name);
-    const patches = existsSync(patchDirectory) ? readdirSync(patchDirectory).filter((file) => file.endsWith(".patch")).sort().map((file) => join(patchDirectory, file)) : [];
+    // Named from the package's root, as `VENDOR.md` records them: the same copy is the same bytes on every machine.
+    const patches = existsSync(patchDirectory) ? readdirSync(patchDirectory).filter((file) => file.endsWith(".patch")).sort().map((file) => `vendor-patches/${name}/${file}`) : [];
     const vendored = vendorTarball({ tarball, name, version, exclude: take("--exclude"), patches, license, licenseUrl });
     if (vendored.integrity !== integrity) throw new Error(`the tarball's integrity ${vendored.integrity} is not the one npm reported, ${integrity}`);
     console.log(`vendor/${name}  ${vendored.files} files from ${name}@${version} (${vendored.integrity})`);

@@ -4,7 +4,6 @@ import { resolve } from "node:path";
 import { mapsProblems, mapsStreamEvents, neverCoalesces, pdfProblems, lottieProblems, stripComments, videoEmitterProblems, videoProblems } from "../../src/doctor/shapes.ts";
 import { readerFor } from "../../src/doctor/resolve.ts";
 import { libraryPath } from "../support/paths.ts";
-import { viewConfigs } from "./support/configs.ts";
 import { libraryFile } from "./support/specs.ts";
 
 /**

@@ -51,7 +51,7 @@ The home screen groups these under Basics, Layout and style, Lists and input, Na
 
 ## Native views, motion and touch, platform
 
-The features of `src/lib/features/native.ts`: the library's wrappers of other native libraries (and `defineExpoView`, for an Expo library it has none for), its animation and gesture API, and two platform features. Each is one route and one short file. The native views are optional peer dependencies of the library; this app installs them (see `package.json`), so a change to that list needs a native build.
+The features of `src/lib/features/native.ts`: the library's wrappers of other native libraries (and `defineExpoView`, for an Expo library it has none for), its animation and gesture API, and two platform features. Each is one route and one short file. The native views are libraries the package carries (`vendor/`); this app turns on the ones its screens use in the plugin's `libraries` option (`app.config.ts`), and installs none of them, so a change to that list needs a native build.
 
 | Feature | Route | What it shows |
 | ------- | ----- | ------------- |

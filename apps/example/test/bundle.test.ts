@@ -66,6 +66,12 @@ for (const platform of ["android", "ios"] as const) {
         expect([name, modules.some((module) => module.includes(`packages/svelte-native/vendor/${name}/`))]).toEqual([name, true]);
         expect([name, modules.filter((module) => module.includes(`node_modules/${name}/`))]).toEqual([name, []]);
       }
+      // The native view libraries are the library's own copies, turned on in `libraries` of app.config.ts, and this app installs none of them. The components mount their native views by name and import
+      // none of their JavaScript, so no copy is in the bundle either; `createVideoPlayer` requires expo-video by name, and the app did not turn that one on (no screen uses it), so the name is the
+      // stub that says how to turn it on, a few lines, and not the package.
+      const views = ["expo-image", "expo-blur", "expo-linear-gradient", "expo-conic-gradient", "expo-video", "react-native-video", "lottie-react-native", "rive-react-native", "@react-native-community/datetimepicker", "react-native-pdf", "react-native-blob-util", "react-native-webview", "react-native-maps", "react-native-view-shot", "react-native-fast-shadow", "react-native-animateable-text"];
+      expect(modules.filter((module) => views.some((name) => module.includes(`node_modules/${name}/`) || module.includes(`packages/svelte-native/vendor/${name}/`)))).toEqual([]);
+      expect(modules.filter((module) => /\.svelte-native\/stubs\/app\//.test(module)).map((module) => module.split("/").pop()).sort()).toEqual(["_core.js", "expo-video.js"]);
       expect(modules.some((module) => /node_modules\/react-native\/index\.js$/.test(module))).toBe(false);
     }, 300_000);
   });

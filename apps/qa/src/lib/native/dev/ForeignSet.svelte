@@ -14,8 +14,7 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
   import { Pressable, Text, View } from "@alfayez/svelte-native";
-  import { MapView, Marker, VideoView, WebView } from "@alfayez/svelte-native/foreign";
-  import { createVideoPlayer } from "expo-video/build/VideoPlayer";
+  import { createVideoPlayer, MapView, Marker, VideoView, WebView } from "@alfayez/svelte-native/foreign";
   import { theme } from "../state.svelte.ts";
   import { foreignHandles, labPage, labVideo, record } from "./foreign.svelte.ts";
 

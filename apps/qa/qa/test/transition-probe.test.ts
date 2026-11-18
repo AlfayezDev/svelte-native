@@ -210,7 +210,7 @@ async function load(table: unknown, mutations: readonly Mutation[]): Promise<Bun
 					}
 					return { contents, loader: "ts" };
 				});
-				builder.onResolve({ filter: /^(react-native|expo-modules-core|@alfayez\/svelte-native$)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
+				builder.onResolve({ filter: /^(react-native|expo-modules-core|expo-constants$|@alfayez\/svelte-native$)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
 				builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
 				builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: join(library, "tests/support/view-configs-stub.ts") }));
 				builder.onResolve({ filter: /^@alfayez\/svelte-native\/classes-table$/ }, (args) => ({ path: args.path, namespace: "classes-table" }));

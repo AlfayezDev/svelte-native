@@ -100,6 +100,25 @@ export default {
       autolinkingExclude,
       ...(remote ? { remote } : {}),
       androidFeatureFlags: { disableViewPreallocationAndroid: true, enablePreparedTextLayout: true },
+      // The optional native view libraries the library carries (packages/svelte-native/vendor/): the foreign lab exercises every one of them, so the QA app turns them all on (the app's package.json lists none).
+      // The Maps SDK throws when the manifest has no key. Production builds take theirs from the environment (an EAS secret); the QA variant falls back to a placeholder, which mounts the map and loads no tiles.
+      libraries: {
+        "expo-image": true,
+        "expo-blur": true,
+        "expo-linear-gradient": true,
+        "expo-conic-gradient": true,
+        "expo-video": true,
+        "react-native-video": true,
+        "lottie-react-native": true,
+        "rive-react-native": true,
+        "@react-native-community/datetimepicker": true,
+        "react-native-pdf": true,
+        "react-native-webview": true,
+        "react-native-maps": { androidGoogleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY ?? (production ? undefined : "svelte-qa-placeholder-key") },
+        "react-native-view-shot": true,
+        "react-native-fast-shadow": true,
+        "react-native-animateable-text": true,
+      },
       // Foreign views (SPEC.md, "Foreign views"): the packages' view managers are created when a component is first mounted,
       // not when the host starts. `packages/svelte-native/tests/upstream/foreign-view-configs.test.ts` checks the names against the packages' sources.
       androidOnDemandViewManagers: {
@@ -122,9 +141,6 @@ export default {
     }],
     "expo-secure-store",
     "expo-image-picker",
-    // The Maps SDK throws when the manifest has no key. Production builds take theirs from the environment (an EAS secret); the QA variant
-    // falls back to a placeholder, which mounts the map and loads no tiles.
-    ["react-native-maps", { androidGoogleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY ?? (production ? undefined : "svelte-qa-placeholder-key") }],
     ["expo-splash-screen", {
       backgroundColor: "#f6f6f7", image: "./assets/native/images/splash-mark.png", imageWidth: 96,
       dark: { backgroundColor: "#0d0d0f", image: "./assets/native/images/splash-mark-dark.png" },

@@ -58,11 +58,11 @@ for (const platform of ["android", "ios"] as const) {
       // A standard URL: the router builds every location as a `SvelteURL`, which React Native's own `URL` cannot construct, so the library's
       // polyfills load Expo's WinterCG runtime. Without it the app started blank (9 Nov 2026, the first run of this app on an emulator).
       expect(modules.some((module) => /node_modules\/expo\/src\/winter\/runtime\.native\.ts$/.test(module))).toBe(true);
-      // `crypto` and `localStorage` are react-native-quick-crypto and react-native-mmkv, with the Nitro runtime they share: required when first used, so Metro bundles them. Their import of `react-native`
-      // is the library's lite shim (`LITE_ORIGINS`): the index that lists every component of React Native (and the 238 modules it brings) is not in the bundle. MMKV and the Nitro runtime are the
-      // library's own copies (`vendor/`, VENDORING.md), whoever imports them, and the app has no original of either.
-      for (const name of ["react-native-quick-crypto", "react-native-quick-base64"]) expect([name, modules.some((module) => module.includes(`node_modules/${name}/`))]).toEqual([name, true]);
-      for (const name of ["react-native-mmkv", "react-native-nitro-modules"]) {
+      // `crypto` and `localStorage` are react-native-quick-crypto and react-native-mmkv, with the Nitro runtime they share, and the `Intl` constructors Hermes lacks are hermes-intl: required when first used,
+      // so Metro bundles them. Their import of `react-native` is the library's lite shim (`LITE_ORIGINS`): the index that lists every component of React Native (and the 238 modules it brings) is not in
+      // the bundle. They, quick-crypto's base64 module and the Nitro runtime are the library's own copies (`vendor/`, VENDORING.md), whoever imports them, and the app has no original of any: not even
+      // `react-native-quick-base64`, which a package manager installs for the Buffer package's dependency on it.
+      for (const name of ["react-native-quick-crypto", "react-native-quick-base64", "hermes-intl", "react-native-mmkv", "react-native-nitro-modules"]) {
         expect([name, modules.some((module) => module.includes(`packages/svelte-native/vendor/${name}/`))]).toEqual([name, true]);
         expect([name, modules.filter((module) => module.includes(`node_modules/${name}/`))]).toEqual([name, []]);
       }

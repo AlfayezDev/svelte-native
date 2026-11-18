@@ -478,7 +478,7 @@ patches
         fix: copy node_modules/@alfayez/svelte-native/patches/@sveltejs__kit@3.1.1.patch into your repository (patches/svelte-native/), declare "@sveltejs/kit@3.1.1: patches/svelte-native/@sveltejs__kit@3.1.1.patch" under patchedDependencies in pnpm-workspace.yaml, then pnpm install (README: "Apply the patches")
 
 build integration
-  pass  @alfayez/svelte-native 0.4.0-rc.8 is a dependency of the app
+  pass  @alfayez/svelte-native 0.4.0-rc.9 is a dependency of the app
   ????  could not tell: metro.config.cjs does not mention withSvelteNative (a config that applies it from a file it imports is fine)
         fix: module.exports = withSvelteNative(getDefaultConfig(__dirname)), with withSvelteNative from require("@alfayez/svelte-native/metro")
   pass  app.json lists the @alfayez/svelte-native plugin

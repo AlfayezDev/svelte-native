@@ -300,6 +300,19 @@ const checks: [name: string, run: (origin: string) => Promise<string>][] = [
     expect(random.some((byte) => byte !== 0), "32 zero bytes");
     return "digest, randomUUID, getRandomValues";
   }],
+  // The `Intl` constructors Hermes lacks come from hermes-intl, which the library carries: its C++ TurboModule is in the build only when the library linked it (an app built before it was vendored has it from the app's own dependency).
+  ["Intl: PluralRules, RelativeTimeFormat, ListFormat, Locale", async () => {
+    if (typeof Intl.PluralRules === "undefined" || typeof Intl.RelativeTimeFormat === "undefined") throw new Skip("no Intl.PluralRules or Intl.RelativeTimeFormat");
+    const plural = new Intl.PluralRules("ar").select(3);
+    expect(plural === "few", `Arabic select(3) was ${plural}`);
+    const relative = new Intl.RelativeTimeFormat("en").format(-1, "day");
+    expect(relative === "1 day ago", `RelativeTimeFormat.format(-1, "day") was ${relative}`);
+    const list = new Intl.ListFormat("en", { style: "long", type: "conjunction" }).format(["red", "green", "blue"]);
+    expect(list === "red, green, and blue", `ListFormat was ${list}`);
+    const locale = new Intl.Locale("ar-EG");
+    expect(locale.language === "ar" && locale.region === "EG", `Locale was ${locale.language}-${locale.region}`);
+    return `PluralRules ar 3 = ${plural}, "${relative}", "${list}", Locale ${locale.toString()}`;
+  }],
   ["localStorage", async () => {
     if (typeof localStorage === "undefined") throw new Skip("no localStorage");
     localStorage.setItem("checks.probe", "1");

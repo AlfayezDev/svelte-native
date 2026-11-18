@@ -1,4 +1,4 @@
-// The device checks of the web APIs Svelte Native backs with native code: `fetch` and `Blob` (the SvelteFetch module), `crypto` (react-native-quick-crypto),
+// The device checks of the web APIs Svelte Native backs with native code: `fetch` and `Blob` (the SvelteFetch module), `crypto` (react-native-quick-crypto, part of the library),
 // `localStorage` (MMKV) and `navigator` (the clipboard through the SvelteClipboard module, the language, `canShare`, `vibrate`, and the geolocation over the library's own location module). They run against the library's test server (packages/svelte-native/tests/web-apis/fetch/support/server.ts) when the Web APIs screen opens with
 // `?checks=<origin>`: `svelte-native://web-apis?checks=http://localhost:8787` (an Android emulator after `adb reverse tcp:8787 tcp:8787`; the iOS
 // Simulator reaches the Mac's localhost). A release build talks plain HTTP only when it was built with SVELTE_NATIVE_REMOTE_ORIGIN=http://localhost:8787,

@@ -11,11 +11,11 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.uimanager.PointerEvents
+import expo.modules.svelteappearance.isNight
 import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.NavProps
 import expo.modules.svelteengine.SystemBarsRules
 import kotlin.math.max
-import expo.modules.svelteappearance.isNight
 
 /** The system bar options of a screen (record 125); styles are 0 auto, 1 light icons, 2 dark icons. */
 data class SystemBarsSpec(val statusStyle: Int, val statusHidden: Boolean, val hasNavColor: Boolean, val navColor: Int, val navStyle: Int)

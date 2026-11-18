@@ -20,6 +20,7 @@ import android.view.WindowInsets
 import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import expo.modules.svelteappearance.isNight
 import expo.modules.svelteengine.Fragment
 import expo.modules.svelteengine.NavEvents
 import expo.modules.svelteengine.NavProps
@@ -28,7 +29,6 @@ import expo.modules.svelteengine.TextSpec
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
-import expo.modules.svelteappearance.isNight
 
 /**
  * The live icon of a tab (`native-tab-icon`): the app's snippet, laid out inside its pane but never shown there. The bar

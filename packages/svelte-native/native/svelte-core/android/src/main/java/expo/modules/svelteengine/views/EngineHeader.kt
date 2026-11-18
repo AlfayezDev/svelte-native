@@ -13,6 +13,7 @@ import android.view.WindowInsets
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.findViewTreeOnBackPressedDispatcherOwner
 import androidx.core.view.ViewCompat
+import expo.modules.svelteappearance.isNight
 import expo.modules.svelteengine.ChromeRules
 import expo.modules.svelteengine.Fragment
 import expo.modules.svelteengine.GestureRules
@@ -24,7 +25,6 @@ import expo.modules.svelteengine.ViewProps
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
-import expo.modules.svelteappearance.isNight
 
 private const val TOOLBAR_CENTER = 4
 

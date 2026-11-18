@@ -44,7 +44,7 @@ Each screen's own [`Screen`](screen) options win over these, option by option, a
 
 ## Screen backgrounds
 
-Every screen is opaque, so a pushed screen covers the one below it while it slides in. One without a background of its own takes the one of the screen it is in: the screens of a tab, or of a nested stack, look as the screen around them does. A screen inside none has the system's: white or black on iOS, Material's surface on Android, in the app's light or dark mode. A transparent modal has none. `style={{ backgroundColor }}` (or a `class`) on the `Stack` gives every screen of the stack yours, and the stacks inside them take it; [light and dark mode](styling#light-and-dark-mode) shows how to switch it with the mode.
+Every screen is opaque, so a pushed screen covers the one below it while it slides in. One without a background of its own takes its stack's (a page whose `<Screen style>` sets only a padding keeps the `Stack`'s colour), else the one of the screen it is in: the screens of a tab, or of a nested stack, look as the screen around them does. A screen inside none has the system's: white or black on iOS, Material's surface on Android, in the app's light or dark mode. A transparent modal has none, and neither do the screens inside it or inside a `<Modal transparent>`. `style={{ backgroundColor }}` (or a `class`) on the `Stack` gives every screen of the stack yours, and the stacks inside them take it; [light and dark mode](styling#light-and-dark-mode) shows how to switch it with the mode.
 
 ## Loading
 

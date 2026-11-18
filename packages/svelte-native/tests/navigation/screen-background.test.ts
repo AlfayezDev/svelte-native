@@ -13,7 +13,7 @@ import { ofKind, settle } from "./support/world.ts";
 const host = fakeHost();
 /** A style as the platform reads it: nested arrays flattened, later entries winning. */
 const flat = (style: unknown): Record<string, unknown> => (Array.isArray(style) ? Object.assign({}, ...style.map(flat)) : ((style as Record<string, unknown>) ?? {}));
-type App = { set(patch: object): void; setOuter(style: object | undefined): void };
+type App = { set(patch: object): void; setOuter(style: object | undefined): void; setPresentation(value: string): void; setModal(value: { transparent: boolean } | null): void };
 type Loaded = { startSurface(tag: number, app: unknown, props: object): unknown; tick(): Promise<void>; Fixture: unknown; __setColorScheme(scheme: "light" | "dark"): void };
 
 const navigation = globalThis as { __navigationOS?: string };
@@ -41,6 +41,10 @@ test("Android: Material 3's surface in each mode, the screen's own background ov
   app.set({ style: { backgroundColor: "#123456" } });
   await settle(m);
   expect(background()).toBe("#123456");
+  // `backgroundColor: undefined` is no background, as React Native flattens a style: the system's is drawn, not nothing.
+  app.set({ style: [{ backgroundColor: "#123456" }, { backgroundColor: undefined }] });
+  await settle(m);
+  expect(background()).toBe("#1C1B1F");
   app.set({ style: undefined, presentation: "transparentModal" });
   await settle(m);
   expect(background()).toBeUndefined();
@@ -74,4 +78,20 @@ test("a screen inside another takes its background: a tab's screen looks as the 
   await settle(m);
   expect(backgrounds()).toEqual(["#1C1B1F", "#1C1B1F"]);
   m.__setColorScheme("light");
+});
+
+test("a transparent layer gives the screens in it no background: a screen in a transparent Modal, and the stacks inside a transparent modal; an opaque Modal's screen takes the screen's around it", async () => {
+  const { m, app, backgrounds } = await mount(34, "android", "screen-layers-fixture.svelte");
+  expect(backgrounds()).toEqual(["#123456", "#123456"]);
+  app.setModal({ transparent: true });
+  await settle(m);
+  expect(backgrounds()).toEqual(["#123456", "#123456", undefined]);
+  app.setModal({ transparent: false });
+  await settle(m);
+  expect(backgrounds()).toEqual(["#123456", "#123456", "#123456"]);
+  app.setModal(null);
+  app.setOuter(undefined);
+  app.setPresentation("transparentModal");
+  await settle(m);
+  expect(backgrounds()).toEqual([undefined, undefined]);
 });

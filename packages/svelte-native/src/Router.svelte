@@ -2,7 +2,8 @@
   import { getContext, onMount, setContext, type Snippet } from "svelte";
   import Screen from "./components/Screen.svelte";
   import RouteView from "./RouteView.svelte";
-  import { IN_STACK_CONTEXT, SCREEN_CONTEXT } from "./fabric/navigation.ts";
+  import { BACKGROUND_CONTEXT, IN_STACK_CONTEXT, SCREEN_CONTEXT } from "./fabric/navigation.ts";
+  import { styleValue } from "./system-colors.ts";
   import { PLACEHOLDER_CONTEXT, STACK_CONTEXT, type PlaceholderContext, type StackContext } from "./navigator-context.ts";
   // (`type Router as RouterHandle`: the component is named `Router` by its file, and its declaration may not import another `Router`.)
   import { connectHost, type NativeLocation, type Router as RouterHandle } from "./router.svelte.ts";
@@ -18,6 +19,9 @@
   const stack = getContext<StackContext | undefined>(STACK_CONTEXT);
   // The options of a `<Stack>` belong to the stack it wraps, not to routers below its pages.
   setContext(STACK_CONTEXT, undefined);
+  // Its background is the one its screens fall back to: a page whose `<Screen style>` has none of its own still looks as the rest of the stack does (`Screen.svelte`).
+  const outerBackground = getContext<(() => unknown) | undefined>(BACKGROUND_CONTEXT);
+  setContext(BACKGROUND_CONTEXT, () => styleValue(stack?.defaults.style, "backgroundColor") ?? outerBackground?.());
   const placeholder = $derived(loading ?? stack?.loading);
   setContext(PLACEHOLDER_CONTEXT, { get loading() { return placeholder; } } satisfies PlaceholderContext);
   // The root router connects the app to the host (the back key, links); the routers of panes and nested navigators leave it to it.

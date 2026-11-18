@@ -67,7 +67,7 @@ describe("the options reach the library's own plugin", () => {
   });
 
   test("@react-native-community/datetimepicker: its Android styles plugin is registered when the library is on", () => {
-    expect(applied({ libraries: { "@react-native-community/datetimepicker": { android: { dialog: { colorAccent: { color: "#ff0000" } } } } } }).mods.android?.styles).toBeDefined();
+    expect(typeof applied({ libraries: { "@react-native-community/datetimepicker": { android: { dialog: { colorAccent: { color: "#ff0000" } } } } } }).mods.android?.styles).toBe("function");
     expect(applied({ libraries: { "expo-blur": true } }).mods.android?.styles).toBeUndefined();
   });
 

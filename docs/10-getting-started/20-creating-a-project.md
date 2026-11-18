@@ -13,14 +13,14 @@ Then you install Svelte Native and run one command that sets the project up. Sve
 
 ```sh
 cd my-app
-pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v0.4.0-rc.8&path:packages/svelte-native"
+pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v0.4.0-rc.9&path:packages/svelte-native"
 pnpm exec svelte-native init
 pnpm android        # or: pnpm ios
 ```
 
 The first `pnpm android` builds the native app, installs it on your phone or emulator and opens it. Edit `src/routes/+mobile.svelte`, save, and the app reloads with your change.
 
-`v0.4.0-rc.8` is a release tag. The [releases page](https://github.com/AlfayezDev/svelte-native/releases) lists newer ones.
+`v0.4.0-rc.9` is a release tag. The [releases page](https://github.com/AlfayezDev/svelte-native/releases) lists newer ones.
 
 ## Requirements
 

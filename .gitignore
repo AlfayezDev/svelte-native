@@ -33,6 +33,9 @@ android/
 /packages/svelte-native/vendor/**/android/build/
 /packages/svelte-native/vendor/**/android/.cxx/
 /packages/svelte-native/vendor/**/android/.gradle/
+# quick-crypto's podspec downloads libsodium's source into its own ios/ folder when the app turns sodium on (`sodiumEnabled`): a build input, never part of the copy
+/packages/svelte-native/vendor/**/ios/libsodium-stable/
+/packages/svelte-native/vendor/**/ios/libsodium.tar.gz
 # The generated Android project of the other variant (native-qa build --variant parks it here); anchored: the parity references
 # under apps/qa/qa/screenshots are named android-api36-... and are tracked
 /apps/qa/android-*/

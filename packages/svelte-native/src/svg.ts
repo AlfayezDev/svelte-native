@@ -1,3 +1,5 @@
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- a script of `declare module`s (the vendored packages' names, VENDORING.md): it cannot be imported, only referenced
+/// <reference path="./vendor-types-ui.d.ts" />
 /**
  * react-native-svg on the Svelte host (SPEC.md, "react-native-svg"): the library's elements as Svelte components, mounted through React Native's
  * own mounting. The main entry re-exports all of them (`@alfayez/svelte-native`). The library's React components are not used.

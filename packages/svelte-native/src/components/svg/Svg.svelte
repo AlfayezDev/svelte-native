@@ -5,7 +5,7 @@
   import { svgNativeProps, svgRootName, type SvgRootHandle } from "../../fabric/foreign-svg.ts";
   import { rootRef, type SvgRef } from "./handle.ts";
   import G from "./G.svelte";
-  import type { SvgProps } from "react-native-svg";
+  import type { SvgProps } from "#vendor/react-native-svg";
 
   /**
    * `react-native-svg`'s `Svg`: the root of a drawing. `width` and `height` (or the style's), `viewBox` and `preserveAspectRatio` size and scale it as the

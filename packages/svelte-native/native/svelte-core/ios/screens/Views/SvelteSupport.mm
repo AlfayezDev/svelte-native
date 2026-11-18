@@ -125,7 +125,7 @@ void SvelteAfterNextFrame(dispatch_block_t block) {
 #pragma mark - react-native-gesture-handler
 
 // What this file asks of RNGH's manager (`RNGestureHandlerManager`), declared here so that the module has no pod dependency on the library: the two
-// methods are the ones `patches/react-native-gesture-handler@2.32.0.patch` adds to it.
+// methods are the ones `vendor-patches/react-native-gesture-handler/0001-root-recognizer-for-presented-screens.patch` adds to it.
 @protocol SvelteGestureHandlerManager <NSObject>
 + (id<SvelteGestureHandlerManager> _Nullable)currentManager;
 - (void)registerRootViewGestureRecognizerIfAttachedBelow:(UIView *)view;

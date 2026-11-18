@@ -5,6 +5,6 @@ export type GestureProps = {
     /** A gesture from `@alfayez/svelte-native` (`Gesture.Tap()`, ...). The view keeps its own native view (`collapsable` is forced to `false`). One gesture object drives one view. */
     gesture?: GestureAttribute;
 };
-export type { GestureEventPayload, HandlerStateChangeEventPayload, HitSlop, GestureTouchEvent, GestureUpdateEvent, GestureStateChangeEvent, TouchData } from "react-native-gesture-handler/lib/typescript/handlers/gestureHandlerCommon";
-export type { FlingGestureHandlerEventPayload, LongPressGestureHandlerEventPayload, NativeViewGestureHandlerPayload, PanGestureHandlerEventPayload, PinchGestureHandlerEventPayload, RotationGestureHandlerEventPayload, TapGestureHandlerEventPayload, } from "react-native-gesture-handler/lib/typescript/handlers/GestureHandlerEventPayload";
-export type { GestureStateManagerType } from "react-native-gesture-handler/lib/typescript/handlers/gestures/gestureStateManager";
+export type { GestureEventPayload, HandlerStateChangeEventPayload, HitSlop, GestureTouchEvent, GestureUpdateEvent, GestureStateChangeEvent, TouchData } from "#vendor/react-native-gesture-handler/types/handlers/gestureHandlerCommon";
+export type { FlingGestureHandlerEventPayload, LongPressGestureHandlerEventPayload, NativeViewGestureHandlerPayload, PanGestureHandlerEventPayload, PinchGestureHandlerEventPayload, RotationGestureHandlerEventPayload, TapGestureHandlerEventPayload, } from "#vendor/react-native-gesture-handler/types/handlers/GestureHandlerEventPayload";
+export type { GestureStateManagerType } from "#vendor/react-native-gesture-handler/types/handlers/gestures/gestureStateManager";

@@ -9,9 +9,9 @@ import { createProject } from "../support/project.ts";
 
 /**
  * The packages the library carries (`src/vendored.ts`, VENDORING.md) in React Native's autolinking config. The reference entries in `fixtures/vendored-autolinking/` are what Expo's
- * own `react-native-config` printed for the two packages installed in `apps/example` (SDK 57: `node --no-warnings --eval "require('expo/bin/autolinking')" expo-modules-autolinking
- * react-native-config --json --platform android|ios`, 18 November 2026, before they were vendored), with the package's directory written as `$PACKAGE`: the entries the library adds
- * must be those, with the directory of the copy.
+ * own `react-native-config` printed for the packages installed in `apps/example` (SDK 57: `node --no-warnings --eval "require('expo/bin/autolinking')" expo-modules-autolinking
+ * react-native-config --json --platform android|ios`, run in `apps/example`, 18 November 2026, before they were vendored: Nitro and MMKV first, then gesture handler, Worklets, Reanimated and
+ * svg), with the package's directory written as `$PACKAGE`: the entries the library adds must be those, with the directory of the copy.
  */
 const fixtures = resolve(import.meta.dirname, "fixtures/vendored-autolinking");
 const reference = (platform: "android" | "ios"): Record<string, unknown> => JSON.parse(readFileSync(join(fixtures, `expo-sdk57-${platform}.json`), "utf8"));
@@ -53,7 +53,7 @@ describe("the entries the library adds are the ones Expo's autolinking prints fo
       expect(root).toBe(resolve(import.meta.dirname, "../..", "vendor", vendored.name));
       const android = vendoredDependency(vendored, "android")?.platforms.android as { sourceDir: string };
       const ios = vendoredDependency(vendored, "ios")?.platforms.ios as { podspecPath: string; version: string };
-      expect(existsSync(join(android.sourceDir, "build.gradle"))).toBe(true);
+      expect(["build.gradle", "build.gradle.kts"].some((file) => existsSync(join(android.sourceDir, file))), vendored.name).toBe(true);
       expect(existsSync(ios.podspecPath)).toBe(true);
       // The podspec is the only one at the package's root, which is how CocoaPods names the pod, and the version is the package's own.
       expect(readdirSync(root).filter((file) => file.endsWith(".podspec"))).toEqual([ios.podspecPath.slice(root.length + 1)]);
@@ -79,8 +79,27 @@ describe("the entries the library adds are the ones Expo's autolinking prints fo
     }
   });
 
+  test("the component descriptors and the codegen CMake file the registry names are the copy's own: svg's react-native.config.js lists them, and its CMake file is where it says", () => {
+    for (const vendored of vendoredPackages) {
+      const android = vendored.android;
+      const config = join(vendoredRoot(vendored.name), "react-native.config.js");
+      if (existsSync(config)) {
+        // The package's own config is what Expo's autolinking reads the descriptors and the CMake path from (relative to its `android/` folder).
+        const text = readFileSync(config, "utf8");
+        expect(android?.componentDescriptors ?? [], vendored.name).toEqual([...text.matchAll(/'(\w+ComponentDescriptor)'/g)].map((match) => match[1] ?? ""));
+        const cmake = /cmakeListsPath:\s*'([^']+)'/.exec(text)?.[1];
+        expect(android?.cmakeListsPath, vendored.name).toBe(cmake === undefined ? undefined : join("android", cmake));
+      }
+      if (android?.cmakeListsPath !== undefined) expect(existsSync(join(vendoredRoot(vendored.name), android.cmakeListsPath)), `${vendored.name}: ${android.cmakeListsPath}`).toBe(true);
+    }
+    // Gesture handler's two components are its codegen's (`RNGestureHandlerButton`, `RNGestureHandlerRootView`).
+    const handler = vendoredPackages.find((vendored) => vendored.name === "react-native-gesture-handler");
+    const codegen = JSON.parse(readFileSync(join(vendoredRoot("react-native-gesture-handler"), "package.json"), "utf8")) as { codegenConfig: { name: string } };
+    expect([handler?.android?.componentDescriptors, codegen.codegenConfig.name]).toEqual([["RNGestureHandlerButtonComponentDescriptor", "RNGestureHandlerRootViewComponentDescriptor"], "rngesturehandler_codegen"]);
+  });
+
   test("the list is what vendor/ holds, and what the library no longer asks an app to install", () => {
-    expect(vendoredNames).toEqual(["react-native-nitro-modules", "react-native-mmkv"]);
+    expect(vendoredNames).toEqual(expect.arrayContaining(["react-native-nitro-modules", "react-native-mmkv", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets", "react-native-svg"]));
     expect(readdirSync(resolve(import.meta.dirname, "../../vendor")).sort()).toEqual([...vendoredNames].sort());
     const manifest = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../package.json"), "utf8")) as { peerDependencies: Record<string, string>; devDependencies: Record<string, string> };
     for (const name of vendoredNames) expect([name, name in manifest.peerDependencies, name in manifest.devDependencies]).toEqual([name, false, false]);
@@ -143,7 +162,7 @@ describe("linkVendored", () => {
       const before = JSON.stringify(config);
       const linked = linkVendored(config, platform);
       expect(JSON.stringify(config)).toBe(before);
-      expect(Object.keys(linked.dependencies)).toEqual(["alpha", "react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64", "zeta"]);
+      expect(Object.keys(linked.dependencies)).toEqual(["alpha", "react-native-quick-base64", "zeta", ...vendoredNames].sort());
       for (const vendored of vendoredPackages) expect(linked.dependencies[vendored.name]).toEqual(vendoredDependency(vendored, platform) as never);
       expect(linked.dependencies.zeta).toEqual(config.dependencies.zeta);
       expect(linked.dependencies["react-native-quick-base64"]).toEqual(config.dependencies["react-native-quick-base64"]);
@@ -154,7 +173,7 @@ describe("linkVendored", () => {
   });
 
   test("a config without dependencies gets the packages alone", () => {
-    expect(Object.keys(linkVendored({}, "android").dependencies ?? {})).toEqual(["react-native-mmkv", "react-native-nitro-modules"]);
+    expect(Object.keys(linkVendored({}, "android").dependencies ?? {})).toEqual([...vendoredNames].sort());
   });
 
   test("an original that autolinking found all the same (installed as a peer of another package, not the app's own) is replaced: the name, and so the Gradle project and the pod, stay", () => {
@@ -172,7 +191,8 @@ describe("linkVendored", () => {
 
   test("an app that lists an original itself is refused, naming it: the library's copy would be linked beside the app's", () => {
     for (const platform of ["android", "ios"] as const) {
-      for (const [declared, expected] of [[["react-native-mmkv"], ["react-native-mmkv"]], [["react-native-nitro-modules"], ["react-native-nitro-modules"]], [["react-native-nitro-modules", "react-native-mmkv"], ["react-native-nitro-modules", "react-native-mmkv"]]] as const) {
+      const cases = [...vendoredNames.map((name) => [[name], [name]] as const), [["react-native-nitro-modules", "react-native-mmkv"], ["react-native-nitro-modules", "react-native-mmkv"]] as const, [["react-native-reanimated", "react-native-worklets", "react-native-gesture-handler", "react-native-svg"], ["react-native-gesture-handler", "react-native-worklets", "react-native-reanimated", "react-native-svg"]] as const];
+      for (const [declared, expected] of cases) {
         const root = app(Object.fromEntries(declared.map((name) => [name, "*"])));
         const config = { root, dependencies: Object.fromEntries(declared.map((name) => [name, installed(name, platform, `/app/node_modules/${name}`)])) };
         let refused: unknown;
@@ -187,6 +207,16 @@ describe("linkVendored", () => {
   test("the refusal is said the same way by the plugin, the doctor and the command: the library includes it, remove it from the app's dependencies", () => {
     expect(collisionMessage(["react-native-mmkv"])).toStartWith("@alfayez/svelte-native includes react-native-mmkv 4.3.1; remove it from the app's dependencies (package.json)");
     expect(collisionMessage(["react-native-nitro-modules", "react-native-mmkv"])).toContain("includes react-native-nitro-modules 0.35.10 and react-native-mmkv 4.3.1; remove them from");
+    expect(collisionMessage(["react-native-reanimated"])).toStartWith("@alfayez/svelte-native includes react-native-reanimated 4.5.1; remove it from the app's dependencies (package.json), reinstall, and prebuild again.");
+  });
+
+  test("the refusal says what becomes of a library that asks for the package as a peer: the copy serves it, under the same name, so nothing replaces what is removed", () => {
+    for (const names of [["react-native-gesture-handler"], ["react-native-reanimated", "react-native-worklets"]]) {
+      const message = collisionMessage(names);
+      expect(message).toContain("A library of the app that asks for");
+      expect(message).toContain("as a peer dependency is served by the copy (Metro resolves the name to it; the Gradle project and the pod keep the name)");
+      expect(message).toContain(names.length === 1 ? "nothing needs to take its place" : "nothing needs to take their place");
+    }
   });
 
   test("an app that declares an original the autolinking did not find (excluded, say) is not refused here: the plugin and the doctor refuse it from package.json", () => {
@@ -263,7 +293,7 @@ describe("the commands", () => {
         const result = run(cli, "android-autolinking", ...printing({ root: app(), dependencies: { "react-native-quick-base64": other("android") }, project: { android: { packageName: "io.example.app" } } }));
         expect(result.exitCode).toBe(0);
         const printed = entries(result);
-        expect(Object.keys(printed.dependencies ?? {})).toEqual(["react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64"]);
+        expect(Object.keys(printed.dependencies ?? {})).toEqual([...vendoredNames, "react-native-quick-base64"].sort());
         const mmkv = printed.dependencies?.["react-native-mmkv"] as { root: string; platforms: { android: { sourceDir: string; packageInstance: string } } };
         expect(mmkv.root).toBe(vendoredRoot("react-native-mmkv"));
         expect(mmkv.platforms.android.sourceDir).toBe(join(vendoredRoot("react-native-mmkv"), "android"));
@@ -276,7 +306,8 @@ describe("the commands", () => {
         const result = run(cli, "ios-autolinking", ...printing(config));
         expect(result.exitCode).toBe(0);
         const printed = entries(result);
-        expect(Object.keys(printed.dependencies ?? {})).toEqual(["react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64"]);
+        expect(Object.keys(printed.dependencies ?? {})).toEqual([...vendoredNames, "react-native-quick-base64"].sort());
+        for (const name of vendoredNames) expect(printed.dependencies?.[name], name).toEqual(withRoot(reference("ios")[name], vendoredRoot(name)) as never);
         expect(printed.dependencies?.["react-native-mmkv"]).toEqual(withRoot(reference("ios")["react-native-mmkv"], vendoredRoot("react-native-mmkv")) as never);
         expect(printed.dependencies?.["react-native-nitro-modules"]).toEqual(withRoot(reference("ios")["react-native-nitro-modules"], vendoredRoot("react-native-nitro-modules")) as never);
         expect(printed.dependencies?.["react-native-quick-base64"]).toEqual(config.dependencies["react-native-quick-base64"] as never);

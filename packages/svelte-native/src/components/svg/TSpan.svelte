@@ -4,7 +4,7 @@
   import { createNativeProps } from "../../native-props.ts";
   import { tspanProps } from "../../fabric/foreign-svg.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
-  import type { TSpanProps } from "react-native-svg";
+  import type { TSpanProps } from "#vendor/react-native-svg";
 
   /**
    * `react-native-svg`'s `TSpan`: a run of text with its own position (`x`, `y`, `dx`, `dy`, `rotate`) and font. A lone string between its tags is its

@@ -52,6 +52,44 @@ export const vendoredPackages: readonly VendoredPackage[] = [
     android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
     ios: { podspec: "NitroMmkv.podspec" },
   },
+  {
+    name: "react-native-gesture-handler",
+    version: "2.32.0",
+    // The two components of its codegen (`RNGestureHandlerButton`, `RNGestureHandlerRootView`); `libraryName` is `codegenConfig.name`.
+    android: { packageImportPath: "import com.swmansion.gesturehandler.RNGestureHandlerPackage;", packageInstance: "new RNGestureHandlerPackage()", componentDescriptors: ["RNGestureHandlerButtonComponentDescriptor", "RNGestureHandlerRootViewComponentDescriptor"] },
+    ios: { podspec: "RNGestureHandler.podspec" },
+  },
+  {
+    name: "react-native-worklets",
+    version: "0.10.1",
+    android: { packageImportPath: "import com.swmansion.worklets.WorkletsPackage;", packageInstance: "new WorkletsPackage()" },
+    ios: { podspec: "RNWorklets.podspec" },
+  },
+  {
+    name: "react-native-reanimated",
+    version: "4.5.1",
+    android: { packageImportPath: "import com.swmansion.reanimated.ReanimatedPackage;", packageInstance: "new ReanimatedPackage()" },
+    ios: { podspec: "RNReanimated.podspec" },
+  },
+  {
+    name: "react-native-svg",
+    version: "15.15.4",
+    // The 29 components of its `react-native.config.js`, and its codegen CMake file, which is in the sources and not below `android/build/` (a test reads both from the copy).
+    android: {
+      packageImportPath: "import com.horcrux.svg.SvgPackage;",
+      packageInstance: "new SvgPackage()",
+      componentDescriptors: [
+        "RNSVGCircleComponentDescriptor", "RNSVGClipPathComponentDescriptor", "RNSVGDefsComponentDescriptor", "RNSVGFeBlendComponentDescriptor", "RNSVGFeColorMatrixComponentDescriptor",
+        "RNSVGFeCompositeComponentDescriptor", "RNSVGFeFloodComponentDescriptor", "RNSVGFeGaussianBlurComponentDescriptor", "RNSVGFeMergeComponentDescriptor", "RNSVGFeOffsetComponentDescriptor",
+        "RNSVGFilterComponentDescriptor", "RNSVGEllipseComponentDescriptor", "RNSVGForeignObjectComponentDescriptor", "RNSVGGroupComponentDescriptor", "RNSVGImageComponentDescriptor",
+        "RNSVGLinearGradientComponentDescriptor", "RNSVGLineComponentDescriptor", "RNSVGMarkerComponentDescriptor", "RNSVGMaskComponentDescriptor", "RNSVGPathComponentDescriptor",
+        "RNSVGPatternComponentDescriptor", "RNSVGRadialGradientComponentDescriptor", "RNSVGRectComponentDescriptor", "RNSVGSvgViewAndroidComponentDescriptor", "RNSVGSymbolComponentDescriptor",
+        "RNSVGTextComponentDescriptor", "RNSVGTextPathComponentDescriptor", "RNSVGTSpanComponentDescriptor", "RNSVGUseComponentDescriptor",
+      ],
+      cmakeListsPath: "android/src/main/jni/CMakeLists.txt",
+    },
+    ios: { podspec: "RNSVG.podspec" },
+  },
 ];
 
 /** The names of the vendored packages. */
@@ -192,7 +230,8 @@ export function declaredVendored(appRoot: string): string[] {
 /** The refusal for an app that has an original of a vendored package: said by the config plugin, `svelte-native doctor` and the autolinking command alike. */
 export function collisionMessage(names: readonly string[], library = "@alfayez/svelte-native"): string {
   const list = names.map((name) => `${name} ${vendoredPackages.find((vendored) => vendored.name === name)?.version ?? ""}`.trim());
-  return `${library} includes ${list.join(" and ")}; remove ${names.length === 1 ? "it" : "them"} from the app's dependencies (package.json), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it.`;
+  const them = names.length === 1 ? "it" : "them";
+  return `${library} includes ${list.join(" and ")}; remove ${them} from the app's dependencies (package.json), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it. A library of the app that asks for ${them} as a peer dependency is served by the copy (Metro resolves the name to it; the Gradle project and the pod keep the name), so nothing needs to take ${them === "it" ? "its" : "their"} place.`;
 }
 
 /** Raised by `linkVendored` for an app that declares a vendored package itself. */

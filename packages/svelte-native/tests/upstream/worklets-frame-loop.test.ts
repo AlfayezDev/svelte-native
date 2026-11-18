@@ -1,16 +1,16 @@
 import { afterEach, expect, test } from "bun:test";
-import { createRequire } from "node:module";
-import { dirname } from "node:path";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readerFor } from "../../src/doctor/resolve.ts";
 import { workletsProblems } from "../../src/doctor/shapes.ts";
+import { vendored } from "../support/paths.ts";
 
 /**
- * `react-native-worklets@0.10.1.patch` (in the package's `patches/`): the UI runtime's `requestAnimationFrame` queue asks the native side for a frame
+ * `vendor-patches/react-native-worklets/0001-ui-frame-only-on-demand.patch`, applied to the library's copy of react-native-worklets (`vendor/`): the UI runtime's `requestAnimationFrame` queue asks the native side for a frame
  * only while a callback or finalizer is waiting. Upstream re-requests the next frame from every flush, forever, so once the
  * runtime exists the main thread runs a Choreographer callback, a JNI call and a Hermes call on every frame with an empty queue
  * (about 12 % of an idle screen's main-thread samples on the Galaxy A16). The test runs the library's own function against a
- * fake native side; it fails when `node_modules` does not carry the patch.
+ * fake native side; it fails when the copy does not carry the patch.
  */
 type Scope = {
   __nativeRequestAnimationFrame?: (callback: (timestamp: number) => void) => void;
@@ -27,7 +27,7 @@ const saved = Object.fromEntries(keys.map((key) => [key, scope[key]]));
 afterEach(() => { for (const key of keys) (scope as Record<string, unknown>)[key] = saved[key]; });
 
 async function runtime() {
-  const file = createRequire(import.meta.url).resolve("react-native-worklets/lib/module/runLoop/uiRuntime/requestAnimationFrame.js");
+  const file = join(vendored("react-native-worklets"), "lib/module/runLoop/uiRuntime/requestAnimationFrame.js");
   const { setupRequestAnimationFrame } = await import(pathToFileURL(file).href) as { setupRequestAnimationFrame(): void };
   const requested: ((timestamp: number) => void)[] = [];
   scope.__nativeRequestAnimationFrame = (callback) => { requested.push(callback); };
@@ -86,7 +86,6 @@ test("a cancelled callback leaves at most one empty frame behind", async () => {
   expect(requested.length).toBe(0);
 });
 
-test("the installed package has the patch's shape, the one `svelte-native doctor` looks for in an app", () => {
-  const entry = createRequire(import.meta.url).resolve("react-native-worklets/package.json");
-  expect(workletsProblems(readerFor(dirname(entry)))).toEqual([]);
+test("the copy has the patch's shape, the one `svelte-native doctor` looks for in an app", () => {
+  expect(workletsProblems(readerFor(vendored("react-native-worklets")))).toEqual([]);
 });

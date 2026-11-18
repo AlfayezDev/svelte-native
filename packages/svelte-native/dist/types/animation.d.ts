@@ -1,7 +1,8 @@
-import type * as Reanimated from "react-native-reanimated";
-import type * as Worklets from "react-native-worklets";
+/// <reference path="./vendor-types-ui.d.ts" />
+import type * as Reanimated from "#vendor/react-native-reanimated";
+import type * as Worklets from "#vendor/react-native-worklets";
 export { default as AnimatedView } from "./components/AnimatedView.svelte";
-export type { SharedValue } from "react-native-reanimated";
+export type { SharedValue } from "#vendor/react-native-reanimated";
 export declare let withTiming: typeof Reanimated.withTiming;
 export declare let withSpring: typeof Reanimated.withSpring;
 export declare let withRepeat: typeof Reanimated.withRepeat;

@@ -615,7 +615,11 @@ function reanimatedProblems(read2) {
       ["has no direct path for opacity and translate/scale transforms", has("private fun applySimpleProps(")]
     ]),
     ...inFile(read2, `${base}/cpp/reanimated/android/NativeProxy.cpp`, [["does not export reanimatedSetSynchronousPropsSink", has("reanimatedSetSynchronousPropsSink")], ["does not call the sink", has("synchronousPropsSink.load")]]),
-    ...inFile(read2, `${base}/cpp/reanimated/android/NativeProxy.h`, [["does not declare SynchronousPropsSink", has("SynchronousPropsSink")], ["does not keep the sink's rest buffers", has("sinkRestInts_")]])
+    ...inFile(read2, `${base}/cpp/reanimated/android/NativeProxy.h`, [["does not declare SynchronousPropsSink", has("SynchronousPropsSink")], ["does not keep the sink's rest buffers", has("sinkRestInts_")]]),
+    // The Gradle task and the podspec's script find Worklets by this path (`vendor/react-native-worklets`, beside the copy of Reanimated): by name it is not a package of the app.
+    ...inFile(read2, "scripts/validate-worklets-version.js", [["still looks for react-native-worklets by name", has("require('../../react-native-worklets/package.json')")]], true),
+    // The patched Android update (the sink above) is reached only through the synchronous update this flag turns on, which an app no longer sets itself.
+    ...inFile(read2, "src/featureFlags/staticFlags.json", [["has the synchronous Android update off by default", has('"ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true')]], true)
   ];
 }
 function workletsProblems(read2) {
@@ -692,7 +696,7 @@ function patchFiles(directory = patchesDirectory) {
     return { package: stem.slice(0, at).replaceAll("__", "/"), version: stem.slice(at + 1), file, path: resolve4(directory, file) };
   });
 }
-var patchesDirectory, patchSpecs, patchKey;
+var patchesDirectory, patchSpecs, vendoredPatchSpecs, patchKey;
 var init_patches = __esm({
   "src/doctor/patches.ts"() {
     "use strict";
@@ -703,13 +707,15 @@ var init_patches = __esm({
       { package: "@sveltejs/kit", does: "SvelteKit leaves the `+mobile.svelte` files of a route directory alone", inspect: kitProblems },
       { package: "expo-modules-core", via: "expo", does: "Expo modules register lazily and the common ones are prewarmed (Android start)", inspect: expoModulesCoreProblems },
       { package: "lottie-react-native", does: "Lottie's events are delivered one by one (Android) and a load or failure before the emitter exists is kept (iOS)", inspect: lottieProblems },
-      { package: "react-native-gesture-handler", does: "the root gesture recognizer can be registered for the screens the library presents (iOS)", inspect: rnghProblems },
       { package: "react-native-maps", does: "the map's discrete events are delivered one by one, its streams still coalesce (Android)", inspect: mapsProblems },
       { package: "react-native-pdf", does: "the pdf view's one event, which carries every message, no longer coalesces (Android)", inspect: pdfProblems },
-      { package: "react-native-reanimated", does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android)", inspect: reanimatedProblems },
-      { package: "react-native-video", does: "only progress and bandwidth events coalesce; every other video event is delivered (Android)", inspect: videoProblems },
-      { package: "react-native-worklets", does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems }
+      { package: "react-native-video", does: "only progress and bandwidth events coalesce; every other video event is delivered (Android)", inspect: videoProblems }
     ];
+    vendoredPatchSpecs = {
+      "react-native-gesture-handler": { does: "the root gesture recognizer can be registered for the screens the library presents (iOS)", inspect: rnghProblems },
+      "react-native-reanimated": { does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, and Worklets is the copy beside it", inspect: reanimatedProblems },
+      "react-native-worklets": { does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems }
+    };
     patchKey = (patch) => `${patch.package}@${patch.version}`;
   }
 });
@@ -822,6 +828,192 @@ var init_svelte_build = __esm({
   }
 });
 
+// src/vendored.ts
+import { readFileSync as readFileSync2, realpathSync } from "node:fs";
+import { isAbsolute, join as join3, relative as relative2, sep as sep4 } from "node:path";
+function gradleLibraryName(buildGradle) {
+  try {
+    return /^\s*libraryName\s*=\s*"([^"]+)"/m.exec(readFileSync2(buildGradle, "utf8"))?.[1];
+  } catch {
+    return void 0;
+  }
+}
+function vendoredDependency(vendored2, platform, root2 = packageRoot) {
+  const directory = vendoredRoot(vendored2.name, root2);
+  const manifest = readJson(join3(directory, "package.json")) ?? {};
+  if (platform === "android") {
+    const android = vendored2.android;
+    if (!android) return void 0;
+    const sourceDir = join3(directory, "android");
+    const codegen = manifest.codegenConfig;
+    const codegenName = typeof codegen === "object" && codegen !== null && typeof codegen.name === "string" ? codegen.name : void 0;
+    const libraryName = codegenName ?? gradleLibraryName(join3(sourceDir, "build.gradle"));
+    const cxx = android.cxxModule;
+    return {
+      root: directory,
+      name: vendored2.name,
+      platforms: {
+        android: {
+          sourceDir,
+          packageImportPath: android.packageImportPath,
+          packageInstance: android.packageInstance,
+          buildTypes: [],
+          ...libraryName === void 0 ? {} : { libraryName },
+          componentDescriptors: [...android.componentDescriptors ?? []],
+          cmakeListsPath: join3(directory, android.cmakeListsPath ?? "android/build/generated/source/codegen/jni/CMakeLists.txt"),
+          cxxModuleCMakeListsModuleName: cxx?.cmakeListsModuleName ?? null,
+          cxxModuleCMakeListsPath: cxx ? join3(directory, cxx.cmakeListsPath) : null,
+          cxxModuleHeaderName: cxx?.headerName ?? null,
+          isPureCxxDependency: false
+        }
+      }
+    };
+  }
+  if (!vendored2.ios) return void 0;
+  return {
+    root: directory,
+    name: vendored2.name,
+    platforms: { ios: { podspecPath: join3(directory, vendored2.ios.podspec), version: typeof manifest.version === "string" ? manifest.version : vendored2.version, configurations: [], scriptPhases: [] } }
+  };
+}
+function declaredVendored(appRoot) {
+  const manifest = readJson(join3(appRoot, "package.json"));
+  if (!manifest) return [];
+  const declared = /* @__PURE__ */ new Set();
+  for (const group3 of ["dependencies", "devDependencies", "optionalDependencies"]) {
+    const entries = manifest[group3];
+    if (typeof entries === "object" && entries !== null) for (const name of Object.keys(entries)) declared.add(name);
+  }
+  return vendoredNames.filter((name) => declared.has(name));
+}
+function collisionMessage(names, library2 = "@alfayez/svelte-native") {
+  const list = names.map((name) => `${name} ${vendoredPackages.find((vendored2) => vendored2.name === name)?.version ?? ""}`.trim());
+  const them = names.length === 1 ? "it" : "them";
+  return `${library2} includes ${list.join(" and ")}; remove ${them} from the app's dependencies (package.json), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it. A library of the app that asks for ${them} as a peer dependency is served by the copy (Metro resolves the name to it; the Gradle project and the pod keep the name), so nothing needs to take ${them === "it" ? "its" : "their"} place.`;
+}
+function linkVendored(config, platform, root2 = packageRoot) {
+  const entries = vendoredPackages.flatMap((vendored2) => {
+    const dependency = vendoredDependency(vendored2, platform, root2);
+    return dependency ? [[vendored2.name, dependency]] : [];
+  });
+  const dependencies = config.dependencies ?? {};
+  const others = entries.filter(([name, own2]) => dependencies[name] !== void 0 && real(dependencies[name].root ?? "") !== real(own2.root)).map(([name]) => name);
+  if (others.length > 0 && typeof config.root === "string") {
+    const declared = declaredVendored(config.root).filter((name) => others.includes(name));
+    if (declared.length > 0) throw new VendoredCollision(declared);
+  }
+  const linked = Object.entries({ ...dependencies, ...Object.fromEntries(entries) }).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+  return { ...config, dependencies: Object.fromEntries(linked) };
+}
+var vendoredPackages, vendoredNames, vendorDirectory, vendoredRoot, real, readJson, VendoredCollision;
+var init_vendored = __esm({
+  "src/vendored.ts"() {
+    "use strict";
+    init_package_root();
+    vendoredPackages = [
+      {
+        name: "react-native-nitro-modules",
+        version: "0.35.10",
+        android: { packageImportPath: "import com.margelo.nitro.NitroModulesPackage;", packageInstance: "new NitroModulesPackage()" },
+        ios: { podspec: "NitroModules.podspec" }
+      },
+      {
+        name: "react-native-mmkv",
+        version: "4.3.1",
+        android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
+        ios: { podspec: "NitroMmkv.podspec" }
+      },
+      {
+        name: "react-native-gesture-handler",
+        version: "2.32.0",
+        // The two components of its codegen (`RNGestureHandlerButton`, `RNGestureHandlerRootView`); `libraryName` is `codegenConfig.name`.
+        android: { packageImportPath: "import com.swmansion.gesturehandler.RNGestureHandlerPackage;", packageInstance: "new RNGestureHandlerPackage()", componentDescriptors: ["RNGestureHandlerButtonComponentDescriptor", "RNGestureHandlerRootViewComponentDescriptor"] },
+        ios: { podspec: "RNGestureHandler.podspec" }
+      },
+      {
+        name: "react-native-worklets",
+        version: "0.10.1",
+        android: { packageImportPath: "import com.swmansion.worklets.WorkletsPackage;", packageInstance: "new WorkletsPackage()" },
+        ios: { podspec: "RNWorklets.podspec" }
+      },
+      {
+        name: "react-native-reanimated",
+        version: "4.5.1",
+        android: { packageImportPath: "import com.swmansion.reanimated.ReanimatedPackage;", packageInstance: "new ReanimatedPackage()" },
+        ios: { podspec: "RNReanimated.podspec" }
+      },
+      {
+        name: "react-native-svg",
+        version: "15.15.4",
+        // The 29 components of its `react-native.config.js`, and its codegen CMake file, which is in the sources and not below `android/build/` (a test reads both from the copy).
+        android: {
+          packageImportPath: "import com.horcrux.svg.SvgPackage;",
+          packageInstance: "new SvgPackage()",
+          componentDescriptors: [
+            "RNSVGCircleComponentDescriptor",
+            "RNSVGClipPathComponentDescriptor",
+            "RNSVGDefsComponentDescriptor",
+            "RNSVGFeBlendComponentDescriptor",
+            "RNSVGFeColorMatrixComponentDescriptor",
+            "RNSVGFeCompositeComponentDescriptor",
+            "RNSVGFeFloodComponentDescriptor",
+            "RNSVGFeGaussianBlurComponentDescriptor",
+            "RNSVGFeMergeComponentDescriptor",
+            "RNSVGFeOffsetComponentDescriptor",
+            "RNSVGFilterComponentDescriptor",
+            "RNSVGEllipseComponentDescriptor",
+            "RNSVGForeignObjectComponentDescriptor",
+            "RNSVGGroupComponentDescriptor",
+            "RNSVGImageComponentDescriptor",
+            "RNSVGLinearGradientComponentDescriptor",
+            "RNSVGLineComponentDescriptor",
+            "RNSVGMarkerComponentDescriptor",
+            "RNSVGMaskComponentDescriptor",
+            "RNSVGPathComponentDescriptor",
+            "RNSVGPatternComponentDescriptor",
+            "RNSVGRadialGradientComponentDescriptor",
+            "RNSVGRectComponentDescriptor",
+            "RNSVGSvgViewAndroidComponentDescriptor",
+            "RNSVGSymbolComponentDescriptor",
+            "RNSVGTextComponentDescriptor",
+            "RNSVGTextPathComponentDescriptor",
+            "RNSVGTSpanComponentDescriptor",
+            "RNSVGUseComponentDescriptor"
+          ],
+          cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+        },
+        ios: { podspec: "RNSVG.podspec" }
+      }
+    ];
+    vendoredNames = vendoredPackages.map((vendored2) => vendored2.name);
+    vendorDirectory = (root2 = packageRoot) => join3(root2, "vendor");
+    vendoredRoot = (name, root2 = packageRoot) => join3(vendorDirectory(root2), name);
+    real = (path) => {
+      try {
+        return realpathSync(path);
+      } catch {
+        return path;
+      }
+    };
+    readJson = (file) => {
+      try {
+        const parsed = JSON.parse(readFileSync2(file, "utf8"));
+        return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : void 0;
+      } catch {
+        return void 0;
+      }
+    };
+    VendoredCollision = class extends Error {
+      names;
+      constructor(names) {
+        super(collisionMessage(names));
+        this.name = "VendoredCollision";
+        this.names = names;
+      }
+    };
+  }
+});
+
 // src/init-app.ts
 var init_app_exports = {};
 __export(init_app_exports, {
@@ -836,9 +1028,9 @@ __export(init_app_exports, {
   svelteNativeViteConfig: () => svelteNativeViteConfig
 });
 import { spawnSync } from "node:child_process";
-import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync2, readdirSync as readdirSync4, writeFileSync as writeFileSync2 } from "node:fs";
+import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync3, readdirSync as readdirSync4, writeFileSync as writeFileSync2 } from "node:fs";
 import { createRequire as createRequire2 } from "node:module";
-import { dirname as dirname3, join as join3, relative as relative2 } from "node:path";
+import { dirname as dirname3, join as join4, relative as relative3 } from "node:path";
 function indentOf(text3) {
   return /^([ \t]+)"/m.exec(text3)?.[1] ?? "	";
 }
@@ -863,7 +1055,7 @@ function appNames(packageName, options = {}) {
   return { title, slug, androidPackage: options.androidPackage ?? `dev.example.${id}`, iosBundleId: options.iosBundleId ?? `dev.example.${id}` };
 }
 function installedVersion(root2, name) {
-  const text3 = read(join3(root2, "node_modules", name, "package.json"));
+  const text3 = read(join4(root2, "node_modules", name, "package.json"));
   if (text3 === void 0) return void 0;
   try {
     return JSON.parse(text3).version;
@@ -916,10 +1108,9 @@ function planPackageJson(root2, original, patches2, options) {
   }
   let changedPeers = 0;
   for (const [name, version] of Object.entries(appDependencies)) if (setDependency(name, version, "dependencies")) changedPeers++;
-  for (const patch of patches2.filter((entry) => alwaysPatched.includes(entry.package) && entry.package !== "expo-modules-core")) {
-    if (appDependencies[patch.package] !== patch.version) warnings.push(`${patch.package}: the library's patch is for ${patch.version}, and init's version is ${appDependencies[patch.package] ?? "none"}; this is a bug in the library.`);
-  }
   if (changedPeers > 0) summary.push(`${plural(changedPeers, "dependency")} (the versions the library was exercised on)`);
+  const listed = vendoredNames.filter(has2);
+  if (listed.length > 0) warnings.push(`package.json: ${collisionMessage(listed)}`);
   const nextScripts = { ...manifest.scripts ?? {} };
   const addedScripts = [];
   for (const [name, command2] of Object.entries(scripts)) {
@@ -934,11 +1125,6 @@ function planPackageJson(root2, original, patches2, options) {
   if (addedScripts.length > 0) {
     next.scripts = nextScripts;
     summary.push(`scripts ${addedScripts.join(", ")}`);
-  }
-  const reanimated = typeof next.reanimated === "object" && next.reanimated !== null ? next.reanimated : {};
-  if (reanimated.staticFeatureFlags?.ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS !== true) {
-    next.reanimated = { ...reanimated, staticFeatureFlags: { ...reanimated.staticFeatureFlags ?? {}, ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS: true } };
-    summary.push("the Reanimated flag");
   }
   next.dependencies = dependencies;
   if (Object.keys(devDependencies).length > 0 || manifest.devDependencies !== void 0) next.devDependencies = devDependencies;
@@ -1067,15 +1253,15 @@ ${indent}})`;
   return edited;
 }
 function starterTheme(root2, manifest) {
-  const own2 = read(join3(root2, "src/lib/theme.ts"));
+  const own2 = read(join4(root2, "src/lib/theme.ts"));
   const name = own2 !== void 0 && !own2.includes("@alfayez/svelte-native") ? "native-theme.ts" : "theme.ts";
   const path = `src/lib/${name}`;
   const imports = manifest.imports;
   const mapped = typeof imports === "object" && imports !== null && "#lib/*" in imports;
   return {
     path,
-    exists: existsSync3(join3(root2, path)),
-    from: (directory) => mapped ? `#lib/${name}` : relative2(directory, path).split("\\").join("/")
+    exists: existsSync3(join4(root2, path)),
+    from: (directory) => mapped ? `#lib/${name}` : relative3(directory, path).split("\\").join("/")
   };
 }
 function mobileRoutes(routes) {
@@ -1084,12 +1270,12 @@ function mobileRoutes(routes) {
 }
 function planInit(root2, options = {}) {
   const plan = { root: root2, changes: [], warnings: [], problems: [] };
-  const packageText = read(join3(root2, "package.json"));
+  const packageText = read(join4(root2, "package.json"));
   if (packageText === void 0) {
     plan.problems.push(`${root2} has no package.json: run \`svelte-native init\` in the directory of your project (after \`npx sv create\`).`);
     return plan;
   }
-  if (!existsSync3(join3(root2, "pnpm-lock.yaml")) && !existsSync3(join3(root2, "pnpm-workspace.yaml")) && (existsSync3(join3(root2, "package-lock.json")) || existsSync3(join3(root2, "yarn.lock")) || existsSync3(join3(root2, "bun.lock")) || existsSync3(join3(root2, "bun.lockb")))) {
+  if (!existsSync3(join4(root2, "pnpm-lock.yaml")) && !existsSync3(join4(root2, "pnpm-workspace.yaml")) && (existsSync3(join4(root2, "package-lock.json")) || existsSync3(join4(root2, "yarn.lock")) || existsSync3(join4(root2, "bun.lock")) || existsSync3(join4(root2, "bun.lockb")))) {
     plan.problems.push("This project uses another package manager than pnpm. The library's patches are pnpm's (`patchedDependencies`): create the project with pnpm (`npx sv create`, then choose pnpm) or move it to pnpm first.");
     return plan;
   }
@@ -1118,7 +1304,7 @@ function planInit(root2, options = {}) {
       else plan.warnings.push(`${patch.package}: package.json asks for ${declared[patch.package]}, and the library's patch is for ${patch.version} (it is declared only for that version); pin it with \`pnpm add ${patch.package}@${patch.version}\` and run init again.`);
     }
   }
-  const workspacePath = join3(root2, "pnpm-workspace.yaml");
+  const workspacePath = join4(root2, "pnpm-workspace.yaml");
   const workspaceText = read(workspacePath);
   const overrides = {};
   const expoModules = patches2.find((patch) => patch.package === "expo-modules-core");
@@ -1148,27 +1334,27 @@ ${merged.manual.map((line) => `  ${line}`).join("\n")}`
   const copied = [];
   const replaced = [];
   for (const patch of needed) {
-    const target = join3(root2, "patches/svelte-native", patch.file);
-    const content = readFileSync2(patch.path);
-    const current = existsSync3(target) ? readFileSync2(target) : void 0;
+    const target = join4(root2, "patches/svelte-native", patch.file);
+    const content = readFileSync3(patch.path);
+    const current = existsSync3(target) ? readFileSync3(target) : void 0;
     if (current?.equals(content)) continue;
-    plan.changes.push({ path: relative2(root2, target), action: current === void 0 ? "create" : "edit", summary: current === void 0 ? "the library's patch" : "differs from the installed library's copy: replaced", text: content });
+    plan.changes.push({ path: relative3(root2, target), action: current === void 0 ? "create" : "edit", summary: current === void 0 ? "the library's patch" : "differs from the installed library's copy: replaced", text: content });
     (current === void 0 ? copied : replaced).push(patch.file);
   }
   if (copied.length === 0 && replaced.length === 0) plan.changes.push({ path: "patches/svelte-native", action: "keep", summary: `${plural(needed.length, "patch")} up to date` });
-  const metroPath = join3(root2, "metro.config.cjs");
-  const metroText = read(metroPath) ?? read(join3(root2, "metro.config.js"));
+  const metroPath = join4(root2, "metro.config.cjs");
+  const metroText = read(metroPath) ?? read(join4(root2, "metro.config.js"));
   if (metroText === void 0) plan.changes.push({ path: "metro.config.cjs", action: "create", summary: "withSvelteNative(getDefaultConfig(__dirname))", text: metroConfig });
   else if (metroText.includes("withSvelteNative")) plan.changes.push({ path: "metro.config.cjs", action: "keep", summary: "uses withSvelteNative" });
   else plan.changes.push({ path: "metro.config.cjs", action: "manual", summary: "exists and does not use withSvelteNative", instructions: `Wrap the config you export:
   const { withSvelteNative } = require("@alfayez/svelte-native/metro");
   module.exports = withSvelteNative(<your config>);` });
   planAppJson(root2, names, plan);
-  const viteName = ["vite.config.ts", "vite.config.js", "vite.config.mts", "vite.config.mjs"].find((file) => existsSync3(join3(root2, file)));
+  const viteName = ["vite.config.ts", "vite.config.js", "vite.config.mts", "vite.config.mjs"].find((file) => existsSync3(join4(root2, file)));
   if (pkg.hasKit && viteName === void 0) {
     plan.changes.push({ path: "vite.config.ts", action: "manual", summary: "none found", instructions: viteInstructions("vite.config.ts") });
   } else if (viteName !== void 0) {
-    const viteText = read(join3(root2, viteName)) ?? "";
+    const viteText = read(join4(root2, viteName)) ?? "";
     if (viteText.includes("svelteNative(")) plan.changes.push({ path: viteName, action: "keep", summary: "uses svelteNative()" });
     else {
       const edited = svelteNativeViteConfig(viteText);
@@ -1176,7 +1362,7 @@ ${merged.manual.map((line) => `  ${line}`).join("\n")}`
       else plan.changes.push({ path: viteName, action: "manual", summary: "not in a shape init edits safely", instructions: viteInstructions(viteName, quoteOf(viteText)) });
     }
   }
-  const routes = join3(root2, "src/routes");
+  const routes = join4(root2, "src/routes");
   const existing = mobileRoutes(routes);
   const createLayout = !existing.some((file) => file === "+layout.mobile.svelte");
   const createScreens = !existing.some((file) => /\+mobile\.svelte$/.test(file) && !/layout\.mobile/.test(file));
@@ -1188,7 +1374,7 @@ ${merged.manual.map((line) => `  ${line}`).join("\n")}`
     plan.changes.push({ path: "src/routes/+mobile.svelte", action: "create", summary: "a home screen", text: homeRoute(names.title, theme.from("src/routes")) });
     plan.changes.push({ path: "src/routes/details/+mobile.svelte", action: "create", summary: "a second screen", text: detailsRoute(theme.from("src/routes/details")) });
   } else plan.changes.push({ path: "src/routes", action: "keep", summary: `${plural(existing.filter((file) => !/layout/.test(file)).length, "native screen")} already` });
-  const ignorePath = join3(root2, ".gitignore");
+  const ignorePath = join4(root2, ".gitignore");
   const ignoreText = read(ignorePath);
   const lines = new Set((ignoreText ?? "").split(/\r?\n/).map((line) => line.trim().replace(/^\//, "").replace(/\/$/, "")));
   const missing = gitignore.filter((line) => !lines.has(line.replace(/^\//, "")));
@@ -1225,7 +1411,7 @@ function syntaxOk(source, file) {
   }
 }
 function planAppJson(root2, names, plan) {
-  const path = join3(root2, "app.json");
+  const path = join4(root2, "app.json");
   const text3 = read(path);
   const wanted = () => ({
     name: names.title,
@@ -1237,9 +1423,9 @@ function planAppJson(root2, names, plan) {
     plugins: [plugin]
   });
   if (text3 === void 0) {
-    const config = ["app.config.ts", "app.config.js", "app.config.mjs", "app.config.cjs"].find((file) => existsSync3(join3(root2, file)));
+    const config = ["app.config.ts", "app.config.js", "app.config.mjs", "app.config.cjs"].find((file) => existsSync3(join4(root2, file)));
     if (config !== void 0) {
-      const configText = read(join3(root2, config)) ?? "";
+      const configText = read(join4(root2, config)) ?? "";
       const names2 = [`"${removedPluginName}"`, `'${removedPluginName}'`, `\`${removedPluginName}\``].some((quoted) => configText.includes(quoted));
       const instructions = names2 ? `Replace "${removedPluginName}" in \`plugins\` in ${config} with "${plugin}" (that path no longer resolves and the package's name is the plugin's; keep its options):
   plugins: ["${plugin}"]
@@ -1295,7 +1481,7 @@ and give the app an \`android.package\` and \`ios.bundleIdentifier\`.`;
 function applyPlan(plan) {
   for (const change of plan.changes) {
     if (change.text === void 0 || change.action !== "create" && change.action !== "edit") continue;
-    const file = join3(plan.root, change.path);
+    const file = join4(plan.root, change.path);
     mkdirSync2(dirname3(file), { recursive: true });
     writeFileSync2(file, change.text);
   }
@@ -1386,26 +1572,23 @@ var init_init_app = __esm({
     init_patches();
     init_semver();
     init_svelte_build();
+    init_vendored();
     appDependencies = {
       expo: "57.0.30",
       "expo-constants": "57.0.22",
       "hermes-intl": "^0.1.2",
       react: "19.2.7",
       "react-native": "0.86.3",
-      "react-native-gesture-handler": "2.32.0",
       "react-native-quick-base64": "2.2.2",
-      "react-native-quick-crypto": "1.1.3",
-      "react-native-reanimated": "4.5.1",
-      "react-native-svg": "15.15.4",
-      "react-native-worklets": "0.10.1"
+      "react-native-quick-crypto": "1.1.3"
     };
-    alwaysPatched = ["expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"];
+    alwaysPatched = ["expo-modules-core"];
     plugin = "@alfayez/svelte-native";
     pluginNames = [plugin, `${plugin}/app.plugin`];
     removedPluginName = `${plugin}/expo`;
     scripts = { native: "svelte-native dev", android: "svelte-native android", ios: "svelte-native ios", "check-setup": "svelte-native doctor" };
     gitignore = [".svelte-native", ".expo", "/android", "/ios"];
-    read = (file) => existsSync3(file) ? readFileSync2(file, "utf8") : void 0;
+    read = (file) => existsSync3(file) ? readFileSync3(file, "utf8") : void 0;
     plural = (count2, word) => `${count2} ${word.endsWith("y") ? count2 === 1 ? word : `${word.slice(0, -1)}ies` : count2 === 1 ? word : `${word}s`}`;
     quoteOf = (text3) => /from\s+"/.test(text3) ? '"' : "'";
     exactVersion = (spec) => spec !== void 0 && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(spec) ? spec : void 0;
@@ -1525,29 +1708,29 @@ dependencies, pnpm's settings and patches, the Metro and Expo config, the Vite p
 });
 
 // src/doctor/resolve.ts
-import { existsSync as existsSync4, readdirSync as readdirSync5, readFileSync as readFileSync3, realpathSync } from "node:fs";
-import { basename, dirname as dirname4, join as join4, resolve as resolve5 } from "node:path";
+import { existsSync as existsSync4, readdirSync as readdirSync5, readFileSync as readFileSync4, realpathSync as realpathSync2 } from "node:fs";
+import { basename, dirname as dirname4, join as join5, resolve as resolve5 } from "node:path";
 function readerFor(directory) {
   return {
     read(path) {
       try {
-        return readFileSync3(join4(directory, path), "utf8");
+        return readFileSync4(join5(directory, path), "utf8");
       } catch {
         return void 0;
       }
     },
     list(path) {
       try {
-        return readdirSync5(join4(directory, path));
+        return readdirSync5(join5(directory, path));
       } catch {
         return [];
       }
     }
   };
 }
-function readJson(file) {
+function readJson2(file) {
   try {
-    const parsed = JSON.parse(readFileSync3(file, "utf8"));
+    const parsed = JSON.parse(readFileSync4(file, "utf8"));
     return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : void 0;
   } catch {
     return void 0;
@@ -1555,15 +1738,15 @@ function readJson(file) {
 }
 function findPackage(name, from) {
   for (let directory = resolve5(from); ; directory = dirname4(directory)) {
-    const candidate = join4(basename(directory) === "node_modules" ? directory : join4(directory, "node_modules"), name);
-    const json = readJson(join4(candidate, "package.json"));
-    if (json && typeof json.version === "string") return { name, version: json.version, directory: realpathSync(candidate), json };
+    const candidate = join5(basename(directory) === "node_modules" ? directory : join5(directory, "node_modules"), name);
+    const json = readJson2(join5(candidate, "package.json"));
+    if (json && typeof json.version === "string") return { name, version: json.version, directory: realpathSync2(candidate), json };
     if (dirname4(directory) === directory) return void 0;
   }
 }
 function findUp(file, from) {
   for (let directory = resolve5(from); ; directory = dirname4(directory)) {
-    if (existsSync4(join4(directory, file))) return directory;
+    if (existsSync4(join5(directory, file))) return directory;
     if (dirname4(directory) === directory) return void 0;
   }
 }
@@ -1574,8 +1757,8 @@ var init_resolve = __esm({
 });
 
 // src/doctor/declared.ts
-import { readFileSync as readFileSync4 } from "node:fs";
-import { dirname as dirname5, join as join5, resolve as resolve6 } from "node:path";
+import { readFileSync as readFileSync5 } from "node:fs";
+import { dirname as dirname5, join as join6, resolve as resolve6 } from "node:path";
 function patchedDependenciesOfYaml(text3) {
   const entries = /* @__PURE__ */ new Map();
   let inside = false;
@@ -1604,13 +1787,13 @@ function declaredPatches(appRoot) {
   const workspace = findUp("pnpm-workspace.yaml", appRoot);
   if (workspace) {
     try {
-      add(patchedDependenciesOfYaml(readFileSync4(join5(workspace, "pnpm-workspace.yaml"), "utf8")), workspace, "pnpm-workspace.yaml");
+      add(patchedDependenciesOfYaml(readFileSync5(join6(workspace, "pnpm-workspace.yaml"), "utf8")), workspace, "pnpm-workspace.yaml");
     } catch {
     }
   }
   const top = workspace ?? resolve6(appRoot);
   for (let directory = resolve6(appRoot); ; directory = dirname5(directory)) {
-    add(fromJson(readJson(join5(directory, "package.json"))), directory, "package.json");
+    add(fromJson(readJson2(join6(directory, "package.json"))), directory, "package.json");
     if (directory === top || dirname5(directory) === directory) break;
   }
   return declared;
@@ -1623,15 +1806,15 @@ var init_declared = __esm({
 });
 
 // src/doctor/integration.ts
-import { existsSync as existsSync5, readFileSync as readFileSync5 } from "node:fs";
-import { join as join6 } from "node:path";
+import { existsSync as existsSync5, readFileSync as readFileSync6 } from "node:fs";
+import { join as join7 } from "node:path";
 function withoutJsComments(text3) {
   return text3.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
 }
 function metroFinding(appRoot) {
   const file = firstExisting(appRoot, METRO_FILES);
   if (!file) return { state: "no-file" };
-  const code = withoutJsComments(readFileSync5(join6(appRoot, file), "utf8"));
+  const code = withoutJsComments(readFileSync6(join7(appRoot, file), "utf8"));
   return { state: /\bwithSvelteNative\b/.test(code) ? "found" : "unclear", file };
 }
 function expoPluginFinding(appRoot, library2) {
@@ -1639,11 +1822,11 @@ function expoPluginFinding(appRoot, library2) {
   const removed = `${library2}/expo`;
   const json = firstExisting(appRoot, ["app.json"]);
   const code = firstExisting(appRoot, APP_CONFIG_FILES);
-  const parsed = json ? readJson(join6(appRoot, json)) : void 0;
+  const parsed = json ? readJson2(join7(appRoot, json)) : void 0;
   const expo = parsed?.expo ?? parsed;
   const plugins = Array.isArray(expo?.plugins) ? expo.plugins : [];
   const listedInJson = (name) => plugins.some((entry) => pluginName(entry) === name);
-  const source = code ? withoutJsComments(readFileSync5(join6(appRoot, code), "utf8")) : "";
+  const source = code ? withoutJsComments(readFileSync6(join7(appRoot, code), "utf8")) : "";
   const namedInCode = (name) => ['"', "'", "`"].some((quote) => source.includes(`${quote}${name}${quote}`));
   if (json && listedInJson(removed)) return { state: "removed", file: json, name: removed };
   if (code && namedInCode(removed)) return { state: "removed", file: code, name: removed };
@@ -1657,7 +1840,7 @@ function expoPluginFinding(appRoot, library2) {
 }
 function appJson(appRoot, library2) {
   const file = firstExisting(appRoot, ["app.json"]);
-  const parsed = file ? readJson(join6(appRoot, file)) : void 0;
+  const parsed = file ? readJson2(join7(appRoot, file)) : void 0;
   if (!file || !parsed) return void 0;
   const expo = record(parsed.expo ?? parsed);
   const names = [library2, `${library2}/app.plugin`];
@@ -1671,7 +1854,7 @@ var init_integration = __esm({
     init_resolve();
     METRO_FILES = ["metro.config.js", "metro.config.cjs", "metro.config.mjs", "metro.config.ts", "metro.config.mts", "metro.config.cts"];
     APP_CONFIG_FILES = ["app.config.ts", "app.config.js", "app.config.cjs", "app.config.mjs", "app.config.mts", "app.config.cts"];
-    firstExisting = (root2, names) => names.find((name) => existsSync5(join6(root2, name)));
+    firstExisting = (root2, names) => names.find((name) => existsSync5(join7(root2, name)));
     pluginName = (entry) => typeof entry === "string" ? entry : Array.isArray(entry) && typeof entry[0] === "string" ? entry[0] : void 0;
     record = (value) => typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
     codeConfig = (appRoot) => firstExisting(appRoot, APP_CONFIG_FILES);
@@ -1859,7 +2042,7 @@ var init_config = __esm({
 });
 
 // src/doctor/push.ts
-import { join as join7 } from "node:path";
+import { join as join8 } from "node:path";
 function plistString(plist, key) {
   return new RegExp(`<key>${key}</key>\\s*<string>([^<]*)</string>`).exec(plist)?.[1];
 }
@@ -1944,7 +2127,7 @@ function androidChecks(context, config, code, reader) {
   }
   const contents = reader.read(file);
   if (contents === void 0) {
-    return [{ group, status: "fail", message: `${file} does not exist (${join7(context.appRoot, file)}), and ${config?.file ?? "the app's config"} names it as the Google services file`, fix: FIREBASE_FIX }];
+    return [{ group, status: "fail", message: `${file} does not exist (${join8(context.appRoot, file)}), and ${config?.file ?? "the app's config"} names it as the Google services file`, fix: FIREBASE_FIX }];
   }
   const secret = findPushSecret(contents, file);
   if (secret) {
@@ -2102,130 +2285,6 @@ var init_requirements = __esm({
   }
 });
 
-// src/vendored.ts
-import { readFileSync as readFileSync6, realpathSync as realpathSync2 } from "node:fs";
-import { isAbsolute, join as join8, relative as relative3, sep as sep4 } from "node:path";
-function gradleLibraryName(buildGradle) {
-  try {
-    return /^\s*libraryName\s*=\s*"([^"]+)"/m.exec(readFileSync6(buildGradle, "utf8"))?.[1];
-  } catch {
-    return void 0;
-  }
-}
-function vendoredDependency(vendored2, platform, root2 = packageRoot) {
-  const directory = vendoredRoot(vendored2.name, root2);
-  const manifest = readJson2(join8(directory, "package.json")) ?? {};
-  if (platform === "android") {
-    const android = vendored2.android;
-    if (!android) return void 0;
-    const sourceDir = join8(directory, "android");
-    const codegen = manifest.codegenConfig;
-    const codegenName = typeof codegen === "object" && codegen !== null && typeof codegen.name === "string" ? codegen.name : void 0;
-    const libraryName = codegenName ?? gradleLibraryName(join8(sourceDir, "build.gradle"));
-    const cxx = android.cxxModule;
-    return {
-      root: directory,
-      name: vendored2.name,
-      platforms: {
-        android: {
-          sourceDir,
-          packageImportPath: android.packageImportPath,
-          packageInstance: android.packageInstance,
-          buildTypes: [],
-          ...libraryName === void 0 ? {} : { libraryName },
-          componentDescriptors: [...android.componentDescriptors ?? []],
-          cmakeListsPath: join8(directory, android.cmakeListsPath ?? "android/build/generated/source/codegen/jni/CMakeLists.txt"),
-          cxxModuleCMakeListsModuleName: cxx?.cmakeListsModuleName ?? null,
-          cxxModuleCMakeListsPath: cxx ? join8(directory, cxx.cmakeListsPath) : null,
-          cxxModuleHeaderName: cxx?.headerName ?? null,
-          isPureCxxDependency: false
-        }
-      }
-    };
-  }
-  if (!vendored2.ios) return void 0;
-  return {
-    root: directory,
-    name: vendored2.name,
-    platforms: { ios: { podspecPath: join8(directory, vendored2.ios.podspec), version: typeof manifest.version === "string" ? manifest.version : vendored2.version, configurations: [], scriptPhases: [] } }
-  };
-}
-function declaredVendored(appRoot) {
-  const manifest = readJson2(join8(appRoot, "package.json"));
-  if (!manifest) return [];
-  const declared = /* @__PURE__ */ new Set();
-  for (const group3 of ["dependencies", "devDependencies", "optionalDependencies"]) {
-    const entries = manifest[group3];
-    if (typeof entries === "object" && entries !== null) for (const name of Object.keys(entries)) declared.add(name);
-  }
-  return vendoredNames.filter((name) => declared.has(name));
-}
-function collisionMessage(names, library2 = "@alfayez/svelte-native") {
-  const list = names.map((name) => `${name} ${vendoredPackages.find((vendored2) => vendored2.name === name)?.version ?? ""}`.trim());
-  return `${library2} includes ${list.join(" and ")}; remove ${names.length === 1 ? "it" : "them"} from the app's dependencies (package.json), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it.`;
-}
-function linkVendored(config, platform, root2 = packageRoot) {
-  const entries = vendoredPackages.flatMap((vendored2) => {
-    const dependency = vendoredDependency(vendored2, platform, root2);
-    return dependency ? [[vendored2.name, dependency]] : [];
-  });
-  const dependencies = config.dependencies ?? {};
-  const others = entries.filter(([name, own2]) => dependencies[name] !== void 0 && real(dependencies[name].root ?? "") !== real(own2.root)).map(([name]) => name);
-  if (others.length > 0 && typeof config.root === "string") {
-    const declared = declaredVendored(config.root).filter((name) => others.includes(name));
-    if (declared.length > 0) throw new VendoredCollision(declared);
-  }
-  const linked = Object.entries({ ...dependencies, ...Object.fromEntries(entries) }).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
-  return { ...config, dependencies: Object.fromEntries(linked) };
-}
-var vendoredPackages, vendoredNames, vendorDirectory, vendoredRoot, real, readJson2, VendoredCollision;
-var init_vendored = __esm({
-  "src/vendored.ts"() {
-    "use strict";
-    init_package_root();
-    vendoredPackages = [
-      {
-        name: "react-native-nitro-modules",
-        version: "0.35.10",
-        android: { packageImportPath: "import com.margelo.nitro.NitroModulesPackage;", packageInstance: "new NitroModulesPackage()" },
-        ios: { podspec: "NitroModules.podspec" }
-      },
-      {
-        name: "react-native-mmkv",
-        version: "4.3.1",
-        android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
-        ios: { podspec: "NitroMmkv.podspec" }
-      }
-    ];
-    vendoredNames = vendoredPackages.map((vendored2) => vendored2.name);
-    vendorDirectory = (root2 = packageRoot) => join8(root2, "vendor");
-    vendoredRoot = (name, root2 = packageRoot) => join8(vendorDirectory(root2), name);
-    real = (path) => {
-      try {
-        return realpathSync2(path);
-      } catch {
-        return path;
-      }
-    };
-    readJson2 = (file) => {
-      try {
-        const parsed = JSON.parse(readFileSync6(file, "utf8"));
-        return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : void 0;
-      } catch {
-        return void 0;
-      }
-    };
-    VendoredCollision = class extends Error {
-      names;
-      constructor(names) {
-        super(collisionMessage(names));
-        this.name = "VendoredCollision";
-        this.names = names;
-      }
-    };
-  }
-});
-
 // src/doctor/checks.ts
 import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
 import { join as join9 } from "node:path";
@@ -2332,7 +2391,7 @@ function vendored(context, libraryName) {
   const checks = [];
   for (const { name, version } of vendoredPackages) {
     const directory = vendoredRoot(name, context.packageRoot);
-    const copy = readJson(join9(directory, "package.json"));
+    const copy = readJson2(join9(directory, "package.json"));
     if (copy === void 0 || copy.version !== version) {
       checks.push({
         group: "vendored packages",
@@ -2343,7 +2402,19 @@ function vendored(context, libraryName) {
     } else if (declared.has(name)) {
       checks.push({ group: "vendored packages", status: "fail", message: `${name} is a dependency of the app (${join9(context.appRoot, "package.json")}): ${collisionMessage([name], libraryName)}`, fix: `pnpm remove ${name}, then npx expo prebuild` });
     } else {
-      checks.push({ group: "vendored packages", status: "pass", message: `${name} ${version} comes with ${libraryName} (vendor/${name}); the app does not list it` });
+      const patched = vendoredPatchSpecs[name];
+      const problems = patched?.inspect(readerFor(directory)) ?? [];
+      if (patched !== void 0 && problems.length > 0) {
+        checks.push({
+          group: "vendored packages",
+          status: "fail",
+          message: `${name} ${version} in ${libraryName} (${directory}) does not carry the library's patch: ${patched.does}`,
+          details: problems.slice(0, 4).concat(problems.length > 4 ? [`and ${problems.length - 4} more`] : []),
+          fix: `install ${libraryName} again: the copy is patched when the library is written (vendor-patches/${name}/), so an incomplete or edited install is the cause`
+        });
+      } else {
+        checks.push({ group: "vendored packages", status: "pass", message: `${name} ${version} comes with ${libraryName} (vendor/${name})${patched ? `, patched: ${patched.does}` : ""}; the app does not list it` });
+      }
     }
   }
   return checks;
@@ -2406,9 +2477,9 @@ function integration(context, name) {
   return [metro(metroFinding(context.appRoot)), plugin2(expoPluginFinding(context.appRoot, name))];
 }
 function runChecks(context) {
-  const own2 = readJson(join9(context.packageRoot, "package.json")) ?? {};
+  const own2 = readJson2(join9(context.packageRoot, "package.json")) ?? {};
   const name = text2(own2.name) ?? "@alfayez/svelte-native";
-  const appPackage = readJson(join9(context.appRoot, "package.json"));
+  const appPackage = readJson2(join9(context.appRoot, "package.json"));
   if (!appPackage) {
     return [{ group: "environment", status: "fail", message: `${context.appRoot} has no package.json: this is not an app directory`, fix: "run svelte-native doctor from the app's directory" }];
   }

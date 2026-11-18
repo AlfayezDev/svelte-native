@@ -8,6 +8,7 @@ import { fixture, library, readJson, initProjects } from "./support/init-project
 import { appDependencies, appNames, mergeWorkspaceYaml, parseInitArguments, planInit, svelteNativeViteConfig } from "../../src/init-app.ts";
 import { compile } from "svelte/compiler";
 import { requiredSvelte } from "../../src/svelte-build.ts";
+import { collisionMessage, vendoredNames } from "../../src/vendored.ts";
 
 // `svelte-native init`: what it does to a project `npx sv create` made (tests/cli/fixtures/sv-minimal is what sv 1.3.0 writes for the minimal template with
 // TypeScript, no add-ons and pnpm), and that running it again changes nothing.
@@ -47,13 +48,10 @@ describe("init in a fresh sv project", () => {
     expect(manifest.devDependencies.svelte).toBe(requiredSvelte.preview);
     expect(manifest.dependencies["@alfayez/svelte-native"]).toBe(library);
     for (const [name, version] of Object.entries(appDependencies)) expect(manifest.dependencies[name], name).toBe(version);
-    // react-native-svg is a required peer (the main entry exports its components), so init installs it, at the version the peer names.
-    expect(manifest.dependencies["react-native-svg"]).toBe(peerRange("react-native-svg"));
-    expect(appDependencies["react-native-svg"]).toBe(peerRange("react-native-svg"));
-    // `crypto` is made of react-native-quick-crypto, which asks for a base64 module: required peers too, installed at the versions the peers name. `localStorage` (MMKV) and the Nitro runtime
-    // they share are in the library itself (vendor/, VENDORING.md): init installs neither, and an app that lists one is refused.
+    // `crypto` is made of react-native-quick-crypto, which asks for a base64 module: required peers too, installed at the versions the peers name. The packages the library itself carries
+    // (vendor/, VENDORING.md: `localStorage`'s MMKV and the Nitro runtime it shares, gesture handler, Reanimated, Worklets and svg) are installed by init no more than by the app: an app that lists one is refused.
     for (const name of ["react-native-quick-crypto", "react-native-quick-base64"]) expect([name, manifest.dependencies[name]]).toEqual([name, peerRange(name)]);
-    for (const name of ["react-native-nitro-modules", "react-native-mmkv"]) expect([name, manifest.dependencies[name], appDependencies[name]]).toEqual([name, undefined, undefined]);
+    for (const name of vendoredNames) expect([name, manifest.dependencies[name], appDependencies[name]]).toEqual([name, undefined, undefined]);
     // The SvelteKit sv installed is pinned to a version the library has a patch for, exactly.
     const kitVersions = patchFiles().filter((patch) => patch.package === "@sveltejs/kit").map((patch) => patch.version);
     expect(kitVersions).toContain(manifest.devDependencies["@sveltejs/kit"]);
@@ -61,7 +59,8 @@ describe("init in a fresh sv project", () => {
     expect(manifest.scripts.dev).toBe("vite dev");
     expect(manifest.scripts.build).toBe("vite build");
     expect(manifest.scripts).toMatchObject({ native: "svelte-native dev", android: "svelte-native android", ios: "svelte-native ios", "check-setup": "svelte-native doctor" });
-    expect(manifest.reanimated).toEqual({ staticFeatureFlags: { ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS: true } });
+    // Reanimated's flag for the engine's Android update is on in the library's copy: nothing is written for it.
+    expect(manifest.reanimated).toBeUndefined();
     // A sorted dependency list stays sorted.
     const names = Object.keys(manifest.dependencies);
     expect(names).toEqual([...names].sort());
@@ -75,12 +74,11 @@ describe("init in a fresh sv project", () => {
     // Both packages that come with another one by a range: the patched expo-modules-core, and the Metro config package, pinned to the React Native version init writes.
     expect(yaml).toContain(`overrides:\n  expo-modules-core: ${coreVersion}\n  "@react-native/metro-config": ${reactNativeVersion}\n`);
     const declared = [...yaml.matchAll(/^ {2}"?([^\s":]+(?:@[^\s":]+)*)"?: (patches\/svelte-native\/\S+)$/gm)].map((match) => match[2] as string);
-    expect(declared.length).toBeGreaterThanOrEqual(5);
+    expect(declared.length).toBeGreaterThanOrEqual(2);
     for (const path of declared) expect(existsSync(join(root, path)), path).toBe(true);
-    // The library's four always-needed patches and SvelteKit's, and none of the optional view libraries'. Svelte's compiler is not among them: the transformer makes it accept the transition directives.
-    expect(declared.map((path) => path.replace("patches/svelte-native/", "").replace(/@[^@]+\.patch$/, "")).sort()).toEqual(
-      ["@sveltejs__kit", "expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"].sort(),
-    );
+    // The library's one always-needed patch (`expo-modules-core`) and SvelteKit's, and none of the optional view libraries' and none of the packages the library carries (their patches are applied to its copies).
+    // Svelte's compiler is not among them: the transformer makes it accept the transition directives.
+    expect(declared.map((path) => path.replace("patches/svelte-native/", "").replace(/@[^@]+\.patch$/, "")).sort()).toEqual(["@sveltejs__kit", "expo-modules-core"].sort());
     expect(yaml).not.toContain("lottie-react-native");
     // Each patch file is the library's own, byte for byte.
     for (const patch of patchFiles().filter((entry) => declared.some((path) => path.endsWith(entry.file)))) {
@@ -428,6 +426,23 @@ export default defineConfig(({ mode }) => ({
     expect(result.out).toContain("vite.config.ts");
     expect(result.out).toContain("kit: { /* what you passed to sveltekit() */ }");
     expect(result.status).toBe(1);
+  });
+});
+
+describe("a project that lists a package the library carries", () => {
+  test("init says why the prebuild refuses it and does not remove it: the person's package.json is theirs", () => {
+    const root = project((directory) => {
+      const manifest = readJson(directory, "package.json");
+      manifest.dependencies = { ...manifest.dependencies, "react-native-reanimated": "4.5.1", "react-native-gesture-handler": "~2.32.0" };
+      writeFileSync(join(directory, "package.json"), `${JSON.stringify(manifest, null, "\t")}\n`);
+    });
+    const plan = planInit(root);
+    expect(plan.warnings).toContain(`package.json: ${collisionMessage(["react-native-gesture-handler", "react-native-reanimated"])}`);
+    run(root);
+    const manifest = readJson(root, "package.json");
+    expect([manifest.dependencies["react-native-reanimated"], manifest.dependencies["react-native-gesture-handler"]]).toEqual(["4.5.1", "~2.32.0"]);
+    // A project that lists none gets no such warning.
+    expect(planInit(project()).warnings.filter((warning) => vendoredNames.some((name) => warning.includes(name)))).toEqual([]);
   });
 });
 

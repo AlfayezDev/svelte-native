@@ -1,6 +1,6 @@
 import type { Snippet } from "svelte";
 import { type SvgExtras } from "./handle.js";
-import type { ForeignObjectProps } from "react-native-svg";
+import type { ForeignObjectProps } from "#vendor/react-native-svg";
 type $$ComponentProps = Omit<ForeignObjectProps, "children"> & {
     children?: Snippet;
 } & SvgExtras;

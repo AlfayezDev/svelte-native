@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import ts from "typescript";
-import { nodeModules as modules } from "../../support/paths.ts";
+import { vendoredImport } from "../../../src/vendored.ts";
+import { nodeModules as modules, vendorRoot } from "../../support/paths.ts";
 
 /**
  * Readers of what the native-view libraries declare in their own sources (a codegen spec in TypeScript or Flow, an Expo module's Kotlin, a manager's `@ReactProp`s), which the
@@ -58,8 +59,8 @@ export function expoViewConfigs(moduleFile: string): Record<string, ExpoViewConf
   return configs;
 }
 
-/** The text of a file of an installed library, relative to `node_modules`. */
-export const libraryFile = (file: string): string => readFileSync(resolve(modules, file), "utf8");
+/** The text of a file of an installed library, relative to `node_modules`; of a library the package carries (react-native-svg, react-native-gesture-handler, ...), the file of its copy in `vendor/`. */
+export const libraryFile = (file: string): string => readFileSync(resolve(vendoredImport(file) ? vendorRoot : modules, file), "utf8");
 
 // The datetimepicker spec is Flow, which the TypeScript reader cannot parse: its props are read from the source text.
 export function flowSpec(file: string): { props: string[]; colors: string[]; handlers: string[] } {

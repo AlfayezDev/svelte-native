@@ -32,8 +32,8 @@
  * (`holdMounts`, the engine's SPEC.md "Transaction order"). What remains is the first reorder after the app starts, which can still flash a frame or two while the animation layer runs
  * for the first time.
  */
-import { cancelAnimation, Easing, makeMutable, startMapper, stopMapper, withTiming, type SharedValue } from "react-native-reanimated";
-import { scheduleOnRN } from "react-native-worklets";
+import { cancelAnimation, Easing, makeMutable, startMapper, stopMapper, withTiming, type SharedValue } from "#vendor/react-native-reanimated";
+import { scheduleOnRN } from "#vendor/react-native-worklets";
 import { InstantAnimation, NativeNode, type AnimationOptions, type Keyframe, type NativeAnimation } from "../renderer.ts";
 import { animationProps, detachAnimation } from "./animation.ts";
 import { effectiveStyle, entriesToOps, type TransformOp } from "./dom-style.ts";

@@ -1,5 +1,5 @@
 import { type SvgExtras } from "./handle.js";
-import type { EllipseProps } from "react-native-svg";
+import type { EllipseProps } from "#vendor/react-native-svg";
 type $$ComponentProps = EllipseProps & SvgExtras;
 declare const Ellipse: import("svelte").Component<$$ComponentProps, {}, "">;
 type Ellipse = ReturnType<typeof Ellipse>;

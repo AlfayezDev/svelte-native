@@ -4,7 +4,7 @@
   import { createNativeProps } from "../../native-props.ts";
   import { maskNativeProps } from "../../fabric/foreign-svg.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
-  import type { MaskProps } from "react-native-svg";
+  import type { MaskProps } from "#vendor/react-native-svg";
 
   /** `react-native-svg`'s `Mask`: its children's luminance (or alpha, `maskType="alpha"`) hides what `mask="url(#id)"` names. */
   let { children, ref, animatedProps, ...props }: Omit<MaskProps, "children"> & { children?: Snippet } & SvgExtras = $props();

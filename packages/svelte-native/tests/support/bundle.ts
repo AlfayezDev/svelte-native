@@ -6,6 +6,7 @@ import { compile, compileModule } from "svelte/compiler";
 import { componentOptions, lowersHtml } from "../../src/compile-options.ts";
 import { lowerPrimitives } from "../../src/lower.ts";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
+import { vendorAliases } from "./paths.ts";
 import { reactNativeConverters, type Platform } from "./rn-reference.ts";
 
 /**
@@ -113,7 +114,8 @@ export function hostPlugin(options: HostPluginOptions = {}): Plugin {
       // The vendored packages (`#vendor/<name>`, `vendor/`) are react-native-* packages the library carries: stood in for like the installed ones were, so their React Native imports are not bundled.
       builder.onResolve({ filter: /^(react-native|expo-modules-core|#vendor\/)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
       if (named.length) builder.onResolve({ filter: new RegExp(`^(${named.map(escapeRegExp).join("|")})$`) }, (args) => ({ path: args.path, namespace: "stub" }));
-      builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: options.openStubs ? "module.exports = new Proxy({}, { get: () => () => {} });" : stubs[args.path] ?? "export {};", loader: "js", resolveDir: tests }));
+      // `#vendor/react-native-reanimated` is the stub of `react-native-reanimated`: the stubs are written for the packages' names, which Metro resolves to the same copies.
+      builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: options.openStubs ? "module.exports = new Proxy({}, { get: () => () => {} });" : stubs[args.path] ?? stubs[args.path.replace(/^#vendor\//, "")] ?? "export {};", loader: "js", resolveDir: tests }));
       if (viewConfigs === "pass-through") builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: resolve(import.meta.dirname, "view-configs-stub.ts") }));
       if (viewConfigs === "payload-tap") builder.onResolve({ filter: /\/view-configs\.ts$/ }, (args) => (args.importer.endsWith("/fabric/host.ts") ? { path: resolve(import.meta.dirname, "payload-tap.ts") } : undefined));
       builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: src("renderer.ts") }));
@@ -146,6 +148,8 @@ async function bundleFrom(options: BundleOptions): Promise<Bundle> {
   const result = await build({
     stdin: { contents: options.entry, resolveDir: options.resolveDir ?? tests },
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false,
+    // What the library's copies of third-party packages are called in the app: Metro resolves the names (and every path below them) to `vendor/<name>`, and so does a bundle of a test.
+    alias: vendorAliases(),
     ...(options.define ? { define: options.define } : {}),
     ...options.esbuild,
     plugins: [...(options.plugins ?? []), ...((options.converters ?? true) ? reactNativeConverters(platform) : []), hostPlugin({ ...options, warnings })],

@@ -6,7 +6,7 @@
   import type { StopProps } from "../../fabric/foreign-svg-extract.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
   import { createRegistry, stopsKey } from "./registry.ts";
-  import type { LinearGradientProps } from "react-native-svg";
+  import type { LinearGradientProps } from "#vendor/react-native-svg";
 
   /**
    * `react-native-svg`'s `LinearGradient`: a definition (`id`) that `fill="url(#id)"` and `stroke="url(#id)"` name. Its `Stop`s are its children;

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getContext, onDestroy } from "svelte";
   import type {} from "../../elements.d.ts";
-  import type { FeMergeNodeProps } from "react-native-svg";
+  import type { FeMergeNodeProps } from "#vendor/react-native-svg";
   import { mergeNodesKey, type Registry } from "./registry.ts";
 
   /** `react-native-svg`'s `FeMergeNode`: one layer of its `FeMerge`, the result named by `in`. It draws nothing; the merge reads its props. */

@@ -6,7 +6,7 @@
   import FeMerge from "./FeMerge.svelte";
   import FeMergeNode from "./FeMergeNode.svelte";
   import FeOffset from "./FeOffset.svelte";
-  import type { FeDropShadowProps, FilterPrimitiveCommonProps } from "react-native-svg";
+  import type { FeDropShadowProps, FilterPrimitiveCommonProps } from "#vendor/react-native-svg";
 
   /** `react-native-svg`'s `FeDropShadow`: the library builds it from five primitives (blur, offset, flood, composite, merge) and so does this. */
   let { stdDeviation, in: input = "SourceGraphic", dx, dy, floodColor, floodOpacity, result }: FeDropShadowProps & FilterPrimitiveCommonProps = $props();

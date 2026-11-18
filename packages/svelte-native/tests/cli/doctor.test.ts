@@ -1,13 +1,13 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { runChecks, type Check, type Context } from "../../src/doctor/checks.ts";
 import { patchedDependenciesOfYaml } from "../../src/doctor/declared.ts";
 import { parsePatch } from "../../src/doctor/hunks.ts";
 import { formatReport, runDoctor } from "../../src/doctor/index.ts";
 import { findPackage } from "../../src/doctor/resolve.ts";
 import { expoPluginFinding, metroFinding, withoutJsComments } from "../../src/doctor/integration.ts";
-import { patchFiles, patchKey, patchSpecs } from "../../src/doctor/patches.ts";
+import { patchFiles, patchKey, patchSpecs, vendoredPatchSpecs } from "../../src/doctor/patches.ts";
 import { compareVersions, parseVersion, satisfies } from "../../src/doctor/semver.ts";
 import { collisionMessage, vendoredPackages, vendoredRoot } from "../../src/vendored.ts";
 import { patchVersion, peerVersion } from "../support/versions.ts";
@@ -88,14 +88,14 @@ describe("a patch that is not applied", () => {
   });
 
   test("a package patched with an older copy of the patch is not applied as this version of the library has it", () => {
-    // The worklets shape is all there, but the loop's condition is the older one: the hunk of the library's patch is not in the file.
+    // The pdf shape is all there (the event does not coalesce), but the comment the patch adds is the older one: a hunk of the library's patch is not in the file.
     const { root } = check();
-    const file = join(root, "node_modules/react-native-worklets/lib/module/runLoop/uiRuntime/requestAnimationFrame.js");
-    writeFileSync(file, readFileSync(file, "utf8").replace("queuedCallbacks.length > 0 || queuedFinalizers.length > 0", "queuedCallbacks.length > 0"));
+    const file = join(root, "node_modules/react-native-pdf/android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java");
+    writeFileSync(file, readFileSync(file, "utf8").replace("(PdfView delays it by 10 ms)", "(PdfView delays it)"));
     const again = runChecks({ appRoot: root, packageRoot: join(repository, "packages/svelte-native"), ...tools });
-    const failure = find(again, `react-native-worklets@${patchVersion("react-native-worklets")} is patched, but not with this version of the library's patch`);
+    const failure = find(again, `react-native-pdf@${patchVersion("react-native-pdf")} is patched, but not with this version of the library's patch`);
     expect(failure?.status).toBe("fail");
-    expect(failure?.details?.[0]).toContain("lib/module/runLoop/uiRuntime/requestAnimationFrame.js: hunk");
+    expect(failure?.details?.[0]).toContain("android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java: hunk");
     expect(failed(again)).toHaveLength(1);
   });
 
@@ -121,13 +121,17 @@ describe("a patch that is not applied", () => {
     expect(failed(optional)).toEqual([]);
     expect(find(optional, `react-native-pdf@${patchVersion("react-native-pdf")}: react-native-pdf is not installed (optional)`)?.status).toBe("skip");
     expect(find(optional, "optional peer dependencies not installed, nothing to check:")?.message).toContain("react-native-pdf");
-    const required = check({ without: ["react-native-worklets", "react-native-reanimated"] }).checks;
-    expect(failed(required).map((entry) => entry.message).sort()).toEqual([
-      `react-native-reanimated is not installed (needs ${peerVersion("react-native-reanimated")})`,
-      `react-native-reanimated@${peerVersion("react-native-reanimated")}: react-native-reanimated is not installed`,
-      `react-native-worklets is not installed (needs ${patchVersion("react-native-worklets")})`,
-      `react-native-worklets@${patchVersion("react-native-worklets")}: react-native-worklets is not installed`,
-    ]);
+    const required = check({ without: ["expo-modules-core"] }).checks;
+    expect(failed(required).map((entry) => entry.message)).toEqual([`expo-modules-core@${patchVersion("expo-modules-core")}: expo-modules-core is not installed`]);
+  });
+
+  test("the packages the library carries have no patch file here: they are patched when the library is written, and the doctor looks at their files instead (the vendored packages' group)", () => {
+    expect(patchFiles().map((patch) => patch.package)).not.toEqual(expect.arrayContaining(["react-native-gesture-handler"]));
+    for (const name of ["react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"]) {
+      expect(patchFiles().some((patch) => patch.package === name), name).toBe(false);
+      expect(patchSpecs.some((spec) => spec.package === name), name).toBe(false);
+      expect(vendoredPatchSpecs[name]?.does, name).toBeString();
+    }
   });
 
   test("expo-modules-core is found through expo, which the app depends on and it does not", () => {
@@ -143,7 +147,63 @@ describe("the packages the library carries", () => {
   test("an app that lists neither passes, one line each, naming the version that comes with the library", () => {
     const { checks } = check();
     expect(vendoredChecks(checks).map((entry) => entry.status)).toEqual(vendoredPackages.map(() => "pass"));
-    for (const { name, version } of vendoredPackages) expect(find(checks, `${name} ${version} comes with ${library.name} (vendor/${name}); the app does not list it`)?.status, name).toBe("pass");
+    for (const { name, version } of vendoredPackages) {
+      const found = find(checks, `${name} ${version} comes with ${library.name} (vendor/${name})`);
+      expect([name, found?.status]).toEqual([name, "pass"]);
+      expect(found?.message, name).toEndWith("; the app does not list it");
+      // The three the library patches say what the patch does: the copies are patched when the library is written, and the doctor finds that in their files.
+      expect([name, found?.message.includes(", patched: ")]).toEqual([name, vendoredPatchSpecs[name] !== undefined]);
+    }
+  });
+
+  describe("the patches of a copy (vendor-patches/, applied by scripts/vendor.ts) are looked for in the copy's files", () => {
+    const patched = Object.keys(vendoredPatchSpecs);
+    /** The files of each copy that the doctor's check reads (`shapes.ts`). */
+    const shapeFiles: Record<string, string[]> = {
+      "react-native-gesture-handler": ["apple/RNGestureHandlerManager.h", "apple/RNGestureHandlerManager.mm"],
+      "react-native-reanimated": [
+        "android/src/main/java/com/swmansion/reanimated/SvelteEngineHook.kt", "android/src/main/java/com/swmansion/reanimated/NativeProxy.kt", "android/src/main/cpp/reanimated/android/NativeProxy.cpp",
+        "android/src/main/cpp/reanimated/android/NativeProxy.h", "scripts/validate-worklets-version.js", "src/featureFlags/staticFlags.json",
+      ],
+      "react-native-worklets": ["lib/module/runLoop/uiRuntime/requestAnimationFrame.js", "src/runLoop/uiRuntime/requestAnimationFrame.ts"],
+    };
+    /** A library directory with the repository's copies as far as the doctor reads them (each one's package.json, and the files of the three patched ones), `edit` made to one file of one of them. */
+    function libraryWith(name: string, file: string, edit: (text: string) => string) {
+      const project = createProject({ "patches/.keep": "" }, "doctor-library-");
+      apps.push(project.directory);
+      for (const { name: copy } of vendoredPackages) {
+        for (const path of ["package.json", ...(shapeFiles[copy] ?? [])]) {
+          const target = join(vendoredRoot(copy, project.directory), path);
+          mkdirSync(dirname(target), { recursive: true });
+          cpSync(join(vendoredRoot(copy), path), target);
+        }
+      }
+      const target = join(vendoredRoot(name, project.directory), file);
+      writeFileSync(target, edit(readFileSync(target, "utf8")));
+      return project.directory;
+    }
+    const cases: [string, string, string, string, string][] = [
+      ["react-native-gesture-handler", "apple/RNGestureHandlerManager.mm", "registerRootViewGestureRecognizerIfAttachedBelow", "x", "RNGestureHandlerManager.mm"],
+      ["react-native-reanimated", "src/featureFlags/staticFlags.json", '"ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true', '"ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": false', "synchronous Android update off"],
+      ["react-native-reanimated", "scripts/validate-worklets-version.js", "../../react-native-worklets/package.json", "react-native-worklets/package.json", "still looks for react-native-worklets by name"],
+      ["react-native-worklets", "src/runLoop/uiRuntime/requestAnimationFrame.ts", "let frameRequested = false;", "", "does not request a native frame on demand"],
+    ];
+    for (const [name, file, from, to, said] of cases) {
+      test(`${name}: ${file} without the patch fails the copy, naming what is missing`, () => {
+        const packageRoot = libraryWith(name, file, (text) => text.replaceAll(from, to));
+        const { checks } = check({}, { packageRoot });
+        const failure = checks.find((entry) => entry.group === "vendored packages" && entry.status === "fail");
+        expect([name, failure?.message]).toEqual([name, expect.stringContaining(`${name} ${vendoredPackages.find((vendored) => vendored.name === name)?.version} in ${library.name}`)]);
+        expect(failure?.message).toContain("does not carry the library's patch");
+        expect((failure?.details ?? []).join("\n")).toContain(said);
+        expect(failure?.fix).toContain(`vendor-patches/${name}/`);
+        expect(vendoredChecks(checks).filter((entry) => entry.status === "fail")).toHaveLength(1);
+      });
+    }
+    test("every copy that has a patch is one the doctor knows", () => {
+      expect(patched.sort()).toEqual(["react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"]);
+      for (const name of patched) expect(vendoredPackages.some((vendored) => vendored.name === name), name).toBe(true);
+    });
   });
 
   test("neither is a peer to ask for: an app without them in node_modules passes, and the Nitro runtime a package manager installed on its own is not a finding", () => {
@@ -294,8 +354,8 @@ describe("versions", () => {
 
   test("a peer that is not installed is a failure unless it is optional", () => {
     expect(find(check({ without: ["react"] }).checks, `react is not installed (needs ${peerVersion("react")})`)?.status).toBe("fail");
-    // react-native-svg is a required peer (the main entry exports its components); a view library such as react-native-pdf is not.
-    expect(find(check({ without: ["react-native-svg"] }).checks, `react-native-svg is not installed (needs ${peerVersion("react-native-svg")})`)?.status).toBe("fail");
+    // The packages the library carries (react-native-svg, ...) are no peer to ask for; a view library such as react-native-pdf is an optional one.
+    expect(find(check({ without: ["react-native-svg"] }).checks, "react-native-svg is not installed")).toBeUndefined();
     expect(find(check({ without: ["react-native-pdf"] }).checks, "react-native-pdf")?.status).not.toBe("fail");
   });
 

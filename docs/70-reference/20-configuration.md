@@ -24,23 +24,14 @@ What `svelte-native init` writes, file by file, and the options of the Vite, Met
 		"hermes-intl": "^0.1.2",
 		"react": "19.2.7",
 		"react-native": "0.86.3",
-		"react-native-gesture-handler": "2.32.0",
 		"react-native-quick-base64": "2.2.2",
-		"react-native-quick-crypto": "1.1.3",
-		"react-native-reanimated": "4.5.1",
-		"react-native-svg": "15.15.4",
-		"react-native-worklets": "0.10.1"
+		"react-native-quick-crypto": "1.1.3"
 	},
 	"devDependencies": {
 		"@sveltejs/kit": "3.1.1",
 		"svelte": "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5"
 	},
-	"main": ".svelte-native/entry.ts",
-	"reanimated": {
-		"staticFeatureFlags": {
-			"ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true
-		}
-	}
+	"main": ".svelte-native/entry.ts"
 }
 ```
 
@@ -48,10 +39,10 @@ What `svelte-native init` writes, file by file, and the options of the Vite, Met
 - `@sveltejs/kit` is exact, because a patch is made for that version. A native-only app doesn't need SvelteKit at all.
 - The other versions are exact for the same reason. `react` is there because React Native needs it; your code doesn't use it.
 - `hermes-intl` adds the `Intl` APIs Hermes lacks. It must be a dependency of the app itself, so that its native code is linked.
-- `react-native-svg` draws the [SVG components](svg) the main entry exports. It is a required dependency, with native code, so it must be one of the app itself too.
 - `react-native-quick-crypto` is what the web's [`crypto`](web-apis#crypto) is made of on the device, and it asks for `react-native-quick-base64`. Both are required, with native code, so they must be dependencies of the app itself. [`localStorage`](web-apis#storage) is MMKV, which shares the Nitro runtime with quick-crypto: the library carries `react-native-mmkv` and `react-native-nitro-modules` itself and links them, so they are not dependencies of the app, and an app that lists either is refused (the prebuild stops, and `svelte-native doctor` fails).
+- The gestures, the animation and the [SVG components](svg) of the main entry are made of `react-native-gesture-handler`, `react-native-reanimated`, `react-native-worklets` and `react-native-svg`, which the library carries and links itself, with its fixes already applied. They are not dependencies of the app either, and an app that lists one is refused the same way: remove it from `package.json`, install again and build again. A library you add that asks for one of them as a peer dependency gets the library's copy; your package manager may warn about the missing peer, and that is expected.
 - `main` points at the entry point Svelte Native generates. Without it, Expo looks for `expo/AppEntry.js`.
-- The `reanimated` flag turns on the fast path Svelte Native uses for animations on Android.
+- Nothing else is needed for animations: the fast path Svelte Native uses for them on Android is on in the library's copy of Reanimated. (An older app has a `reanimated` entry with `staticFeatureFlags` for it; you can delete it, and what it sets still wins.)
 - `dev`, `build`, `preview` and `check` stay the web app's. Don't name a script `doctor`: `pnpm doctor` is pnpm's own command.
 
 ## pnpm-workspace.yaml
@@ -70,9 +61,6 @@ overrides:
 patchedDependencies:
   "@sveltejs/kit@3.1.1": patches/svelte-native/@sveltejs__kit@3.1.1.patch
   expo-modules-core@57.0.23: patches/svelte-native/expo-modules-core@57.0.23.patch
-  react-native-gesture-handler@2.32.0: patches/svelte-native/react-native-gesture-handler@2.32.0.patch
-  react-native-reanimated@4.5.1: patches/svelte-native/react-native-reanimated@4.5.1.patch
-  react-native-worklets@0.10.1: patches/svelte-native/react-native-worklets@0.10.1.patch
 ```
 
 - `allowBuilds` lets esbuild run its install script. Without it, pnpm stops with `ERR_PNPM_IGNORED_BUILDS`.
@@ -81,15 +69,12 @@ patchedDependencies:
 
 ## Patches
 
-Svelte Native depends on small changes to a few packages. They ship with the library as pnpm patches, each made for one exact version:
+Svelte Native depends on small changes to a few packages. The ones you install ship with the library as pnpm patches, each made for one exact version. (The ones it carries itself, gesture handler, Reanimated and worklets, are already patched: iOS gestures work in sheets and modals, Android animations write to Svelte Native's views directly, and an idle screen stops asking for animation frames. You declare nothing for them.)
 
 | Package | Needed | What the patch changes |
 | --- | --- | --- |
 | `@sveltejs/kit` 3.1.1 | when SvelteKit is installed | SvelteKit leaves `+mobile.svelte` files alone |
 | `expo-modules-core` 57.0.23 | always | Android: Expo modules start faster |
-| `react-native-gesture-handler` 2.32.0 | always | iOS: gestures work in sheets and modals |
-| `react-native-reanimated` 4.5.1 | always | Android: animations write to Svelte Native's views directly |
-| `react-native-worklets` 0.10.1 | always | an idle screen stops asking for animation frames |
 | `lottie-react-native` 7.3.8 | when installed | Android: animation events are never dropped |
 | `react-native-maps` 1.27.2 | when installed | Android: map events are never dropped |
 | `react-native-pdf` 7.0.3 | when installed | Android: the load event is never dropped |

@@ -16,9 +16,11 @@ import { tmpdir } from "node:os";
 import { pathToFileURL, fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
-const root = join(dirname(require.resolve("react-native-gesture-handler/package.json")), "src");
-const version = require("react-native-gesture-handler/package.json").version;
 const here = dirname(fileURLToPath(import.meta.url));
+// The library's copy of react-native-gesture-handler (`vendor/`, VENDORING.md), which is what Metro bundles; the app has no package of that name.
+const vendored = resolve(here, "../../../vendor/react-native-gesture-handler");
+const root = join(vendored, "src");
+const version = require(join(vendored, "package.json")).version;
 
 const reactNative = `
 export const Platform = { OS: 'android', Version: 34, select: (o) => o.android ?? o.default };

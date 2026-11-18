@@ -39,7 +39,8 @@ const compiled = transformer.transform({
 console.log(
   JSON.stringify({
     routes: resolveRequest(context(`${root}/src/a.ts`), "@alfayez/svelte-native/routes", "android").filePath,
-    ordinary: resolveRequest(context(`${root}/src/a.ts`), "react-native-reanimated", "android").filePath,
+    ordinary: resolveRequest(context(`${root}/src/a.ts`), "react-native-webview", "android").filePath,
+    vendored: resolveRequest(context(`${root}/src/a.ts`), "react-native-reanimated/src/updateProps", "android").filePath,
     kitFromRuntime: message(() => resolveRequest(context(`${root}/node_modules/@alfayez/svelte-native/src/remote/runtime.ts`), "@sveltejs/kit/src/runtime/client/remote-functions/command.svelte.js", "android")),
     kitInternal: message(() => resolveRequest(context(`${root}/node_modules/@alfayez/svelte-native/src/remote/shims/client.ts`), "@sveltejs/kit/internal", "android")),
     svelteImports: imports(compiled.ast),

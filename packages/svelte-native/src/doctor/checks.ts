@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { declaredPatches } from "./declared.ts";
 import { expoPluginFinding, metroFinding, type Finding } from "./integration.ts";
 import { missingFromPackage } from "./hunks.ts";
-import { patchFiles, patchKey, patchSpecs } from "./patches.ts";
+import { patchFiles, patchKey, patchSpecs, vendoredPatchSpecs } from "./patches.ts";
 import { pushChecks } from "./push.ts";
 import { nodeAdvice, requirements } from "./requirements.ts";
 import { findPackage, readerFor, readJson, type InstalledPackage } from "./resolve.ts";
@@ -166,8 +166,9 @@ function autolinkedPeers(context: Context, peers: Record<string, unknown>, appPa
 }
 
 /**
- * The packages the library carries (`vendored.ts`): present in the installed library at the version it pins, and not among the app's own dependencies. An app that lists one
- * links it twice (its own native module beside the library's copy), which the config plugin and the autolinking command refuse as well.
+ * The packages the library carries (`vendored.ts`): present in the installed library at the version it pins, carrying the library's own changes (`vendor-patches/`, applied by `scripts/vendor.ts`:
+ * the app declares none of them, and the check reads the copy's files for the shapes the patches leave, as it reads an installed package's), and not among the app's own dependencies. An app that
+ * lists one links it twice (its own native module beside the library's copy), which the config plugin and the autolinking command refuse as well.
  */
 function vendored(context: Context, libraryName: string): Check[] {
   const declared = new Set(declaredVendored(context.appRoot));
@@ -185,7 +186,19 @@ function vendored(context: Context, libraryName: string): Check[] {
     } else if (declared.has(name)) {
       checks.push({ group: "vendored packages", status: "fail", message: `${name} is a dependency of the app (${join(context.appRoot, "package.json")}): ${collisionMessage([name], libraryName)}`, fix: `pnpm remove ${name}, then npx expo prebuild` });
     } else {
-      checks.push({ group: "vendored packages", status: "pass", message: `${name} ${version} comes with ${libraryName} (vendor/${name}); the app does not list it` });
+      const patched = vendoredPatchSpecs[name];
+      const problems = patched?.inspect(readerFor(directory)) ?? [];
+      if (patched !== undefined && problems.length > 0) {
+        checks.push({
+          group: "vendored packages",
+          status: "fail",
+          message: `${name} ${version} in ${libraryName} (${directory}) does not carry the library's patch: ${patched.does}`,
+          details: problems.slice(0, 4).concat(problems.length > 4 ? [`and ${problems.length - 4} more`] : []),
+          fix: `install ${libraryName} again: the copy is patched when the library is written (vendor-patches/${name}/), so an incomplete or edited install is the cause`,
+        });
+      } else {
+        checks.push({ group: "vendored packages", status: "pass", message: `${name} ${version} comes with ${libraryName} (vendor/${name})${patched ? `, patched: ${patched.does}` : ""}; the app does not list it` });
+      }
     }
   }
   return checks;

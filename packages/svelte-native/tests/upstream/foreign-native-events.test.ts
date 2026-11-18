@@ -39,56 +39,26 @@ test("react-native-pdf's topChange event, which carries every message of the And
 // The same defect in three more libraries (SPEC.md, "Foreign views", "Events on Android"): Lottie, maps and video. `Event.canCoalesce()` is true unless a subclass overrides it, Fabric
 // hands a coalescable event to C++ as a unique one, and the event queue replaces the unread unique event of the same name for the same view: with the JavaScript thread busy, two
 // messages of one name reach JavaScript as the last one. Each library's Android events are pinned by what the library's source does now, so a version that adds an event class
-// or a sender fails here until the new one is decided. Rive needs no patch (its events go through React Native's interop emitter, pinned below). iOS cannot lose any of them: the
+// or a sender fails here until the new one is decided. Rive's events are patched for another reason (below). iOS cannot lose any of them: the
 // codegen emitters (Lottie, maps, pdf) and React Native's legacy interop layer (RCTVideo, Rive) dispatch with `dispatchEvent`, never `dispatchUniqueEvent`.
-// rive-react-native sends its events through `getJSModule(RCTEventEmitter::class.java).receiveEvent(id, name, data)`, and under Fabric that is React Native's `InteropEventEmitter`, which
-// builds an `InteropEvent`. A first reading took that for a coalescable event (the class does not override `canCoalesce()`) and patched the library; it is not one: the emitter is made
-// with the application context, which is not a `ThemedReactContext`, so its surface id is -1, and `Event.dispatchModern` sends an event with surface id -1 through the legacy `dispatch`,
-// which ends in `receiveEvent(-1, ...)` of `RCTModernEventEmitter` with `canCoalesce` false. The test pins each link of that chain in the installed React Native, so an upgrade that
-// changes one fails here and sends whoever upgrades back to the Rive events (the lab's check "two animations played in turn raise both onPlay" is the guard on a device).
-test("rive-react-native's events reach JavaScript as events that cannot coalesce, because React Native's interop emitter has no surface id", async () => {
-  const react = (file: string) => withoutComments(`react-native/ReactAndroid/src/main/java/com/facebook/react/${file}`);
-  // The library: seven direct events, each sent through the interop emitter (no event class of its own, no dispatcher), by the view's id, under its registered name.
+// rive-react-native 9.7.1 sent its events through `getJSModule(RCTEventEmitter::class.java).receiveEvent(id, name, data)`, React Native's interop emitter. Its events did not coalesce
+// (the emitter has no surface id, so React Native delivers each through the legacy path), but a bridgeless app reports every such call as a soft exception ("will stop working
+// with interop disabled"), and a playing state machine makes several a second. The library's copy is patched (vendor-patches/rive-react-native): the seven events go through
+// the view's event dispatcher, under their registered names, as an event class of its own that never coalesces. The test pins that shape in the copy.
+test("rive-react-native's events go through the event dispatcher as events that cannot coalesce, under the names its view manager registers", async () => {
   const view = withoutComments("rive-react-native/android/src/main/java/com/rivereactnative/RiveReactNativeView.kt");
   const enumBody = /enum class Events\(private val mName: String\) \{([\s\S]*?);/.exec(view)?.[1] ?? "";
   const constants = [...enumBody.matchAll(/(\w+)\(\s*"(on\w+)"\s*\)/g)].map((match) => [match[1] as string, match[2] as string] as const);
   expect(constants.map(([, name]) => name).sort()).toEqual(["onError", "onLoopEnd", "onPause", "onPlay", "onRiveEventReceived", "onStateChanged", "onStop"]);
-  for (const [constant] of constants) {
-    expect(view, constant).toMatch(new RegExp(`getJSModule\\(RCTEventEmitter::class\\.java\\)\\s*\\.receiveEvent\\(id, Events\\.${constant}\\.toString\\(\\), `));
-  }
-  expect(view.match(/RCTEventEmitter::class\.java/g)?.length).toBe(constants.length);
-  expect(view).not.toMatch(/Event<|getEventDispatcher|dispatchEvent|canCoalesce/);
-  // `ThemedReactContext.getJSModule` is the application context's, and the application context answers `RCTEventEmitter` with the registered interop module.
-  expect(react("uimanager/ThemedReactContext.kt")).toMatch(/override fun <T : JavaScriptModule> getJSModule\(jsInterface: Class<T>\): T =\s*reactApplicationContext\.getJSModule<T>\(jsInterface\)/);
-  expect(react("runtime/BridgelessReactContext.kt")).toMatch(/mInteropModuleRegistry\?\.getInteropModule\(jsInterface\)\?\.let \{ interopModule ->[\s\S]*?return interopModule/);
-  // React Native: Fabric registers `InteropEventEmitter(mReactApplicationContext)` for `RCTEventEmitter` ...
-  expect(react("fabric/FabricUIManager.java")).toMatch(/new InteropEventEmitter\(mReactApplicationContext\);\s*mReactApplicationContext\.internal_registerInteropModule\(\s*RCTEventEmitter\.class, interopEventEmitter\)/);
-  // ... whose events take their surface id from that context ...
-  const emitter = react("internal/interop/InteropEventEmitter.kt");
-  expect(emitter).toMatch(/class InteropEventEmitter\(private val reactContext: ReactContext\) : RCTEventEmitter/);
-  expect(emitter).toMatch(/val surfaceId = UIManagerHelper\.getSurfaceId\(reactContext\)\s*dispatcher\?\.dispatchEvent\(InteropEvent\(eventName, params, surfaceId, targetTag\)\)/);
-  // ... which is -1 for anything but a `ThemedReactContext` ...
-  expect(react("uimanager/UIManagerHelper.kt")).toMatch(/fun getSurfaceId\(context: Context\?\): Int =\s*if \(context is ThemedReactContext\) \{\s*context\.surfaceId\s*\} else \{\s*-1\s*\}/);
-  // ... and an event with surface id -1 skips `canCoalesce()`: `dispatchModern` hands it to `dispatch`, which calls the old-style `receiveEvent(viewTag, name, data)`, and the modern emitter's
-  // default for that is `receiveEvent(-1, ...)` with `canCoalesceEvent` false, which `FabricEventEmitter` does not override (it implements only the two full overloads).
-  const event = react("uimanager/events/Event.kt");
-  expect(event).toMatch(/fun dispatchModern\(rctEventEmitter: RCTModernEventEmitter\) \{\s*if \(surfaceId != -1\) \{[\s\S]*?canCoalesce\(\),[\s\S]*?\} else \{\s*dispatch\(rctEventEmitter\)\s*\}/);
-  expect(event).toMatch(/open fun dispatch\(rctEventEmitter: RCTEventEmitter\) \{\s*rctEventEmitter\.receiveEvent\(viewTag, eventName, getEventData\(\)\)/);
-  const modern = react("uimanager/events/RCTModernEventEmitter.kt");
-  expect(modern).toMatch(/override fun receiveEvent\(targetTag: Int, eventName: String, params: WritableMap\?\) \{\s*receiveEvent\(-1, targetTag, eventName, params\)/);
-  expect(modern).toMatch(/fun receiveEvent\(surfaceId: Int, targetTag: Int, eventName: String, params: WritableMap\?\) \{\s*receiveEvent\(surfaceId, targetTag, eventName, false, 0, params, EventCategoryDef\.UNSPECIFIED\)/);
-  const fabricEmitter = react("fabric/events/FabricEventEmitter.kt");
-  expect([...fabricEmitter.matchAll(/override fun receiveEvent\(\s*surfaceId: Int,\s*targetTag: Int,\s*eventName: String,\s*canCoalesceEvent: Boolean,/g)].length).toBe(2);
-  expect(fabricEmitter.match(/override fun receiveEvent\(/g)?.length).toBe(2);
-  // `InteropEvent` sets nothing that would change that: it is the plain event with the surface id it is given.
-  expect(react("internal/interop/InteropEvent.kt")).not.toMatch(/canCoalesce|dispatchModern/);
-  // The coalescing itself, for the events that do have a surface id: `canCoalesceEvent` chooses the unique dispatch.
-  expect(react("fabric/FabricUIManager.java")).toMatch(/if \(canCoalesceEvent\) \{\s*eventEmitter\.dispatchUnique\(eventName, params, eventTimestamp\);\s*\} else \{\s*eventEmitter\.dispatch\(eventName, params, eventCategory, eventTimestamp\);/);
-  // Fabric routes an event by its normalised name: C++ turns `onPlay` into `topPlay`, and the view config registers `topPlay` as `onPlay`.
-  const rule = libraryFile("react-native/ReactCommon/react/renderer/core/EventEmitter.cpp");
-  expect(rule).toMatch(/hasPrefix\(prefixedType, "on"\)\)\s*\{\s*return "top" \+ prefixedType\.substr\(2\);/);
-  const config = (await viewConfigs("android")).viewConfigFor("RiveReactNativeView", "android");
-  for (const [, name] of constants) expect(config.events.get(`top${name.slice(2)}`), name).toBe(name);
+  for (const [constant] of constants) expect(view, constant).toMatch(new RegExp(`dispatch\\(Events\\.${constant}\\.toString\\(\\), \\w+\\)`));
+  // No event of the old emitter is left, and the dispatcher is the view's own, with its surface.
+  expect(view).not.toContain("RCTEventEmitter");
+  expect(view).toMatch(/UIManagerHelper\.getEventDispatcherForReactTag\(reactContext, id\)/);
+  expect(view).toMatch(/RiveViewEvent\(UIManagerHelper\.getSurfaceId\(reactContext\), id, name, data\)/);
+  // The event class never coalesces, and its name is the one dispatched (the names the view manager exports as direct events).
+  expect(view).toMatch(/private class RiveViewEvent\([^)]*\) : Event<RiveViewEvent>\(surfaceId, viewTag\) \{[\s\S]*?override fun getEventName\(\): String = name[\s\S]*?override fun canCoalesce\(\): Boolean = false/);
+  const manager = withoutComments("rive-react-native/android/src/main/java/com/rivereactnative/RiveReactNativeViewManager.kt");
+  expect(manager).toMatch(/builder\.put\(event\.toString\(\), MapBuilder\.of\("registrationName", event\.toString\(\)\)\)/);
 });
 
 test("react-native-maps' discrete events do not coalesce and its streams still do", () => {

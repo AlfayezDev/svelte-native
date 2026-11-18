@@ -87,7 +87,7 @@ describe("the entries the library adds are the ones Expo's autolinking prints fo
       expect([vendored.name, vendored.android, vendored.ios]).toEqual([vendored.name, undefined, undefined]);
       const config = JSON.parse(readFileSync(join(vendoredRoot(vendored.name), "expo-module.config.json"), "utf8")) as { android: { modules: string[] }; apple: { modules: string[] } };
       for (const classifier of config.android.modules) expect(existsSync(join(vendoredRoot(vendored.name), "android/src/main/java", `${classifier.replaceAll(".", "/")}.kt`)), classifier).toBe(true);
-      expect(config.apple.modules.length).toBeGreaterThan(0);
+      expect(config.apple.modules).toHaveLength(1);
     }
   });
 

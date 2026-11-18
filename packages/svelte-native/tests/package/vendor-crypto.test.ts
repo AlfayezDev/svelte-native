@@ -19,12 +19,11 @@ const copy = (name: string, path = "") => join(vendoredRoot(name), path);
 const filesUnder = (directory: string): string[] => readdirSync(directory, { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile()).map((entry) => join(entry.parentPath, entry.name).slice(directory.length + 1));
 
 describe("the three copies are what scripts/vendor.ts wrote", () => {
-  for (const name of names) {
+  for (const [name, version] of [["react-native-quick-crypto", "1.1.3"], ["react-native-quick-base64", "2.2.2"], ["hermes-intl", "0.1.2"]] as const) {
     test(`${name}: the registry's version, package.json, LICENSE and VENDOR.md agree, with no local change`, () => {
       const directory = copy(name);
-      const version = vendoredPackages.find((vendored) => vendored.name === name)?.version;
-      expect(version).toBeDefined();
-      expect([manifestOf(directory).name, manifestOf(directory).version]).toEqual([name, version as string]);
+      expect(vendoredPackages.find((vendored) => vendored.name === name)?.version).toBe(version);
+      expect([manifestOf(directory).name, manifestOf(directory).version]).toEqual([name, version]);
       const notes = readFileSync(join(directory, "VENDOR.md"), "utf8");
       expect(notes).toStartWith(`# ${name} ${version} (vendored)\n`);
       expect(notes).toContain(`\`node scripts/vendor.ts ${name}@${version}`);

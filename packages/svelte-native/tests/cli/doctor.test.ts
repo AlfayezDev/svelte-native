@@ -150,7 +150,7 @@ describe("the packages the library carries", () => {
     expect(vendoredChecks(checks).filter((entry) => entry.status !== "pass").map((entry) => [entry.status, entry.message])).toEqual([["skip", expect.stringContaining("could not read the app's config")]]);
     // The libraries the package patches in its own copies (`vendor-patches/`) are looked at there, each as applied.
     const patched = patchSpecs.filter((spec) => spec.vendored);
-    expect(patched.length).toBeGreaterThan(0);
+    expect(patched).toHaveLength(8);
     for (const spec of patched) expect(find(checks, `${spec.package}: ${spec.does} (in ${library.name}'s copy)`)?.status, spec.package).toBe("pass");
     expect(vendoredChecks(checks)).toHaveLength(alwaysLinkedPackages.length + 2 + patched.length);
   });
@@ -227,7 +227,7 @@ describe("the packages the library carries", () => {
       expect(failed(checks)).toHaveLength(1);
     }
     // In devDependencies too: the build links what the config command finds, wherever package.json lists it.
-    const { checks } = check({ files: { "package.json": JSON.stringify({ name: "fake-app", dependencies: Object.fromEntries([library.name].map((name) => [name, "*"])), devDependencies: { "react-native-mmkv": "4.3.1" } }) } });
+    const { checks } = check({ files: { "package.json": JSON.stringify({ name: "fake-app", dependencies: { [library.name]: "*" }, devDependencies: { "react-native-mmkv": "4.3.1" } }) } });
     expect(find(checks, "react-native-mmkv is a dependency of the app")?.status).toBe("fail");
   });
 
@@ -245,7 +245,7 @@ describe("the packages the library carries", () => {
 
 describe("what the library carries needs nothing of the app", () => {
   // `crypto` (react-native-quick-crypto and the base64 module it asks for), `Intl` (hermes-intl) and `localStorage` (MMKV, on the Nitro runtime) are vendored (`src/vendored.ts`): the doctor does not ask the app to
-  // depend on them, which it did while they were peers that React Native's autolinking could link only from the app's own dependencies. An app that lists one fails (the packages the library carries, above).
+  // depend on them. An app that lists one fails (the packages the library carries, above).
   test("quick-crypto's peers, the Nitro runtime and quick-base64, are satisfied by the library's copies", () => {
     const peers = (JSON.parse(readFileSync(join(vendoredRoot("react-native-quick-crypto"), "package.json"), "utf8")) as { peerDependencies: Record<string, string> }).peerDependencies;
     for (const name of ["react-native-nitro-modules", "react-native-quick-base64"]) {

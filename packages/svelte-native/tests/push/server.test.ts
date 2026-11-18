@@ -619,7 +619,7 @@ describe("APNs: the message", () => {
     apns.onRequest = () => ({ status: 400, json: { reason: "BadDeviceToken" } });
     const result = await make({ apns: apnsOptions(apns) }).send({ ...iphone, token: "../../3/device/x?y#z" }, note);
     expect(result).toMatchObject({ ok: false, reason: "invalid-token" });
-    expect(apns.seen[0]?.path).toBe(`/3/device/${encodeURIComponent("../../3/device/x?y#z")}`);
+    expect(apns.seen[0]?.path).toBe("/3/device/..%2F..%2F3%2Fdevice%2Fx%3Fy%23z");
   });
 });
 
@@ -885,11 +885,14 @@ describe("what is a programming error", () => {
     const ecP384 = generateKeyPairSync("ec", { namedCurve: "secp384r1" });
     const rsaPem = pem(rsa.privateKey);
     expect(() => createPush({ fcm: { serviceAccount: '{"private_key": "SECRET-VALUE"' } })).toThrow(/is a string but not JSON/);
+    let failure: unknown;
     try {
       createPush({ fcm: { serviceAccount: '{"private_key": "SECRET-VALUE"' } });
     } catch (error) {
-      expect(String((error as Error).message) + String((error as Error).cause)).not.toContain("SECRET-VALUE");
+      failure = error;
     }
+    expect(failure).toBeInstanceOf(Error);
+    expect(String((failure as Error).message) + String((failure as Error).cause)).not.toContain("SECRET-VALUE");
     expect(() => createPush({ fcm: { serviceAccount: "[]" } })).toThrow(/must be the service account key's JSON/);
     expect(() => createPush({ fcm: { serviceAccount: JSON.stringify({ ...account(), project_id: undefined }) } })).toThrow(/no `project_id`/);
     expect(() => createPush({ fcm: { serviceAccount: JSON.stringify({ ...account(), client_email: "" }) } })).toThrow(/no `client_email`/);

@@ -73,7 +73,7 @@ describe("init in a fresh sv project", () => {
     // Both packages that come with another one by a range: the patched expo-modules-core, and the Metro config package, pinned to the React Native version init writes.
     expect(yaml).toContain(`overrides:\n  expo-modules-core: ${coreVersion}\n  "@react-native/metro-config": ${reactNativeVersion}\n`);
     const declared = [...yaml.matchAll(/^ {2}"?([^\s":]+(?:@[^\s":]+)*)"?: (patches\/svelte-native\/\S+)$/gm)].map((match) => match[2] as string);
-    expect(declared.length).toBeGreaterThanOrEqual(2);
+    expect(declared).toHaveLength(2);
     for (const path of declared) expect(existsSync(join(root, path)), path).toBe(true);
     // The library's one always-needed patch (`expo-modules-core`) and SvelteKit's, and none of the optional view libraries' and none of the packages the library carries (their patches are applied to its copies).
     // Svelte's compiler is not among them: the transformer makes it accept the transition directives.

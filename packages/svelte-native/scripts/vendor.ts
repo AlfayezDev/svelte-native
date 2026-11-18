@@ -8,13 +8,13 @@
  * not packed) gets the repository's, fetched from `raw.githubusercontent.com` at the tarball's own `gitHead`, or from `--license-url`; its source and sha256 are in `VENDOR.md`.
  *
  * Local changes are patch files, `vendor-patches/<name>/*.patch` (`patch -p1` format, applied in file name order after the unpack, so an upgrade replays them and a
- * conflict is found when it is made). Nothing is edited by hand in `vendor/`.
+ * conflict is found when it is made; a patch that does not apply stops the script and leaves the earlier copy as it was). Nothing is edited by hand in `vendor/`.
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export const packageRoot = resolve(import.meta.dirname, "..");
 export const vendorDirectory = join(packageRoot, "vendor");
@@ -65,6 +65,17 @@ export type VendorOptions = {
 const sha256Of = (data: Buffer | string): string => createHash("sha256").update(data).digest("hex");
 const integrityOf = (data: Buffer): string => `sha512-${createHash("sha512").update(data).digest("base64")}`;
 
+// The paths an `--exclude` names. A plain path is one file or a directory. A path with `*` is a pattern over the package's files: `*` is any characters but a slash, and a directory part
+// written `**` followed by a slash is any number of directories (including none), so a pattern that ends in `lib`, `**`, slash and `*.map` is every source map under `lib/`. A pattern that
+// matches no file is refused, as a path that is not there is.
+export function excludedBy(pattern: string, files: readonly string[]): string[] {
+  if (!pattern.includes("*")) return [pattern];
+  const escape = (text: string): string => text.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+  const source = pattern.split("**/").map((part) => part.split("*").map(escape).join("[^/]*")).join("(?:.*/)?");
+  const matcher = new RegExp(`^${source}$`);
+  return files.filter((file) => matcher.test(file));
+}
+
 /** Every file under `directory` (relative, forward slashes, sorted). */
 export function filesUnder(directory: string): string[] {
   return readdirSync(directory, { recursive: true, withFileTypes: true })
@@ -97,15 +108,18 @@ export function vendorTarball(options: VendorOptions): Vendored {
     const excluded: string[] = [];
     for (const path of options.exclude ?? []) {
       if (path.startsWith("/") || path.split("/").includes("..")) throw new Error(`--exclude ${path}: a path inside the package`);
-      if (!existsSync(join(unpacked, path))) throw new Error(`--exclude ${path}: the tarball has no such path`);
-      rmSync(join(unpacked, path), { recursive: true });
+      const found = excludedBy(path, filesUnder(unpacked));
+      if (found.length === 0 || found.some((file) => !existsSync(join(unpacked, file)))) throw new Error(`--exclude ${path}: the tarball has no such path`);
+      for (const file of found) rmSync(join(unpacked, file), { recursive: true });
       excluded.push(path);
     }
 
     const patches: Vendored["patches"] = [];
     for (const patch of options.patches ?? []) {
       execFileSync("patch", ["-p1", "--forward", "--no-backup-if-mismatch", "-d", unpacked, "-i", resolve(patch)], { stdio: ["ignore", "ignore", "inherit"] });
-      patches.push({ file: patch, sha256: sha256Of(readFileSync(patch)) });
+      // The notes name a patch by its place in the package (`vendor-patches/<name>/<file>`), not by the directory of this machine.
+      const inPackage = relative(packageRoot, resolve(patch));
+      patches.push({ file: inPackage.startsWith("..") || isAbsolute(inPackage) ? patch : inPackage.split(sep).join("/"), sha256: sha256Of(readFileSync(patch)) });
     }
 
     const own = licenseFile(readdirSync(unpacked));
@@ -137,7 +151,8 @@ export function repositoryUrl(repository: string | { url?: string } | undefined)
 
 /** The command line that writes a copy again, with the options that shaped it. */
 export function commandFor(name: string, version: string, excluded: readonly string[], licenseUrl?: string): string {
-  return ["node scripts/vendor.ts", `${name}@${version}`, ...(licenseUrl ? ["--license-url", licenseUrl] : []), ...excluded.flatMap((path) => ["--exclude", path])].join(" ");
+  // A pattern is quoted: the shell would expand its `*` before the script saw it.
+  return ["node scripts/vendor.ts", `${name}@${version}`, ...(licenseUrl ? ["--license-url", licenseUrl] : []), ...excluded.flatMap((path) => ["--exclude", path.includes("*") ? `'${path}'` : path])].join(" ");
 }
 
 /** The text of `VENDOR.md`: upstream, the tarball, what is not in the copy, the license, every local change. No date: the same copy is the same bytes. */

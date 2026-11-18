@@ -1,10 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { commandFor, filesUnder, parseSpec, vendorTarball } from "../../scripts/vendor.ts";
+import { commandFor, excludedBy, filesUnder, packageRoot, parseSpec, vendorTarball } from "../../scripts/vendor.ts";
 
 // `scripts/vendor.ts` (VENDORING.md): the published tarball of a third-party package unpacked into `vendor/<name>/`, its license, and a `VENDOR.md`. These tests build a tarball the way npm does
 // (one `package/` directory) from files below, so nothing here touches the network; the copies in `vendor/` are checked against the notes the script wrote for them.
@@ -108,6 +108,24 @@ describe("vendorTarball", () => {
     expect(commandFor("a", "1.0.0", ["x", "y/z"], "https://e/LICENSE")).toBe("node scripts/vendor.ts a@1.0.0 --license-url https://e/LICENSE --exclude x --exclude y/z");
   });
 
+  test("an exclusion with * is a pattern over the package's files: * stays in one directory, a directory part of two stars and a slash is any number of them, and the command quotes it", () => {
+    const files = ["lib/a.js", "lib/a.js.map", "lib/x/b.d.ts.map", "lib/x/y/c.js.map", "src/a.map", "map"];
+    expect(excludedBy("plain/path", files)).toEqual(["plain/path"]);
+    expect(excludedBy("lib/**/*.map", files)).toEqual(["lib/a.js.map", "lib/x/b.d.ts.map", "lib/x/y/c.js.map"]);
+    expect(excludedBy("lib/*.map", files)).toEqual(["lib/a.js.map"]);
+    expect(excludedBy("**/*.map", files)).toEqual(["lib/a.js.map", "lib/x/b.d.ts.map", "lib/x/y/c.js.map", "src/a.map"]);
+    expect(excludedBy("lib/a*js", ["lib/aXjs", "lib/a.js", "lib/a/js"])).toEqual(["lib/aXjs", "lib/a.js"]);
+    expect(excludedBy("lib/*.nothing", files)).toEqual([]);
+    expect(commandFor("a", "1.0.0", ["x", "lib/**/*.map"])).toBe("node scripts/vendor.ts a@1.0.0 --exclude x --exclude 'lib/**/*.map'");
+    const into = fresh();
+    const tarball = pack({ ...sources, LICENSE: mit, "lib/a.js": "1", "lib/a.js.map": "{}", "lib/deep/b.d.ts.map": "{}" });
+    const result = vendorTarball({ tarball, name: "fake-native", version: "1.2.3", into, exclude: ["lib/**/*.map"] });
+    expect(filesUnder(join(into, "fake-native")).filter((file) => file.startsWith("lib/"))).toEqual(["lib/a.js", "lib/tsconfig.build.tsbuildinfo"]);
+    expect(result.excluded).toEqual(["lib/**/*.map"]);
+    expect(readFileSync(join(into, "fake-native/VENDOR.md"), "utf8")).toContain("`node scripts/vendor.ts fake-native@1.2.3 --exclude 'lib/**/*.map'`");
+    expect(() => vendorTarball({ tarball, name: "fake-native", version: "1.2.3", into: fresh(), exclude: ["lib/**/*.nothing"] })).toThrow("no such path");
+  });
+
   test("a patch is applied after the unpack and recorded as a local change; one that does not apply fails and leaves the earlier copy as it was", () => {
     const into = fresh();
     const tarball = pack({ ...sources, LICENSE: mit });
@@ -117,6 +135,17 @@ describe("vendorTarball", () => {
     expect(readFileSync(join(into, "fake-native/src/index.ts"), "utf8")).toBe("export const x = 2\n");
     expect(result.patches).toEqual([{ file: patch, sha256: createHash("sha256").update(readFileSync(patch)).digest("hex") }]);
     expect(readFileSync(join(into, "fake-native/VENDOR.md"), "utf8")).toContain(`## Local changes\n\n- \`${patch}\``);
+    // A patch of the package's own vendor-patches/ is named by its place there, not by the directory of the machine that ran the script.
+    const own = join(packageRoot, "vendor-patches/fake-native/0001-index.patch");
+    mkdirSync(join(packageRoot, "vendor-patches/fake-native"), { recursive: true });
+    try {
+      writeFileSync(own, readFileSync(patch));
+      const placed = fresh();
+      expect(vendorTarball({ tarball, name: "fake-native", version: "1.2.3", into: placed, patches: [own] }).patches[0]?.file).toBe("vendor-patches/fake-native/0001-index.patch");
+      expect(readFileSync(join(placed, "fake-native/VENDOR.md"), "utf8")).toContain("- `vendor-patches/fake-native/0001-index.patch` (sha256");
+    } finally {
+      rmSync(join(packageRoot, "vendor-patches/fake-native"), { recursive: true, force: true });
+    }
     const broken = join(fresh(), "0002-broken.patch");
     writeFileSync(broken, "--- a/src/index.ts\n+++ b/src/index.ts\n@@ -1 +1 @@\n-nothing like it\n+x\n");
     expect(() => vendorTarball({ tarball, name: "fake-native", version: "1.2.3", into, patches: [broken] })).toThrow();
@@ -146,7 +175,7 @@ describe("vendorTarball", () => {
 
 describe("the copies in vendor/ are what the script wrote", () => {
   const vendor = join(import.meta.dirname, "../../vendor");
-  const names = ["react-native-mmkv", "react-native-nitro-modules"];
+  const names = ["react-native-mmkv", "react-native-nitro-modules", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets", "react-native-svg"];
 
   for (const name of names) {
     test(`${name}: package.json, LICENSE and VENDOR.md agree (name, version, the license's sha256, the command that reproduces it)`, () => {
@@ -158,9 +187,15 @@ describe("the copies in vendor/ are what the script wrote", () => {
       expect(notes).toContain(`\`node scripts/vendor.ts ${name}@${manifest.version}`);
       expect(notes).toContain(`sha256 \`${createHash("sha256").update(readFileSync(join(directory, "LICENSE"))).digest("hex")}\``);
       expect(notes).toMatch(/Integrity \(npm's `dist.integrity`\): `sha512-[A-Za-z0-9+/=]+`/);
-      // No local change yet: a copy that differs from its tarball says how in "Local changes", and the pilot's two do not.
-      expect(notes).toContain("## Local changes\n\nNone.");
-      expect(readFileSync(join(directory, "LICENSE"), "utf8")).toStartWith("MIT License\n");
+      // A copy that differs from its tarball says how in "Local changes": one line for each file of vendor-patches/<name>/ (and none for a package that has no patch), with the sha256 of the file.
+      const patchDirectory = join(import.meta.dirname, "../../vendor-patches", name);
+      const patches = existsSync(patchDirectory) ? readdirSync(patchDirectory).filter((file) => file.endsWith(".patch")).sort() : [];
+      if (patches.length === 0) expect(notes).toContain("## Local changes\n\nNone.");
+      else {
+        const listed = [...notes.slice(notes.indexOf("## Local changes")).matchAll(/^- `([^`]+)` \(sha256 `([0-9a-f]{64})`\)/gm)].map((match) => [match[1], match[2]]);
+        expect(listed).toEqual(patches.map((file) => [`vendor-patches/${name}/${file}`, createHash("sha256").update(readFileSync(join(patchDirectory, file))).digest("hex")]));
+      }
+      expect(readFileSync(join(directory, "LICENSE"), "utf8")).toMatch(/^(?:The )?MIT License\b/);
     });
   }
 });

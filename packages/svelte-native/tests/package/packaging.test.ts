@@ -167,7 +167,10 @@ describe("what `files` packs", () => {
   });
 
   test("it holds no test, fixture, plan, specification or build output", () => {
-    const unwanted = listed.filter((path) => /^tests\/|(^|\/)test\/|(^|\/)(build|\.cxx|\.gradle|Pods)\//.test(path) || /(^|\/)(SPEC|NOTES|PLAN)\.md$/.test(path) || /\.test\.ts$/.test(path));
+    // A `build/` directory is a native build's output (`android/build`, `ios/build`) and is not packed; an Expo module's JavaScript is in `build/` and its config plugin's in `plugin/build/`, and a
+    // vendored copy carries them (`vendor/expo-image/build/`).
+    const nativeBuild = (path: string) => /(^|\/)(android|ios)\/build\//.test(path) || (/(^|\/)build\//.test(path) && !/^vendor\/(?:@[^/]+\/)?[^/]+\/(?:plugin\/)?build\//.test(path));
+    const unwanted = listed.filter((path) => /^tests\/|(^|\/)test\/|(^|\/)(\.cxx|\.gradle|Pods)\//.test(path) || nativeBuild(path) || /(^|\/)(SPEC|NOTES|PLAN)\.md$/.test(path) || /\.test\.ts$/.test(path));
     expect(unwanted).toEqual([]);
     // The package's own documents; a vendored package brings its README and the VENDOR.md that says where it came from (checked below).
     expect(listed.filter((path) => path.endsWith(".md") && !path.startsWith("vendor/")).sort()).toEqual(["CHANGELOG.md", "README.md", "REFERENCE.md"]);

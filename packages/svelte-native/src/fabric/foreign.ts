@@ -5,6 +5,7 @@
  * component by name, and the native side is the library's own.
  */
 import { turboModule } from "../native-modules.ts";
+import { assertLibrary, libraryOfExpoModule } from "./foreign-libraries.ts";
 import { defineViewKind, type Kind } from "./view-configs.ts";
 
 // The wrappers in `foreign-*.ts` take it from here.
@@ -87,6 +88,9 @@ export type ExpoViewKind = Pick<Kind, "colors" | "colorLists" | "assetSources">;
  * the module's config does not distinguish from plain props (the React wrappers convert them before they reach the view).
  */
 export function expoViewName(moduleName: string, viewName?: string, kind: ExpoViewKind = {}): string {
+  // The module of an optional library the build does not have says how to turn the library on.
+  const library = libraryOfExpoModule(moduleName);
+  if (library !== undefined) assertLibrary(library);
   const expo = (globalThis as Globals).expo;
   const name = `ViewManagerAdapter_${moduleName}${viewName ? `_${viewName}` : ""}${expo?.__expo_app_identifier__ ? `_${expo.__expo_app_identifier__}` : ""}`;
   const kindKey = JSON.stringify(kind);
@@ -97,7 +101,7 @@ export function expoViewName(moduleName: string, viewName?: string, kind: ExpoVi
   const config = expo?.getViewConfig?.(moduleName, viewName);
   if (!config) {
     const view = viewName ? `view ${viewName}` : "view";
-    throw new Error(`Expo module ${moduleName} has no ${view}: the native module is not in this build, or it declares no such view. Install the library (\`npx expo install\`) and rebuild the native app.`);
+    throw new Error(`Expo module ${moduleName} has no ${view}: the native module is not in this build, or it declares no such view. ${library !== undefined ? `${library} is one of the libraries @alfayez/svelte-native carries: turn it on in \`libraries\` of the plugin options, then prebuild and build the app again.` : "Install the library (`npx expo install`), add its plugin if it has one, and rebuild the native app."}`);
   }
   defineViewKind(name, { ...kind, plain: Object.keys(config.validAttributes).join(" "), events: Object.keys(config.directEventTypes ?? {}).join(" ") });
   defined.set(name, kindKey);

@@ -113,6 +113,7 @@ import { iosNavigationViewName } from "./navigation.ios.ts";
 import { mergeHostProps } from "../native-props.ts";
 import { applyAriaProps, isAriaKey } from "./accessibility.ts";
 import { foreignText, type ForeignText } from "./foreign-text.ts";
+import { assertComponent } from "./foreign-libraries.ts";
 import renderer, { InstantAnimation, NativeNode, setAnimationDriver, setInvalidationSink, setRefSink, setUnlinkSink, type AnimationDriver, type Invalidation } from "../renderer.ts";
 import { applyInlineStyle, effectiveStyle, parseOrigin, transformOps, transformRect, type Rect } from "./dom-style.ts";
 import { Pressability, type PressabilityConfig, type ResponderHandlers } from "./pressability.ts";
@@ -244,6 +245,8 @@ const viewNames: Record<string, string | ((props: Record<string, unknown>) => st
   // A component another library mounts through React Native's own mounting (SPEC.md, "Foreign views"), by its Fabric name.
   "native-foreign": (props) => {
     if (typeof props.component !== "string" || !props.component) throw new Error("native-foreign needs the name of the component to mount");
+    // A component of an optional library the build does not have says how to turn it on (`libraries` of the plugin options), instead of failing in the native mounting.
+    assertComponent(props.component);
     return props.component;
   },
 };

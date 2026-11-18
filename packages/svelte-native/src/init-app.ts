@@ -30,7 +30,7 @@ export const appDependencies: Readonly<Record<string, string>> = {
   "react-native-worklets": "0.10.1",
 };
 
-/** Packages whose patch every app needs; the others are declared when the app has the package (SvelteKit) or lists it at the patch's version (the view libraries). */
+/** Packages whose patch every app needs; the others are declared when the app has the package (SvelteKit). The view libraries' patches are in the library's own copies of them (`vendor-patches/`), which an app declares nothing for. */
 const alwaysPatched = ["expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"];
 // The package's own name: Expo finds the package's `app.plugin.js`, the same plugin as `@alfayez/svelte-native/app.plugin`.
 const plugin = "@alfayez/svelte-native";

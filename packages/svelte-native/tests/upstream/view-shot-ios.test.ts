@@ -2,12 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
+import { libraryPath } from "../support/paths.ts";
 
 // react-native-view-shot on iOS (SPEC.md, "Foreign views"): what the JavaScript wrapper and the lab assume about the platform is read from the Objective-C++ sources of the library and of
 // React Native that decide it, which cannot be compiled on the machines these tests run on. They keep a library or React Native update from changing the facts under the wrapper unseen;
 // the module that clears the leftovers is `native-host/contracts/capture-ios.test.ts`.
 const require = createRequire(import.meta.url);
-const library = dirname(require.resolve("react-native-view-shot/package.json"));
+const library = libraryPath("react-native-view-shot");
 const reactNative = dirname(require.resolve("react-native/package.json"));
 const viewShot = readFileSync(resolve(library, "ios/RNViewShot.mm"), "utf8");
 const tempFilePath = (() => {

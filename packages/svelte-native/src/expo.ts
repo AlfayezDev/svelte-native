@@ -4,9 +4,11 @@ import { withAndroidManifest, withAppBuildGradle, withAppDelegate, withDangerous
 import { syncNative } from "./build.ts";
 import { withCapabilities, type Capabilities } from "./capabilities.ts";
 export type { Capabilities, LocationCapability, PushCapability } from "./capabilities.ts";
-import type { RemoteHostConfig } from "./remote/host.ts";
+import { checkLibraries, LibrariesConfigError, libraryLinks, libraryPlugin, type Libraries, type LibraryLinks, type LibrariesOption } from "./libraries.ts";
+export type { LibrariesOption, LibraryOptions } from "./libraries.ts";
+import { EXTRA_KEY, type RemoteHostConfig } from "./remote/host.ts";
 import { withRemoteHost } from "./remote/plugin.ts";
-import { collisionMessage, declaredVendored } from "./vendored.ts";
+import { collisionMessage, declaredVendored, optionalPackages, vendoredPackage } from "./vendored.ts";
 
 export type ViewRecycling = { view?: boolean; text?: boolean; image?: boolean; scrollView?: boolean };
 export type SvelteNativeOptions = {
@@ -61,6 +63,16 @@ export type SvelteNativeOptions = {
    * it stands (a secret, an empty reason, two answers to one question) stops the prebuild (`capabilities.ts`).
    */
   capabilities?: Capabilities;
+  /**
+   * The optional native view libraries the app uses, from the ones `@alfayez/svelte-native` carries (`vendor/`): `expo-image`, `expo-blur`, `expo-linear-gradient`, `expo-conic-gradient`,
+   * `expo-video`, `react-native-video`, `lottie-react-native`, `rive-react-native`, `@react-native-community/datetimepicker`, `react-native-pdf` (which turns `react-native-blob-util` on too),
+   * `react-native-webview`, `react-native-maps`, `react-native-view-shot`, `react-native-fast-shadow` and `react-native-animateable-text`. Each is `true`, or the options of the library's own
+   * config plugin (`"react-native-maps": { androidGoogleMapsApiKey }`, `"expo-video": { supportsPictureInPicture: true }`), which the plugin runs from the library's copy; `false` is the same as
+   * leaving it out. A listed library is linked on Android and iOS and bundled by Metro. An unlisted one is neither: no native code of it in the build (on iOS not even compiled: react-native-maps
+   * references CoreLocation, which App Store Connect would hold every app to), and its name resolves to a stub that says how to turn it on. Nothing is installed for any of them: an app that lists
+   * one in its `package.json` or `plugins` is refused. Prebuild again after changing it.
+   */
+  libraries?: LibrariesOption;
 };
 
 /**
@@ -333,23 +345,40 @@ export function applyAppDelegate(contents: string): string {
  * through the library's `android-autolinking` (`autolinking.ts`: the packages the library carries are linked from its directory, and the Nitro modules' native libraries load
  * after the start). With
  * `EXPO_USE_COMMUNITY_AUTOLINKING=1` the community CLI's command runs as it is. Idempotent.
+ *
+ * The optional libraries the app turned on (`links`, `libraries.ts`): the React Native ones are `--link` arguments of `android-autolinking`, and the Expo modules are search paths of Expo's
+ * autolinker (`expoAutolinking.searchPaths`: the directory of each copy, under the library's own directory, which the block finds from the CLI's path). The Expo modules that are off join
+ * Expo's `exclude`, so a copy installed for another package's sake is not linked either. Expo's command line puts the search paths after its `--exclude` options, and `--exclude` takes any
+ * number of values, so without a `--` in front the paths would be read as names to leave out and the modules would not be found: the first search path is that `--`. The block's
+ * lock files include `settings.gradle` itself: React Native keeps the command's output until a lock file changes, and a changed `libraries` changes the `--link` arguments.
  */
-export function applyHeadlessSettings(contents: string, extra: readonly string[] = []): string {
+export function applyHeadlessSettings(contents: string, extra: readonly string[] = [], links?: LibraryLinks): string {
   const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\((?:svelteNativeConfigCommand \+ )?expoAutolinking\.rnConfigCommand \+ svelteNativeExcludeArgs(?:, svelteNativeAppRoot\.asFile, svelteNativeLockFiles)?\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)");
   const anchor = /^extensions\.configure\(com\.facebook\.react\.ReactSettingsExtension\)/m.exec(stripped);
   if (!anchor || !stripped.includes("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)")) throw new Error("Svelte native could not find the autolinking block in settings.gradle");
-  const list = [...new Set([...headlessExcludedPackages, ...extra])].map((name) => `"${name}"`).join(", ");
+  const list = [...new Set([...headlessExcludedPackages, ...extra, ...(links?.expoOff ?? [])])].map((name) => `"${name}"`).join(", ");
+  const quoted = (names: readonly string[]) => names.map((name) => `"${name}"`).join(", ");
+  const expoModules = links?.expo ?? [];
+  const reactNative = links?.reactNative ?? [];
   const block = [
     gradleBegin,
     `def svelteNativeExclude = [${list}]`,
     'def svelteNativeExcludeArgs = svelteNativeExclude.collectMany { ["--exclude", it] }',
     "expoAutolinking.exclude = svelteNativeExclude",
     `def svelteNativeCli = new File(providers.exec { workingDir(rootDir); commandLine("node", "--print", "require.resolve('${libraryPackage}/package.json')") }.standardOutput.asText.get().trim()).getParentFile().toPath().resolve("dist/node/cli.js").toString()`,
-    'def svelteNativeConfigCommand = ["node", svelteNativeCli, "android-autolinking"]',
-    // React Native keeps the command's output until a lockfile of the app changes: React Native's own list, and the CLI, so that a new version of the
-    // library (a workspace or file: dependency changes no lockfile) runs the command again.
+    ...(expoModules.length === 0
+      ? []
+      : [
+          `// The Expo modules the app turned on (libraries): the directories of their copies in the library are Expo's search paths. "--" first: see applyHeadlessSettings.`,
+          `def svelteNativeExpoModules = [${quoted(expoModules)}]`,
+          'def svelteNativeLibrary = new File(svelteNativeCli).getParentFile().getParentFile().getParentFile()',
+          'expoAutolinking.searchPaths = ["--"] + svelteNativeExpoModules.collect { new File(svelteNativeLibrary, "vendor/" + it).toString() }',
+        ]),
+    `def svelteNativeConfigCommand = ["node", svelteNativeCli, "android-autolinking"${reactNative.map((name) => `, "--link", "${name}"`).join("")}]`,
+    // React Native keeps the command's output until a lockfile of the app changes: React Native's own list, the CLI, and this file, so that a new version of the
+    // library (a workspace or file: dependency changes no lockfile) and a changed `libraries` (the `--link` arguments above) run the command again.
     'def svelteNativeAppRoot = settings.layout.rootDirectory.dir("../")',
-    'def svelteNativeLockFiles = svelteNativeAppRoot.files("yarn.lock", "package-lock.json", "package.json", "react-native.config.js", svelteNativeCli)',
+    'def svelteNativeLockFiles = svelteNativeAppRoot.files("yarn.lock", "package-lock.json", "package.json", "react-native.config.js", svelteNativeCli, new File(settingsDir, "settings.gradle").toString())',
     gradleEnd,
     "",
   ].join("\n");
@@ -365,19 +394,28 @@ const podfileCommandEnd = "  # Svelte native: end of config command excludes";
  * `Podfile`: the packages Expo's `use_expo_modules!` and the React Native config command (`expo-modules-autolinking
  * react-native-config`) leave out. With `EXPO_USE_COMMUNITY_AUTOLINKING=1` the command is the community CLI's own, which
  * reads `react-native.config.js` instead. Idempotent; an empty list restores the template.
+ *
+ * `expoModules` are the optional Expo modules the app turned on (`libraries.ts`): `use_expo_modules!` gets their directories in the library (`vendor/<name>`, which the block finds from the
+ * app with `require.resolve`, as it finds the CLI) as `searchPaths`, and nothing else of the library's copies is looked at.
  */
-export function applyPodfileAutolinkingExclude(contents: string, names: readonly string[]): string {
+export function applyPodfileAutolinkingExclude(contents: string, names: readonly string[], expoModules: readonly string[] = []): string {
   const stripped = contents
     .replace(blockPattern(podfileBegin, podfileEnd), "")
     .replace(blockPattern(podfileCommandBegin, podfileCommandEnd), "")
-    .replace(/use_expo_modules!\(exclude: svelte_native_exclude\)/, "use_expo_modules!");
-  if (names.length === 0) return stripped;
+    .replace(/use_expo_modules!\((?:exclude: svelte_native_exclude)?(?:, )?(?:searchPaths: [^\n]*?)?\)(?=[ \t]*$)/m, "use_expo_modules!");
+  if (names.length === 0 && expoModules.length === 0) return stripped;
   const useAnchor = /^[ \t]*use_expo_modules!(?!\()[ \t]*$/m.exec(stripped);
   const commandAnchor = /^[ \t]*config = use_native_modules!\(config_command\)[ \t]*$/m.exec(stripped);
   if (!useAnchor || !commandAnchor || useAnchor.index > commandAnchor.index) throw new Error("Svelte native could not find use_expo_modules! and use_native_modules!(config_command) in the Podfile");
   const list = [
     podfileBegin,
     `  svelte_native_exclude = [${[...new Set(names)].map((name) => `"${name}"`).join(", ")}]`,
+    ...(expoModules.length === 0
+      ? []
+      : [
+          `  svelte_native_expo_modules = [${expoModules.map((name) => `"${name}"`).join(", ")}]`,
+          `  svelte_native_library = File.dirname(\`node --print "require.resolve('${libraryPackage}/package.json')"\`)`,
+        ]),
     podfileEnd,
   ].join("\n");
   const command = [
@@ -385,8 +423,9 @@ export function applyPodfileAutolinkingExclude(contents: string, names: readonly
     "  config_command += svelte_native_exclude.flat_map { |name| ['--exclude', name] } if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] != '1'",
     podfileCommandEnd,
   ].join("\n");
+  const useCall = `use_expo_modules!(exclude: svelte_native_exclude${expoModules.length === 0 ? "" : ", searchPaths: svelte_native_expo_modules.map { |name| File.join(svelte_native_library, 'vendor', name) }"})`;
   const useEnd = useAnchor.index + useAnchor[0].length;
-  return `${stripped.slice(0, useAnchor.index)}${list}\n${stripped.slice(useAnchor.index, useEnd).replace("use_expo_modules!", "use_expo_modules!(exclude: svelte_native_exclude)")}${stripped.slice(useEnd, commandAnchor.index)}${command}\n${stripped.slice(commandAnchor.index)}`;
+  return `${stripped.slice(0, useAnchor.index)}${list}\n${stripped.slice(useAnchor.index, useEnd).replace("use_expo_modules!", useCall)}${stripped.slice(useEnd, commandAnchor.index)}${command}\n${stripped.slice(commandAnchor.index)}`;
 }
 
 const podfileLinkBegin = "  # Svelte native: the packages the library carries are linked from its own directory (generated, do not edit)";
@@ -394,18 +433,18 @@ const podfileLinkEnd = "  # Svelte native: end of the library's own packages";
 
 /**
  * `Podfile`: the config command that `use_native_modules!` runs goes through the library's `ios-autolinking` (`autolinking.ts`), which adds the packages the library carries
- * (`vendored.ts`: the Nitro runtime and MMKV) to its output, with the podspecs of `vendor/` in the library's directory, so the app's package.json lists none of them. The block
- * goes in front of the line that reads the config, after anything that already extended the command; stripped and written again on every prebuild, so an update of the
- * library moves it. With `EXPO_USE_COMMUNITY_AUTOLINKING=1` the command underneath is the community CLI's, and its output gets the same entries.
+ * (`vendored.ts`: the Nitro runtime and MMKV, and the optional libraries `links` names, `libraries.ts`) to its output, with the podspecs of `vendor/` in the library's directory, so the app's
+ * package.json lists none of them. The block goes in front of the line that reads the config, after anything that already extended the command; stripped and written again on every
+ * prebuild, so an update of the library moves it. With `EXPO_USE_COMMUNITY_AUTOLINKING=1` the command underneath is the community CLI's, and its output gets the same entries.
  */
-export function applyPodfileVendoredLinking(contents: string): string {
+export function applyPodfileVendoredLinking(contents: string, links: readonly string[] = []): string {
   const stripped = contents.replace(blockPattern(podfileLinkBegin, podfileLinkEnd), "");
   const anchor = /^[ \t]*config = use_native_modules!\(config_command\)[ \t]*$/m.exec(stripped);
   if (!anchor) throw new Error("Svelte native could not find use_native_modules!(config_command) in the Podfile");
   const block = [
     podfileLinkBegin,
     `  svelte_native_cli = File.join(File.dirname(\`node --print "require.resolve('${libraryPackage}/package.json')"\`), 'dist/node/cli.js')`,
-    "  config_command = ['node', svelte_native_cli, 'ios-autolinking'] + config_command",
+    `  config_command = ['node', svelte_native_cli, 'ios-autolinking'${links.map((name) => `, '--link', '${name}'`).join("")}] + config_command`,
     podfileLinkEnd,
   ].join("\n");
   return `${stripped.slice(0, anchor.index)}${block}\n${stripped.slice(anchor.index)}`;
@@ -545,8 +584,42 @@ export function assertNoVendoredOriginals(projectRoot: string): void {
   if (declared.length > 0) throw new Error(collisionMessage(declared, libraryPackage));
 }
 
+/**
+ * The `androidOnDemandViewManagers` the app gave, without the entries of an optional library that is off: the entry names the library's package class, which is not in the build
+ * (Kotlin would not compile `is com.rnmaps.maps.MapsPackage` without it), so one config can serve the builds that turn a library on and those that do not.
+ */
+export function onDemandForLibraries(onDemand: Record<string, string[]> | undefined, enabled: readonly string[]): Record<string, string[]> | undefined {
+  if (onDemand === undefined) return undefined;
+  const absent = optionalPackages.filter((vendored) => !enabled.includes(vendored.name)).map((vendored) => /^import ([\w.]+);$/.exec(vendored.android?.packageImportPath ?? "")?.[1]);
+  return Object.fromEntries(Object.entries(onDemand).filter(([packageClass]) => !absent.includes(packageClass)));
+}
+
+/**
+ * The optional libraries the app turned on, applied to the Expo config: each library's own config plugin runs from its copy in `vendor/` with the options the app gave it (as if the app
+ * had listed the library in `plugins`), and the names of the libraries that are on go to `extra.svelteNative.libraries`, which the device reads from the manifest embedded in the build
+ * (`fabric/foreign-libraries.ts`) so that a component whose library is not in the build says how to turn it on. An app that lists a library's own plugin in `plugins` is refused: the
+ * package is not installed, so Expo could not find the plugin, and its options belong to `libraries`.
+ */
+export const withLibraries: ConfigPlugin<Libraries> = (config, libraries) => {
+  const listedPlugins = (config.plugins ?? []).map((plugin) => String(Array.isArray(plugin) ? plugin[0] : plugin)).filter((name) => vendoredPackage(name)?.optional !== undefined);
+  if (listedPlugins.length > 0) {
+    throw new LibrariesConfigError(`\`plugins\` lists ${listedPlugins.join(", ")}, which ${libraryPackage} carries and is not installed: its plugin runs from the library's copy, with its options under \`libraries\` ` +
+      `(\`["${libraryPackage}", { libraries: { ${listedPlugins.map((name) => `"${name}": { … }`).join(", ")} } }]\`). Remove it from \`plugins\`.`);
+  }
+  for (const name of libraries.enabled) {
+    const vendored = vendoredPackage(name);
+    const plugin = vendored && libraryPlugin(vendored);
+    if (plugin) config = plugin(config as never, libraries.listed.get(name) as never) as typeof config;
+  }
+  const svelteNative = (config.extra?.[EXTRA_KEY] ?? {}) as Record<string, unknown>;
+  return { ...config, extra: { ...config.extra, [EXTRA_KEY]: { ...svelteNative, libraries: [...libraries.enabled] } } };
+};
+
 const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined> = (config, options) => {
+  const libraries = checkLibraries(options?.libraries);
+  const links = libraryLinks(libraries.enabled);
   config = leaveOutOfAutoPlugins(config, options?.autolinkingExclude ?? []);
+  config = withLibraries(config, libraries);
   config = withCapabilities(config, options?.capabilities, { excluded: options?.autolinkingExclude });
   if (options?.remote) config = withRemoteHost(config, options.remote);
   for (const platform of ["android", "ios"] as const) {
@@ -582,11 +655,11 @@ const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined> = (config,
     return config;
   });
   config = withSettingsGradle(config, (config) => {
-    config.modResults.contents = applyHeadlessSettings(config.modResults.contents, options?.autolinkingExclude);
+    config.modResults.contents = applyHeadlessSettings(config.modResults.contents, options?.autolinkingExclude, links);
     return config;
   });
   config = withPodfile(config, (config) => {
-    config.modResults.contents = applyPodfileVendoredLinking(applyPodfileAutolinkingExclude(config.modResults.contents, options?.autolinkingExclude ?? []));
+    config.modResults.contents = applyPodfileVendoredLinking(applyPodfileAutolinkingExclude(config.modResults.contents, [...(options?.autolinkingExclude ?? []), ...links.expoOff], links.expo), links.reactNative);
     return config;
   });
   if (options?.androidProfileable) {
@@ -619,7 +692,7 @@ const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined> = (config,
   });
   config = withMainApplication(config, (config) => {
     if (config.modResults.language !== "kt") throw new Error("Svelte native requires Expo's Kotlin MainApplication");
-    config.modResults.contents = applyHeadlessApplication(applyFeatureFlags(config.modResults.contents, androidFeatureFlagsFor(options)), options?.androidOnDemandViewManagers);
+    config.modResults.contents = applyHeadlessApplication(applyFeatureFlags(config.modResults.contents, androidFeatureFlagsFor(options)), onDemandForLibraries(options?.androidOnDemandViewManagers, links.enabled));
     return config;
   });
   return withAppBuildGradle(config, (config) => {

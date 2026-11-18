@@ -39,7 +39,14 @@ export function kitProblems(read: Reader): string[] {
 // ---- react-native-pdf, react-native-video, lottie-react-native, react-native-maps: Android events that must not coalesce ----
 
 export function pdfProblems(read: Reader): string[] {
-  return inFile(read, "android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java", [["canCoalesce() is not overridden to return false", neverCoalesces]]);
+  return [
+    ...inFile(read, "android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java", [["canCoalesce() is not overridden to return false", neverCoalesces]]),
+    // The library carries the package (`vendor/`), so react-native is not found from the package's own place beside it in node_modules but from the app's directory upwards.
+    ...inFile(read, "android/build.gradle", [
+      ["does not look for react-native in the node_modules above the app's directory", has("reactNativeFromAncestor")],
+      ["still looks for react-native beside the package itself", (code) => !code.includes("reactNativeFromNodeModulesWithPDF")],
+    ], true),
+  ];
 }
 
 /**

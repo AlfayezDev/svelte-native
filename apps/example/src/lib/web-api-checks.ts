@@ -1,4 +1,4 @@
-// The device checks of the web APIs Svelte Native backs with native code: `fetch` and `Blob` (the SvelteFetch module), `crypto` (react-native-quick-crypto),
+// The device checks of the web APIs Svelte Native backs with native code: `fetch` and `Blob` (the SvelteFetch module), `crypto` (react-native-quick-crypto, part of the library),
 // `localStorage` (MMKV) and `navigator` (the clipboard through the SvelteClipboard module, the language, `canShare`, `vibrate`, and the geolocation over the library's own location module). They run against the library's test server (packages/svelte-native/tests/web-apis/fetch/support/server.ts) when the Web APIs screen opens with
 // `?checks=<origin>`: `svelte-native://web-apis?checks=http://localhost:8787` (an Android emulator after `adb reverse tcp:8787 tcp:8787`; the iOS
 // Simulator reaches the Mac's localhost). A release build talks plain HTTP only when it was built with SVELTE_NATIVE_REMOTE_ORIGIN=http://localhost:8787,
@@ -299,6 +299,19 @@ const checks: [name: string, run: (origin: string) => Promise<string>][] = [
     const random = crypto.getRandomValues(new Uint8Array(32));
     expect(random.some((byte) => byte !== 0), "32 zero bytes");
     return "digest, randomUUID, getRandomValues";
+  }],
+  // The `Intl` constructors Hermes lacks come from hermes-intl, which the library carries: its C++ TurboModule is in the build only when the library linked it (an app built before it was vendored has it from the app's own dependency).
+  ["Intl: PluralRules, RelativeTimeFormat, ListFormat, Locale", async () => {
+    if (typeof Intl.PluralRules === "undefined" || typeof Intl.RelativeTimeFormat === "undefined") throw new Skip("no Intl.PluralRules or Intl.RelativeTimeFormat");
+    const plural = new Intl.PluralRules("ar").select(3);
+    expect(plural === "few", `Arabic select(3) was ${plural}`);
+    const relative = new Intl.RelativeTimeFormat("en").format(-1, "day");
+    expect(relative === "1 day ago", `RelativeTimeFormat.format(-1, "day") was ${relative}`);
+    const list = new Intl.ListFormat("en", { style: "long", type: "conjunction" }).format(["red", "green", "blue"]);
+    expect(list === "red, green, and blue", `ListFormat was ${list}`);
+    const locale = new Intl.Locale("ar-EG");
+    expect(locale.language === "ar" && locale.region === "EG", `Locale was ${locale.language}-${locale.region}`);
+    return `PluralRules ar 3 = ${plural}, "${relative}", "${list}", Locale ${locale.toString()}`;
   }],
   ["localStorage", async () => {
     if (typeof localStorage === "undefined") throw new Skip("no localStorage");

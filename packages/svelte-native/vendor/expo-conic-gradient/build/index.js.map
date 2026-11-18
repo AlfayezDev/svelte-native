@@ -1,0 +1,1 @@
+{"version":3,"file":"index.js","sourceRoot":"","sources":["../src/index.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,OAAO,IAAI,iBAAiB,EAAE,MAAM,iBAAiB,CAAC;AAC/D,cAAc,6BAA6B,CAAC","sourcesContent":["export { default as ConicGradientView } from \"./ConicGradient\";\nexport * from \"./NativeConicGradient.types\";\n"]}

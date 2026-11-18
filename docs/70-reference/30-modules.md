@@ -73,7 +73,7 @@ SVG with react-native-svg, which is a required peer dependency: `Svg`, `G`, `Pat
 
 ## @alfayez/svelte-native/foreign
 
-Native views of other libraries. [Native views](native-views)
+Native views of other libraries. [Native views](native-views). Each component needs its library turned on in `libraries` of the [plugin's options](configuration#libraries); a component whose library is off throws a message that says so.
 
 | Export | Description |
 | --- | --- |
@@ -83,11 +83,11 @@ Native views of other libraries. [Native views](native-views)
 | `LinearGradient` | `expo-linear-gradient`. |
 | `ConicGradient` | `expo-conic-gradient`. |
 | `Video` | `react-native-video`. |
-| `VideoView` | `expo-video`. |
+| `VideoView`, `createVideoPlayer` | `expo-video`. `createVideoPlayer` is the library's own function, which makes the `player` a `VideoView` shows. |
 | `LottieView` | `lottie-react-native`. |
 | `Rive` | `rive-react-native`. |
 | `DateTimePicker`, `openDatePicker`, `dismissDatePicker` | `@react-native-community/datetimepicker`. |
-| `Pdf` | `react-native-pdf`. |
+| `Pdf` | `react-native-pdf` (and `react-native-blob-util`, which it brings). |
 | `WebView` | `react-native-webview`. |
 | `MapView`, `Marker` | `react-native-maps`. |
 | `ViewShot`, `captureRef`, `captureScreen`, `releaseCapture` | `react-native-view-shot`. |

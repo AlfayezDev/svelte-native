@@ -55,6 +55,11 @@ export const TOOLBAR_CONTEXT = Symbol.for("svelte-native.toolbar");
 export const IN_STACK_CONTEXT = Symbol.for("svelte-native.in-stack");
 /** Set by `Tabs` for everything inside a pane: the pane ends at the tab bar, which already covers the bottom inset. */
 export const PANE_CONTEXT = Symbol.for("svelte-native.pane");
+/**
+ * Set by a `Screen` for everything inside it: the background it is drawn with (its own, else the one it took). A screen of a stack inside it (a tab's, a nested stack's) that has
+ * none of its own takes it, so a tab's screens look as the screen of the tab bar does, and only a screen inside no screen has the system's (`system-colors.ts`).
+ */
+export const BACKGROUND_CONTEXT = Symbol.for("svelte-native.background");
 
 /** The header geometry of the screen around the caller, in dp: `height` includes the status bar `inset`. Read it to pad content under a `large` or `translucent` header. */
 export function useHeader(): { readonly height: number; readonly inset: number } {

@@ -1,6 +1,6 @@
 import { reanimatedStubs } from "./reanimated-stubs.ts";
 import { svgLibraryStubs } from "./svg-library-stubs.ts";
-import { load as bundle, src } from "./bundle.ts";
+import { appearanceStub, load as bundle, src } from "./bundle.ts";
 import { fakeHost } from "./fake-host.ts";
 import { type FakeNode, flatten, settle } from "./host.ts";
 
@@ -22,6 +22,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/ReactNative/ReactFabricPublicInstance/ReactNativeAttributePayload": "export const create = (props) => ({ ...props }); export const diff = (prev, next) => ({ ...next });",
   "react-native/Libraries/Renderer/shims/ReactNativeViewConfigRegistry": "export const get = (name) => ({ uiViewClassName: name, validAttributes: {}, bubblingEventTypes: {}, directEventTypes: {} });",
   "react-native/Libraries/Utilities/Platform": "export default { OS: 'android', Version: 34 };",
+  "react-native/Libraries/Utilities/Appearance": appearanceStub,
   "react-native/Libraries/Utilities/BackHandler": "export default { addEventListener: () => ({ remove() {} }) };",
   "react-native/Libraries/Linking/Linking": "export default { addEventListener: () => ({ remove() {} }), getInitialURL: () => Promise.resolve(globalThis.__initialURL ?? null) };",
   "react-native/Libraries/Image/resolveAssetSource": "export default () => null;",

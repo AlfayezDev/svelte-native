@@ -18,4 +18,7 @@ const deviceEventEmitter = () => (require("react-native/Libraries/EventEmitter/R
 type PixelRatio = { get(): number; roundToNearestPixel(size: number): number };
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- an `<hr>` is the first to ask
 const pixelRatio = () => (require("react-native/Libraries/Utilities/PixelRatio") as { default: PixelRatio }).default;
-export { resolveAssetSource, Platform, turboModuleRegistry, deviceEventEmitter, pixelRatio };
+type Appearance = { getColorScheme(): string | null | undefined; addChangeListener(listener: () => void): { remove(): void } };
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the first text with no colour of its own asks (`host.ts`, `withInk`)
+const appearance = () => require("react-native/Libraries/Utilities/Appearance") as Appearance;
+export { resolveAssetSource, Platform, turboModuleRegistry, deviceEventEmitter, pixelRatio, appearance };

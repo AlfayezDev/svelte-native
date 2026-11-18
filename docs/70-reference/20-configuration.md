@@ -144,12 +144,15 @@ The library ships type declarations, and an app's type checker (`tsc`, `svelte-c
 		"slug": "my-app",
 		"scheme": "my-app",
 		"version": "1.0.0",
+		"userInterfaceStyle": "automatic",
 		"android": { "package": "dev.example.myapp" },
 		"ios": { "bundleIdentifier": "dev.example.myapp" },
 		"plugins": ["@alfayez/svelte-native"]
 	}
 }
 ```
+
+`"userInterfaceStyle": "automatic"` lets the app follow the system's light or dark mode; Expo's default, `"light"`, keeps it light. `init` writes it only in an `app.json` it creates. The plugin applies the style on Android as Expo does on iOS (`android.userInterfaceStyle` wins there), unless the app has `expo-system-ui`, which does it itself.
 
 The plugin is named by the package's own name: Expo loads the package's `app.plugin.js`. (`@alfayez/svelte-native/app.plugin` is that same file. `@alfayez/svelte-native/expo`, the plugin's path in 0.4.0-rc.6 and before, was removed in 0.4.0-rc.7 and no longer resolves: write the package's name in its place.) If your app is configured in code, `app.config.ts`, add it there. It takes options as a second element:
 

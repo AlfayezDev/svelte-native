@@ -10,8 +10,10 @@
   import { createNativeProps } from "../native-props.ts";
   import { resolveAssetSource } from "../fabric/deps-rn.ts";
   import { connectInsets, insets } from "../insets.svelte.ts";
+  import { colorScheme } from "../color-scheme.ts";
+  import { backgroundOf, screenBackground } from "../system-colors.ts";
   import {
-    HEADER_CONTEXT, IN_STACK_CONTEXT, PANE_CONTEXT, SCREEN_CONTEXT, SLOT_CENTER, SLOT_LEFT, SLOT_RIGHT, SLOT_SEARCH, SLOT_TOOLBAR_CENTER, TOOLBAR_CONTEXT,
+    BACKGROUND_CONTEXT, HEADER_CONTEXT, IN_STACK_CONTEXT, PANE_CONTEXT, SCREEN_CONTEXT, SLOT_CENTER, SLOT_LEFT, SLOT_RIGHT, SLOT_SEARCH, SLOT_TOOLBAR_CENTER, TOOLBAR_CONTEXT,
     headerHeight, mergeScreenOptions, toolbarHeight,
     type DetentChange, type HeaderMetrics, type NavigationPlatform, type ScreenOptions, type TabIconSource,
   } from "../fabric/navigation.ts";
@@ -147,6 +149,13 @@
     onCancel: cancel,
   }));
   const contentProps = $derived(resolveContent({ style: { flex: 1 } }));
+  // A background under the screen's class and style (a `<Stack style>` gives every screen of its stack one): the one of the screen this one is in (a tab's screens look as
+  // the tab bar's screen does), else the system's. React Native leaves a screen transparent, so a pushed screen showed the one below it through itself while it slid in.
+  // A transparent modal keeps none (`system-colors.ts`).
+  const outerBackground = getContext<(() => string | undefined) | undefined>(BACKGROUND_CONTEXT);
+  const background = $derived(presentation === "transparentModal" ? undefined : outerBackground?.() ?? screenBackground(colorScheme.current, Platform.OS, presentation));
+  const screenBase = $derived(background === undefined ? undefined : { backgroundColor: background });
+  setContext(BACKGROUND_CONTEXT, () => backgroundOf(screenProps.style) ?? background ?? outerBackground?.());
   const toolbarProps = $derived(resolveToolbar({
     translucent: toolbar?.translucent,
     tint: toolbar?.tint,
@@ -161,7 +170,7 @@
 </script>
 
 {#snippet screen()}
-  <native-screen nativeProps={screenProps}>
+  <native-screen nativeProps={screenProps} nativeBase={screenBase}>
     {#if shown}
       <native-header nativeProps={headerProps}>
         {#if options.headerLeft}<native-header-left>{@render options.headerLeft()}</native-header-left>{/if}

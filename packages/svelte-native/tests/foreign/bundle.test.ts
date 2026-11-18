@@ -72,6 +72,8 @@ test("the foreign entry bundles no React and none of the libraries' JavaScript, 
     "react-native/Libraries/StyleSheet/processColor",
     "react-native/Libraries/TurboModule/TurboModuleRegistry",
     "react-native/Libraries/Utilities/Platform",
+    // The light or dark mode of a text with no colour of its own (`withInk` in `host.ts`), required with the first one.
+    "react-native/Libraries/Utilities/Appearance",
     // The hairline of an `<hr>` (`nativeBase="hairline"`, `hairline()` in `host.ts`), required with the first one.
     "react-native/Libraries/Utilities/PixelRatio",
   ]);

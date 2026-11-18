@@ -94,6 +94,10 @@ A release build doesn't use Metro. If you see this on one, it was built without 
 
 `expo prebuild` deletes `android/` and `ios/` and writes them again, so when git has uncommitted changes it asks _Continue with uncommitted changes?_ first. Answer yes, or commit first. It only touches the generated folders, never your own files.
 
+## Expo asks to install @types/react
+
+_It looks like you're trying to use TypeScript but don't have the required dependencies installed._ This is Expo's TypeScript setup, which is for React apps. Svelte Native's commands (`pnpm android`, `pnpm ios`, `pnpm native`) turn it off, so the question only comes up when you run Expo yourself (`pnpm exec expo start`) or with Svelte Native 0.4.0-rc.9 or older. Answering no stops the command. Either answer yes, which adds `@types/react` to your dev dependencies, or skip the question with `EXPO_NO_TYPESCRIPT_SETUP=1`.
+
 ## The Android build fails
 
 Gradle needs a JDK 17 and the Android SDK packages the project asks for: platform 36, build-tools 36.0.0, NDK 27.1.12297006 and CMake 3.22.1. Install them from Android Studio's SDK Manager, set `ANDROID_HOME` to the SDK, and set `JAVA_HOME` to a JDK 17 if your default Java is another version. The first build downloads a lot.

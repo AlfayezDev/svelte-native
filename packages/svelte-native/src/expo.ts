@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { withAndroidManifest, withAppBuildGradle, withAppDelegate, withDangerousMod, withMainActivity, withMainApplication, withPodfile, withSettingsGradle, type ConfigPlugin } from "expo/config-plugins";
+import { withAndroidManifest, withAppBuildGradle, withAppDelegate, withDangerousMod, withGradleProperties, withMainActivity, withMainApplication, withPodfile, withSettingsGradle, type AndroidConfig, type ConfigPlugin } from "expo/config-plugins";
 import { syncNative } from "./build.ts";
 import { withCapabilities, type Capabilities } from "./capabilities.ts";
 export type { Capabilities, LocationCapability, PushCapability } from "./capabilities.ts";
@@ -61,6 +61,13 @@ export type SvelteNativeOptions = {
    * it stands (a secret, an empty reason, two answers to one question) stops the prebuild (`capabilities.ts`).
    */
   capabilities?: Capabilities;
+  /**
+   * libsodium in `crypto` and in Node's `crypto` (react-native-quick-crypto, which the library carries: `vendor/react-native-quick-crypto`): the algorithms OpenSSL lacks (XSalsa20 and the other
+   * libsodium ciphers). It is the option of the same name that react-native-quick-crypto's own Expo plugin took, and an app that lists that plugin moves the option here, since the package is not
+   * the app's any more. Android: `sodiumEnabled=true` in `gradle.properties`, which links `io.github.ronickg:sodium`; iOS: `ENV['SODIUM_ENABLED'] = '1'` at the top of the Podfile, which makes
+   * the pod download libsodium's source (1.0.20) and compile it. Default `false`: neither platform has libsodium. The plugin owns the setting: it is written again, or removed, on every prebuild.
+   */
+  sodiumEnabled?: boolean;
 };
 
 /**
@@ -394,7 +401,7 @@ const podfileLinkEnd = "  # Svelte native: end of the library's own packages";
 
 /**
  * `Podfile`: the config command that `use_native_modules!` runs goes through the library's `ios-autolinking` (`autolinking.ts`), which adds the packages the library carries
- * (`vendored.ts`: the Nitro runtime and MMKV) to its output, with the podspecs of `vendor/` in the library's directory, so the app's package.json lists none of them. The block
+ * (`vendored.ts`: the Nitro runtime, MMKV, quick-crypto and the base64 module it asks for, and the `Intl` module) to its output, with the podspecs of `vendor/` in the library's directory, so the app's package.json lists none of them. The block
  * goes in front of the line that reads the config, after anything that already extended the command; stripped and written again on every prebuild, so an update of the
  * library moves it. With `EXPO_USE_COMMUNITY_AUTOLINKING=1` the command underneath is the community CLI's, and its output gets the same entries.
  */
@@ -409,6 +416,27 @@ export function applyPodfileVendoredLinking(contents: string): string {
     podfileLinkEnd,
   ].join("\n");
   return `${stripped.slice(0, anchor.index)}${block}\n${stripped.slice(anchor.index)}`;
+}
+
+const podfileSodiumBegin = "# Svelte native: libsodium for react-native-quick-crypto (generated, do not edit)";
+const podfileSodiumEnd = "# Svelte native: end of libsodium";
+
+/**
+ * `Podfile`: `ENV['SODIUM_ENABLED'] = '1'` before anything else, which the podspec of react-native-quick-crypto reads when CocoaPods evaluates it (what quick-crypto's own Expo plugin wrote
+ * at the top of the Podfile when `sodiumEnabled` was its option). Stripped and written again on every prebuild, so a project prebuilt with the option and then without it loses the line.
+ */
+export function applyPodfileSodium(contents: string, enabled: boolean): string {
+  const stripped = contents.replace(new RegExp(`(^|\\n)${escapeRegExp(podfileSodiumBegin)}[\\s\\S]*?${escapeRegExp(podfileSodiumEnd)}(?:\\n|$)`), "$1");
+  return enabled ? `${[podfileSodiumBegin, "ENV['SODIUM_ENABLED'] = '1'", podfileSodiumEnd].join("\n")}\n${stripped}` : stripped;
+}
+
+/**
+ * `gradle.properties`: `sodiumEnabled=true`, which the Gradle project of react-native-quick-crypto reads (`hasProperty('sodiumEnabled')`: it passes `-DSODIUM_ENABLED` to CMake and adds
+ * `io.github.ronickg:sodium`). Without the option the property is removed, so the setting is the plugin's alone and one directory can be prebuilt with and without it.
+ */
+export function applyGradleSodium(properties: AndroidConfig.Properties.PropertiesItem[], enabled: boolean): AndroidConfig.Properties.PropertiesItem[] {
+  const others = properties.filter((item) => !(item.type === "property" && item.key === "sodiumEnabled"));
+  return enabled ? [...others, { type: "property", key: "sodiumEnabled", value: "true" }] : others;
 }
 
 /** Kotlin source for the package that replaces `MainReactPackage` in headless builds. */
@@ -546,6 +574,8 @@ export function assertNoVendoredOriginals(projectRoot: string): void {
 }
 
 const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined> = (config, options) => {
+  if (options?.sodiumEnabled !== undefined && typeof options.sodiumEnabled !== "boolean") throw new Error(`Svelte native: sodiumEnabled must be true or false, not ${JSON.stringify(options.sodiumEnabled)}`);
+  const sodium = options?.sodiumEnabled === true;
   config = leaveOutOfAutoPlugins(config, options?.autolinkingExclude ?? []);
   config = withCapabilities(config, options?.capabilities, { excluded: options?.autolinkingExclude });
   if (options?.remote) config = withRemoteHost(config, options.remote);
@@ -586,7 +616,11 @@ const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined> = (config,
     return config;
   });
   config = withPodfile(config, (config) => {
-    config.modResults.contents = applyPodfileVendoredLinking(applyPodfileAutolinkingExclude(config.modResults.contents, options?.autolinkingExclude ?? []));
+    config.modResults.contents = applyPodfileSodium(applyPodfileVendoredLinking(applyPodfileAutolinkingExclude(config.modResults.contents, options?.autolinkingExclude ?? [])), sodium);
+    return config;
+  });
+  config = withGradleProperties(config, (config) => {
+    config.modResults = applyGradleSodium(config.modResults, sodium);
     return config;
   });
   if (options?.androidProfileable) {

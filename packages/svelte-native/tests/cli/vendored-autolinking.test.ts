@@ -11,10 +11,12 @@ import { createProject } from "../support/project.ts";
  * The packages the library carries (`src/vendored.ts`, VENDORING.md) in React Native's autolinking config. The reference entries in `fixtures/vendored-autolinking/` are what Expo's
  * own `react-native-config` printed for the two packages installed in `apps/example` (SDK 57: `node --no-warnings --eval "require('expo/bin/autolinking')" expo-modules-autolinking
  * react-native-config --json --platform android|ios`, 18 November 2026, before they were vendored), with the package's directory written as `$PACKAGE`: the entries the library adds
- * must be those, with the directory of the copy.
+ * must be those, with the directory of the copy. One file per batch of packages and platform: `expo-sdk57-<platform>.json` (the pilot's two), `expo-sdk57-crypto-<platform>.json`
+ * (react-native-quick-crypto, react-native-quick-base64 and hermes-intl, captured from the same app with all three installed).
  */
 const fixtures = resolve(import.meta.dirname, "fixtures/vendored-autolinking");
-const reference = (platform: "android" | "ios"): Record<string, unknown> => JSON.parse(readFileSync(join(fixtures, `expo-sdk57-${platform}.json`), "utf8"));
+const reference = (platform: "android" | "ios"): Record<string, unknown> =>
+  Object.assign({}, ...readdirSync(fixtures).filter((file) => new RegExp(`^expo-sdk57-(?:[a-z0-9]+-)*${platform}\\.json$`).test(file)).sort().map((file) => JSON.parse(readFileSync(join(fixtures, file), "utf8")) as Record<string, unknown>));
 const withRoot = (value: unknown, root: string): unknown => JSON.parse(JSON.stringify(value).replaceAll("$PACKAGE", root.replaceAll("\\", "\\\\")));
 
 const projects: { remove(): void }[] = [];
@@ -32,7 +34,8 @@ function installed(name: string, platform: "android" | "ios", root: string) {
   return withRoot(entry, root) as { root: string; name: string; platforms: Record<string, unknown> };
 }
 
-const other = (platform: "android" | "ios") => ({ root: "/app/node_modules/react-native-quick-base64", name: "react-native-quick-base64", platforms: { [platform]: { sourceDir: "/app/node_modules/react-native-quick-base64/android" } } });
+// A package that is not vendored, found in the app's node_modules.
+const other = (platform: "android" | "ios") => ({ root: "/app/node_modules/react-native-get-random-values", name: "react-native-get-random-values", platforms: { [platform]: { sourceDir: "/app/node_modules/react-native-get-random-values/android" } } });
 
 describe("the entries the library adds are the ones Expo's autolinking prints for the installed packages", () => {
   for (const platform of ["android", "ios"] as const) {
@@ -80,7 +83,7 @@ describe("the entries the library adds are the ones Expo's autolinking prints fo
   });
 
   test("the list is what vendor/ holds, and what the library no longer asks an app to install", () => {
-    expect(vendoredNames).toEqual(["react-native-nitro-modules", "react-native-mmkv"]);
+    expect(vendoredNames).toEqual(expect.arrayContaining(["react-native-nitro-modules", "react-native-mmkv"]));
     expect(readdirSync(resolve(import.meta.dirname, "../../vendor")).sort()).toEqual([...vendoredNames].sort());
     const manifest = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../package.json"), "utf8")) as { peerDependencies: Record<string, string>; devDependencies: Record<string, string> };
     for (const name of vendoredNames) expect([name, name in manifest.peerDependencies, name in manifest.devDependencies]).toEqual([name, false, false]);
@@ -139,14 +142,14 @@ describe("the registry can say what the next packages' entries have that the pil
 describe("linkVendored", () => {
   test("adds an entry for each package, by name, beside the others, and does not change its input", () => {
     for (const platform of ["android", "ios"] as const) {
-      const config = { root: app(), dependencies: { zeta: { root: "/z", name: "zeta", platforms: {} }, "react-native-quick-base64": other(platform), alpha: { root: "/a", name: "alpha", platforms: {} } }, project: { [platform]: { sourceDir: "/app" } } };
+      const config = { root: app(), dependencies: { zeta: { root: "/z", name: "zeta", platforms: {} }, "react-native-get-random-values": other(platform), alpha: { root: "/a", name: "alpha", platforms: {} } }, project: { [platform]: { sourceDir: "/app" } } };
       const before = JSON.stringify(config);
       const linked = linkVendored(config, platform);
       expect(JSON.stringify(config)).toBe(before);
-      expect(Object.keys(linked.dependencies)).toEqual(["alpha", "react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64", "zeta"]);
+      expect(Object.keys(linked.dependencies)).toEqual(["alpha", "react-native-get-random-values", ...vendoredNames, "zeta"].sort());
       for (const vendored of vendoredPackages) expect(linked.dependencies[vendored.name]).toEqual(vendoredDependency(vendored, platform) as never);
       expect(linked.dependencies.zeta).toEqual(config.dependencies.zeta);
-      expect(linked.dependencies["react-native-quick-base64"]).toEqual(config.dependencies["react-native-quick-base64"]);
+      expect(linked.dependencies["react-native-get-random-values"]).toEqual(config.dependencies["react-native-get-random-values"]);
       expect({ ...linked, dependencies: undefined }).toEqual({ ...config, dependencies: undefined });
       // Running it on its own output changes nothing.
       expect(linkVendored(linked, platform)).toEqual(linked);
@@ -154,14 +157,14 @@ describe("linkVendored", () => {
   });
 
   test("a config without dependencies gets the packages alone", () => {
-    expect(Object.keys(linkVendored({}, "android").dependencies ?? {})).toEqual(["react-native-mmkv", "react-native-nitro-modules"]);
+    expect(Object.keys(linkVendored({}, "android").dependencies ?? {})).toEqual([...vendoredNames].sort());
   });
 
   test("an original that autolinking found all the same (installed as a peer of another package, not the app's own) is replaced: the name, and so the Gradle project and the pod, stay", () => {
     for (const platform of ["android", "ios"] as const) {
       const root = app();
       const originals = Object.fromEntries(vendoredNames.map((name) => [name, installed(name, platform, `/app/node_modules/${name}`)]));
-      const linked = linkVendored({ root, dependencies: { ...originals, "react-native-quick-base64": other(platform) } }, platform);
+      const linked = linkVendored({ root, dependencies: { ...originals, "react-native-get-random-values": other(platform) } }, platform);
       for (const name of vendoredNames) {
         expect(linked.dependencies[name]?.root, name).toBe(vendoredRoot(name));
         expect(JSON.stringify(linked.dependencies[name]), name).not.toContain("/app/node_modules/");
@@ -215,7 +218,7 @@ describe("what the app lists", () => {
   test("the config plugin's check stops the prebuild with the message, for an app that lists one, and lets another through", () => {
     expect(() => assertNoVendoredOriginals(app({ "react-native-mmkv": "4.3.1" }))).toThrow(collisionMessage(["react-native-mmkv"]));
     expect(() => assertNoVendoredOriginals(app({ "react-native-nitro-modules": "0.35.10", "react-native-mmkv": "4.3.1" }))).toThrow("includes react-native-nitro-modules 0.35.10 and react-native-mmkv 4.3.1");
-    expect(() => assertNoVendoredOriginals(app({ "react-native-quick-crypto": "1.1.3", "react-native-mmkv-storage": "1.0.0" }))).not.toThrow();
+    expect(() => assertNoVendoredOriginals(app({ "react-native-get-random-values": "2.0.0", "react-native-mmkv-storage": "1.0.0" }))).not.toThrow();
   });
 });
 
@@ -260,10 +263,10 @@ describe("the commands", () => {
   for (const [name, cli] of [["svelte-native", sources], ["the shipped dist/node/cli.js (what settings.gradle and the Podfile run)", built]] as const) {
     describe.skipIf(!node)(name, () => {
       test("android-autolinking prints the config with the vendored packages linked from the library and the Nitro libraries deferred", () => {
-        const result = run(cli, "android-autolinking", ...printing({ root: app(), dependencies: { "react-native-quick-base64": other("android") }, project: { android: { packageName: "io.example.app" } } }));
+        const result = run(cli, "android-autolinking", ...printing({ root: app(), dependencies: { "react-native-get-random-values": other("android") }, project: { android: { packageName: "io.example.app" } } }));
         expect(result.exitCode).toBe(0);
         const printed = entries(result);
-        expect(Object.keys(printed.dependencies ?? {})).toEqual(["react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64"]);
+        expect(Object.keys(printed.dependencies ?? {})).toEqual(["react-native-get-random-values", ...vendoredNames].sort());
         const mmkv = printed.dependencies?.["react-native-mmkv"] as { root: string; platforms: { android: { sourceDir: string; packageInstance: string } } };
         expect(mmkv.root).toBe(vendoredRoot("react-native-mmkv"));
         expect(mmkv.platforms.android.sourceDir).toBe(join(vendoredRoot("react-native-mmkv"), "android"));
@@ -272,14 +275,14 @@ describe("the commands", () => {
       });
 
       test("ios-autolinking prints the config with the vendored packages' podspecs, and nothing else changed", () => {
-        const config = { root: app(), reactNativePath: "/app/node_modules/react-native", dependencies: { "react-native-quick-base64": other("ios") }, project: { ios: { sourceDir: "/app/ios" } } };
+        const config = { root: app(), reactNativePath: "/app/node_modules/react-native", dependencies: { "react-native-get-random-values": other("ios") }, project: { ios: { sourceDir: "/app/ios" } } };
         const result = run(cli, "ios-autolinking", ...printing(config));
         expect(result.exitCode).toBe(0);
         const printed = entries(result);
-        expect(Object.keys(printed.dependencies ?? {})).toEqual(["react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64"]);
+        expect(Object.keys(printed.dependencies ?? {})).toEqual(["react-native-get-random-values", ...vendoredNames].sort());
         expect(printed.dependencies?.["react-native-mmkv"]).toEqual(withRoot(reference("ios")["react-native-mmkv"], vendoredRoot("react-native-mmkv")) as never);
         expect(printed.dependencies?.["react-native-nitro-modules"]).toEqual(withRoot(reference("ios")["react-native-nitro-modules"], vendoredRoot("react-native-nitro-modules")) as never);
-        expect(printed.dependencies?.["react-native-quick-base64"]).toEqual(config.dependencies["react-native-quick-base64"] as never);
+        expect(printed.dependencies?.["react-native-get-random-values"]).toEqual(config.dependencies["react-native-get-random-values"] as never);
         expect({ ...printed, dependencies: undefined }).toEqual({ ...config, dependencies: undefined } as never);
       });
 

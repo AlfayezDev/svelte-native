@@ -28,6 +28,7 @@ import expo.modules.svelteengine.TextSpec
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import expo.modules.svelteappearance.isNight
 
 /** The row's geometry, `TOOLBAR_METRICS.android` of `fabric/navigation.ts`: Yoga lays the band out with the same numbers (SPEC.md, "Toolbar"). */
 private const val ITEM_DP = 48f
@@ -151,7 +152,7 @@ class EngineToolbarItem(context: Context) : EngineView(context) {
     invalidate()
   }
 
-  private fun itemColor(): Int = toolbar?.itemColor() ?: if (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES) 0xFFCAC4D0.toInt() else 0xFF49454F.toInt()
+  private fun itemColor(): Int = toolbar?.itemColor() ?: if (isNight(resources)) 0xFFCAC4D0.toInt() else 0xFF49454F.toInt()
 
   override fun getAccessibilityClassName(): CharSequence = "android.widget.Button"
 
@@ -368,7 +369,7 @@ class EngineToolbar(context: Context) : EngineView(context) {
   }
 
   private val dark: Boolean
-    get() = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+    get() = isNight(resources)
 
   /** Icons and labels: the tint, or the theme's on-surface-variant like an inactive tab. */
   internal fun itemColor() = if (hasTint) tint else if (dark) 0xFFCAC4D0.toInt() else 0xFF49454F.toInt()

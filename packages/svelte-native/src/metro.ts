@@ -20,7 +20,7 @@ const nativeSvelte = dirname(require.resolve("svelte/package.json"));
 /**
  * The libraries whose `react-native` import gets the lite shim: a module of a package that only needs the few names it takes from React Native (`TurboModuleRegistry`, `Platform`, ...)
  * and not the whole index. The origin is a file below the package in `node_modules` (the pattern), or in the library's own `vendor/` under that package's name (`isLiteOrigin`):
- * a vendored package gets the shim exactly when its name is in this list, as the installed one did.
+ * a vendored package gets the shim exactly when its name is in this list.
  */
 export const LITE_ORIGINS = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:hermes-intl|expo|expo-modules-core|expo-file-system|react-native-reanimated|react-native-worklets|react-native-is-edge-to-edge|expo-secure-store|expo-image-picker|expo-localization|expo-crypto|expo-constants|expo-font|expo-asset|expo-splash-screen|expo-status-bar|expo-system-ui|expo-keep-awake|expo-application|react-native-nitro-modules|react-native-mmkv|react-native-quick-crypto|react-native-quick-base64|react-native-svg)[\\/]/;
 
@@ -227,11 +227,11 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
   }
   const withoutExtension = (path: string) => path.replace(/\.[cm]?[jt]sx?$/, "");
   const nameOf = (path: string) => withoutExtension(path).slice(config.projectRoot.length + 1);
-  const writeStub = (name: string) => {
+  const writeStub = (name: string, source = stubSource(name, variant)) => {
     const file = join(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
     mkdirSync(stubDirectory, { recursive: true });
     write(join(stubDirectory, "_core.js"), stubCoreSource);
-    write(file, stubSource(name, variant));
+    write(file, source);
     return file;
   };
   const files = new Map<string, string>();
@@ -272,13 +272,7 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
   const libraries = options.libraries !== undefined ? withRequired(options.libraries) : "unknown" in read ? undefined : enabledLibraries(read.options)?.enabled;
   const libraryStubs = new Map<string, string>();
   if (libraries !== undefined) {
-    for (const name of libraryNames.filter((candidate) => !libraries.includes(candidate))) {
-      mkdirSync(stubDirectory, { recursive: true });
-      write(join(stubDirectory, "_core.js"), stubCoreSource);
-      const file = join(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
-      write(file, libraryStubSource(name));
-      libraryStubs.set(name, file);
-    }
+    for (const name of libraryNames.filter((candidate) => !libraries.includes(candidate))) libraryStubs.set(name, writeStub(name, libraryStubSource(name)));
   }
   const pushAbsent = sourceFile("push/absent.ts");
   const pushOff = (platform: string | null): boolean => pushOn !== undefined && (platform === "ios" ? !pushOn.ios : platform === "android" ? !pushOn.android : !pushOn.android && !pushOn.ios);

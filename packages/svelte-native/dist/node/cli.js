@@ -489,7 +489,7 @@ function unrefTimer(timer) {
   timer.unref?.();
 }
 function expoEnvironment(args2, extra = {}) {
-  const env = { ...process.env, EXPO_NO_TELEMETRY: "1", ...extra };
+  const env = { EXPO_NO_TYPESCRIPT_SETUP: "1", ...process.env, EXPO_NO_TELEMETRY: "1", ...extra };
   if (args2.includes("--localhost")) env.NODE_OPTIONS = `${env.NODE_OPTIONS ?? ""} --dns-result-order=ipv4first`.trim();
   return env;
 }

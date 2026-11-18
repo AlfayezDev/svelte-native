@@ -56,15 +56,14 @@ describe("the manifest holds nothing that only resolves inside this repository",
     expect([existsSync(join(root, "dist/node/expo.cjs")), existsSync(join(root, "src/expo.ts"))]).toEqual([true, true]);
   });
 
-  // React Native's autolinking links a native module only from the app's own dependencies, so an app installs these itself: they are required peers, at an exact version where several of
-  // them share a runtime, and not dependencies of the package. SvelteKit and Vite it may leave out. The Nitro runtime and MMKV are not among them: the library carries them (vendor/, below).
-  test("hermes-intl, the SVG library and the two the web's crypto is made of are required peers, not dependencies; SvelteKit and Vite are optional", () => {
-    for (const name of ["hermes-intl", "react-native-svg", "react-native-quick-crypto", "react-native-quick-base64"]) {
+  // React Native's autolinking links a native module only from the app's own dependencies, so an app installs the SVG library itself: a required peer, not a dependency of the package. SvelteKit and Vite it
+  // may leave out. The Nitro runtime, MMKV, quick-crypto, quick-base64 and hermes-intl are not among them: the library carries them (vendor/, below).
+  test("the SVG library is a required peer, not a dependency; SvelteKit and Vite are optional", () => {
+    for (const name of ["react-native-svg"]) {
       expect([name, typeof manifest.peerDependencies[name]]).toEqual([name, "string"]);
       expect([name, manifest.peerDependenciesMeta?.[name]]).toEqual([name, undefined]);
       expect([name, manifest.dependencies[name]]).toEqual([name, undefined]);
     }
-    for (const name of ["react-native-quick-crypto", "react-native-quick-base64"]) expect([name, manifest.peerDependencies[name]]).toEqual([name, expect.stringMatching(/^\d+\.\d+\.\d+$/)]);
     expect(manifest.peerDependenciesMeta?.["@sveltejs/kit"]).toEqual({ optional: true });
     expect(manifest.peerDependenciesMeta?.vite).toEqual({ optional: true });
   });

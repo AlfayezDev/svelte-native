@@ -50,9 +50,9 @@ describe("init in a fresh sv project", () => {
     // react-native-svg is a required peer (the main entry exports its components), so init installs it, at the version the peer names.
     expect(manifest.dependencies["react-native-svg"]).toBe(peerRange("react-native-svg"));
     expect(appDependencies["react-native-svg"]).toBe(peerRange("react-native-svg"));
-    // `crypto` is made of react-native-quick-crypto, which asks for a base64 module: required peers too, installed at the versions the peers name. `localStorage` (MMKV) and the Nitro runtime
-    // they share are in the library itself (vendor/, VENDORING.md): init installs neither, and an app that lists one is refused.
-    for (const name of ["react-native-quick-crypto", "react-native-quick-base64"]) expect([name, manifest.dependencies[name]]).toEqual([name, peerRange(name)]);
+    // `crypto` (react-native-quick-crypto, and the base64 module it asks for), `Intl` (hermes-intl) and `localStorage` (MMKV, on the Nitro runtime they share) are in the library itself (vendor/,
+    // VENDORING.md): init installs none of them, and an app that lists one is refused.
+    for (const name of ["react-native-quick-crypto", "react-native-quick-base64", "hermes-intl"]) expect([name, manifest.dependencies[name], appDependencies[name]]).toEqual([name, undefined, undefined]);
     for (const name of ["react-native-nitro-modules", "react-native-mmkv"]) expect([name, manifest.dependencies[name], appDependencies[name]]).toEqual([name, undefined, undefined]);
     // The SvelteKit sv installed is pinned to a version the library has a patch for, exactly.
     const kitVersions = patchFiles().filter((patch) => patch.package === "@sveltejs/kit").map((patch) => patch.version);

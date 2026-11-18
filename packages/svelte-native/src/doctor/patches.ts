@@ -2,7 +2,7 @@ import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { packageRoot } from "../package-root.ts";
 import type { Reader } from "./resolve.ts";
-import { expoModulesCoreProblems, kitProblems, lottieProblems, mapsProblems, pdfProblems, reanimatedProblems, rnghProblems, videoProblems, workletsProblems } from "./shapes.ts";
+import { expoModulesCoreProblems, kitProblems, lottieProblems, mapsProblems, pdfProblems, reanimatedProblems, riveProblems, rnghProblems, videoProblems, workletsProblems } from "./shapes.ts";
 
 /** The directory of the library's patch files, in the repository and in an app's `node_modules` alike. */
 export const patchesDirectory = resolve(packageRoot, "patches");
@@ -31,6 +31,7 @@ export const patchSpecs: readonly PatchSpec[] = [
   { package: "react-native-reanimated", vendored: true, does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, and Worklets is the copy beside it", inspect: reanimatedProblems },
   { package: "react-native-video", vendored: true, does: "only progress and bandwidth events coalesce; every other video event is delivered (Android)", inspect: videoProblems },
   { package: "react-native-worklets", vendored: true, does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems },
+  { package: "rive-react-native", vendored: true, does: "the Rive view sends its events through the event dispatcher, not the old event emitter that a bridgeless app reports for every event (Android)", inspect: riveProblems },
 ];
 
 export type PatchFile = { package: string; version: string; file: string; path: string };

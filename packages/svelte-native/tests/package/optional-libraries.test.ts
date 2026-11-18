@@ -77,7 +77,7 @@ describe("the copies", () => {
 describe("the patches", () => {
   test("each patch of vendor-patches/ is listed in its copy's VENDOR.md with its sha256, and its shape is in the copy (what the doctor looks for)", () => {
     const patched = readdirSync(join(root, "vendor-patches"));
-    expect(patched.sort()).toEqual(["lottie-react-native", "react-native-gesture-handler", "react-native-maps", "react-native-pdf", "react-native-reanimated", "react-native-video", "react-native-worklets"]);
+    expect(patched.sort()).toEqual(["lottie-react-native", "react-native-gesture-handler", "react-native-maps", "react-native-pdf", "react-native-reanimated", "react-native-video", "react-native-worklets", "rive-react-native"]);
     for (const name of patched) {
       const files = readdirSync(join(root, "vendor-patches", name)).filter((file) => file.endsWith(".patch")).sort();
       expect(files.length).toBeGreaterThan(0);
@@ -145,7 +145,7 @@ describe("what is packed", () => {
         if (vendored.optional.plugin !== undefined) expect([vendored.name, listed.some((path) => path.startsWith(`${prefix}plugin/build/`))]).toEqual([vendored.name, true]);
       }
     }
-    expect(listed.filter((path) => path.startsWith("vendor-patches/")).length).toBe(10);
+    expect(listed.filter((path) => path.startsWith("vendor-patches/")).length).toBe(11);
     // The prebuilt AAR the Android build of an Expo module uses.
     expect(listed).toContain("vendor/expo-image/local-maven-repo/expo/modules/image/expo.modules.image/57.0.5/expo.modules.image-57.0.5.aar");
     // Left out of the pack as native build output, never the JavaScript below build/.

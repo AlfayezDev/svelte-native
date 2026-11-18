@@ -205,3 +205,10 @@ export function expoModulesCoreProblems(read: Reader, patch: string): string[] {
     ...inFile(read, "src/NativeViewManagerAdapter.native.tsx", [["imports the native component registry when it loads", adapterLoadsRegistryLazily]], true),
   ];
 }
+
+export function riveProblems(read: Reader): string[] {
+  return inFile(read, "android/src/main/java/com/rivereactnative/RiveReactNativeView.kt", [
+    ["an event still goes through the old architecture's event emitter (a soft exception for every event in a bridgeless app)", (code) => !code.includes("RCTEventEmitter")],
+    ["the view's events are not sent through the event dispatcher", (code) => code.includes("getEventDispatcherForReactTag")],
+  ]);
+}

@@ -14,4 +14,4 @@ Nothing: the files here are the tarball's.
 
 ## Local changes
 
-None.
+- `vendor-patches/rive-react-native/0001-events-through-the-event-dispatcher.patch` (sha256 `d5b21ad61325be96ca5457102abbdd4235ac116add12b58e3604128295192309`), applied with `patch -p1` after the unpack

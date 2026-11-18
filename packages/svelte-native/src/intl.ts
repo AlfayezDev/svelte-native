@@ -1,5 +1,5 @@
 /**
- * `hermes-intl` adds the Intl constructors Hermes lacks (PluralRules, RelativeTimeFormat, ListFormat, Locale) from a
+ * `hermes-intl` (part of the library: `vendor/hermes-intl`) adds the Intl constructors Hermes lacks (PluralRules, RelativeTimeFormat, ListFormat, Locale) from a
  * native ICU4X module. Its install costs 55–70 ms on a mid-range phone (a synchronous `I18nManager.getConstants` call
  * plus the ICU data), so it waits for the first access to one of those constructors: until then each name is a
  * configurable getter that performs the install and hands back the real constructor.
@@ -16,7 +16,7 @@ function install(): void {
   const table = Intl as unknown as IntlTable;
   for (const name of NAMES) if (Object.getOwnPropertyDescriptor(table, name)?.get) delete table[name];
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require("hermes-intl");
+  require("#vendor/hermes-intl");
   mark("intl");
 }
 

@@ -110,8 +110,8 @@ export function hostPlugin(options: HostPluginOptions = {}): Plugin {
   return {
     name: "svelte-native-test-host",
     setup(builder) {
-      // The vendored packages (`#vendor/<name>`, `vendor/`) are react-native-* packages the library carries: stood in for like the installed ones were, so their React Native imports are not bundled.
-      builder.onResolve({ filter: /^(react-native|expo-modules-core|#vendor\/)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
+      // The vendored packages (`#vendor/<name>`, `vendor/`) are react-native-* packages the library carries: stood in for like the installed ones were, so their React Native imports are not bundled. `expo-video/…` is what `createVideoPlayer` requires by name, and `expo-constants` is what the foreign components read the build's libraries from, when a component is made (`fabric/foreign-libraries.ts`): empty unless a test gives it a stub.
+      builder.onResolve({ filter: /^(react-native|expo-modules-core|#vendor\/|expo-video\/|expo-constants$)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
       if (named.length) builder.onResolve({ filter: new RegExp(`^(${named.map(escapeRegExp).join("|")})$`) }, (args) => ({ path: args.path, namespace: "stub" }));
       builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: options.openStubs ? "module.exports = new Proxy({}, { get: () => () => {} });" : stubs[args.path] ?? "export {};", loader: "js", resolveDir: tests }));
       if (viewConfigs === "pass-through") builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: resolve(import.meta.dirname, "view-configs-stub.ts") }));

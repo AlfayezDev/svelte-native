@@ -288,20 +288,15 @@ describe("init in a project that already has things", () => {
     }
   });
 
-  test("a view library listed at the patch's version gets its patch; at another version it is a warning and nothing is declared", () => {
-    const lottie = patchFiles().find((patch) => patch.package === "lottie-react-native");
-    expect(lottie).toBeDefined();
-    const root = project((dir) => {
-      const manifest = readJson(dir, "package.json");
-      manifest.dependencies["lottie-react-native"] = lottie?.version;
-      manifest.dependencies["react-native-maps"] = "1.0.0";
-      writeFileSync(join(dir, "package.json"), `${JSON.stringify(manifest, null, "\t")}\n`);
-    });
-    const result = run(root);
+  test("the view libraries the package carries have no patch for the app to declare: they are patched in the library's own copies (vendor-patches/)", () => {
+    const root = project();
+    run(root);
     const yaml = readFileSync(join(root, "pnpm-workspace.yaml"), "utf8");
-    expect(yaml).toContain(`lottie-react-native@${lottie?.version}`);
-    expect(yaml).not.toContain("react-native-maps");
-    expect(result.out).toContain("react-native-maps: package.json asks for 1.0.0");
+    for (const name of ["lottie-react-native", "react-native-maps", "react-native-pdf", "react-native-video"]) {
+      expect([name, yaml.includes(name)]).toEqual([name, false]);
+      expect(patchFiles().some((patch) => patch.package === name)).toBe(false);
+    }
+    expect(readdirSync(join(root, "patches/svelte-native")).filter((file) => /lottie|maps|pdf|video/.test(file))).toEqual([]);
   });
 
   test("a project on another package manager than pnpm is refused before anything is written", () => {

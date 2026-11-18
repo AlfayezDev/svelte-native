@@ -8,6 +8,7 @@ import { pushChecks } from "./push.ts";
 import { nodeAdvice, requirements } from "./requirements.ts";
 import { findPackage, readerFor, readJson, type InstalledPackage } from "./resolve.ts";
 import { satisfies } from "./semver.ts";
+import { appPluginOptions, checkLibraries, LibrariesConfigError } from "../libraries.ts";
 import { collisionMessage, declaredVendored, vendoredPackages, vendoredRoot } from "../vendored.ts";
 
 export type Status = "pass" | "fail" | "skip" | "unknown";
@@ -167,12 +168,14 @@ function autolinkedPeers(context: Context, peers: Record<string, unknown>, appPa
 
 /**
  * The packages the library carries (`vendored.ts`): present in the installed library at the version it pins, and not among the app's own dependencies. An app that lists one
- * links it twice (its own native module beside the library's copy), which the config plugin and the autolinking command refuse as well.
+ * links it twice (its own native module beside the library's copy), which the config plugin and the autolinking command refuse as well. The optional libraries (`libraries.ts`) are
+ * summed up in one line when all is well, and `libraries` of the app's config is read and reported: the libraries that are on, or why the option cannot be read.
  */
 function vendored(context: Context, libraryName: string): Check[] {
   const declared = new Set(declaredVendored(context.appRoot));
   const checks: Check[] = [];
-  for (const { name, version } of vendoredPackages) {
+  const optionalCopies: string[] = [];
+  for (const { name, version, optional } of vendoredPackages) {
     const directory = vendoredRoot(name, context.packageRoot);
     const copy = readJson(join(directory, "package.json"));
     if (copy === undefined || copy.version !== version) {
@@ -184,9 +187,45 @@ function vendored(context: Context, libraryName: string): Check[] {
       });
     } else if (declared.has(name)) {
       checks.push({ group: "vendored packages", status: "fail", message: `${name} is a dependency of the app (${join(context.appRoot, "package.json")}): ${collisionMessage([name], libraryName)}`, fix: `pnpm remove ${name}, then npx expo prebuild` });
-    } else {
+    } else if (optional === undefined) {
       checks.push({ group: "vendored packages", status: "pass", message: `${name} ${version} comes with ${libraryName} (vendor/${name}); the app does not list it` });
-    }
+    } else optionalCopies.push(name);
+  }
+  if (optionalCopies.length > 0) checks.push({ group: "vendored packages", status: "pass", message: `the ${optionalCopies.length} optional libraries come with ${libraryName} (vendor/), at the versions it pins; the app lists none of them` });
+  checks.push(libraries(context, libraryName));
+  return checks;
+}
+
+/** The libraries the app's config turns on (`libraries` of the plugin options): which they are, or what is wrong with the option or why it could not be read. */
+function libraries(context: Context, libraryName: string): Check {
+  const group = "vendored packages";
+  const read = appPluginOptions(context.appRoot, join(context.appRoot, "package.json"));
+  if (read === undefined) return { group, status: "skip", message: "could not read the app's config (expo/config), so the optional libraries it turns on were not checked (`npx expo config` shows the config)" };
+  try {
+    const { enabled, listed } = checkLibraries(read.options?.libraries);
+    if (enabled.length === 0) return { group, status: "pass", message: "no optional library is turned on (libraries): none of their native code is in the app" };
+    const implied = enabled.filter((name) => !listed.has(name));
+    return { group, status: "pass", message: `libraries turned on: ${enabled.join(", ")}${implied.length > 0 ? ` (${implied.join(", ")}: needed by another)` : ""}; the others are not linked, and Metro stubs them` };
+  } catch (error) {
+    if (!(error instanceof LibrariesConfigError)) throw error;
+    return { group, status: "fail", message: error.message, fix: `fix \`libraries\` in the ${libraryName} plugin's options (app.json or app.config.*), then prebuild again` };
+  }
+}
+
+/**
+ * The patches the library applied to its own copies (`vendor/<name>`, `vendor-patches/`): the shape each patch leaves is looked for in the copy, so an installed library that is not
+ * the one that was built (a stale copy, a package manager that rewrote a file) is told apart. The app has nothing to do about a failure but install the library again.
+ */
+function vendoredPatches(context: Context, libraryName: string): Check[] {
+  const checks: Check[] = [];
+  for (const spec of patchSpecs) {
+    if (!spec.vendored) continue;
+    const directory = vendoredRoot(spec.package, context.packageRoot);
+    if (readJson(join(directory, "package.json")) === undefined) continue;
+    const problems = spec.inspect(readerFor(directory), "");
+    checks.push(problems.length === 0
+      ? { group: "vendored packages", status: "pass", message: `${spec.package}: ${spec.does} (in ${libraryName}'s copy)` }
+      : { group: "vendored packages", status: "fail", message: `${spec.package} in ${libraryName}'s copy is not patched: ${spec.does}`, details: problems.slice(0, 4), fix: `install ${libraryName} again: the copy in vendor/${spec.package} is not the one the library was built with` });
   }
   return checks;
 }
@@ -278,6 +317,7 @@ export function runChecks(context: Context): Check[] {
     ...autolinkedPeers(context, peers, appPackage),
     ...expoRuntime(context),
     ...vendored(context, name),
+    ...vendoredPatches(context, name),
     ...patches(context, name, optional),
     library(context, name, text(own.version) ?? "?", appPackage),
     ...integration(context, name),

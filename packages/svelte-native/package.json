@@ -117,6 +117,10 @@
     "#vendor/react-native-nitro-modules": {
       "types": "./vendor/react-native-nitro-modules/lib/typescript/index.d.ts",
       "default": "./vendor/react-native-nitro-modules/src/index.ts"
+    },
+    "#vendor/expo-video/*": {
+      "types": "./vendor/expo-video/*.d.ts",
+      "default": "./vendor/expo-video/*.js"
     }
   },
   "bin": {

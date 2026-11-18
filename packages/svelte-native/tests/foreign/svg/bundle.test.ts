@@ -91,8 +91,10 @@ test("the svg entry bundles no React, and of the library only the extractors of 
 
 test("React Native is reached by deep paths only: the lite shim's modules and the converters the host already uses", async () => {
   const { externals } = await bundleSvgEntry();
-  expect(externals.filter((path) => !path.startsWith("react-native/Libraries/")), "imports that are not React Native deep paths").toEqual([]);
+  // `expo-constants` is read (lazily) for the libraries the build has, when a foreign component is made (`fabric/foreign-libraries.ts`).
+  expect(externals.filter((path) => !path.startsWith("react-native/Libraries/") && path !== "expo-constants"), "imports that are not React Native deep paths").toEqual([]);
   expect(externals).toEqual([
+    "expo-constants",
     // What the lite shim imports (`react-native-lite.ts`): seven modules it evaluates at once and those it requires on first use. Its `View`, `Text` and
     // `findNodeHandle` are placeholders, so no component of React Native is among them; `PanResponder` is the one export the library's `extractResponder` needs.
     "react-native/Libraries/AppState/AppState",

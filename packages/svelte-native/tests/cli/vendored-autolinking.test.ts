@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { type AutolinkingConfig, deferNitroLibraries } from "../../src/autolinking.ts";
-import { collisionMessage, declaredVendored, linkVendored, VendoredCollision, type VendoredPackage, vendoredDependency, vendoredNames, vendoredPackages, vendoredRoot } from "../../src/vendored.ts";
+import { alwaysLinkedPackages, collisionMessage, declaredVendored, linkVendored, optionalPackages, VendoredCollision, type VendoredPackage, vendoredDependency, vendoredNames, vendoredPackages, vendoredRoot } from "../../src/vendored.ts";
 import { withPlugins } from "@expo/config-plugins";
 import expoPlugin, { assertNoVendoredOriginals } from "../../src/expo.ts";
 import { createProject } from "../support/project.ts";
@@ -14,7 +14,10 @@ import { createProject } from "../support/project.ts";
  * must be those, with the directory of the copy.
  */
 const fixtures = resolve(import.meta.dirname, "fixtures/vendored-autolinking");
-const reference = (platform: "android" | "ios"): Record<string, unknown> => JSON.parse(readFileSync(join(fixtures, `expo-sdk57-${platform}.json`), "utf8"));
+const readFixture = (file: string): Record<string, unknown> => JSON.parse(readFileSync(join(fixtures, file), "utf8"));
+/** What Expo printed for the packages every app links, and for the optional libraries (`-optional`, the same command run on 18 November 2026 with them installed in `apps/example`). */
+const reference = (platform: "android" | "ios"): Record<string, unknown> => ({ ...readFixture(`expo-sdk57-${platform}.json`), ...readFixture(`expo-sdk57-${platform}-optional.json`) });
+const alwaysNames = alwaysLinkedPackages.map((vendored) => vendored.name);
 const withRoot = (value: unknown, root: string): unknown => JSON.parse(JSON.stringify(value).replaceAll("$PACKAGE", root.replaceAll("\\", "\\\\")));
 
 const projects: { remove(): void }[] = [];
@@ -37,8 +40,14 @@ const other = (platform: "android" | "ios") => ({ root: "/app/node_modules/react
 describe("the entries the library adds are the ones Expo's autolinking prints for the installed packages", () => {
   for (const platform of ["android", "ios"] as const) {
     test(`${platform}: the same fields in the same order, with the paths of vendor/<name>`, () => {
-      for (const vendored of vendoredPackages) {
+      // The Expo modules have no entry: Expo's own autolinker links them (`libraries.ts`). Every other package has the one Expo printed for the installed copy.
+      for (const vendored of vendoredPackages.filter((candidate) => candidate.optional?.kind !== "expo")) {
         const entry = vendoredDependency(vendored, platform);
+        if (reference(platform)[vendored.name] === undefined) {
+          // A package with no code for the platform (react-native-fast-shadow has no iOS) has no entry, as Expo printed none.
+          expect([vendored.name, entry]).toEqual([vendored.name, undefined]);
+          continue;
+        }
         const wanted = withRoot(reference(platform)[vendored.name], vendoredRoot(vendored.name));
         expect(entry, vendored.name).toEqual(wanted as typeof entry);
         // Same order too: the JSON is what the Gradle plugin and CocoaPods read, and a diff against the installed package's must be the paths alone.
@@ -51,20 +60,36 @@ describe("the entries the library adds are the ones Expo's autolinking prints fo
     for (const vendored of vendoredPackages) {
       const root = vendoredRoot(vendored.name);
       expect(root).toBe(resolve(import.meta.dirname, "../..", "vendor", vendored.name));
+      const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { name: string; version: string };
+      expect([manifest.name, manifest.version]).toEqual([vendored.name, vendored.version]);
+      if (vendored.optional?.kind === "expo") continue;
       const android = vendoredDependency(vendored, "android")?.platforms.android as { sourceDir: string };
-      const ios = vendoredDependency(vendored, "ios")?.platforms.ios as { podspecPath: string; version: string };
       expect(existsSync(join(android.sourceDir, "build.gradle"))).toBe(true);
+      const ios = vendoredDependency(vendored, "ios")?.platforms.ios as { podspecPath: string; version: string } | undefined;
+      if (ios === undefined) {
+        expect([vendored.name, readdirSync(root).filter((file) => file.endsWith(".podspec"))]).toEqual([vendored.name, []]);
+        continue;
+      }
       expect(existsSync(ios.podspecPath)).toBe(true);
       // The podspec is the only one at the package's root, which is how CocoaPods names the pod, and the version is the package's own.
       expect(readdirSync(root).filter((file) => file.endsWith(".podspec"))).toEqual([ios.podspecPath.slice(root.length + 1)]);
-      const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { name: string; version: string };
-      expect([manifest.name, manifest.version]).toEqual([vendored.name, vendored.version]);
       expect(ios.version).toBe(manifest.version);
     }
   });
 
+  test("an Expo module is found by Expo's autolinker from its expo-module.config.json, which names a class the copy has", () => {
+    const modules = optionalPackages.filter((vendored) => vendored.optional?.kind === "expo");
+    expect(modules.map((vendored) => vendored.name)).toEqual(["expo-blur", "expo-conic-gradient", "expo-image", "expo-linear-gradient", "expo-video"]);
+    for (const vendored of modules) {
+      expect([vendored.name, vendored.android, vendored.ios]).toEqual([vendored.name, undefined, undefined]);
+      const config = JSON.parse(readFileSync(join(vendoredRoot(vendored.name), "expo-module.config.json"), "utf8")) as { android: { modules: string[] }; apple: { modules: string[] } };
+      for (const classifier of config.android.modules) expect(existsSync(join(vendoredRoot(vendored.name), "android/src/main/java", `${classifier.replaceAll(".", "/")}.kt`)), classifier).toBe(true);
+      expect(config.apple.modules.length).toBeGreaterThan(0);
+    }
+  });
+
   test("the packages' Android classes are the ones named: a ReactPackage in the package's own Java or Kotlin, found where autolinking looks for it", () => {
-    for (const vendored of vendoredPackages) {
+    for (const vendored of vendoredPackages.filter((candidate) => candidate.optional?.kind !== "expo")) {
       const android = vendored.android;
       if (!android) throw new Error(`${vendored.name} has no Android entry`);
       const fqcn = /^import\s+([\w.]+);$/.exec(android.packageImportPath)?.[1];
@@ -80,8 +105,11 @@ describe("the entries the library adds are the ones Expo's autolinking prints fo
   });
 
   test("the list is what vendor/ holds, and what the library no longer asks an app to install", () => {
-    expect(vendoredNames).toEqual(["react-native-nitro-modules", "react-native-mmkv"]);
-    expect(readdirSync(resolve(import.meta.dirname, "../../vendor")).sort()).toEqual([...vendoredNames].sort());
+    expect(alwaysNames).toEqual(expect.arrayContaining(["react-native-nitro-modules", "react-native-mmkv"]));
+    // The directories of vendor/: a package, or a scope that holds packages.
+    const vendorDirectory = resolve(import.meta.dirname, "../../vendor");
+    const held = readdirSync(vendorDirectory).flatMap((entry) => (entry.startsWith("@") ? readdirSync(join(vendorDirectory, entry)).map((name) => `${entry}/${name}`) : [entry]));
+    expect(held.sort()).toEqual([...vendoredNames].sort());
     const manifest = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../package.json"), "utf8")) as { peerDependencies: Record<string, string>; devDependencies: Record<string, string> };
     for (const name of vendoredNames) expect([name, name in manifest.peerDependencies, name in manifest.devDependencies]).toEqual([name, false, false]);
   });
@@ -144,7 +172,7 @@ describe("linkVendored", () => {
       const linked = linkVendored(config, platform);
       expect(JSON.stringify(config)).toBe(before);
       expect(Object.keys(linked.dependencies)).toEqual(["alpha", "react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64", "zeta"]);
-      for (const vendored of vendoredPackages) expect(linked.dependencies[vendored.name]).toEqual(vendoredDependency(vendored, platform) as never);
+      for (const vendored of alwaysLinkedPackages) expect(linked.dependencies[vendored.name]).toEqual(vendoredDependency(vendored, platform) as never);
       expect(linked.dependencies.zeta).toEqual(config.dependencies.zeta);
       expect(linked.dependencies["react-native-quick-base64"]).toEqual(config.dependencies["react-native-quick-base64"]);
       expect({ ...linked, dependencies: undefined }).toEqual({ ...config, dependencies: undefined });
@@ -160,13 +188,13 @@ describe("linkVendored", () => {
   test("an original that autolinking found all the same (installed as a peer of another package, not the app's own) is replaced: the name, and so the Gradle project and the pod, stay", () => {
     for (const platform of ["android", "ios"] as const) {
       const root = app();
-      const originals = Object.fromEntries(vendoredNames.map((name) => [name, installed(name, platform, `/app/node_modules/${name}`)]));
+      const originals = Object.fromEntries(alwaysNames.map((name) => [name, installed(name, platform, `/app/node_modules/${name}`)]));
       const linked = linkVendored({ root, dependencies: { ...originals, "react-native-quick-base64": other(platform) } }, platform);
-      for (const name of vendoredNames) {
+      for (const name of alwaysNames) {
         expect(linked.dependencies[name]?.root, name).toBe(vendoredRoot(name));
         expect(JSON.stringify(linked.dependencies[name]), name).not.toContain("/app/node_modules/");
       }
-      expect(Object.keys(linked.dependencies).filter((name) => vendoredNames.includes(name)).sort()).toEqual([...vendoredNames].sort());
+      expect(Object.keys(linked.dependencies).filter((name) => vendoredNames.includes(name)).sort()).toEqual([...alwaysNames].sort());
     }
   });
 
@@ -241,7 +269,7 @@ describe("with the Nitro libraries deferred (Android)", () => {
 
   test("the same when the originals were in the config and got replaced", () => {
     const config = nitroPeers();
-    for (const name of vendoredNames) config.dependencies = { ...config.dependencies, [name]: installed(name, "android", `/app/node_modules/${name}`) as never };
+    for (const name of alwaysNames) config.dependencies = { ...config.dependencies, [name]: installed(name, "android", `/app/node_modules/${name}`) as never };
     const relinked = deferNitroLibraries(linkVendored(config, "android"));
     expect(instance(relinked, "react-native-mmkv")).toBe('new DeferredNitroPackage("NitroMmkv")');
     expect(instance(relinked, "react-native-nitro-modules")).toStartWith("new NitroGate(");

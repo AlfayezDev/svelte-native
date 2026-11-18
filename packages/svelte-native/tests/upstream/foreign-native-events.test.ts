@@ -3,7 +3,7 @@ import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { mapsProblems, mapsStreamEvents, neverCoalesces, pdfProblems, lottieProblems, stripComments, videoEmitterProblems, videoProblems } from "../../src/doctor/shapes.ts";
 import { readerFor } from "../../src/doctor/resolve.ts";
-import { nodeModules as modules } from "../support/paths.ts";
+import { libraryPath } from "../support/paths.ts";
 import { viewConfigs } from "./support/configs.ts";
 import { libraryFile } from "./support/specs.ts";
 
@@ -21,7 +21,7 @@ const withoutComments = (file: string): string => stripComments(libraryFile(file
 // the `pageChanged` the view posts 10 ms later (28 of 182 emulator row mounts, 10 of 130 Samsung row mounts lost `onLoadComplete`). The patch
 // (`react-native-pdf@7.0.3.patch` in the package's `patches/`) makes the event non-coalescable. iOS is not affected: its codegen emitter's `onChange` is a plain `dispatchEvent`.
 test("react-native-pdf's topChange event, which carries every message of the Android view, does not coalesce", () => {
-  const directory = resolve(modules, "react-native-pdf/android/src/main/java/org/wonday/pdf");
+  const directory = libraryPath("react-native-pdf/android/src/main/java/org/wonday/pdf");
   const code = (file: string) => stripComments(libraryFile(`react-native-pdf/android/src/main/java/org/wonday/pdf/${file}`));
   const view = code("PdfView.java");
   const event = code("events/TopChangeEvent.java");
@@ -33,7 +33,7 @@ test("react-native-pdf's topChange event, which carries every message of the And
   expect(event).toMatch(/getEventName\(\)\s*\{\s*return "topChange";\s*\}/);
   // ... so the event must not coalesce (React Native's `Event.canCoalesce()` is `true` unless a subclass overrides it).
   expect(neverCoalesces(event)).toBe(true);
-  expect(pdfProblems(readerFor(resolve(modules, "react-native-pdf")))).toEqual([]);
+  expect(pdfProblems(readerFor(libraryPath("react-native-pdf")))).toEqual([]);
 });
 
 // The same defect in three more libraries (SPEC.md, "Foreign views", "Events on Android"): Lottie, maps and video. `Event.canCoalesce()` is true unless a subclass overrides it, Fabric
@@ -92,7 +92,7 @@ test("rive-react-native's events reach JavaScript as events that cannot coalesce
 });
 
 test("react-native-maps' discrete events do not coalesce and its streams still do", () => {
-  const directory = resolve(modules, "react-native-maps/android/src/main/java/com/rnmaps/fabric/event");
+  const directory = libraryPath("react-native-maps/android/src/main/java/com/rnmaps/fabric/event");
   // Streams: a position or a region per frame of a drag, a pan or a camera move, or per GPS fix, where the latest message replaces the earlier ones and coalescing is the saving.
   const streams = ["OnDragEvent", "OnMarkerDragEvent", "OnPanDragEvent", "OnRegionChangeEvent", "OnUserLocationChangeEvent"];
   expect([...mapsStreamEvents]).toEqual(streams);
@@ -106,7 +106,7 @@ test("react-native-maps' discrete events do not coalesce and its streams still d
   for (const name of discrete) expect(neverCoalesces(withoutComments(`react-native-maps/android/src/main/java/com/rnmaps/fabric/event/${name}.java`)), name).toBe(true);
   for (const name of streams) expect(withoutComments(`react-native-maps/android/src/main/java/com/rnmaps/fabric/event/${name}.java`), name).not.toContain("canCoalesce");
   // The same check over the whole directory, as `svelte-native doctor` makes it of an app's install.
-  expect(mapsProblems(readerFor(resolve(modules, "react-native-maps")))).toEqual([]);
+  expect(mapsProblems(readerFor(libraryPath("react-native-maps")))).toEqual([]);
   // `topPress` of the map's tag is one event for several kinds of press, and the map attaches an `action` to every message of its press and selection events: these nine are what MapView.java sends.
   const view = withoutComments("react-native-maps/android/src/main/java/com/rnmaps/maps/MapView.java");
   const actions = new Set([...view.matchAll(/putString\("action", "([a-z-]+)"\)/g)].map((match) => match[1]));
@@ -115,7 +115,7 @@ test("react-native-maps' discrete events do not coalesce and its streams still d
 });
 
 test("lottie-react-native's three events do not coalesce", () => {
-  const directory = resolve(modules, "lottie-react-native/android/src/main/java/com/airbnb/android/react/lottie");
+  const directory = libraryPath("lottie-react-native/android/src/main/java/com/airbnb/android/react/lottie");
   const events = readdirSync(directory).filter((file) => /^On\w+Event\.kt$/.test(file)).sort();
   expect(events).toEqual(["OnAnimationFailureEvent.kt", "OnAnimationFinishEvent.kt", "OnAnimationLoadedEvent.kt"]);
   for (const file of events) {
@@ -123,7 +123,7 @@ test("lottie-react-native's three events do not coalesce", () => {
     expect(code, file).toMatch(/Event<On\w+>\(surfaceId, viewId\)/);
     expect(neverCoalesces(code), file).toBe(true);
   }
-  expect(lottieProblems(readerFor(resolve(modules, "lottie-react-native")))).toEqual([]);
+  expect(lottieProblems(readerFor(libraryPath("lottie-react-native")))).toEqual([]);
   expect(events.map((file) => /EVENT_NAME = "(\w+)"/.exec(withoutComments(`lottie-react-native/android/src/main/java/com/airbnb/android/react/lottie/${file}`))?.[1])).toEqual(["topAnimationFailure", "topAnimationFinish", "topAnimationLoaded"]);
 });
 
@@ -133,7 +133,7 @@ test("react-native-video's one event class does not coalesce except for the prog
   // (progress, bandwidth), whose latest message replaces the earlier ones, say so. Every other event (load, error, seek, end, playback state, buffer, ready, the
   // track lists, ...) is discrete. The shape is `videoEmitterProblems`, which `svelte-native doctor` asks of an app's install too.
   expect(videoEmitterProblems(emitter)).toEqual([]);
-  expect(videoProblems(readerFor(resolve(modules, "react-native-video")))).toEqual([]);
+  expect(videoProblems(readerFor(libraryPath("react-native-video")))).toEqual([]);
   const senders = [...emitter.matchAll(/event\.dispatch\(EventTypes\.(\w+)/g)].map((match) => match[1] as string);
   expect(senders.length).toBeGreaterThan(25);
   for (const name of ["EVENT_LOAD", "EVENT_ERROR", "EVENT_SEEK", "EVENT_END", "EVENT_PLAYBACK_STATE_CHANGED", "EVENT_BUFFER", "EVENT_READY"]) expect(senders, name).toContain(name);

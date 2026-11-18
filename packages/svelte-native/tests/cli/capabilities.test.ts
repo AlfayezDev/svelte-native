@@ -558,7 +558,7 @@ describe("capabilities.push on iOS: a push that wakes the app mounts no screen",
     expect(once.indexOf("window = UIWindow(frame: UIScreen.main.bounds)")).toBeLessThan(once.indexOf("SveltePushBackgroundLaunch.start("));
     expect(once.indexOf("end of the first screen of a launch in the background")).toBeLessThan(once.indexOf("#endif"));
     expect(once.indexOf("#endif")).toBeLessThan(once.indexOf("return super.application(application, didFinishLaunchingWithOptions: launchOptions)"));
-    // `SveltePushBackgroundLaunch` is in the SvelteCore pod now, and the import is `internal` as the navigation patch's own import of the same module is (Expo's generated provider imports
+    // `SveltePushBackgroundLaunch` is in the SvelteCore pod, and the import is `internal` as the navigation patch's own import of the same module is (Expo's generated provider imports
     // every module that way, and a plain import of the same module in the app target is ambiguous): one line, with a comment that tells it from the navigation patch's.
     expect(once).toMatch(/^internal import SvelteCore \/\/ Svelte native: push, the first screen of a launch in the background \(generated, do not edit\)$/m);
     expect(once.match(/^.*import .*$/gm)?.filter((line) => line.includes("SveltePush") || /import SvelteCore/.test(line))).toEqual(["internal import SvelteCore // Svelte native: push, the first screen of a launch in the background (generated, do not edit)"]);

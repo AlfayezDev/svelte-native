@@ -58,16 +58,22 @@ for (const platform of ["android", "ios"] as const) {
       // A standard URL: the router builds every location as a `SvelteURL`, which React Native's own `URL` cannot construct, so the library's
       // polyfills load Expo's WinterCG runtime. Without it the app started blank (9 Nov 2026, the first run of this app on an emulator).
       expect(modules.some((module) => /node_modules\/expo\/src\/winter\/runtime\.native\.ts$/.test(module))).toBe(true);
-      // `crypto` and `localStorage` are react-native-quick-crypto and react-native-mmkv, with the Nitro runtime they share: required when first used, so Metro bundles them. Their import of `react-native`
-      // is the library's lite shim (`LITE_ORIGINS`): the index that lists every component of React Native (and the 238 modules it brings) is not in the bundle. MMKV and the Nitro runtime are the
-      // library's own copies (`vendor/`, VENDORING.md), whoever imports them, and the app has no original of either.
-      for (const name of ["react-native-quick-crypto", "react-native-quick-base64"]) expect([name, modules.some((module) => module.includes(`node_modules/${name}/`))]).toEqual([name, true]);
-      // The animation, gestures and svg libraries are the library's copies too: its own imports, a library's and the app's all reach `vendor/`, and no original is bundled beside them (a package manager installs one of gesture
-      // handler, Reanimated and Worklets for Expo Router's peers: Metro never reaches it, and the Worklets plugin that Babel runs is the copy's, `tests/compiler/worklets-plugin.test.ts`).
-      for (const name of ["react-native-mmkv", "react-native-nitro-modules", "react-native-gesture-handler", "react-native-worklets", "react-native-reanimated", "react-native-svg"]) {
+      // The animation, gestures and svg libraries (gesture handler, Worklets, Reanimated, svg) are the library's copies too: its own imports, a library's and the app's all reach `vendor/`, and no original is bundled beside them (a package
+      // manager installs one of gesture handler, Reanimated and Worklets for Expo Router's peers: Metro never reaches it, and the Worklets plugin that Babel runs is the copy's, `tests/compiler/worklets-plugin.test.ts`).
+      // `crypto` and `localStorage` are react-native-quick-crypto and react-native-mmkv, with the Nitro runtime they share, and the `Intl` constructors Hermes lacks are hermes-intl: required when first used,
+      // so Metro bundles them. Their import of `react-native` is the library's lite shim (`LITE_ORIGINS`): the index that lists every component of React Native (and the 238 modules it brings) is not in
+      // the bundle. They, quick-crypto's base64 module and the Nitro runtime are the library's own copies (`vendor/`, VENDORING.md), whoever imports them, and the app has no original of any: not even
+      // `react-native-quick-base64`, which a package manager installs for the Buffer package's dependency on it.
+      for (const name of ["react-native-quick-crypto", "react-native-quick-base64", "hermes-intl", "react-native-mmkv", "react-native-nitro-modules", "react-native-gesture-handler", "react-native-worklets", "react-native-reanimated", "react-native-svg"]) {
         expect([name, modules.some((module) => module.includes(`packages/svelte-native/vendor/${name}/`))]).toEqual([name, true]);
         expect([name, modules.filter((module) => module.includes(`node_modules/${name}/`))]).toEqual([name, []]);
       }
+      // The native view libraries are the library's own copies, turned on in `libraries` of app.config.ts, and this app installs none of them. The components mount their native views by name and import
+      // none of their JavaScript, so no copy is in the bundle either; `createVideoPlayer` requires expo-video by name, and the app did not turn that one on (no screen uses it), so the name is the
+      // stub that says how to turn it on, a few lines, and not the package.
+      const views = ["expo-image", "expo-blur", "expo-linear-gradient", "expo-conic-gradient", "expo-video", "react-native-video", "lottie-react-native", "rive-react-native", "@react-native-community/datetimepicker", "react-native-pdf", "react-native-blob-util", "react-native-webview", "react-native-maps", "react-native-view-shot", "react-native-fast-shadow", "react-native-animateable-text"];
+      expect(modules.filter((module) => views.some((name) => module.includes(`node_modules/${name}/`) || module.includes(`packages/svelte-native/vendor/${name}/`)))).toEqual([]);
+      expect(modules.filter((module) => /\.svelte-native\/stubs\/app\//.test(module)).map((module) => module.split("/").pop()).sort()).toEqual(["_core.js", "expo-video.js"]);
       // The worklets of the copies and of the app went through the Worklets Babel plugin: the babel preset adds the copy's (the transformer makes `react-native-worklets/plugin` resolve to it), and the app has no package of that name to add.
       expect(text.match(/__workletHash/g)?.length ?? 0).toBeGreaterThan(50);
       expect(modules.some((module) => /node_modules\/react-native\/index\.js$/.test(module))).toBe(false);

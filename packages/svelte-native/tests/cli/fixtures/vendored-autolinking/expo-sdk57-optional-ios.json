@@ -1,0 +1,122 @@
+{
+  "@react-native-community/datetimepicker": {
+    "root": "$PACKAGE",
+    "name": "@react-native-community/datetimepicker",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/RNDateTimePicker.podspec",
+        "version": "9.1.0",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  },
+  "lottie-react-native": {
+    "root": "$PACKAGE",
+    "name": "lottie-react-native",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/lottie-react-native.podspec",
+        "version": "7.3.8",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  },
+  "react-native-animateable-text": {
+    "root": "$PACKAGE",
+    "name": "react-native-animateable-text",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/react-native-animateable-text.podspec",
+        "version": "0.19.3",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  },
+  "react-native-blob-util": {
+    "root": "$PACKAGE",
+    "name": "react-native-blob-util",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/react-native-blob-util.podspec",
+        "version": "0.24.9",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  },
+  "react-native-maps": {
+    "root": "$PACKAGE",
+    "name": "react-native-maps",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/react-native-maps.podspec",
+        "version": "1.27.2",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  },
+  "react-native-pdf": {
+    "root": "$PACKAGE",
+    "name": "react-native-pdf",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/react-native-pdf.podspec",
+        "version": "7.0.3",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  },
+  "react-native-video": {
+    "root": "$PACKAGE",
+    "name": "react-native-video",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/react-native-video.podspec",
+        "version": "6.19.3",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  },
+  "react-native-view-shot": {
+    "root": "$PACKAGE",
+    "name": "react-native-view-shot",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/react-native-view-shot.podspec",
+        "version": "5.1.0",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  },
+  "react-native-webview": {
+    "root": "$PACKAGE",
+    "name": "react-native-webview",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/react-native-webview.podspec",
+        "version": "13.16.1",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  },
+  "rive-react-native": {
+    "root": "$PACKAGE",
+    "name": "rive-react-native",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/rive-react-native.podspec",
+        "version": "9.7.1",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  }
+}

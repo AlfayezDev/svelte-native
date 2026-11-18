@@ -39,4 +39,4 @@ It blurs what is drawn before it on the screen: the views behind it, and the scr
 
 On Android each `BlurView` draws the screen behind it into a small picture again whenever something on the screen changes, so a few on a screen are fine and dozens (one per list row) are not.
 
-For `expo-blur`'s own view and props (`blurTarget`, `blurMethod`), use [`ExpoBlurView`](native-views#expoblurview-and-blurtargetview).
+For `expo-blur`'s own view and props (`blurTarget`, `blurMethod`), use [`ExpoBlurView`](native-views#expoblurview-and-blurtargetview), with `expo-blur` turned on in the plugin's `libraries`.

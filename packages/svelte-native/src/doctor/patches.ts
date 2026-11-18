@@ -14,6 +14,8 @@ export type PatchSpec = {
   does: string;
   /** Where the package is found when an app does not depend on it itself: the installed package whose own dependency it is. */
   via?: string;
+  /** The library carries this package (`vendor/`, `vendor-patches/`), already patched: the doctor looks in the copy, and no app declares the patch. */
+  vendored?: true;
   /** The problems in the installed package, from its files and the patch file (an empty list means the patch is in). */
   inspect(installed: Reader, patch: string): string[];
 };
@@ -22,22 +24,14 @@ export type PatchSpec = {
 export const patchSpecs: readonly PatchSpec[] = [
   { package: "@sveltejs/kit", does: "SvelteKit leaves the `+mobile.svelte` files of a route directory alone", inspect: kitProblems },
   { package: "expo-modules-core", via: "expo", does: "Expo modules register lazily and the common ones are prewarmed (Android start)", inspect: expoModulesCoreProblems },
-  { package: "lottie-react-native", does: "Lottie's events are delivered one by one (Android) and a load or failure before the emitter exists is kept (iOS)", inspect: lottieProblems },
-  { package: "react-native-maps", does: "the map's discrete events are delivered one by one, its streams still coalesce (Android)", inspect: mapsProblems },
-  { package: "react-native-pdf", does: "the pdf view's one event, which carries every message, no longer coalesces (Android)", inspect: pdfProblems },
-  { package: "react-native-video", does: "only progress and bandwidth events coalesce; every other video event is delivered (Android)", inspect: videoProblems },
+  { package: "lottie-react-native", vendored: true, does: "Lottie's events are delivered one by one (Android) and a load or failure before the emitter exists is kept (iOS)", inspect: lottieProblems },
+  { package: "react-native-gesture-handler", vendored: true, does: "the root gesture recognizer can be registered for the screens the library presents (iOS)", inspect: rnghProblems },
+  { package: "react-native-maps", vendored: true, does: "the map's discrete events are delivered one by one, its streams still coalesce (Android)", inspect: mapsProblems },
+  { package: "react-native-pdf", vendored: true, does: "the pdf view's one event, which carries every message, no longer coalesces, and react-native is found from the app's directory (Android)", inspect: pdfProblems },
+  { package: "react-native-reanimated", vendored: true, does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, and Worklets is the copy beside it", inspect: reanimatedProblems },
+  { package: "react-native-video", vendored: true, does: "only progress and bandwidth events coalesce; every other video event is delivered (Android)", inspect: videoProblems },
+  { package: "react-native-worklets", vendored: true, does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems },
 ];
-
-/**
- * What the library's copies of third-party packages (`vendor/<name>`, VENDORING.md) carry of the library's own changes, by package: `scripts/vendor.ts` applies them (`vendor-patches/<name>/`) when it writes the
- * copy, so an app does not declare them and the doctor does not look for them in `patches/`. The doctor still reads the copy's files for the same shapes (`shapes.ts`), which finds a library that was
- * installed incomplete or changed after the install, and the tests (`tests/upstream/`) read the same shapes in the repository's copies. The patch files themselves are not in the installed package.
- */
-export const vendoredPatchSpecs: Readonly<Record<string, Pick<PatchSpec, "does"> & { inspect(installed: Reader): string[] }>> = {
-  "react-native-gesture-handler": { does: "the root gesture recognizer can be registered for the screens the library presents (iOS)", inspect: rnghProblems },
-  "react-native-reanimated": { does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, and Worklets is the copy beside it", inspect: reanimatedProblems },
-  "react-native-worklets": { does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems },
-};
 
 export type PatchFile = { package: string; version: string; file: string; path: string };
 

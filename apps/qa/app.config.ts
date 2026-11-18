@@ -8,9 +8,9 @@ import { productApplicationId, qaApplicationId, smokeApplicationId } from "./src
 // smoke test (qa/smoke-modules.json; SPEC.md, "Native modules (smoke test)"). `smokeOnlyPackages` are the libraries the product does not
 // have: the product and the QA app exclude them from both autolinkers (and from React Native's, in react-native.config.js); only the
 // smoke app links them, and only it gets the config plugins in `smokePlugins`, the fake Firebase files and the Huawei repository.
-// The two packages the library itself requires (react-native-quick-crypto and react-native-quick-base64: the device's `crypto` is made of them)
-// are not in that list: every app links them, and the smoke test still checks them (`shared` in smoke-modules.json). Nor are the two it carries
-// itself (react-native-mmkv and react-native-nitro-modules, `packages/svelte-native/vendor/`): no app lists them, the library's autolinking links its copies.
+// The packages the library carries itself (`packages/svelte-native/vendor/`: react-native-quick-crypto and react-native-quick-base64, which the device's `crypto` is made of, react-native-mmkv and
+// react-native-nitro-modules, and hermes-intl) are not in that list: no app lists them, the library's autolinking links its copies in every app, and the smoke test still checks them (`shared` in
+// smoke-modules.json). The production app's `["react-native-quick-crypto", { sodiumEnabled: true }]` is the library plugin's own `sodiumEnabled` option, set in the smoke variant below.
 const { smokeOnlyPackages } = createRequire(import.meta.url)("./qa/smoke-packages.cjs") as { smokeOnlyPackages: string[] };
 // The library's default variant (no `APP_VARIANT`) is `app`; this app's is `qa`, whose route table the library's plugin writes (`routes.qa.ts`, as Metro's config does).
 const variant = process.env.APP_VARIANT || "qa";
@@ -24,7 +24,6 @@ const smokePlugins: NonNullable<ExpoConfig["plugins"]> = !smoke ? [] : [
   // upload step, so it is left out; the Huawei plugin needs a real agconnect-services.json (the HMS library is only loaded).
   "@react-native-firebase/app",
   "@react-native-firebase/messaging",
-  ["react-native-quick-crypto", { sodiumEnabled: true }],
   ["expo-check-installed-apps", { android: ["com.android.vending", "com.huawei.appmarket"] }],
   ["expo-location", { locationWhenInUsePermission: "The native module smoke test only reads the permission state.", isAndroidForegroundServiceEnabled: false }],
   ["expo-tracking-transparency", { userTrackingPermission: "The native module smoke test only reads the permission state." }],
@@ -97,9 +96,30 @@ export default {
     ["@alfayez/svelte-native", {
       variant,
       androidProfileable: !production,
+      // libsodium for `crypto`, as the production app has it (the option quick-crypto's own plugin took; the smoke test's quick-crypto check runs against it).
+      ...(smoke ? { sodiumEnabled: true } : {}),
       autolinkingExclude,
       ...(remote ? { remote } : {}),
       androidFeatureFlags: { disableViewPreallocationAndroid: true, enablePreparedTextLayout: true },
+      // The optional native view libraries the library carries (packages/svelte-native/vendor/): the foreign lab exercises every one of them, so the QA app turns them all on (the app's package.json lists none).
+      // The Maps SDK throws when the manifest has no key. Production builds take theirs from the environment (an EAS secret); the QA variant falls back to a placeholder, which mounts the map and loads no tiles.
+      libraries: {
+        "expo-image": true,
+        "expo-blur": true,
+        "expo-linear-gradient": true,
+        "expo-conic-gradient": true,
+        "expo-video": true,
+        "react-native-video": true,
+        "lottie-react-native": true,
+        "rive-react-native": true,
+        "@react-native-community/datetimepicker": true,
+        "react-native-pdf": true,
+        "react-native-webview": true,
+        "react-native-maps": { androidGoogleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY ?? (production ? undefined : "svelte-qa-placeholder-key") },
+        "react-native-view-shot": true,
+        "react-native-fast-shadow": true,
+        "react-native-animateable-text": true,
+      },
       // Foreign views (SPEC.md, "Foreign views"): the packages' view managers are created when a component is first mounted,
       // not when the host starts. `packages/svelte-native/tests/upstream/foreign-view-configs.test.ts` checks the names against the packages' sources.
       androidOnDemandViewManagers: {
@@ -122,9 +142,6 @@ export default {
     }],
     "expo-secure-store",
     "expo-image-picker",
-    // The Maps SDK throws when the manifest has no key. Production builds take theirs from the environment (an EAS secret); the QA variant
-    // falls back to a placeholder, which mounts the map and loads no tiles.
-    ["react-native-maps", { androidGoogleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY ?? (production ? undefined : "svelte-qa-placeholder-key") }],
     ["expo-splash-screen", {
       backgroundColor: "#f6f6f7", image: "./assets/native/images/splash-mark.png", imageWidth: 96,
       dark: { backgroundColor: "#0d0d0f", image: "./assets/native/images/splash-mark-dark.png" },

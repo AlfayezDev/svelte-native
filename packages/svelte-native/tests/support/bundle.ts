@@ -6,7 +6,7 @@ import { compile, compileModule } from "svelte/compiler";
 import { componentOptions, lowersHtml } from "../../src/compile-options.ts";
 import { lowerPrimitives } from "../../src/lower.ts";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
-import { vendorAliases } from "./paths.ts";
+import { vendoredAliases } from "./paths.ts";
 import { reactNativeConverters, type Platform } from "./rn-reference.ts";
 
 /**
@@ -111,8 +111,8 @@ export function hostPlugin(options: HostPluginOptions = {}): Plugin {
   return {
     name: "svelte-native-test-host",
     setup(builder) {
-      // The vendored packages (`#vendor/<name>`, `vendor/`) are react-native-* packages the library carries: stood in for like the installed ones were, so their React Native imports are not bundled.
-      builder.onResolve({ filter: /^(react-native|expo-modules-core|#vendor\/)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
+      // The vendored packages (`#vendor/<name>`, `vendor/`) are react-native-* packages the library carries: stood in for like the installed ones were, so their React Native imports are not bundled. `expo-video/…` is what `createVideoPlayer` requires by name, and `expo-constants` is what the foreign components read the build's libraries from, when a component is made (`fabric/foreign-libraries.ts`): empty unless a test gives it a stub.
+      builder.onResolve({ filter: /^(react-native|expo-modules-core|#vendor\/|expo-video\/|expo-constants$)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
       if (named.length) builder.onResolve({ filter: new RegExp(`^(${named.map(escapeRegExp).join("|")})$`) }, (args) => ({ path: args.path, namespace: "stub" }));
       // `#vendor/react-native-reanimated` is the stub of `react-native-reanimated`: the stubs are written for the packages' names, which Metro resolves to the same copies.
       builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: options.openStubs ? "module.exports = new Proxy({}, { get: () => () => {} });" : stubs[args.path] ?? stubs[args.path.replace(/^#vendor\//, "")] ?? "export {};", loader: "js", resolveDir: tests }));
@@ -149,7 +149,7 @@ async function bundleFrom(options: BundleOptions): Promise<Bundle> {
     stdin: { contents: options.entry, resolveDir: options.resolveDir ?? tests },
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false,
     // What the library's copies of third-party packages are called in the app: Metro resolves the names (and every path below them) to `vendor/<name>`, and so does a bundle of a test.
-    alias: vendorAliases(),
+    alias: vendoredAliases,
     ...(options.define ? { define: options.define } : {}),
     ...options.esbuild,
     plugins: [...(options.plugins ?? []), ...((options.converters ?? true) ? reactNativeConverters(platform) : []), hostPlugin({ ...options, warnings })],

@@ -13,6 +13,7 @@
  * Nothing here imports the library.
  */
 import { turboModule } from "./foreign.ts";
+import { assertLibrary } from "./foreign-libraries.ts";
 
 export type CaptureFormat = "jpg" | "png" | "webm" | "raw";
 export type CaptureResult = "tmpfile" | "base64" | "data-uri" | "zip-base64";
@@ -94,6 +95,7 @@ const report = (errors: string[]) => {
  * flattened away unless it says `collapsable={false}` (`ViewShot` does).
  */
 export async function captureRef(target: CaptureTarget, options?: CaptureOptions): Promise<string> {
+  assertLibrary("react-native-view-shot");
   const tag = typeof target === "number" ? target : target?.tag;
   if (typeof tag !== "number" || !tag) throw new Error(`react-native-view-shot: no view to capture (${String(target)}): pass the handle a view's ref gives`);
   const system = platform();
@@ -108,6 +110,7 @@ export async function captureRef(target: CaptureTarget, options?: CaptureOptions
 
 /** Captures the whole window (the module's `captureScreen`). */
 export function captureScreen(options?: CaptureOptions): Promise<string> {
+  assertLibrary("react-native-view-shot");
   const checked = validateCaptureOptions(options, platform());
   report(checked.errors);
   return viewShot().captureScreen(checked.options);
@@ -115,6 +118,7 @@ export function captureScreen(options?: CaptureOptions): Promise<string> {
 
 /** Deletes a `tmpfile` result; a URI that is not a string is ignored (with a development warning). */
 export function releaseCapture(uri: string): void {
+  assertLibrary("react-native-view-shot");
   if (typeof uri !== "string") {
     if (typeof __DEV__ !== "undefined" && __DEV__) console.warn(`Invalid argument to releaseCapture. Got: ${String(uri)}`);
   } else {

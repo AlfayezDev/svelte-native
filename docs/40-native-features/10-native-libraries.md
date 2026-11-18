@@ -5,7 +5,7 @@ video: native-views
 
 The Expo and React Native ecosystem has libraries for most of what a phone can do: sensors, notifications, location, secure storage, haptics. Svelte Native can use the ones whose API is plain JavaScript functions. This page shows how to add one, and what to do when a library's API is React.
 
-For libraries that draw a view (images, video, maps), see [Native views](native-views).
+For libraries that draw a view (images, video, maps), see [Native views](native-views): Svelte Native carries the common ones, and an app turns on the ones it uses.
 
 ## Adding a library
 

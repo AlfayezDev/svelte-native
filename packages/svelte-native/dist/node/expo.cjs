@@ -35,10 +35,12 @@ __export(expo_exports, {
   androidFeatureFlagsFor: () => androidFeatureFlagsFor,
   applyAppDelegate: () => applyAppDelegate,
   applyFeatureFlags: () => applyFeatureFlags,
+  applyGradleSodium: () => applyGradleSodium,
   applyHeadlessApplication: () => applyHeadlessApplication,
   applyHeadlessSettings: () => applyHeadlessSettings,
   applyMainActivity: () => applyMainActivity,
   applyPodfileAutolinkingExclude: () => applyPodfileAutolinkingExclude,
+  applyPodfileSodium: () => applyPodfileSodium,
   applyPodfileVendoredLinking: () => applyPodfileVendoredLinking,
   assertNoVendoredOriginals: () => assertNoVendoredOriginals,
   baselineProfile: () => baselineProfile,
@@ -48,11 +50,13 @@ __export(expo_exports, {
   headlessExcludedPackages: () => headlessExcludedPackages,
   headlessPackageSource: () => headlessPackageSource,
   leaveOutOfAutoPlugins: () => leaveOutOfAutoPlugins,
-  onDemandPackageSource: () => onDemandPackageSource
+  onDemandForLibraries: () => onDemandForLibraries,
+  onDemandPackageSource: () => onDemandPackageSource,
+  withLibraries: () => withLibraries
 });
 module.exports = __toCommonJS(expo_exports);
 var import_promises2 = require("node:fs/promises");
-var import_node_path6 = require("node:path");
+var import_node_path7 = require("node:path");
 var import_config_plugins3 = require("expo/config-plugins");
 
 // src/build.ts
@@ -929,83 +933,131 @@ function withPush(config, push, context) {
   return settings.android ? withPushAndroid(config, settings.android, context.projectRoot) : withoutPushAndroid(config, context);
 }
 
-// src/remote/plugin.ts
-var import_config_plugins2 = require("expo/config-plugins.js");
-
-// src/remote/host.ts
-var RemoteConfigError = class extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "RemoteConfigError";
-  }
-};
-var EXTRA_KEY = "svelteNative";
-var HOW = 'Set `extra.svelteNative.remote.origin` in app.config.ts (the "@alfayez/svelte-native" plugin\'s `remote` option writes it), or call `configureRemote({ origin })` before the first remote function.';
-function normalizeOrigin(value) {
-  if (typeof value !== "string" || value.trim() === "") throw new RemoteConfigError(`The remote origin must be a URL string such as "https://app.example.com", not ${JSON.stringify(value)}. ${HOW}`);
-  let url;
-  try {
-    url = new URL(value.trim());
-  } catch {
-    throw new RemoteConfigError(`The remote origin ${JSON.stringify(value)} is not a URL. ${HOW}`);
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") throw new RemoteConfigError(`The remote origin ${JSON.stringify(value)} must use http: or https:.`);
-  if (url.username || url.password) throw new RemoteConfigError(`The remote origin ${JSON.stringify(value)} must not carry credentials.`);
-  if (url.pathname !== "/" && url.pathname !== "" || url.search || url.hash) throw new RemoteConfigError(`The remote origin ${JSON.stringify(value)} must be an origin without a path, query or fragment: put a path prefix in \`base\` (SvelteKit's \`paths.base\`).`);
-  return url.origin;
-}
-function normalizeBase(value) {
-  if (value === void 0 || value === null || value === "") return "";
-  if (typeof value !== "string" || !value.startsWith("/") || value.endsWith("/")) throw new RemoteConfigError(`The remote base ${JSON.stringify(value)} must be "" or a path that starts with "/" and does not end with one (SvelteKit's \`paths.base\`).`);
-  return value;
-}
-function normalizeAppDir(value) {
-  if (value === void 0 || value === null || value === "") return "_app";
-  if (typeof value !== "string" || value.startsWith("/") || value.endsWith("/")) throw new RemoteConfigError(`The remote appDir ${JSON.stringify(value)} must be a path segment without a leading or trailing "/" (SvelteKit's \`appDir\`, "_app" by default).`);
-  return value;
-}
-
-// src/remote/plugin.ts
-function remoteExtra(extra, remote) {
-  const host = { origin: normalizeOrigin(remote.origin), base: normalizeBase(remote.base), appDir: normalizeAppDir(remote.appDir) };
-  return { ...extra, [EXTRA_KEY]: { ...extra?.[EXTRA_KEY], remote: host } };
-}
-var isCleartext = (origin) => new URL(origin).protocol === "http:";
-function atsExceptionDomain(origin) {
-  const { hostname } = new URL(origin);
-  const address = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.startsWith("[");
-  return address || !hostname.includes(".") || hostname.endsWith(".local") ? void 0 : hostname;
-}
-function allowAndroidCleartext(application) {
-  application.$ = { ...application.$, "android:usesCleartextTraffic": "true" };
-}
-function allowIosCleartext(infoPlist, origin) {
-  const domain = atsExceptionDomain(origin);
-  if (domain === void 0) return;
-  const security = infoPlist.NSAppTransportSecurity ?? {};
-  security.NSExceptionDomains = { ...security.NSExceptionDomains, [domain]: { ...security.NSExceptionDomains?.[domain], NSExceptionAllowsInsecureHTTPLoads: true, NSIncludesSubdomains: false } };
-  infoPlist.NSAppTransportSecurity = security;
-}
-var withRemoteHost = (config, remote) => {
-  config.extra = remoteExtra(config.extra, remote);
-  const { origin } = config.extra[EXTRA_KEY].remote;
-  if (!isCleartext(origin)) return config;
-  config = (0, import_config_plugins2.withAndroidManifest)(config, (config2) => {
-    const application = config2.modResults.manifest.application?.[0];
-    if (!application) throw new Error("Svelte native could not find <application> in AndroidManifest.xml");
-    allowAndroidCleartext(application);
-    return config2;
-  });
-  return (0, import_config_plugins2.withInfoPlist)(config, (config2) => {
-    allowIosCleartext(config2.modResults, origin);
-    return config2;
-  });
-};
+// src/libraries.ts
+var import_node_module2 = require("node:module");
+var import_node_path6 = require("node:path");
 
 // src/vendored.ts
 var import_node_fs4 = require("node:fs");
 var import_node_path5 = require("node:path");
+
+// src/optional-libraries.ts
+var react = "react-native";
+var expo = "expo";
+var optionalLibraries = [
+  // ---- Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module ----
+  { name: "expo-blur", version: "57.0.3", optional: { kind: expo } },
+  { name: "expo-conic-gradient", version: "0.2.1", optional: { kind: expo } },
+  { name: "expo-image", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+  { name: "expo-linear-gradient", version: "57.0.2", optional: { kind: expo } },
+  { name: "expo-video", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+  // ---- React Native packages: an entry of the autolinking config for each platform ----
+  {
+    name: "@react-native-community/datetimepicker",
+    version: "9.1.0",
+    android: { packageImportPath: "import com.reactcommunity.rndatetimepicker.RNDateTimePickerPackage;", packageInstance: "new RNDateTimePickerPackage()" },
+    ios: { podspec: "RNDateTimePicker.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    name: "lottie-react-native",
+    version: "7.3.8",
+    android: { packageImportPath: "import com.airbnb.android.react.lottie.LottiePackage;", packageInstance: "new LottiePackage()", componentDescriptors: ["LottieAnimationViewComponentDescriptor"] },
+    ios: { podspec: "lottie-react-native.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-animateable-text",
+    version: "0.19.3",
+    android: {
+      packageImportPath: "import com.reactnativereanimatedtext.ReanimatedTextPackage;",
+      packageInstance: "new ReanimatedTextPackage()",
+      libraryName: "JBAnimatedText",
+      componentDescriptors: ["CParagraphComponentDescriptor"],
+      cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+    },
+    ios: { podspec: "react-native-animateable-text.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-blob-util",
+    version: "0.24.9",
+    android: { packageImportPath: "import com.ReactNativeBlobUtil.ReactNativeBlobUtilPackage;", packageInstance: "new ReactNativeBlobUtilPackage()" },
+    ios: { podspec: "react-native-blob-util.podspec" },
+    optional: { kind: react }
+  },
+  {
+    // No iOS code: `ShadowedView` is React Native's own `View` there (the layer's shadow), so the library has no podspec.
+    name: "react-native-fast-shadow",
+    version: "0.1.1",
+    android: { packageImportPath: "import com.reactnativefastshadow.FastShadowPackage;", packageInstance: "new FastShadowPackage()" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-maps",
+    version: "1.27.2",
+    android: {
+      packageImportPath: "import com.rnmaps.maps.MapsPackage;",
+      packageInstance: "new MapsPackage()",
+      componentDescriptors: [
+        "RNMapsCalloutComponentDescriptor",
+        "RNMapsCircleComponentDescriptor",
+        "RNMapsGoogleMapViewComponentDescriptor",
+        "RNMapsGooglePolygonComponentDescriptor",
+        "RNMapsMapViewComponentDescriptor",
+        "RNMapsMarkerComponentDescriptor",
+        "RNMapsOverlayComponentDescriptor",
+        "RNMapsPolylineComponentDescriptor",
+        "RNMapsUrlTileComponentDescriptor",
+        "RNMapsWMSTileComponentDescriptor"
+      ],
+      cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+    },
+    ios: { podspec: "react-native-maps.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    // The PDF view reads its files through react-native-blob-util's native module, so turning it on turns that one on.
+    name: "react-native-pdf",
+    version: "7.0.3",
+    android: { packageImportPath: "import org.wonday.pdf.RNPDFPackage;", packageInstance: "new RNPDFPackage()", componentDescriptors: ["RNPDFPdfViewComponentDescriptor"] },
+    ios: { podspec: "react-native-pdf.podspec" },
+    optional: { kind: react, requires: ["react-native-blob-util"] }
+  },
+  {
+    name: "react-native-video",
+    version: "6.19.3",
+    android: { packageImportPath: "import com.brentvatne.react.ReactVideoPackage;", packageInstance: "new ReactVideoPackage()" },
+    ios: { podspec: "react-native-video.podspec" },
+    optional: { kind: react, plugin: "app.plugin.js" }
+  },
+  {
+    name: "react-native-view-shot",
+    version: "5.1.0",
+    android: { packageImportPath: "import fr.greweb.reactnativeviewshot.RNViewShotPackage;", packageInstance: "new RNViewShotPackage()" },
+    ios: { podspec: "react-native-view-shot.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "react-native-webview",
+    version: "13.16.1",
+    android: { packageImportPath: "import com.reactnativecommunity.webview.RNCWebViewPackage;", packageInstance: "new RNCWebViewPackage()", componentDescriptors: ["RNCWebViewComponentDescriptor"] },
+    ios: { podspec: "react-native-webview.podspec" },
+    optional: { kind: react }
+  },
+  {
+    name: "rive-react-native",
+    version: "9.7.1",
+    android: { packageImportPath: "import com.rivereactnative.RiveReactNativePackage;", packageInstance: "new RiveReactNativePackage()" },
+    ios: { podspec: "rive-react-native.podspec" },
+    optional: { kind: react }
+  }
+];
+
+// src/vendored.ts
 var vendoredPackages = [
+  // The optional view libraries (`optional-libraries.ts`).
+  ...optionalLibraries,
   {
     name: "react-native-nitro-modules",
     version: "0.35.10",
@@ -1017,6 +1069,27 @@ var vendoredPackages = [
     version: "4.3.1",
     android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
     ios: { podspec: "NitroMmkv.podspec" }
+  },
+  {
+    // The base64 module quick-crypto and its Buffer ask for (`libraryName` QuickBase64 is the `react { }` block of its build.gradle).
+    name: "react-native-quick-base64",
+    version: "2.2.2",
+    android: { packageImportPath: "import com.reactnativequickbase64.QuickBase64Package;", packageInstance: "new QuickBase64Package()" },
+    ios: { podspec: "react-native-quick-base64.podspec" }
+  },
+  {
+    // `crypto` and `crypto.subtle`: a Nitro module over OpenSSL (and libsodium, when the plugin's `sodiumEnabled` is on). It links the vendored Nitro runtime by its project name and pod.
+    name: "react-native-quick-crypto",
+    version: "1.1.3",
+    android: { packageImportPath: "import com.margelo.nitro.quickcrypto.QuickCryptoPackage;", packageInstance: "new QuickCryptoPackage()" },
+    ios: { podspec: "QuickCrypto.podspec" }
+  },
+  {
+    // The `Intl` constructors Hermes lacks: a pure C++ TurboModule (no view, no module class: the `ReactPackage` is empty), so Android adds its CMake module to the app's build.
+    name: "hermes-intl",
+    version: "0.1.2",
+    android: { packageImportPath: "import dev.hermesintl.HermesIntlPackage;", packageInstance: "new HermesIntlPackage()", cxxModule: { cmakeListsModuleName: "hermesintl", cmakeListsPath: "android/CMakeLists.txt", headerName: "NativeHermesIntl" } },
+    ios: { podspec: "HermesIntl.podspec" }
   },
   {
     name: "react-native-gesture-handler",
@@ -1081,6 +1154,11 @@ var vendoredPackages = [
   }
 ];
 var vendoredNames = vendoredPackages.map((vendored) => vendored.name);
+var optionalPackages = vendoredPackages.filter((vendored) => vendored.optional !== void 0);
+var alwaysLinkedPackages = vendoredPackages.filter((vendored) => vendored.optional === void 0);
+var vendoredPackage = (name) => vendoredPackages.find((vendored) => vendored.name === name);
+var vendorDirectory = (root = packageRoot) => (0, import_node_path5.join)(root, "vendor");
+var vendoredRoot = (name, root = packageRoot) => (0, import_node_path5.join)(vendorDirectory(root), name);
 var readJson = (file) => {
   try {
     const parsed = JSON.parse((0, import_node_fs4.readFileSync)(file, "utf8"));
@@ -1100,10 +1178,144 @@ function declaredVendored(appRoot) {
   return vendoredNames.filter((name) => declared.has(name));
 }
 function collisionMessage(names, library = "@alfayez/svelte-native") {
-  const list = names.map((name) => `${name} ${vendoredPackages.find((vendored) => vendored.name === name)?.version ?? ""}`.trim());
+  const list = names.map((name) => `${name} ${vendoredPackage(name)?.version ?? ""}`.trim());
   const them = names.length === 1 ? "it" : "them";
-  return `${library} includes ${list.join(" and ")}; remove ${them} from the app's dependencies (package.json), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it. A library of the app that asks for ${them} as a peer dependency is served by the copy (Metro resolves the name to it; the Gradle project and the pod keep the name), so nothing needs to take ${them === "it" ? "its" : "their"} place.`;
+  const optional = names.filter((name) => vendoredPackage(name)?.optional !== void 0);
+  const turnOn = optional.length === 0 ? "" : ` ${optional.length === 1 ? "It is" : "They are"} optional: turn ${optional.length === 1 ? "it" : "them"} on with \`libraries: { ${optional.map((name) => `"${name}": true`).join(", ")} }\` in the ${library} plugin's options (its own plugin options go there instead of in \`plugins\`).`;
+  return `${library} includes ${list.join(" and ")}; remove ${them} from the app's dependencies (package.json), reinstall, and prebuild again. The library links its own copy; a second one would be linked beside it. A library of the app that asks for ${them} as a peer dependency is served by the copy (Metro resolves the name to it; the Gradle project and the pod keep the name), so nothing needs to take ${them === "it" ? "its" : "their"} place.${turnOn}`;
 }
+function withRequired(names) {
+  const all = /* @__PURE__ */ new Set();
+  const add = (name) => {
+    if (all.has(name)) return;
+    all.add(name);
+    for (const required of vendoredPackage(name)?.optional?.requires ?? []) add(required);
+  };
+  for (const name of names) add(name);
+  return [...all];
+}
+
+// src/libraries.ts
+var LibrariesConfigError = class extends Error {
+  name = "LibrariesConfigError";
+};
+var libraryNames = optionalPackages.map((vendored) => vendored.name);
+var isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+function checkLibraries(option) {
+  if (option === void 0 || option === null) return { listed: /* @__PURE__ */ new Map(), enabled: [] };
+  if (!isObject(option)) throw new LibrariesConfigError('`libraries` takes an object of library names: `libraries: { "react-native-maps": true }`');
+  const listed = /* @__PURE__ */ new Map();
+  for (const [name, value] of Object.entries(option)) {
+    const vendored = vendoredPackage(name);
+    if (vendored?.optional === void 0) {
+      const always = vendored !== void 0 ? ` ${name} is in every app: there is nothing to turn on.` : "";
+      throw new LibrariesConfigError(`\`libraries\` names "${name}", which is not one of the optional libraries @alfayez/svelte-native carries.${always} The libraries: ${libraryNames.join(", ")}.`);
+    }
+    if (value === false) continue;
+    if (value === true) {
+      listed.set(name, void 0);
+      continue;
+    }
+    if (!isObject(value)) throw new LibrariesConfigError(`libraries["${name}"] is \`true\`, \`false\` or the options of ${name}'s config plugin (an object), not ${JSON.stringify(value) ?? String(value)}`);
+    if (vendored.optional.plugin === void 0 && Object.keys(value).length > 0) {
+      throw new LibrariesConfigError(`libraries["${name}"] has options (${Object.keys(value).join(", ")}), and ${name} has no config plugin to give them to: write \`libraries: { "${name}": true }\``);
+    }
+    listed.set(name, value);
+  }
+  const wanted = withRequired(listed.keys());
+  return { listed, enabled: libraryNames.filter((name) => wanted.includes(name)) };
+}
+var kindOf = (name) => vendoredPackage(name)?.optional?.kind ?? "react-native";
+function libraryLinks(enabled) {
+  const on = new Set(withRequired(enabled));
+  const ordered = libraryNames.filter((name) => on.has(name));
+  return {
+    enabled: ordered,
+    reactNative: ordered.filter((name) => kindOf(name) === "react-native"),
+    expo: ordered.filter((name) => kindOf(name) === "expo"),
+    expoOff: libraryNames.filter((name) => kindOf(name) === "expo" && !on.has(name))
+  };
+}
+function libraryPlugin(vendored, root) {
+  const file = vendored.optional?.plugin;
+  if (file === void 0) return void 0;
+  const path = (0, import_node_path6.join)(vendoredRoot(vendored.name, root), file);
+  const loaded = (0, import_node_module2.createRequire)(__importMetaUrl)(path);
+  const plugin = typeof loaded === "function" ? loaded : loaded?.default;
+  if (typeof plugin !== "function") throw new LibrariesConfigError(`${path} is the config plugin of ${vendored.name} and exports no function`);
+  return plugin;
+}
+
+// src/remote/host.ts
+var RemoteConfigError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "RemoteConfigError";
+  }
+};
+var EXTRA_KEY = "svelteNative";
+var HOW = 'Set `extra.svelteNative.remote.origin` in app.config.ts (the "@alfayez/svelte-native" plugin\'s `remote` option writes it), or call `configureRemote({ origin })` before the first remote function.';
+function normalizeOrigin(value) {
+  if (typeof value !== "string" || value.trim() === "") throw new RemoteConfigError(`The remote origin must be a URL string such as "https://app.example.com", not ${JSON.stringify(value)}. ${HOW}`);
+  let url;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    throw new RemoteConfigError(`The remote origin ${JSON.stringify(value)} is not a URL. ${HOW}`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw new RemoteConfigError(`The remote origin ${JSON.stringify(value)} must use http: or https:.`);
+  if (url.username || url.password) throw new RemoteConfigError(`The remote origin ${JSON.stringify(value)} must not carry credentials.`);
+  if (url.pathname !== "/" && url.pathname !== "" || url.search || url.hash) throw new RemoteConfigError(`The remote origin ${JSON.stringify(value)} must be an origin without a path, query or fragment: put a path prefix in \`base\` (SvelteKit's \`paths.base\`).`);
+  return url.origin;
+}
+function normalizeBase(value) {
+  if (value === void 0 || value === null || value === "") return "";
+  if (typeof value !== "string" || !value.startsWith("/") || value.endsWith("/")) throw new RemoteConfigError(`The remote base ${JSON.stringify(value)} must be "" or a path that starts with "/" and does not end with one (SvelteKit's \`paths.base\`).`);
+  return value;
+}
+function normalizeAppDir(value) {
+  if (value === void 0 || value === null || value === "") return "_app";
+  if (typeof value !== "string" || value.startsWith("/") || value.endsWith("/")) throw new RemoteConfigError(`The remote appDir ${JSON.stringify(value)} must be a path segment without a leading or trailing "/" (SvelteKit's \`appDir\`, "_app" by default).`);
+  return value;
+}
+
+// src/remote/plugin.ts
+var import_config_plugins2 = require("expo/config-plugins.js");
+function remoteExtra(extra, remote) {
+  const host = { origin: normalizeOrigin(remote.origin), base: normalizeBase(remote.base), appDir: normalizeAppDir(remote.appDir) };
+  return { ...extra, [EXTRA_KEY]: { ...extra?.[EXTRA_KEY], remote: host } };
+}
+var isCleartext = (origin) => new URL(origin).protocol === "http:";
+function atsExceptionDomain(origin) {
+  const { hostname } = new URL(origin);
+  const address = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.startsWith("[");
+  return address || !hostname.includes(".") || hostname.endsWith(".local") ? void 0 : hostname;
+}
+function allowAndroidCleartext(application) {
+  application.$ = { ...application.$, "android:usesCleartextTraffic": "true" };
+}
+function allowIosCleartext(infoPlist, origin) {
+  const domain = atsExceptionDomain(origin);
+  if (domain === void 0) return;
+  const security = infoPlist.NSAppTransportSecurity ?? {};
+  security.NSExceptionDomains = { ...security.NSExceptionDomains, [domain]: { ...security.NSExceptionDomains?.[domain], NSExceptionAllowsInsecureHTTPLoads: true, NSIncludesSubdomains: false } };
+  infoPlist.NSAppTransportSecurity = security;
+}
+var withRemoteHost = (config, remote) => {
+  config.extra = remoteExtra(config.extra, remote);
+  const { origin } = config.extra[EXTRA_KEY].remote;
+  if (!isCleartext(origin)) return config;
+  config = (0, import_config_plugins2.withAndroidManifest)(config, (config2) => {
+    const application = config2.modResults.manifest.application?.[0];
+    if (!application) throw new Error("Svelte native could not find <application> in AndroidManifest.xml");
+    allowAndroidCleartext(application);
+    return config2;
+  });
+  return (0, import_config_plugins2.withInfoPlist)(config, (config2) => {
+    allowIosCleartext(config2.modResults, origin);
+    return config2;
+  });
+};
 
 // src/expo.ts
 var headlessExcludedPackages = [
@@ -1322,22 +1534,31 @@ function applyAppDelegate(contents) {
 ${delegateImport}${stripped.slice(importEnd, propertyEnd)}
 ${block}${stripped.slice(propertyEnd)}`;
 }
-function applyHeadlessSettings(contents, extra = []) {
+function applyHeadlessSettings(contents, extra = [], links) {
   const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\((?:svelteNativeConfigCommand \+ )?expoAutolinking\.rnConfigCommand \+ svelteNativeExcludeArgs(?:, svelteNativeAppRoot\.asFile, svelteNativeLockFiles)?\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)");
   const anchor = /^extensions\.configure\(com\.facebook\.react\.ReactSettingsExtension\)/m.exec(stripped);
   if (!anchor || !stripped.includes("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)")) throw new Error("Svelte native could not find the autolinking block in settings.gradle");
-  const list = [.../* @__PURE__ */ new Set([...headlessExcludedPackages, ...extra])].map((name) => `"${name}"`).join(", ");
+  const list = [.../* @__PURE__ */ new Set([...headlessExcludedPackages, ...extra, ...links?.expoOff ?? []])].map((name) => `"${name}"`).join(", ");
+  const quoted = (names) => names.map((name) => `"${name}"`).join(", ");
+  const expoModules = links?.expo ?? [];
+  const reactNative = links?.reactNative ?? [];
   const block = [
     gradleBegin,
     `def svelteNativeExclude = [${list}]`,
     'def svelteNativeExcludeArgs = svelteNativeExclude.collectMany { ["--exclude", it] }',
     "expoAutolinking.exclude = svelteNativeExclude",
     `def svelteNativeCli = new File(providers.exec { workingDir(rootDir); commandLine("node", "--print", "require.resolve('${libraryPackage}/package.json')") }.standardOutput.asText.get().trim()).getParentFile().toPath().resolve("dist/node/cli.js").toString()`,
-    'def svelteNativeConfigCommand = ["node", svelteNativeCli, "android-autolinking"]',
-    // React Native keeps the command's output until a lockfile of the app changes: React Native's own list, and the CLI, so that a new version of the
-    // library (a workspace or file: dependency changes no lockfile) runs the command again.
+    ...expoModules.length === 0 ? [] : [
+      `// The Expo modules the app turned on (libraries): the directories of their copies in the library are Expo's search paths. "--" first: see applyHeadlessSettings.`,
+      `def svelteNativeExpoModules = [${quoted(expoModules)}]`,
+      "def svelteNativeLibrary = new File(svelteNativeCli).getParentFile().getParentFile().getParentFile()",
+      'expoAutolinking.searchPaths = ["--"] + svelteNativeExpoModules.collect { new File(svelteNativeLibrary, "vendor/" + it).toString() }'
+    ],
+    `def svelteNativeConfigCommand = ["node", svelteNativeCli, "android-autolinking"${reactNative.map((name) => `, "--link", "${name}"`).join("")}]`,
+    // React Native keeps the command's output until a lockfile of the app changes: React Native's own list, the CLI, and this file, so that a new version of the
+    // library (a workspace or file: dependency changes no lockfile) and a changed `libraries` (the `--link` arguments above) run the command again.
     'def svelteNativeAppRoot = settings.layout.rootDirectory.dir("../")',
-    'def svelteNativeLockFiles = svelteNativeAppRoot.files("yarn.lock", "package-lock.json", "package.json", "react-native.config.js", svelteNativeCli)',
+    'def svelteNativeLockFiles = svelteNativeAppRoot.files("yarn.lock", "package-lock.json", "package.json", "react-native.config.js", svelteNativeCli, new File(settingsDir, "settings.gradle").toString())',
     gradleEnd,
     ""
   ].join("\n");
@@ -1347,15 +1568,19 @@ var podfileBegin = "  # Svelte native: autolinking excludes (generated, do not e
 var podfileEnd = "  # Svelte native: end of autolinking excludes";
 var podfileCommandBegin = "  # Svelte native: autolinking excludes for React Native's config command (generated, do not edit)";
 var podfileCommandEnd = "  # Svelte native: end of config command excludes";
-function applyPodfileAutolinkingExclude(contents, names) {
-  const stripped = contents.replace(blockPattern(podfileBegin, podfileEnd), "").replace(blockPattern(podfileCommandBegin, podfileCommandEnd), "").replace(/use_expo_modules!\(exclude: svelte_native_exclude\)/, "use_expo_modules!");
-  if (names.length === 0) return stripped;
+function applyPodfileAutolinkingExclude(contents, names, expoModules = []) {
+  const stripped = contents.replace(blockPattern(podfileBegin, podfileEnd), "").replace(blockPattern(podfileCommandBegin, podfileCommandEnd), "").replace(/use_expo_modules!\((?:exclude: svelte_native_exclude)?(?:, )?(?:searchPaths: [^\n]*?)?\)(?=[ \t]*$)/m, "use_expo_modules!");
+  if (names.length === 0 && expoModules.length === 0) return stripped;
   const useAnchor = /^[ \t]*use_expo_modules!(?!\()[ \t]*$/m.exec(stripped);
   const commandAnchor = /^[ \t]*config = use_native_modules!\(config_command\)[ \t]*$/m.exec(stripped);
   if (!useAnchor || !commandAnchor || useAnchor.index > commandAnchor.index) throw new Error("Svelte native could not find use_expo_modules! and use_native_modules!(config_command) in the Podfile");
   const list = [
     podfileBegin,
     `  svelte_native_exclude = [${[...new Set(names)].map((name) => `"${name}"`).join(", ")}]`,
+    ...expoModules.length === 0 ? [] : [
+      `  svelte_native_expo_modules = [${expoModules.map((name) => `"${name}"`).join(", ")}]`,
+      `  svelte_native_library = File.dirname(\`node --print "require.resolve('${libraryPackage}/package.json')"\`)`
+    ],
     podfileEnd
   ].join("\n");
   const command = [
@@ -1363,25 +1588,37 @@ function applyPodfileAutolinkingExclude(contents, names) {
     "  config_command += svelte_native_exclude.flat_map { |name| ['--exclude', name] } if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] != '1'",
     podfileCommandEnd
   ].join("\n");
+  const useCall = `use_expo_modules!(exclude: svelte_native_exclude${expoModules.length === 0 ? "" : ", searchPaths: svelte_native_expo_modules.map { |name| File.join(svelte_native_library, 'vendor', name) }"})`;
   const useEnd = useAnchor.index + useAnchor[0].length;
   return `${stripped.slice(0, useAnchor.index)}${list}
-${stripped.slice(useAnchor.index, useEnd).replace("use_expo_modules!", "use_expo_modules!(exclude: svelte_native_exclude)")}${stripped.slice(useEnd, commandAnchor.index)}${command}
+${stripped.slice(useAnchor.index, useEnd).replace("use_expo_modules!", useCall)}${stripped.slice(useEnd, commandAnchor.index)}${command}
 ${stripped.slice(commandAnchor.index)}`;
 }
 var podfileLinkBegin = "  # Svelte native: the packages the library carries are linked from its own directory (generated, do not edit)";
 var podfileLinkEnd = "  # Svelte native: end of the library's own packages";
-function applyPodfileVendoredLinking(contents) {
+function applyPodfileVendoredLinking(contents, links = []) {
   const stripped = contents.replace(blockPattern(podfileLinkBegin, podfileLinkEnd), "");
   const anchor = /^[ \t]*config = use_native_modules!\(config_command\)[ \t]*$/m.exec(stripped);
   if (!anchor) throw new Error("Svelte native could not find use_native_modules!(config_command) in the Podfile");
   const block = [
     podfileLinkBegin,
     `  svelte_native_cli = File.join(File.dirname(\`node --print "require.resolve('${libraryPackage}/package.json')"\`), 'dist/node/cli.js')`,
-    "  config_command = ['node', svelte_native_cli, 'ios-autolinking'] + config_command",
+    `  config_command = ['node', svelte_native_cli, 'ios-autolinking'${links.map((name) => `, '--link', '${name}'`).join("")}] + config_command`,
     podfileLinkEnd
   ].join("\n");
   return `${stripped.slice(0, anchor.index)}${block}
 ${stripped.slice(anchor.index)}`;
+}
+var podfileSodiumBegin = "# Svelte native: libsodium for react-native-quick-crypto (generated, do not edit)";
+var podfileSodiumEnd = "# Svelte native: end of libsodium";
+function applyPodfileSodium(contents, enabled) {
+  const stripped = contents.replace(new RegExp(`(^|\\n)${escapeRegExp(podfileSodiumBegin)}[\\s\\S]*?${escapeRegExp(podfileSodiumEnd)}(?:\\n|$)`), "$1");
+  return enabled ? `${[podfileSodiumBegin, "ENV['SODIUM_ENABLED'] = '1'", podfileSodiumEnd].join("\n")}
+${stripped}` : stripped;
+}
+function applyGradleSodium(properties, enabled) {
+  const others = properties.filter((item) => !(item.type === "property" && item.key === "sodiumEnabled"));
+  return enabled ? [...others, { type: "property", key: "sodiumEnabled", value: "true" }] : others;
 }
 function headlessPackageSource(applicationId) {
   const dropped = headlessDroppedTurboModules.map((name) => `"${name}"`).join(", ");
@@ -1499,8 +1736,31 @@ function assertNoVendoredOriginals(projectRoot) {
   const declared = declaredVendored(projectRoot);
   if (declared.length > 0) throw new Error(collisionMessage(declared, libraryPackage));
 }
+function onDemandForLibraries(onDemand, enabled) {
+  if (onDemand === void 0) return void 0;
+  const absent = optionalPackages.filter((vendored) => !enabled.includes(vendored.name)).map((vendored) => /^import ([\w.]+);$/.exec(vendored.android?.packageImportPath ?? "")?.[1]);
+  return Object.fromEntries(Object.entries(onDemand).filter(([packageClass]) => !absent.includes(packageClass)));
+}
+var withLibraries = (config, libraries) => {
+  const listedPlugins = (config.plugins ?? []).map((plugin) => String(Array.isArray(plugin) ? plugin[0] : plugin)).filter((name) => vendoredPackage(name)?.optional !== void 0);
+  if (listedPlugins.length > 0) {
+    throw new LibrariesConfigError(`\`plugins\` lists ${listedPlugins.join(", ")}, which ${libraryPackage} carries and is not installed: its plugin runs from the library's copy, with its options under \`libraries\` (\`["${libraryPackage}", { libraries: { ${listedPlugins.map((name) => `"${name}": { … }`).join(", ")} } }]\`). Remove it from \`plugins\`.`);
+  }
+  for (const name of libraries.enabled) {
+    const vendored = vendoredPackage(name);
+    const plugin = vendored && libraryPlugin(vendored);
+    if (plugin) config = plugin(config, libraries.listed.get(name));
+  }
+  const svelteNative = config.extra?.[EXTRA_KEY] ?? {};
+  return { ...config, extra: { ...config.extra, [EXTRA_KEY]: { ...svelteNative, libraries: [...libraries.enabled] } } };
+};
 var withSvelteNative = (config, options) => {
+  if (options?.sodiumEnabled !== void 0 && typeof options.sodiumEnabled !== "boolean") throw new Error(`Svelte native: sodiumEnabled must be true or false, not ${JSON.stringify(options.sodiumEnabled)}`);
+  const sodium = options?.sodiumEnabled === true;
+  const libraries = checkLibraries(options?.libraries);
+  const links = libraryLinks(libraries.enabled);
   config = leaveOutOfAutoPlugins(config, options?.autolinkingExclude ?? []);
+  config = withLibraries(config, libraries);
   config = withCapabilities(config, options?.capabilities, { excluded: options?.autolinkingExclude });
   if (options?.remote) config = withRemoteHost(config, options.remote);
   for (const platform of ["android", "ios"]) {
@@ -1513,11 +1773,11 @@ var withSvelteNative = (config, options) => {
   config = (0, import_config_plugins3.withDangerousMod)(config, ["android", async (config2) => {
     const applicationId = config2.android?.package;
     if (!applicationId) throw new Error("Svelte native needs android.package in the Expo config");
-    const directory = (0, import_node_path6.join)(config2.modRequest.platformProjectRoot, "app/src/main/java", ...applicationId.split("."));
-    const file = (0, import_node_path6.join)(directory, `${headlessPackageName}.kt`);
+    const directory = (0, import_node_path7.join)(config2.modRequest.platformProjectRoot, "app/src/main/java", ...applicationId.split("."));
+    const file = (0, import_node_path7.join)(directory, `${headlessPackageName}.kt`);
     await (0, import_promises2.mkdir)(directory, { recursive: true });
     await (0, import_promises2.writeFile)(file, headlessPackageSource(applicationId));
-    await (0, import_promises2.writeFile)((0, import_node_path6.join)(directory, `${onDemandPackageName}.kt`), onDemandPackageSource(applicationId));
+    await (0, import_promises2.writeFile)((0, import_node_path7.join)(directory, `${onDemandPackageName}.kt`), onDemandPackageSource(applicationId));
     return config2;
   }]);
   config = (0, import_config_plugins3.withAndroidManifest)(config, (config2) => {
@@ -1535,11 +1795,15 @@ var withSvelteNative = (config, options) => {
     return config2;
   });
   config = (0, import_config_plugins3.withSettingsGradle)(config, (config2) => {
-    config2.modResults.contents = applyHeadlessSettings(config2.modResults.contents, options?.autolinkingExclude);
+    config2.modResults.contents = applyHeadlessSettings(config2.modResults.contents, options?.autolinkingExclude, links);
     return config2;
   });
   config = (0, import_config_plugins3.withPodfile)(config, (config2) => {
-    config2.modResults.contents = applyPodfileVendoredLinking(applyPodfileAutolinkingExclude(config2.modResults.contents, options?.autolinkingExclude ?? []));
+    config2.modResults.contents = applyPodfileSodium(applyPodfileVendoredLinking(applyPodfileAutolinkingExclude(config2.modResults.contents, [...options?.autolinkingExclude ?? [], ...links.expoOff], links.expo), links.reactNative), sodium);
+    return config2;
+  });
+  config = (0, import_config_plugins3.withGradleProperties)(config, (config2) => {
+    config2.modResults = applyGradleSodium(config2.modResults, sodium);
     return config2;
   });
   if (options?.androidProfileable) {
@@ -1551,9 +1815,9 @@ var withSvelteNative = (config, options) => {
     });
   }
   config = (0, import_config_plugins3.withDangerousMod)(config, ["android", async (config2) => {
-    const dir = (0, import_node_path6.join)(config2.modRequest.platformProjectRoot, "app", "src", "main");
+    const dir = (0, import_node_path7.join)(config2.modRequest.platformProjectRoot, "app", "src", "main");
     await (0, import_promises2.mkdir)(dir, { recursive: true });
-    await (0, import_promises2.writeFile)((0, import_node_path6.join)(dir, "baseline-prof.txt"), baselineProfile());
+    await (0, import_promises2.writeFile)((0, import_node_path7.join)(dir, "baseline-prof.txt"), baselineProfile());
     return config2;
   }]);
   config = (0, import_config_plugins3.withMainActivity)(config, (config2) => {
@@ -1568,7 +1832,7 @@ var withSvelteNative = (config, options) => {
   });
   config = (0, import_config_plugins3.withMainApplication)(config, (config2) => {
     if (config2.modResults.language !== "kt") throw new Error("Svelte native requires Expo's Kotlin MainApplication");
-    config2.modResults.contents = applyHeadlessApplication(applyFeatureFlags(config2.modResults.contents, androidFeatureFlagsFor(options)), options?.androidOnDemandViewManagers);
+    config2.modResults.contents = applyHeadlessApplication(applyFeatureFlags(config2.modResults.contents, androidFeatureFlagsFor(options)), onDemandForLibraries(options?.androidOnDemandViewManagers, links.enabled));
     return config2;
   });
   return (0, import_config_plugins3.withAppBuildGradle)(config, (config2) => {
@@ -1599,10 +1863,12 @@ function baselineProfile() {
   androidFeatureFlagsFor,
   applyAppDelegate,
   applyFeatureFlags,
+  applyGradleSodium,
   applyHeadlessApplication,
   applyHeadlessSettings,
   applyMainActivity,
   applyPodfileAutolinkingExclude,
+  applyPodfileSodium,
   applyPodfileVendoredLinking,
   assertNoVendoredOriginals,
   baselineProfile,
@@ -1611,5 +1877,7 @@ function baselineProfile() {
   headlessExcludedPackages,
   headlessPackageSource,
   leaveOutOfAutoPlugins,
-  onDemandPackageSource
+  onDemandForLibraries,
+  onDemandPackageSource,
+  withLibraries
 });

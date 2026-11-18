@@ -58,15 +58,12 @@ describe("the manifest holds nothing that only resolves inside this repository",
     expect([existsSync(join(root, "dist/node/expo.cjs")), existsSync(join(root, "src/expo.ts"))]).toEqual([true, true]);
   });
 
-  // React Native's autolinking links a native module only from the app's own dependencies, so an app installs these itself: they are required peers, at an exact version where several of
-  // them share a runtime, and not dependencies of the package. SvelteKit and Vite it may leave out. The packages the library carries are not among them (vendor/, below).
-  test("hermes-intl and the two the web's crypto is made of are required peers, not dependencies; SvelteKit and Vite are optional", () => {
-    for (const name of ["hermes-intl", "react-native-quick-crypto", "react-native-quick-base64"]) {
-      expect([name, typeof manifest.peerDependencies[name]]).toEqual([name, "string"]);
-      expect([name, manifest.peerDependenciesMeta?.[name]]).toEqual([name, undefined]);
-      expect([name, manifest.dependencies[name]]).toEqual([name, undefined]);
+  // React Native's autolinking links a native module only from the app's own dependencies, so a native package an app installs itself would be a required peer. There is none: the library carries every
+  // native package it needs (vendor/, below), and SvelteKit and Vite are the optional peers an app may leave out.
+  test("no native package is a peer to install: SvelteKit and Vite are the optional peers, and the ones the library carries are neither peers nor dependencies", () => {
+    for (const name of ["react-native-svg", "hermes-intl", "react-native-quick-crypto", "react-native-quick-base64"]) {
+      expect([name, manifest.peerDependencies[name], manifest.peerDependenciesMeta?.[name], manifest.dependencies[name]]).toEqual([name, undefined, undefined, undefined]);
     }
-    for (const name of ["react-native-quick-crypto", "react-native-quick-base64"]) expect([name, manifest.peerDependencies[name]]).toEqual([name, expect.stringMatching(/^\d+\.\d+\.\d+$/)]);
     expect(manifest.peerDependenciesMeta?.["@sveltejs/kit"]).toEqual({ optional: true });
     expect(manifest.peerDependenciesMeta?.vite).toEqual({ optional: true });
   });
@@ -185,7 +182,10 @@ describe("what `files` packs", () => {
   });
 
   test("it holds no test, fixture, plan, specification or build output", () => {
-    const unwanted = listed.filter((path) => /^tests\/|(^|\/)test\/|(^|\/)(build|\.cxx|\.gradle|Pods)\//.test(path) || /(^|\/)(SPEC|NOTES|PLAN)\.md$/.test(path) || /\.test\.ts$/.test(path));
+    // A `build/` directory is a native build's output (`android/build`, `ios/build`) and is not packed; an Expo module's JavaScript is in `build/` and its config plugin's in `plugin/build/`, and a
+    // vendored copy carries them (`vendor/expo-image/build/`).
+    const nativeBuild = (path: string) => /(^|\/)(android|ios)\/build\//.test(path) || (/(^|\/)build\//.test(path) && !/^vendor\/(?:@[^/]+\/)?[^/]+\/(?:plugin\/)?build\//.test(path));
+    const unwanted = listed.filter((path) => /^tests\/|(^|\/)test\/|(^|\/)(\.cxx|\.gradle|Pods)\//.test(path) || nativeBuild(path) || /(^|\/)(SPEC|NOTES|PLAN)\.md$/.test(path) || /\.test\.ts$/.test(path));
     expect(unwanted).toEqual([]);
     // The package's own documents; a vendored package brings its README and the VENDOR.md that says where it came from (checked below).
     expect(listed.filter((path) => path.endsWith(".md") && !path.startsWith("vendor/")).sort()).toEqual(["CHANGELOG.md", "README.md", "REFERENCE.md"]);
@@ -260,8 +260,8 @@ describe("what `files` packs", () => {
       // What `scripts/vendor.ts` leaves out of each copy (VENDOR.md says so): the source maps, the CommonJS builds, the Windows projects, the Gradle wrapper.
       expect([name, listed.filter((path) => path.startsWith(`vendor/${name}/`) && (path.endsWith(".map") || path.includes("/lib/commonjs/") || path.includes("/windows/") || path.includes("/gradle/wrapper/") || /\/gradlew(?:\.bat)?$/.test(path)))]).toEqual([name, []]);
     }
-    // The patches are applied to the copies when the library is written, and are not packed with it (VENDOR.md lists them, with their sha256).
-    expect(listed.filter((path) => path.startsWith("vendor-patches/"))).toEqual([]);
+    // The patches are applied to the copies when the library is written; the files are packed too, beside them (`vendor-patches/<name>/`: VENDOR.md lists each with its sha256).
+    expect(listed.filter((path) => path.startsWith("vendor-patches/react-native-reanimated/")).length).toBe(3);
     expect(listed.some((path) => /^patches\/react-native-(?:gesture-handler|reanimated|worklets)@/.test(path))).toBe(false);
   });
 

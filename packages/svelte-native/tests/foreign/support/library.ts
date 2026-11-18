@@ -1,6 +1,6 @@
 import { build } from "esbuild";
 import { evaluate } from "../../support/bundle.ts";
-import { nodeModules } from "../../support/paths.ts";
+import { nodeModules, vendoredAliases } from "../../support/paths.ts";
 
 /**
  * A library's own source, bundled with the modules it takes from React Native and Expo replaced by stand-ins, and evaluated: the oracle of a differential test, which runs the
@@ -18,7 +18,7 @@ async function bundleLibrary(options: LibraryOptions): Promise<string> {
   const rules = options.stubs.map(([match, source]) => ({ filter: typeof match === "string" ? new RegExp(`^${escapeRegExp(match)}$`) : match, source }));
   const result = await build({
     stdin: { contents: options.entry, resolveDir: nodeModules },
-    bundle: true, format: "esm", platform: "neutral", write: false, mainFields: ["main"],
+    bundle: true, format: "esm", platform: "neutral", write: false, mainFields: ["main"], alias: vendoredAliases,
     ...(options.conditions ? { conditions: options.conditions } : {}),
     ...(options.define ? { define: options.define } : {}),
     plugins: [{

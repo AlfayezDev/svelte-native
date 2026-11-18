@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
-import { vendorAliases } from "./paths.ts";
+import { vendoredAliases } from "./paths.ts";
 
 /**
  * React Native's own view configs and attribute payload code, built from its Flow sources, as the reference the static
@@ -127,7 +127,7 @@ export async function importWithReactNative<T>(platform: Platform, entry: string
     resolveExtensions: resolveExtensions(platform),
     define: { __DEV__: "false", "process.env.NODE_ENV": '"production"' },
     plugins: [reactNativeSources(platform), ...plugins],
-    alias: vendorAliases(),
+    alias: vendoredAliases,
     logLevel: "error",
   });
   const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-reference-"));

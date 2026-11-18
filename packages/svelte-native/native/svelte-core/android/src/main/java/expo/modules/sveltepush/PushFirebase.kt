@@ -4,8 +4,8 @@ import com.google.firebase.messaging.FirebaseMessaging
 
 /**
  * The calls of `register` and `unregister` that name Firebase's classes, and the only code besides the messaging service that does. Firebase Messaging is `compileOnly` in this
- * project (`build.gradle`): an app has it only when the config plugin added it, for `capabilities.push.android`. Nothing loads this class unless push is on and JavaScript asks for the
- * token, so an app without push never resolves a Firebase class, whatever the module's other code does.
+ * project (`build.gradle`): an app has it only when the config plugin added it, for `capabilities.push.android`. Nothing loads this class unless push is on and JavaScript calls
+ * `register` or `unregister`, so an app without push never resolves a Firebase class, whatever the module's other code does.
  */
 internal object PushFirebase {
   /**

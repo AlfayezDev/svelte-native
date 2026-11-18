@@ -72,7 +72,6 @@ class SvelteLocationModule : Module() {
       }
     }
 
-    // The state without asking.
     AsyncFunction("permission") { promise: Promise -> whenEnabled(promise) { readPermission(promise) } }
 
     // Asked from the main thread: the question is a dialog of the current Activity.

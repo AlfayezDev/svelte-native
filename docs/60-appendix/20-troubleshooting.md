@@ -96,7 +96,7 @@ A release build doesn't use Metro. If you see this on one, it was built without 
 
 ## Expo asks to install @types/react
 
-_It looks like you're trying to use TypeScript but don't have the required dependencies installed._ This is Expo's TypeScript setup, which is for React apps. A Svelte app doesn't need `@types/react`: answer no. Svelte Native's commands (`pnpm android`, `pnpm ios`, `pnpm native`) turn the setup off, so you see this question only when you run Expo yourself (`pnpm exec expo start`) or with Svelte Native 0.4.0-rc.9 or older. To skip it there, set `EXPO_NO_TYPESCRIPT_SETUP=1`.
+_It looks like you're trying to use TypeScript but don't have the required dependencies installed._ This is Expo's TypeScript setup, which is for React apps. Svelte Native's commands (`pnpm android`, `pnpm ios`, `pnpm native`) turn it off, so the question only comes up when you run Expo yourself (`pnpm exec expo start`) or with Svelte Native 0.4.0-rc.9 or older. Answering no stops the command. Either answer yes, which adds `@types/react` to your dev dependencies, or skip the question with `EXPO_NO_TYPESCRIPT_SETUP=1`.
 
 ## The Android build fails
 

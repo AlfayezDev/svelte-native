@@ -46,7 +46,7 @@ export const libraryModules: Record<string, RegExp[]> = {
 	conic: [/\/node_modules\/expo-conic-gradient\//],
 	shadow: [/\/node_modules\/react-native-fast-shadow\//],
 	text: [/\/node_modules\/react-native-animateable-text\//],
-	svg: [/\/node_modules\/react-native-svg\/(?!src\/lib\/)/],
+	svg: [/\/(?:node_modules|vendor)\/react-native-svg\/(?!src\/lib\/)/],
 };
 
 /**

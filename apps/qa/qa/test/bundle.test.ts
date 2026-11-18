@@ -137,7 +137,7 @@ describe("the JavaScript bundles", () => {
 			expect(text.includes("smoke-checks")).toBe(variant === "");
 		}, 120_000);
 	}
-	test("every app bundles the four packages the library requires or carries (crypto and localStorage are made of them), the real ones and no stub", () => {
+	test("every app bundles the packages the library requires or carries (crypto and localStorage are made of four of them; the animation, gestures and svg of the rest), the real ones and no stub", () => {
 		for (const variant of ["", "production", "smoke"]) {
 			const { modules, text } = bundled(variant);
 			for (const library of libraryPeerPackages) {
@@ -145,7 +145,8 @@ describe("the JavaScript bundles", () => {
 				// Metro's stub for a package is a file named after it (`.svelte-native/stubs/<variant>/<package>.js`): there is none for these.
 				expect([variant, library, modules.filter((module) => stubModule.test(module) && module.includes(library))]).toEqual([variant, library, []]);
 			}
-			// The two the library vendors are its own copies (`packages/svelte-native/vendor/<name>/`), one each: the app's import, quick-crypto's import of the Nitro runtime and the library's own all reach the same files, and no installed original is bundled beside them.
+			// The ones the library vendors are its own copies (`packages/svelte-native/vendor/<name>/`), one each: the app's import, quick-crypto's import of the Nitro runtime and the library's own all reach the same files, and no installed original is bundled beside them
+			// (this repository has originals of gesture handler, Reanimated and Worklets in node_modules, which a package manager installed for Expo Router's peers: none is reached).
 			for (const library of libraryVendoredPackages) {
 				expect([variant, library, modules.some((module) => module.startsWith(`packages/svelte-native/vendor/${library}/`))]).toEqual([variant, library, true]);
 				expect([variant, library, modules.filter((module) => module.includes(`node_modules/${library}/`))]).toEqual([variant, library, []]);

@@ -21,10 +21,10 @@ const smokeOnlyBundlePackages = [...new Set(modules.filter((entry) => !entry.sha
 const libraryPeerPackages = ["react-native-quick-crypto", "react-native-quick-base64"];
 
 /**
- * The two packages the library carries itself (`packages/svelte-native/vendor/`, VENDORING.md): the Nitro runtime and MMKV. They are no dependency of any
- * app here (the smoke app installs the production app's libraries as stand-ins, and these are not among them any more: the vendored copy is what the
- * smoke test calls), so the module table lists them without a package. Every app links and bundles them, the smoke test still checks them.
+ * The packages the library carries itself (`packages/svelte-native/vendor/`, VENDORING.md): the Nitro runtime and MMKV, and gesture handler, Worklets, Reanimated and svg. They are no
+ * dependency of any app here (the smoke app installs the production app's libraries as stand-ins, and these are not among them any more: the vendored copy is what the smoke test
+ * calls), so the module table lists the first two without a package. Every app links and bundles them, the smoke test still checks them.
  */
-const libraryVendoredPackages = ["react-native-mmkv", "react-native-nitro-modules"];
+const libraryVendoredPackages = ["react-native-mmkv", "react-native-nitro-modules", "react-native-gesture-handler", "react-native-worklets", "react-native-reanimated", "react-native-svg"];
 
 module.exports = { modules, smokeOnlyPackages, smokeOnlyBundlePackages, libraryPeerPackages, libraryVendoredPackages };

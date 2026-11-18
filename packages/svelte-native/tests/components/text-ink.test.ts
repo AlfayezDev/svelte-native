@@ -31,26 +31,27 @@ test("a text or an input with no colour has the system's, one with a colour of i
   const colors = () => ({
     plain: color(byId("plain")), styled: color(byId("styled")), classed: color(byId("classed")), toggled: color(byId("toggled")),
     inherited: color(byId("inherited")), run: color(run()), field: color(byId("field")), fieldStyled: color(byId("field-styled")),
+    component: color(byId("component-field")),
   });
 
-  expect(colors()).toEqual({ plain: LIGHT, styled: "#ff0000", classed: "#ffffff", toggled: LIGHT, inherited: "#ffffff", run: LIGHT, field: LIGHT, fieldStyled: "#0000ff" });
+  expect(colors()).toEqual({ plain: LIGHT, styled: "#ff0000", classed: "#ffffff", toggled: LIGHT, inherited: "#ffffff", run: LIGHT, field: LIGHT, fieldStyled: "#0000ff", component: LIGHT });
   // A span is a part of its paragraph and takes its colour from it: it is given none.
   expect(byId("span").name).toBe("RCTVirtualText");
   expect(color(byId("span"))).toBeUndefined();
-  // The default is under the text's own style, so a style it gets later wins, and one it loses gives the default back.
+  // A colour the text's style gets later wins, and one it loses gives the default back: `{ color: undefined }` is no colour, as React Native flattens a style.
   probe.__ink.setColored(true);
   await settle(m);
   expect(color(byId("toggled"))).toBe("#00ff00");
 
   m.__setColorScheme("dark");
   await settle(m);
-  expect(colors()).toEqual({ plain: DARK, styled: "#ff0000", classed: "#ffffff", toggled: "#00ff00", inherited: "#ffffff", run: DARK, field: DARK, fieldStyled: "#0000ff" });
+  expect(colors()).toEqual({ plain: DARK, styled: "#ff0000", classed: "#ffffff", toggled: "#00ff00", inherited: "#ffffff", run: DARK, field: DARK, fieldStyled: "#0000ff", component: DARK });
   probe.__ink.setColored(false);
   await settle(m);
   expect(color(byId("toggled"))).toBe(DARK);
 
   m.__setColorScheme("light");
   await settle(m);
-  expect(colors()).toEqual({ plain: LIGHT, styled: "#ff0000", classed: "#ffffff", toggled: LIGHT, inherited: "#ffffff", run: LIGHT, field: LIGHT, fieldStyled: "#0000ff" });
+  expect(colors()).toEqual({ plain: LIGHT, styled: "#ff0000", classed: "#ffffff", toggled: LIGHT, inherited: "#ffffff", run: LIGHT, field: LIGHT, fieldStyled: "#0000ff", component: LIGHT });
   m.stopSurface(701);
 });

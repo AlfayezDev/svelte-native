@@ -156,7 +156,7 @@ React Native's [View style props](https://reactnative.dev/docs/view-style-props)
 
 ## Light and dark mode
 
-What you don't colour follows the app's light or dark mode on its own. A screen without a background takes the one of the screen it is in (a tab's screens look as the screen of the tab bar does), and when there is none, the system's: white or black on iOS (a modal or a sheet is a dark grey in the dark mode, as iOS draws them), Material's surface on Android. A `Text` or a `TextInput` without a colour has the system's text colour: black or white on iOS, Material's near-black or near-white on Android. A transparent modal stays transparent.
+What you don't colour follows the app's light or dark mode on its own. A screen without a background takes the one of its stack, or of the screen it is in (a tab's screens look as the screen of the tab bar does), and when there is none, the system's: white or black on iOS (a modal or a sheet that takes the system's is a dark grey in the dark mode, as iOS draws them), Material's surface on Android. A transparent modal, and a screen inside one or inside a `<Modal transparent>`, has none. A `Text` or a `TextInput` without a colour has the system's text colour: black or white on iOS, Material's near-black or near-white on Android. A transparent modal stays transparent.
 
 The mode is the app's, set by `userInterfaceStyle` in `app.json`. Expo's default is `"light"`: the app stays light whatever the system says. `"automatic"` follows the system, and `"dark"` stays dark. `svelte-native init` writes `"automatic"` in the `app.json` it creates. The library's plugin applies it on Android too, where Expo leaves it to `expo-system-ui` (an app that has that package keeps its way).
 

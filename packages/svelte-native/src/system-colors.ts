@@ -34,17 +34,26 @@ export function screenBackground(scheme: Scheme, os: string, presentation: strin
   return presentation === "push" ? set.background : set.elevated;
 }
 
-/** The `backgroundColor` a style gives, as the platform reads it: the last of an array that has one. */
-export function backgroundOf(style: unknown): string | undefined {
+const NOT_SET = Symbol("not set");
+
+function lastValue(style: unknown, key: string): unknown {
   if (Array.isArray(style)) {
     for (let index = style.length - 1; index >= 0; index--) {
-      const found = backgroundOf(style[index]);
-      if (found !== undefined) return found;
+      const value = lastValue(style[index], key);
+      if (value !== NOT_SET) return value;
     }
-    return undefined;
+    return NOT_SET;
   }
-  const value = style !== null && typeof style === "object" ? (style as { backgroundColor?: unknown }).backgroundColor : undefined;
-  return typeof value === "string" ? value : undefined;
+  return style !== null && typeof style === "object" && Object.hasOwn(style, key) ? (style as Record<string, unknown>)[key] : NOT_SET;
+}
+
+/**
+ * The value a style gives `key`, as the platform reads it: the last entry that names the key decides, `undefined` included, so `{ color: undefined }` after a colour takes it
+ * away (React Native's `flattenStyle`). `undefined` when no entry names it.
+ */
+export function styleValue(style: unknown, key: string): unknown {
+  const value = lastValue(style, key);
+  return value === NOT_SET ? undefined : value;
 }
 
 /** The colour of a text, or of the text typed in an input, that does not give itself one (`fabric/host.ts`). */

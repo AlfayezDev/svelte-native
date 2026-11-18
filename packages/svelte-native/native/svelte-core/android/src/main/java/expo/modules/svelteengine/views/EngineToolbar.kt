@@ -19,6 +19,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.accessibility.AccessibilityNodeInfo
+import expo.modules.svelteappearance.isNight
 import expo.modules.svelteengine.A11y
 import expo.modules.svelteengine.Fragment
 import expo.modules.svelteengine.NavEvents
@@ -28,7 +29,6 @@ import expo.modules.svelteengine.TextSpec
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
-import expo.modules.svelteappearance.isNight
 
 /** The row's geometry, `TOOLBAR_METRICS.android` of `fabric/navigation.ts`: Yoga lays the band out with the same numbers (SPEC.md, "Toolbar"). */
 private const val ITEM_DP = 48f

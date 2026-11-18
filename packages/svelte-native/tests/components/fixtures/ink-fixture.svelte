@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Text, View } from "@alfayez/svelte-native";
+  import { TextInput } from "@alfayez/svelte-native/core";
   const probe = globalThis as unknown as { __ink: Record<string, unknown> };
   let colored = $state(false);
   probe.__ink = { setColored: (value: boolean) => { colored = value; } };
@@ -10,9 +11,10 @@
   <Text testID="plain">Plain <Text testID="span">nested</Text></Text>
   <Text testID="styled" style={{ color: "#ff0000" }}>Styled</Text>
   <Text testID="classed" class="text-white">Classed</Text>
-  <Text testID="toggled" style={colored ? { color: "#00ff00" } : undefined}>Toggled</Text>
+  <Text testID="toggled" style={{ color: colored ? "#00ff00" : undefined }}>Toggled</Text>
   <div testID="outer" class="text-white"><p testID="inherited">Inherited</p></div>
   <div testID="run-holder">A bare run</div>
   <input testID="field" />
   <input testID="field-styled" style={{ color: "#0000ff" }} />
+  <TextInput testID="component-field" />
 </View>

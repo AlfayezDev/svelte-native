@@ -70,7 +70,7 @@ A screen reads it with `getContext('session')`. A screen presented as a modal or
 There is no `localStorage` on a phone. To keep data when the app closes, use a native storage library and load it when the app starts:
 
 - [`expo-secure-store`](https://docs.expo.dev/versions/latest/sdk/securestore/) for secrets, such as a session token
-- [`@react-native-async-storage/async-storage`](https://react-native-async-storage.github.io/async-storage/) or [`react-native-mmkv`](https://github.com/mrousavy/react-native-mmkv) for everything else
+- `localStorage` for everything else, or `@alfayez/svelte-native/mmkv` for more than strings: both are MMKV, which comes with the library ([Web APIs](web-apis#storage)), so there is nothing to install
 
 [Native libraries](native-libraries) explains how to install them.
 

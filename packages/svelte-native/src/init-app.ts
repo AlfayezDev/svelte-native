@@ -179,7 +179,7 @@ function planPackageJson(root: string, original: string, patches: readonly Patch
   let changedPeers = 0;
   for (const [name, version] of Object.entries(appDependencies)) if (setDependency(name, version, "dependencies")) changedPeers++;
   if (changedPeers > 0) summary.push(`${plural(changedPeers, "dependency")} (the versions the library was exercised on)`);
-  // A package the library carries and the project lists (an app from before the library did) is not removed for the person: the prebuild, the autolinking and the doctor refuse it, and this says why now.
+  // A package the library carries and the project lists (an app from before the library did) is not removed for the person: the prebuild, the autolinking and the doctor refuse it, and this says why.
   const listed = vendoredNames.filter(has);
   if (listed.length > 0) warnings.push(`package.json: ${collisionMessage(listed)}`);
 
@@ -492,18 +492,12 @@ export function planInit(root: string, options: InitOptions = {}): Plan {
 
   const names = appNames(pkg.name, options);
   const manifest = JSON.parse(manifestText) as Manifest;
-  const declared = { ...(manifest.devDependencies ?? {}), ...(manifest.dependencies ?? {}) };
 
-  // The patches this app needs: the always-needed, SvelteKit's (the version the app is pinned to), and a view library's when the app lists it at the patch's version.
+  // The patches this app needs: the always-needed one, and SvelteKit's (the version the app is pinned to).
   const needed: PatchFile[] = [];
   for (const patch of patches) {
     if (alwaysPatched.includes(patch.package)) needed.push(patch);
-    else if (patch.package === "@sveltejs/kit") {
-      if (pkg.hasKit && patch.version === pkg.kitVersion) needed.push(patch);
-    } else if (patch.package in declared) {
-      if (declared[patch.package] === patch.version) needed.push(patch);
-      else plan.warnings.push(`${patch.package}: package.json asks for ${declared[patch.package]}, and the library's patch is for ${patch.version} (it is declared only for that version); pin it with \`pnpm add ${patch.package}@${patch.version}\` and run init again.`);
-    }
+    else if (patch.package === "@sveltejs/kit" && pkg.hasKit && patch.version === pkg.kitVersion) needed.push(patch);
   }
 
   // pnpm-workspace.yaml: allowBuilds, overrides, patchedDependencies.

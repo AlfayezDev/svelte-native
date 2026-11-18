@@ -8,7 +8,7 @@
  * and Metro resolves its name to a stub that says how to turn it on. The decision is made twice, from the one option: at prebuild the plugin writes the names into the generated
  * `settings.gradle` and `Podfile` (`--link <name>` for React Native's autolinking, search paths for Expo's), and at bundle time Metro reads the same option from the app's config.
  *
- * Nothing here reads a file but the app's config (`appPluginOptions`), and nothing imports Expo's config plugins: the doctor, which is bundled into the CLI, and Metro both load it.
+ * Loading this file reads nothing and imports no Expo config plugin (`appPluginOptions` and `libraryPlugin` do that when they are called): the doctor, which is bundled into the CLI, and Metro both load it.
  */
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -104,7 +104,7 @@ export function libraryLinks(enabled: readonly string[]): LibraryLinks {
 export const expoModuleSearchPaths = (expo: readonly string[], root?: string): string[] => expo.map((name) => vendoredRoot(name, root));
 
 /** The packages whose options a plugin entry of the app's config may carry: the library's plugin under its own name, or under the names Expo resolves to the same file. */
-export const PLUGIN_NAMES: ReadonlySet<string> = new Set(["@alfayez/svelte-native", "@alfayez/svelte-native/app.plugin", "@alfayez/svelte-native/expo"]);
+const PLUGIN_NAMES: ReadonlySet<string> = new Set(["@alfayez/svelte-native", "@alfayez/svelte-native/app.plugin", "@alfayez/svelte-native/expo"]);
 
 /** What `appPluginOptions` read: the options the app's config gives the library's plugin, or why they are not known (`unknown`). */
 export type PluginOptionsRead = { options: Record<string, unknown> | undefined } | { unknown: string; error?: unknown };
@@ -146,8 +146,8 @@ export function pushPlatformsOf(options: Record<string, unknown> | undefined): {
 }
 
 /**
- * The libraries the app's config turns on, for the places that read the config and do not write a build (Metro, the doctor): `undefined` when the config cannot be read or its
- * `libraries` is malformed (the prebuild refuses that), and then every caller keeps the libraries, as Metro keeps the push client: what the build links decides on the device.
+ * The libraries the app's config turns on, for Metro, which reads the config and does not write a build: `undefined` when its `libraries` is malformed (the prebuild refuses that),
+ * and then Metro keeps every library, as it keeps the push client: what the build links decides on the device.
  */
 export function enabledLibraries(options: Record<string, unknown> | undefined): Libraries | undefined {
   try {

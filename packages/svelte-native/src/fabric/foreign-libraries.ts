@@ -57,7 +57,7 @@ function libraryList(): readonly string[] | undefined {
     const section = constants?.expoConfig?.extra?.svelteNative as { libraries?: unknown } | undefined;
     if (Array.isArray(section?.libraries)) embedded = section.libraries.filter((name): name is string => typeof name === "string");
   } catch {
-    embedded = undefined;
+    // No list: every library is taken to be in the build, as the header says.
   }
   return embedded;
 }
@@ -72,9 +72,4 @@ export function assertLibrary(library: string): void {
 export function assertComponent(component: string): void {
   const library = libraryOfComponent(component);
   if (library !== undefined) assertLibrary(library);
-}
-
-/** Forgets the list that was read: for tests, which give the build another one. */
-export function resetLibraryList(): void {
-  embedded = null;
 }

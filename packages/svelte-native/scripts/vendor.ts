@@ -17,8 +17,8 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export const packageRoot = resolve(import.meta.dirname, "..");
-export const vendorDirectory = join(packageRoot, "vendor");
-export const patchesDirectory = join(packageRoot, "vendor-patches");
+const vendorDirectory = join(packageRoot, "vendor");
+const patchesDirectory = join(packageRoot, "vendor-patches");
 
 /** `name@version` as `npm pack` takes it: a scoped name keeps its leading `@`, and the version is exact. */
 export function parseSpec(spec: string): { name: string; version: string } {
@@ -145,7 +145,7 @@ export function vendorTarball(options: VendorOptions): Vendored {
 }
 
 /** A manifest's `repository` as a browsable URL (`git+https://github.com/a/b.git` is `https://github.com/a/b`). */
-export function repositoryUrl(repository: string | { url?: string } | undefined): string | undefined {
+function repositoryUrl(repository: string | { url?: string } | undefined): string | undefined {
   const url = typeof repository === "string" ? repository : repository?.url;
   return url?.replace(/^git\+/, "").replace(/\.git$/, "").replace(/^git@github\.com:/, "https://github.com/");
 }
@@ -157,7 +157,7 @@ export function commandFor(name: string, version: string, excluded: readonly str
 }
 
 /** The text of `VENDOR.md`: upstream, the tarball, what is not in the copy, the license, every local change. No date: the same copy is the same bytes. */
-export function vendorNotes(upstream: { name: string; version: string; repository?: string; command: string }, result: Omit<Vendored, "directory">): string {
+function vendorNotes(upstream: { name: string; version: string; repository?: string; command: string }, result: Omit<Vendored, "directory">): string {
   const lines = [
     `# ${upstream.name} ${upstream.version} (vendored)`,
     "",
@@ -182,7 +182,7 @@ export function vendorNotes(upstream: { name: string; version: string; repositor
 }
 
 /** `npm pack <name>@<version>` into `directory`; the tarball's path, and the integrity npm printed for it (what the registry says it is). */
-export function packFromRegistry(name: string, version: string, directory: string): { tarball: string; integrity: string } {
+function packFromRegistry(name: string, version: string, directory: string): { tarball: string; integrity: string } {
   const out = execFileSync("npm", ["pack", `${name}@${version}`, "--pack-destination", directory, "--json", "--silent"], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
   const [packed] = JSON.parse(out) as { filename: string; integrity: string }[];
   if (!packed) throw new Error(`npm pack ${name}@${version} printed nothing`);
@@ -190,7 +190,7 @@ export function packFromRegistry(name: string, version: string, directory: strin
 }
 
 /** The repository's license for a package whose tarball has none: its `LICENSE` at the commit npm records for the version (`gitHead`). */
-export async function repositoryLicense(name: string, version: string): Promise<{ text: string; source: string }> {
+async function repositoryLicense(name: string, version: string): Promise<{ text: string; source: string }> {
   const info = JSON.parse(execFileSync("npm", ["view", `${name}@${version}`, "gitHead", "repository.url", "--json"], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] })) as { gitHead?: string; "repository.url"?: string };
   const match = /github\.com[/:]([^/]+\/[^/.]+?)(?:\.git)?$/.exec(info["repository.url"] ?? "");
   if (!match || !info.gitHead) throw new Error(`${name}@${version} has no GitHub repository and gitHead in the registry: pass --license-url`);

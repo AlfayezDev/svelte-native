@@ -80,6 +80,29 @@ describe("the options reach the library's own plugin", () => {
   });
 });
 
+describe("with the crypto batch's option", () => {
+  const podfile = "target 'App' do\n  use_expo_modules!\n  config_command = ['node', 'react-native-config']\n\n  config = use_native_modules!(config_command)\nend\n";
+
+  test("`sodiumEnabled` and `libraries` are both options of the one plugin: the Podfile gets the sodium line and the Expo search paths and --link arguments, gradle.properties the sodium property", async () => {
+    const config = applied({ sodiumEnabled: true, libraries: { "expo-image": true, "react-native-maps": true } });
+    const contents = (await runMod(config, "ios", "podfile", { contents: podfile, language: "rb" })).contents as string;
+    expect(contents).toStartWith("# Svelte native: libsodium for react-native-quick-crypto");
+    expect(contents).toContain("ENV['SODIUM_ENABLED'] = '1'");
+    expect(contents).toContain("use_expo_modules!(exclude: svelte_native_exclude, searchPaths: svelte_native_expo_modules.map");
+    expect(contents).toContain("'ios-autolinking', '--link', 'react-native-maps']");
+    const properties = (await runMod(config, "android", "gradleProperties", [])) as unknown as { type: string; key: string; value: string }[];
+    expect(properties).toContainEqual({ type: "property", key: "sodiumEnabled", value: "true" });
+    // Without sodium the line and the property are not written; the libraries are all the same.
+    const without = applied({ libraries: { "expo-image": true } });
+    expect(((await runMod(without, "ios", "podfile", { contents: podfile, language: "rb" })).contents as string)).not.toContain("SODIUM_ENABLED");
+    expect(await runMod(without, "android", "gradleProperties", [])).toEqual([]);
+  });
+
+  test("the app's extra carries the libraries beside whatever else is there", () => {
+    expect(applied({ sodiumEnabled: true, libraries: { "expo-blur": true } }).extra).toEqual({ svelteNative: { libraries: ["expo-blur"] } });
+  });
+});
+
 describe("what the build embeds", () => {
   test("extra.svelteNative.libraries lists the libraries that are on, with what they need, and keeps the rest of `extra`", () => {
     expect(applied({ libraries: { "react-native-pdf": true, "expo-image": true } }, { extra: { eas: { projectId: "x" }, svelteNative: { remote: { origin: "https://example.com" } } } }).extra).toEqual({

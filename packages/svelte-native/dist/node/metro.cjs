@@ -2734,6 +2734,67 @@ var vendoredPackages = [
     version: "4.3.1",
     android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
     ios: { podspec: "NitroMmkv.podspec" }
+  },
+  {
+    name: "react-native-gesture-handler",
+    version: "2.32.0",
+    // The two components of its codegen (`RNGestureHandlerButton`, `RNGestureHandlerRootView`); `libraryName` is `codegenConfig.name`.
+    android: { packageImportPath: "import com.swmansion.gesturehandler.RNGestureHandlerPackage;", packageInstance: "new RNGestureHandlerPackage()", componentDescriptors: ["RNGestureHandlerButtonComponentDescriptor", "RNGestureHandlerRootViewComponentDescriptor"] },
+    ios: { podspec: "RNGestureHandler.podspec" }
+  },
+  {
+    name: "react-native-worklets",
+    version: "0.10.1",
+    android: { packageImportPath: "import com.swmansion.worklets.WorkletsPackage;", packageInstance: "new WorkletsPackage()" },
+    ios: { podspec: "RNWorklets.podspec" }
+  },
+  {
+    name: "react-native-reanimated",
+    version: "4.5.1",
+    android: { packageImportPath: "import com.swmansion.reanimated.ReanimatedPackage;", packageInstance: "new ReanimatedPackage()" },
+    ios: { podspec: "RNReanimated.podspec" }
+  },
+  {
+    name: "react-native-svg",
+    version: "15.15.4",
+    // The 29 components of its `react-native.config.js`, and its codegen CMake file, which is in the sources and not below `android/build/` (a test reads both from the copy).
+    android: {
+      packageImportPath: "import com.horcrux.svg.SvgPackage;",
+      packageInstance: "new SvgPackage()",
+      componentDescriptors: [
+        "RNSVGCircleComponentDescriptor",
+        "RNSVGClipPathComponentDescriptor",
+        "RNSVGDefsComponentDescriptor",
+        "RNSVGFeBlendComponentDescriptor",
+        "RNSVGFeColorMatrixComponentDescriptor",
+        "RNSVGFeCompositeComponentDescriptor",
+        "RNSVGFeFloodComponentDescriptor",
+        "RNSVGFeGaussianBlurComponentDescriptor",
+        "RNSVGFeMergeComponentDescriptor",
+        "RNSVGFeOffsetComponentDescriptor",
+        "RNSVGFilterComponentDescriptor",
+        "RNSVGEllipseComponentDescriptor",
+        "RNSVGForeignObjectComponentDescriptor",
+        "RNSVGGroupComponentDescriptor",
+        "RNSVGImageComponentDescriptor",
+        "RNSVGLinearGradientComponentDescriptor",
+        "RNSVGLineComponentDescriptor",
+        "RNSVGMarkerComponentDescriptor",
+        "RNSVGMaskComponentDescriptor",
+        "RNSVGPathComponentDescriptor",
+        "RNSVGPatternComponentDescriptor",
+        "RNSVGRadialGradientComponentDescriptor",
+        "RNSVGRectComponentDescriptor",
+        "RNSVGSvgViewAndroidComponentDescriptor",
+        "RNSVGSymbolComponentDescriptor",
+        "RNSVGTextComponentDescriptor",
+        "RNSVGTextPathComponentDescriptor",
+        "RNSVGTSpanComponentDescriptor",
+        "RNSVGUseComponentDescriptor"
+      ],
+      cmakeListsPath: "android/src/main/jni/CMakeLists.txt"
+    },
+    ios: { podspec: "RNSVG.podspec" }
   }
 ];
 var vendoredNames = vendoredPackages.map((vendored) => vendored.name);

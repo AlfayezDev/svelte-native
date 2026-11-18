@@ -5,15 +5,16 @@ import { readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { compile } from "svelte/compiler";
 import { componentOptions } from "../../../src/compile-options.ts";
+import { vendorAliases, vendored } from "../../support/paths.ts";
 
 /**
  * The SVG exports of the main entry, `src/svg.ts` (SPEC.md, "react-native-svg"), bundled as Metro bundles it: the library's own sources are imported by deep path (the
  * extractors in `src/lib`), the library's `react-native` import resolves to the host's lite shim, and everything of React Native's is an external that is
  * recorded. React must stay out, and with it every part of the library that is React: its elements, its XML renderer, its fabric components and its index.
  */
-const root = resolve(import.meta.dirname, "../../../../..");
 const lite = resolve(import.meta.dirname, "../../../src/fabric/react-native-lite.ts");
-const library = resolve(root, "node_modules/react-native-svg");
+/** The library's copy of react-native-svg (`vendor/`, VENDORING.md): Metro resolves the name to it. */
+const library = vendored("react-native-svg");
 
 type Bundle = { externals: string[]; inputs: string[] };
 /** The bundle is built once for the file. */
@@ -50,6 +51,7 @@ async function buildSvgEntry(): Promise<Bundle> {
   const result = await build({
     entryPoints: [resolve(import.meta.dirname, "../../../src/svg.ts")],
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false, metafile: true, logLevel: "silent",
+    alias: vendorAliases(),
     plugins: [metro],
   });
   return { externals: [...externals].sort(), inputs: Object.keys(result.metafile.inputs) };

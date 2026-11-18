@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
+import { vendorAliases } from "../../../support/paths.ts";
 import { importWithReactNative, reactNativeConverters, type Platform } from "../../../support/rn-reference.ts";
 
 /**
@@ -89,6 +90,7 @@ export function loadOracle(platform: Platform): Promise<Oracle> {
           resolveDir: import.meta.dirname,
         },
         bundle: true, format: "esm", platform: "neutral", write: false, mainFields: ["main"], logLevel: "error",
+        alias: vendorAliases(),
         define: { "process.env.NODE_ENV": '"production"' },
         plugins: [...reactNativeConverters(platform), {
           name: "svg-oracle",

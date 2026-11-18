@@ -1,5 +1,5 @@
 import type { Snippet } from "svelte";
-import type { SvgProps } from "react-native-svg";
+import type { SvgProps } from "#vendor/react-native-svg";
 type $$ComponentProps = Omit<SvgProps, "children"> & {
     uri: string | null;
     onLoad?: () => void;

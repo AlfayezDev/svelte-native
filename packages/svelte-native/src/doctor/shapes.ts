@@ -3,7 +3,7 @@ import type { Reader } from "./resolve.ts";
 /**
  * What the library's patches leave in the packages they patch, read from the installed files: the shape the package's tests pin
  * (`tests/upstream/foreign-native-events.test.ts`, `tests/upstream/expo-modules-core-patch.test.ts`, `tests/upstream/react-native-gesture-handler-patch.test.ts`, `tests/upstream/worklets-frame-loop.test.ts`)
- * and `svelte-native doctor` reports on in an app. Each function takes a `Reader` over one package's directory and returns the problems
+ * and `svelte-native doctor` reports on in an app: the packages an app installs (`patches/`) and the copies the library carries (`vendor/`, patched by `scripts/vendor.ts`; `vendoredPatchSpecs`). Each function takes a `Reader` over one package's directory and returns the problems
  * it finds, so an empty list means the patch is in; none of them reads anything but the files they name.
  */
 
@@ -115,7 +115,7 @@ export function rnghProblems(read: Reader): string[] {
     ], true));
 }
 
-// ---- react-native-reanimated: the sink and the engine hook of the Android views ----
+// ---- react-native-reanimated: the sink and the engine hook of the Android views, the Worklets copy beside it, the flag the sink is reached through ----
 
 export function reanimatedProblems(read: Reader): string[] {
   const base = "android/src/main";
@@ -127,6 +127,10 @@ export function reanimatedProblems(read: Reader): string[] {
     ]),
     ...inFile(read, `${base}/cpp/reanimated/android/NativeProxy.cpp`, [["does not export reanimatedSetSynchronousPropsSink", has("reanimatedSetSynchronousPropsSink")], ["does not call the sink", has("synchronousPropsSink.load")]]),
     ...inFile(read, `${base}/cpp/reanimated/android/NativeProxy.h`, [["does not declare SynchronousPropsSink", has("SynchronousPropsSink")], ["does not keep the sink's rest buffers", has("sinkRestInts_")]]),
+    // The Gradle task and the podspec's script find Worklets by this path (`vendor/react-native-worklets`, beside the copy of Reanimated): by name it is not a package of the app.
+    ...inFile(read, "scripts/validate-worklets-version.js", [["still looks for react-native-worklets by name", has("require('../../react-native-worklets/package.json')")]], true),
+    // The patched Android update (the sink above) is reached only through the synchronous update this flag turns on, which an app no longer sets itself.
+    ...inFile(read, "src/featureFlags/staticFlags.json", [["has the synchronous Android update off by default", has('"ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true')]], true),
   ];
 }
 

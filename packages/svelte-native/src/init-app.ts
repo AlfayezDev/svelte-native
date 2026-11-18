@@ -5,6 +5,7 @@ import { dirname, join, relative } from "node:path";
 import { patchFiles, patchKey, type PatchFile } from "./doctor/patches.ts";
 import { compareVersions, parseVersion } from "./doctor/semver.ts";
 import { requiredSvelte } from "./svelte-build.ts";
+import { collisionMessage, vendoredNames } from "./vendored.ts";
 
 /**
  * `svelte-native init`: turns a SvelteKit project (what `npx sv create` makes) into a Svelte Native one, after the library is installed in it with
@@ -22,16 +23,15 @@ export const appDependencies: Readonly<Record<string, string>> = {
   "hermes-intl": "^0.1.2",
   react: "19.2.7",
   "react-native": "0.86.3",
-  "react-native-gesture-handler": "2.32.0",
   "react-native-quick-base64": "2.2.2",
   "react-native-quick-crypto": "1.1.3",
-  "react-native-reanimated": "4.5.1",
-  "react-native-svg": "15.15.4",
-  "react-native-worklets": "0.10.1",
 };
 
-/** Packages whose patch every app needs; the others are declared when the app has the package (SvelteKit) or lists it at the patch's version (the view libraries). */
-const alwaysPatched = ["expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"];
+/**
+ * Packages whose patch every app needs; the others are declared when the app has the package (SvelteKit) or lists it at the patch's version (the view libraries). The packages the library carries
+ * itself (`vendored.ts`: gesture handler, Reanimated, Worklets, svg, ...) are not here and not in `appDependencies`: their patches are applied to the copies, and the app lists none of them.
+ */
+const alwaysPatched = ["expo-modules-core"];
 // The package's own name: Expo finds the package's `app.plugin.js`, the same plugin as `@alfayez/svelte-native/app.plugin`.
 const plugin = "@alfayez/svelte-native";
 const pluginNames: readonly string[] = [plugin, `${plugin}/app.plugin`];
@@ -181,11 +181,10 @@ function planPackageJson(root: string, original: string, patches: readonly Patch
   // The packages the app needs next to the library, at the versions it was exercised on.
   let changedPeers = 0;
   for (const [name, version] of Object.entries(appDependencies)) if (setDependency(name, version, "dependencies")) changedPeers++;
-  // `expo-modules-core` comes with `expo` and `svelte` is the custom-renderer build (a `file:` tarball or the preview URL): neither is a dependency init pins by version.
-  for (const patch of patches.filter((entry) => alwaysPatched.includes(entry.package) && entry.package !== "expo-modules-core")) {
-    if (appDependencies[patch.package] !== patch.version) warnings.push(`${patch.package}: the library's patch is for ${patch.version}, and init's version is ${appDependencies[patch.package] ?? "none"}; this is a bug in the library.`);
-  }
   if (changedPeers > 0) summary.push(`${plural(changedPeers, "dependency")} (the versions the library was exercised on)`);
+  // A package the library carries and the project lists (an app from before the library did) is not removed for the person: the prebuild, the autolinking and the doctor refuse it, and this says why now.
+  const listed = vendoredNames.filter(has);
+  if (listed.length > 0) warnings.push(`package.json: ${collisionMessage(listed)}`);
 
   // The scripts: the project's own (`dev`, `build`, `check`) stay. A script of the same name that does something else stays too.
   const nextScripts = { ...(manifest.scripts ?? {}) };
@@ -202,13 +201,6 @@ function planPackageJson(root: string, original: string, patches: readonly Patch
   if (addedScripts.length > 0) {
     next.scripts = nextScripts;
     summary.push(`scripts ${addedScripts.join(", ")}`);
-  }
-
-  // Reanimated's flag: the patched Android update is reached only through the synchronous update it turns on.
-  const reanimated = (typeof next.reanimated === "object" && next.reanimated !== null ? next.reanimated : {}) as { staticFeatureFlags?: Record<string, unknown> };
-  if (reanimated.staticFeatureFlags?.ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS !== true) {
-    next.reanimated = { ...reanimated, staticFeatureFlags: { ...(reanimated.staticFeatureFlags ?? {}), ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS: true } };
-    summary.push("the Reanimated flag");
   }
 
   next.dependencies = dependencies;

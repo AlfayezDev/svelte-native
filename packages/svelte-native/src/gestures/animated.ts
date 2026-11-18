@@ -10,7 +10,7 @@
  * `tests/gestures/config.test.ts` compares that list with RNGH's own modules, bundled apart from this file.
  * Loaded after Reanimated (the host loads both on the first gesture), so the imports below are Reanimated's own functions.
  */
-import { makeMutable, setGestureState, type SharedValue } from "react-native-reanimated";
+import { makeMutable, setGestureState, type SharedValue } from "#vendor/react-native-reanimated";
 import { WorkletEventHandler } from "../fabric/reanimated-internals.js";
 import { gestureName } from "./guards.ts";
 import type { GestureType } from "./rngh.js";

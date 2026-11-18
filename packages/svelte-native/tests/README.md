@@ -23,7 +23,7 @@ The root of `tests/` holds directories, `tsconfig.json` (the type check of the h
 | `package/` | What the package ships: exports, `dist/`, declarations and their type budget, packing, the package run by plain Node, docs, and push's and location's place in the one native module (`push-native.test.ts`: the module lists, Firebase `compileOnly` at the plugin's pin, no manifest entry in svelte-core, one gated registration path, the plugin writing and taking away; `location-native.test.ts`: the module lists, no expo-location or Google library in the library or the example app, nothing registered at start-up, what packs, the plugin writing and taking away) |
 | `startup/` | What loads at boot, the platform lookups and the lite React Native shim |
 | `native-host/` | Kotlin and C++ of the native modules, compiled for the host and run; `native-host/contracts/` reads our own native sources and pins what JavaScript relies on |
-| `upstream/` | Pins of third-party code: the text of libraries in `node_modules` and of our patches of them, so an update of one fails here and says what changed |
+| `upstream/` | Pins of third-party code: the text of libraries in `node_modules` (or, for the ones the library carries, in `vendor/`) and of our patches of them, so an update of one fails here and says what changed |
 | `support/` | The shared helpers (below), their own tests, and the fixtures several areas mount |
 
 ## Running
@@ -64,7 +64,7 @@ In `packages/svelte-native`:
 | `css-project.ts` | `cssProject`, `removeCssProjects`: a project with Tailwind linked in |
 | `metro.ts` | Metro's side: `fakeConfig`, `resolveFrom`, `realModule`, `until`, `watchUntouched` |
 | `versions.ts` | `libraryVersion`, `peerRange`, `peerVersion`, `patchVersion`: versions read from `package.json` and `patches/` |
-| `paths.ts` | `packageRoot`, `repoRoot`, `nodeModules` |
+| `paths.ts` | `packageRoot`, `repoRoot`, `nodeModules`, and for the packages the library carries (`vendor/`, VENDORING.md) `vendorRoot`, `vendored(name)` and `vendorAliases()` (esbuild's `alias`: what Metro does for every importer; a test reads a package's files from its copy, never from `node_modules`, which may hold an unpatched original) |
 | `random.ts` | `random(seed)`: the deterministic generator of the property tests |
 | `async-run.ts`, `async-mode-setup.ts` | Which async-mode run this is, and the preload that makes it |
 | `fixtures/` | `hello.svelte`, the route and tree pages, and `stand-in-app/`, an app of this package's own that the navigation and compiler tests build |

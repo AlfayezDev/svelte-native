@@ -1,4 +1,4 @@
-import type { SharedValue } from "react-native-reanimated";
+import type { SharedValue } from "#vendor/react-native-reanimated";
 
 export function initialUpdaterRun<T>(updater: () => T): T;
 export function updateProps(viewDescriptors: { value: readonly unknown[] }, updates: Record<string, unknown>, isAnimatedProps?: boolean): void;

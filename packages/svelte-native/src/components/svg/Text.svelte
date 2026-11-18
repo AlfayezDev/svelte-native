@@ -4,7 +4,7 @@
   import { createNativeProps } from "../../native-props.ts";
   import { textNativeProps } from "../../fabric/foreign-svg.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
-  import type { TextProps } from "react-native-svg";
+  import type { TextProps } from "#vendor/react-native-svg";
 
   /**
    * `react-native-svg`'s `Text`. A string between its tags is a `TSpan` of its own and so is each string next to a `TSpan`; the host builds them

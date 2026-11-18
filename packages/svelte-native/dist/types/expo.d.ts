@@ -115,7 +115,7 @@ export declare function applyHeadlessSettings(contents: string, extra?: readonly
 export declare function applyPodfileAutolinkingExclude(contents: string, names: readonly string[]): string;
 /**
  * `Podfile`: the config command that `use_native_modules!` runs goes through the library's `ios-autolinking` (`autolinking.ts`), which adds the packages the library carries
- * (`vendored.ts`: the Nitro runtime and MMKV) to its output, with the podspecs of `vendor/` in the library's directory, so the app's package.json lists none of them. The block
+ * (`vendored.ts`, which lists them) to its output, with the podspecs of `vendor/` in the library's directory, so the app's package.json lists none of them. The block
  * goes in front of the line that reads the config, after anything that already extended the command; stripped and written again on every prebuild, so an update of the
  * library moves it. With `EXPO_USE_COMMUNITY_AUTOLINKING=1` the command underneath is the community CLI's, and its output gets the same entries.
  */

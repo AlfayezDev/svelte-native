@@ -56,7 +56,7 @@ An app that doesn't install a library doesn't bundle anything of it, even if it 
 | any other Expo module | [`ExpoView`, `defineExpoView`](#any-expo-view) |
 | anything else | [`ForeignView`](#foreignview) |
 
-Four of these libraries need a patch: see [Patches](#patches). `react-native-svg` isn't in the list because it's a required dependency of Svelte Native; its components are in the main entry (see [SVG](svg)).
+Four of these libraries need a patch: see [Patches](#patches). `react-native-svg` isn't in the list because Svelte Native carries it itself; its components are in the main entry (see [SVG](svg)).
 
 Every component takes the usual layout and accessibility props of a [`View`](view) (`style`, `accessibilityLabel`, `testID`, ...) besides its own. `ref` gives a handle: the host handle (`tag`, `measure`, ...) or, where the library has them, its functions.
 

@@ -2,7 +2,7 @@
 
 // Typed path for Reanimated's per-frame prop writes (SPEC.md, "Animated write path").
 //
-// Reanimated (patched, patches/react-native-reanimated@4.5.1.patch) serializes the synchronous prop updates of one frame
+// Reanimated (patched, vendor-patches/react-native-reanimated/0001-engine-views-and-direct-props.patch) serializes the synchronous prop updates of one frame
 // into two flat buffers (SynchronousPropsBufferSerializer.cpp) and hands them to a sink function before they cross JNI
 // as Java arrays. The sink below keeps the views the engine can write without a ReadableMap, encodes them as flat
 // records for Kotlin (AnimatedWire.kt) and gives every other view back untouched.

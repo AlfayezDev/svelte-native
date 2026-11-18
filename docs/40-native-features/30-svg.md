@@ -26,7 +26,7 @@ video: svg
 </Screen>
 ```
 
-react-native-svg is a required peer dependency of Svelte Native, so every app has it: `svelte-native init` adds it (version 15.15.4) and `svelte-native doctor` checks it. Unlike the other [native views](native-views), it needs no separate install.
+Svelte Native carries react-native-svg (version 15.15.4) itself, so every app has it and none installs it: it is not a dependency of your app, and `svelte-native doctor` checks the copy. Unlike the other [native views](native-views), it needs no separate install.
 
 ## Elements
 

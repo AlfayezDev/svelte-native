@@ -4,7 +4,7 @@
   import { createNativeProps } from "../../native-props.ts";
   import { groupNativeProps } from "../../fabric/foreign-svg.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
-  import type { GProps } from "react-native-svg";
+  import type { GProps } from "#vendor/react-native-svg";
 
   /** `react-native-svg`'s `G`: a group. Its fill, stroke and font props are inherited by its children; `transform`, `opacity`, `clipPath` and `mask` apply to the group. */
   let { children, ref, animatedProps, ...props }: Omit<GProps, "children"> & { children?: Snippet } & SvgExtras = $props();

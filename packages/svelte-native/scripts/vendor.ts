@@ -70,8 +70,8 @@ const integrityOf = (data: Buffer): string => `sha512-${createHash("sha512").upd
 // matches no file is refused, as a path that is not there is.
 export function excludedBy(pattern: string, files: readonly string[]): string[] {
   if (!pattern.includes("*")) return [pattern];
-  const escape = (text: string): string => text.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
-  const source = pattern.split("**/").map((part) => part.split("*").map(escape).join("[^/]*")).join("(?:.*/)?");
+  const escaped = (text: string): string => text.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+  const source = pattern.split("**/").map((part) => part.split("*").map(escaped).join("[^/]*")).join("(?:.*/)?");
   const matcher = new RegExp(`^${source}$`);
   return files.filter((file) => matcher.test(file));
 }

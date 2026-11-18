@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { build, type Metafile } from "esbuild";
 import { resolve } from "node:path";
-import { packageRoot } from "../support/paths.ts";
+import { packageRoot, vendorAliases } from "../support/paths.ts";
 import { hostPlugin, load, settle, anim } from "./support/harness.ts";
 
 /**
@@ -19,13 +19,13 @@ function graph(entry: string): Promise<Metafile> {
   if (!built) {
     built = build({
       entryPoints: [entry], bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false, metafile: true, logLevel: "silent",
-      define: { __DEV__: "true" }, plugins: [hostPlugin({ openStubs: true })],
+      alias: vendorAliases(), define: { __DEV__: "true" }, plugins: [hostPlugin({ openStubs: true })],
     }).then((result) => result.metafile);
     graphs.set(entry, built);
   }
   return built;
 }
-const relative = (path: string) => path.replace(/.*\/packages\/svelte-native\//, "").replace(/.*\/node_modules\/react-native-gesture-handler\/src\//, "rngh/");
+const relative = (path: string) => path.replace(/.*\/packages\/svelte-native\//, "").replace(/(?:.*\/)?vendor\/react-native-gesture-handler\/src\//, "rngh/");
 
 /** Everything reachable from the entry, optionally only through ES `import` statements (what evaluates at start). */
 function reachable(meta: Metafile, entry: string, only?: "import-statement"): string[] {

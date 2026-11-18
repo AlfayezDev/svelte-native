@@ -3,7 +3,7 @@
   import type {} from "../../elements.d.ts";
   import { fetchText } from "../../fabric/foreign-svg-xml.ts";
   import SvgXml from "./SvgXml.svelte";
-  import type { SvgProps } from "react-native-svg";
+  import type { SvgProps } from "#vendor/react-native-svg";
 
   /**
    * `react-native-svg`'s `SvgUri`: fetches the document at `uri` (a network or file URI, or an SVG data URI) and draws it as `SvgXml` does. `onLoad` when it

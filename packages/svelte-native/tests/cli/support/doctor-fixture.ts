@@ -7,9 +7,10 @@ import { peerVersion } from "../../support/versions.ts";
 
 /**
  * A fake app for `svelte-native doctor`: a directory with a package.json, Metro and Expo configs, and a `node_modules` that holds stubs of the
- * library's peers. The packages the library patches hold only the files its patches change, taken from the repository's own install (which
+ * library's peers. The packages an app patches (`patches/`) hold only the files its patches change, taken from the repository's own install (which
  * pnpm patched), or, for an unpatched package, the same files with the patch taken out again (each hunk's result replaced by what the hunk
- * found, a file the patch creates left out): the shape of the package before pnpm applied anything.
+ * found, a file the patch creates left out): the shape of the package before pnpm applied anything. The packages the library carries (`vendor/`)
+ * are the repository's own copies, read through `packageRoot`, and patched when they were written.
  */
 export const repository = resolve(import.meta.dirname, "../../../../..");
 /** The required peers React Native's autolinking links only from the app's own dependencies (`AUTOLINKED_PEERS` in `src/doctor/checks.ts`; the Nitro runtime and MMKV are vendored, `src/vendored.ts`). */
@@ -46,7 +47,8 @@ export type FakeApp = {
   stockSvelte?: boolean;
 };
 
-const concreteVersion = (range: string) => range.replace(/^[~^]/, "");
+/** A version a peer's range names; for `*` (any version, as `@babel/core` is asked for) the one the repository has installed. */
+const concreteVersion = (range: string) => (range === "*" ? "7.29.7" : range.replace(/^[~^]/, ""));
 
 export function makeFakeApp(options: FakeApp = {}): string {
   const root = mkdtempSync(join(tmpdir(), "doctor-app-"));

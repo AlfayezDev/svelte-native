@@ -25,8 +25,8 @@
  * shadow nodes exist, and starts or updates the native side. `detachAnimation` undoes everything for a node.
  */
 import { mark } from "../boot-marks.ts";
-import { makeMutable, startMapper, stopMapper, type SharedValue } from "react-native-reanimated";
-import { makeShareable } from "react-native-worklets";
+import { makeMutable, startMapper, stopMapper, type SharedValue } from "#vendor/react-native-reanimated";
+import { makeShareable } from "#vendor/react-native-worklets";
 import { CSSManager, filterCSSAndStyleProperties, getInlineStyle, hasInlineStyles, initialUpdaterRun, InlinePropManager, isAnimated, LayoutAnimationType, makeViewDescriptorsSet, markNodeAsRemovable, maybeBuild, processColorsInProps, shallowEqual, updateLayoutAnimations, updateProps, validateAnimatedStyles, type ViewDescriptorsSet } from "./reanimated-internals.js";
 
 /** What the host keeps per element that the animation layer reads: its tag, Fabric component name and current shadow node handle. */

@@ -1,8 +1,8 @@
 import type { Snippet } from "svelte";
 import type { ComponentPropsWithRef } from "react";
 import type { ViewStyle } from "react-native";
-import type Animated from "react-native-reanimated";
-import type { BaseAnimationBuilder, EntryExitAnimationFunction, LayoutAnimationFunction } from "react-native-reanimated";
+import type Animated from "#vendor/react-native-reanimated";
+import type { BaseAnimationBuilder, EntryExitAnimationFunction, LayoutAnimationFunction } from "#vendor/react-native-reanimated";
 import type { GestureProps } from "../gestures/types.js";
 import type { ClassProps } from "../classes.js";
 /**

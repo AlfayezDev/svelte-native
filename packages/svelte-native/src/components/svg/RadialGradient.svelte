@@ -6,7 +6,7 @@
   import type { StopProps } from "../../fabric/foreign-svg-extract.ts";
   import { handleRef, type SvgExtras } from "./handle.ts";
   import { createRegistry, stopsKey } from "./registry.ts";
-  import type { RadialGradientProps } from "react-native-svg";
+  import type { RadialGradientProps } from "#vendor/react-native-svg";
 
   /** `react-native-svg`'s `RadialGradient`: `cx`, `cy`, `r` (or `rx`, `ry`) and the focal point `fx`, `fy`; its `Stop`s are its children. */
   let { children, ref, animatedProps, ...props }: Omit<RadialGradientProps, "children"> & { children?: Snippet } & SvgExtras = $props();

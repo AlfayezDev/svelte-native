@@ -4,6 +4,10 @@ Notable changes to `@alfayez/svelte-native` (named `@rasheed/svelte-native` up t
 
 ## Unreleased
 
+### Changed
+
+- `svelte-native android`, `ios`, `dev` and `build` run Expo with its TypeScript setup off (`EXPO_NO_TYPESCRIPT_SETUP=1`), so Expo no longer asks a Svelte app to install `@types/react`, which it never uses. Expo prints one line that it skipped the setup. An app that answered yes can remove `@types/react` from its `devDependencies`. `EXPO_NO_TYPESCRIPT_SETUP=0` in the environment gives Expo's setup back.
+
 ## 0.4.0-rc.9 - 2026-11-18
 
 ### Added

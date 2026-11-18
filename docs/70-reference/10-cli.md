@@ -27,6 +27,8 @@ pnpm exec svelte-native <command> [options]
 
 > **warning** Don't name a script `doctor`, and don't run `pnpm doctor`: that is pnpm's own command, which checks pnpm, not your app. Use `pnpm exec svelte-native doctor` or `pnpm check-setup`.
 
+The commands that run Expo (`android`, `ios`, `dev` and `build`) turn Expo's TypeScript setup off, and Expo prints a line saying it skipped it. That setup is for React apps: it would ask yours to install `@types/react`, which nothing in a Svelte app uses. Your TypeScript is SvelteKit's, set up by `tsconfig.json`. To have Expo's setup anyway, set `EXPO_NO_TYPESCRIPT_SETUP=0` in your environment.
+
 ## init
 
 ```sh

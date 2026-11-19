@@ -206,7 +206,8 @@ export type StatusBarOptions = { style?: BarStyle; hidden?: boolean };
 export type NavigationBarOptions = { color?: string; style?: BarStyle };
 export type DetentChange = { index: number; fraction: number };
 export type HeaderMetrics = { height: number; inset: number };
-export type ScreenAnimation = "default" | "none" | "fade" | "slide_from_right" | "slide_from_bottom";
+export type ScreenAnimation =
+  | "default" | "none" | "fade" | "slide_from_right" | "slide_from_left" | "slide_from_bottom" | "fade_from_bottom" | "simple_push" | "flip" | "android_activity";
 
 /** Everything a `Screen` takes besides its content. Nested screens of one stack entry merge into one of these. */
 export type ScreenOptions = {
@@ -320,7 +321,7 @@ const argb = (raw: string | undefined): [number, number] => {
 // Screen.
 
 const presentations = new Set<string>(["push", "modal", "transparentModal", "sheet", "formSheet"]);
-const animations = new Set<string>(["default", "none", "fade", "slide_from_right", "slide_from_bottom"]);
+const animations = new Set<string>(["default", "none", "fade", "slide_from_right", "slide_from_left", "slide_from_bottom", "fade_from_bottom", "simple_push", "flip", "android_activity"]);
 const screenStyle = { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 };
 const stackStyle = { flex: 1 };
 const barStyleCode: Record<string, string> = { light: "l", dark: "d" };
@@ -528,7 +529,9 @@ export const NAV_KINDS: Record<string, number> = { stack: 10, screen: 11, header
 /** Slot codes of record 126: the toolbar's center content is slot 4 of the header slots' kind. */
 const SLOTS: Record<string, number> = { "header-left": 0, "header-center": 1, "header-right": 2, "header-search": 3, "toolbar-center": 4 };
 const PRESENTATION_CODE: Record<string, number> = { push: 0, modal: 1, transparentModal: 2, sheet: 3, formSheet: 4 };
-const ANIMATION_CODE: Record<string, number> = { default: 0, none: 1, fade: 2, slide_from_right: 3, slide_from_bottom: 4 };
+const ANIMATION_CODE: Record<string, number> = {
+  default: 0, none: 1, fade: 2, slide_from_right: 3, slide_from_bottom: 4, slide_from_left: 5, fade_from_bottom: 6, android_activity: 7, flip: 8, simple_push: 9,
+};
 const barCode = (raw: string | undefined) => raw === "l" ? 1 : raw === "d" ? 2 : 0;
 
 /**

@@ -510,6 +510,11 @@ class EngineHeader(context: Context) : EngineView(context) {
 
   private fun backgroundColor(): Int = if (hasBackground) background else if (translucent) Color.TRANSPARENT else surface()
 
+  /** What the bar paints, for the stack to draw on across a screen's uncovered edge in Android's own transition ([EngineStack.drawChild]): its colour, down to [edgeBottom]. */
+  internal fun edgeColor(): Int = backgroundColor()
+
+  internal fun edgeBottom(): Float = visualBottom()
+
   override fun onDraw(canvas: Canvas) {
     val color = backgroundColor()
     if (Color.alpha(color) == 0) return

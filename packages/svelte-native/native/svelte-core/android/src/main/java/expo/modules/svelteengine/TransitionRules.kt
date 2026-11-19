@@ -1,26 +1,29 @@
 package expo.modules.svelteengine
 
 /**
- * Android's own transition between two full screens, the default push and pop of a stack on Android (SPEC.md "Navigation"): the framework's activity
- * transition, `core/res/res/anim/activity_open_enter.xml`, `activity_open_exit.xml`, `activity_close_enter.xml` and `activity_close_exit.xml` of
- * frameworks/base (the same files ship in the SDK, `platforms/android-36/data/res/anim/`). Both screens move 96 dp together over 450 ms on
- * `fast_out_extra_slow_in`; the screen on top fades, in over 83 ms from 50 ms on a push, out over 83 ms from 35 ms on a pop, and the screen under it stays
- * opaque. Each moving screen is drawn on across the strip it uncovers, on the side it moved away from (the framework's `extend`), so no gap shows at an
- * edge. Plain Kotlin, so `src/test/engine.sh` checks it on the host.
+ * The default push and pop of a stack on Android (SPEC.md "Navigation"): the movement of the framework's activity transition with a fade-through.
+ *
+ * The movement is Android's own (`core/res/res/anim/activity_open_enter.xml`, `activity_open_exit.xml`, `activity_close_enter.xml` and
+ * `activity_close_exit.xml` of frameworks/base, the same files the SDK ships in `platforms/android-36/data/res/anim/`): both screens move 96 dp together over
+ * 450 ms on `fast_out_extra_slow_in`. The framework fades the screen on top in over the screen below, which stays opaque, so for 83 ms both screens' content
+ * shows at once (two pages of text over each other). The fade here is Material's fade-through instead (`MaterialSharedAxis`, "slides and fades"; the
+ * predictive back guide's "fade through" whose threshold is 35 %, "At the 35% mark, neither screen is showing"): the screen going away fades out over the
+ * first 35 % of the movement, the one coming fades in over the rest, so the two are never seen together. While neither shows, the stack draws the coming
+ * screen's surface (its background and header colours) under both, and each moving screen is drawn on across the strip it uncovers (the framework's
+ * `extend`), so nothing behind the stack shows. Plain Kotlin, so `src/test/engine.sh` checks it on the host.
  */
 internal object TransitionRules {
   /** How far both screens move. Android 13 and 14 moved 10 % of the width; 96 dp since. */
   const val SHIFT_DP = 96f
   const val DURATION_MS = 450L
-  const val FADE_MS = 83f
-  const val OPEN_FADE_START_MS = 50f
-  const val CLOSE_FADE_START_MS = 35f
+  /** The share of the movement by which the screen going away has faded out and after which the one coming fades in. */
+  const val FADE_THROUGH = 0.35f
 
-  /** The screen a push brings in, [ms] into the push: transparent, then linear to opaque over 83 ms from 50 ms. */
-  fun openEnterAlpha(ms: Float): Float = ((ms - OPEN_FADE_START_MS) / FADE_MS).coerceIn(0f, 1f)
+  /** The screen going away (the one below on a push, the one on top on a pop) when [p] of the movement is done: opaque, transparent from 35 %. */
+  fun fadeOut(p: Float): Float = 1f - (p / FADE_THROUGH).coerceIn(0f, 1f)
 
-  /** The screen a pop takes away, [ms] into the pop: opaque, then linear to transparent over 83 ms from 35 ms. */
-  fun closeExitAlpha(ms: Float): Float = 1f - ((ms - CLOSE_FADE_START_MS) / FADE_MS).coerceIn(0f, 1f)
+  /** The screen coming (the one on top on a push, the one below on a pop): transparent until 35 % of the movement, opaque at its end. */
+  fun fadeIn(p: Float): Float = ((p - FADE_THROUGH) / (1f - FADE_THROUGH)).coerceIn(0f, 1f)
 
   /**
    * The points of `fast_out_extra_slow_in`'s path, `M 0,0 C 0.05,0 0.133333,0.06 0.166666,0.4 C 0.208333,0.82 0.25,1 1,1`, as x, y pairs: the start, then the

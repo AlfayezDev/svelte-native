@@ -155,30 +155,43 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
 
   /** A screen Android's own transition moves is drawn on across the strip it uncovers, on the side it moved away from (the framework's `extend`). */
   override fun drawChild(canvas: Canvas, child: View, drawingTime: Long): Boolean {
-    val drawn = super.drawChild(canvas, child, drawingTime)
     val s = child as? EngineScreen
+    // Under the screen below a fade-through, the coming screen's surface: what shows while neither screen does.
+    s?.silhouette?.let { if (s.visibility == View.VISIBLE) drawSurface(canvas, it, 0f, width.toFloat(), 1f, REACH_ACROSS) }
+    val drawn = super.drawChild(canvas, child, drawingTime)
     if (s != null && s.extendsEdge && s.visibility == View.VISIBLE && s.alpha > 0f) drawEdge(canvas, s)
     return drawn
   }
 
-  /** The strip in the screen's own colours: its background, then each child along that edge that paints one (the header, down to its visible bottom). */
+  /** The strip in the screen's own colours, on the side it moved away from. */
   private fun drawEdge(canvas: Canvas, s: EngineScreen) {
     val tx = s.translationX
     val x0 = TransitionRules.stripStart(s.left.toFloat(), s.right.toFloat(), tx)
     val x1 = TransitionRules.stripEnd(s.left.toFloat(), s.right.toFloat(), tx)
     if (x1 <= x0) return
+    drawSurface(canvas, s, x0, x1, s.alpha, if (tx < 0f) REACH_RIGHT else REACH_LEFT)
+  }
+
+  /**
+   * [s]'s surface from [x0] to [x1] at [alpha]: its background, then each first-level child that paints a solid one and [reach]es the part drawn (the
+   * right edge, the left edge, or across the whole screen), the headers last, down to their visible bottom (a large or translucent header lies over the content).
+   */
+  private fun drawSurface(canvas: Canvas, s: EngineScreen, x0: Float, x1: Float, alpha: Float, reach: Int) {
     val top = s.top + s.translationY
-    fillEdge(canvas, solidColor(s.background), s.alpha, x0, top, x1, top + s.height)
-    // Then each first-level child that reaches the edge the strip extends (the right edge when the screen moved left, the left one when it moved right)
-    // and paints a solid background, the headers last: a large or translucent header lies over the content.
+    fillEdge(canvas, solidColor(s.background), alpha, x0, top, x1, top + s.height)
     for (pass in 0..1) {
       for (i in 0 until s.childCount) {
         val c = s.getChildAt(i)
         if (c.visibility != View.VISIBLE || (c is EngineHeader) != (pass == 1)) continue
-        if (if (tx < 0f) c.right < s.width else c.left > 0) continue
+        val reaches = when (reach) {
+          REACH_RIGHT -> c.right >= s.width
+          REACH_LEFT -> c.left <= 0
+          else -> c.left <= 0 && c.right >= s.width
+        }
+        if (!reaches) continue
         val y = top + c.top + c.translationY
-        if (c is EngineHeader) fillEdge(canvas, c.edgeColor(), s.alpha * c.alpha, x0, y, x1, y + c.edgeBottom())
-        else fillEdge(canvas, solidColor(c.background), s.alpha * c.alpha, x0, y, x1, y + c.height)
+        if (c is EngineHeader) fillEdge(canvas, c.edgeColor(), alpha * c.alpha, x0, y, x1, y + c.edgeBottom())
+        else fillEdge(canvas, solidColor(c.background), alpha * c.alpha, x0, y, x1, y + c.height)
       }
     }
   }
@@ -562,10 +575,11 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
   }
 
   /**
-   * Android's own transition between two full screens ([TransitionRules], SPEC.md "Navigation"): [s] comes in from 96 dp on the right and fades in (a push,
-   * [entering]) or goes 96 dp to the right and fades out (a pop), from wherever it is; [under], the full screen below it, moves the other way, opaque, kept
-   * 96 dp from it by the same animator ([TransitionRules.underX]). Both draw their uncovered strip in their own colours ([drawChild]). A cancelled
-   * transition puts [under] back in place; one that takes over (a pop during the push) moves it again from where the screens were, in the same frame.
+   * Android's transition between two full screens ([TransitionRules], SPEC.md "Navigation"): [s] comes in from 96 dp on the right (a push, [entering]) or goes
+   * 96 dp to the right (a pop), from wherever it is, and [under], the full screen below it, moves the other way, kept 96 dp from it by the same animator
+   * ([TransitionRules.underX]). They fade through: the screen going away fades out over the first 35 % of the movement and the one coming fades in over the
+   * rest, while the stack draws the coming screen's surface under both ([drawChild]) and each one's uncovered strip in its own colours. A cancelled
+   * transition puts [under] back in place and whole; one that takes over (a pop during the push) moves it again from where the screens were, in the same frame.
    */
   private fun system(s: EngineScreen, under: EngineScreen?, entering: Boolean, done: () -> Unit) {
     s.holdLayer()
@@ -576,6 +590,15 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
       if (under.running != null) land(under)
       under.mover = s
       under.extendsEdge = true
+      under.silhouette = if (entering) s else under
+      // It fades too: composited from a layer for the transition, as the moving screen is.
+      under.holdLayer()
+    }
+    var underHeld = under != null
+    fun releaseUnder() {
+      if (!underHeld) return
+      underHeld = false
+      under?.releaseLayer()
     }
     // Without a screen moving below (a gesture has shown it in place) there is no strip to draw: the strip would cover what the gesture showed.
     s.extendsEdge = under != null
@@ -586,12 +609,15 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     // Predictive back scales the screen down; the exit brings it back to 1 as the other transitions do, so a screen shown again is whole.
     val fromScale = s.scaleX
     fun frame(f: Float) {
-      val ms = f * TransitionRules.DURATION_MS
+      // The fades follow the movement's progress, as Material's do, so the screen going away is gone by about 70 ms.
       val p = TransitionRules.emphasized(f)
       s.translationX = fromX + (toX - fromX) * p
       if (fromScale != 1f) { s.scaleX = fromScale + (1f - fromScale) * p; s.scaleY = s.scaleX }
-      s.alpha = if (entering) TransitionRules.openEnterAlpha(ms) else fromAlpha * TransitionRules.closeExitAlpha(ms)
-      under?.translationX = TransitionRules.underX(s.translationX, shift)
+      s.alpha = if (entering) TransitionRules.fadeIn(p) else fromAlpha * TransitionRules.fadeOut(p)
+      if (under != null) {
+        under.translationX = TransitionRules.underX(s.translationX, shift)
+        under.alpha = if (entering) TransitionRules.fadeOut(p) else TransitionRules.fadeIn(p)
+      }
       // The strips are drawn by the stack, from where the screens are now.
       invalidate()
     }
@@ -599,7 +625,10 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
       if (under == null || (under.mover != null && under.mover !== s)) return
       under.mover = null
       under.extendsEdge = false
+      under.silhouette = null
       under.translationX = 0f
+      // Whole again: a push's end has hidden it (refresh) and it stays so; anything else shows it.
+      under.alpha = if (under.hidden) 0f else 1f
     }
     val a = ValueAnimator.ofFloat(0f, 1f).setDuration(TransitionRules.DURATION_MS)
     a.interpolator = LinearInterpolator()
@@ -613,6 +642,7 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
         // A push's end hides the screen below (refresh) before it goes back in place, so it is never seen jumping.
         if (!cancelled) done()
         putBack()
+        releaseUnder()
         invalidate()
         s.releaseLayer()
       }
@@ -626,6 +656,7 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
       s.extendsEdge = false
       done()
       putBack()
+      releaseUnder()
     }
     frame(0f)
     a.start()
@@ -830,6 +861,10 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     private const val EDGE_DP = 24f
     private const val FLING_DP = 800f
     private const val RESTORE_MS = 1500L
+    /** What part of a screen's surface [drawSurface] draws children for: those along its right edge, along its left edge, or across it. */
+    private const val REACH_RIGHT = 0
+    private const val REACH_LEFT = 1
+    private const val REACH_ACROSS = 2
 
     /** Stacks in a window, so a change in front (a modal above tabs, a tab switch) can re-evaluate the back callbacks of the ones behind. */
     private val attached = ArrayList<EngineStack>(4)

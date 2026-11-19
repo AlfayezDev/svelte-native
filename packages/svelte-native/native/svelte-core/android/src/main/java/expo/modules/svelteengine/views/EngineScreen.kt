@@ -61,13 +61,13 @@ open class EngineScreen(context: Context) : EngineView(context) {
   /** A screen above holds focus for accessibility services: this one is hidden from them. */
   private var a11yHidden = false
 
-  /** The transition moving this view: a `ViewPropertyAnimator`, or the `ValueAnimator` of Android's own transition ([EngineStack.system]). */
+  /** The transition moving this view: a `ViewPropertyAnimator` (one screen), or the `ValueAnimator` of a transition between two screens ([EngineStack.system]). */
   internal var running: Any? = null
-  /** The screen whose transition moves this one along as the full screen below it (Android's own transition, [EngineStack.system]); null otherwise. */
+  /** The screen whose transition moves or fades this one as the full screen below it ([EngineStack.system]); null otherwise. */
   internal var mover: EngineScreen? = null
-  /** Android's own transition is moving this screen: the stack draws the strip it uncovers in the screen's own colours (the framework's `extend`). */
+  /** A transition is moving this screen less than the width: the stack draws the strip it uncovers in the screen's own colours (the framework's `extend`). */
   internal var extendsEdge = false
-  /** While this screen is the one below a fade-through ([EngineStack.system]): the screen whose surface the stack draws under it, the one coming. */
+  /** While this screen is the one below a transition that fades it ([EngineStack.system]): the screen whose surface the stack draws under it, the one coming. */
   internal var silhouette: EngineScreen? = null
   /** Where the running transition lands and what its end does; the stack runs it when it leaves the window mid-transition. */
   internal var landing: (() -> Unit)? = null

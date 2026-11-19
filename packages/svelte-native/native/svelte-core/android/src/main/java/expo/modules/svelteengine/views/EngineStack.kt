@@ -48,7 +48,7 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
   private val slop = ViewConfiguration.get(context).scaledTouchSlop
   private val edge = EDGE_DP * density
   private val interpolator = DecelerateInterpolator(DECELERATION)
-  /** How far Android's own transition moves both screens, in px. */
+  /** How far the default and the activity transitions move both screens (96 dp), in px. */
   private val shift = TransitionRules.SHIFT_DP * density
   private val edgePaint = Paint()
 
@@ -153,7 +153,7 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     }
   }
 
-  /** A screen Android's own transition moves is drawn on across the strip it uncovers, on the side it moved away from (the framework's `extend`). */
+  /** A screen a transition moves less than the width is drawn on across the strip it uncovers, on the side it moved away from (the framework's `extend`). */
   override fun drawChild(canvas: Canvas, child: View, drawingTime: Long): Boolean {
     val s = child as? EngineScreen
     // Under the screen below a fade-through, the coming screen's surface: what shows while neither screen does.
@@ -582,7 +582,7 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     }
   }
 
-  /** A full screen moves along under Android's own transition; a sheet, a form sheet or a transparent modal stays where it is. */
+  /** A full screen takes part in a transition between two screens; a sheet, a form sheet or a transparent modal stays where it is. */
   private fun movesUnder(u: EngineScreen) = u.presentation <= 1 && u !is EngineSheet && !u.displayNone
 
   /** [s] is being moved as the screen below another one's transition: that transition lands first, so only one animation moves [s]. */
@@ -741,12 +741,12 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
   internal fun dismissTop(dragged: Boolean = false) {
     val s = top() ?: return
     var kind = s.transitionKind().let { if (it == 0) 2 else it }
-    // A gesture (predictive back, the edge swipe) has shown the screen below in place: the exit leaves it there. A screen the edge swipe ([dragged]) moved
-    // slides off across the width, as it did with the finger, unless it is a screen of the default or the activity transition the finger took no further
-    // than their 96 dp (it moves on and fades out).
+    // A gesture (predictive back, the edge swipe) has shown the screen below in place: the exit leaves it there, and goes the way the gesture moved the
+    // screen, to the right. A screen of the default or the activity transition moves on and fades out, unless the edge swipe ([dragged]) took it further
+    // than their 96 dp; any other screen slides off across the width (a slide_from_left screen would otherwise sweep left against the finger).
     val byGesture = s.gesturing
     val small = kind == TransitionRules.KIND_DEFAULT || kind == TransitionRules.KIND_ACTIVITY
-    if (dragged && TransitionRules.paired(kind) && (!small || TransitionRules.exitsAcross(s.translationX, shift))) kind = 2
+    if (byGesture && TransitionRules.paired(kind) && (!small || (dragged && TransitionRules.exitsAcross(s.translationX, shift)))) kind = 2
     freeUnder(s)
     cancelRunning(s)
     s.leaving = true

@@ -32,7 +32,7 @@ The root layout, `src/routes/+layout.mobile.svelte`, holds the app's root stack,
 | Prop | Type | Description |
 | --- | --- | --- |
 | `header` | `HeaderOptions` | The header options of every screen: `large`, `tint`, `background`, `hideShadow`, ... See [Screen's header](screen#header). |
-| `animation` | `'default' \| 'none' \| 'fade' \| 'slide_from_right' \| 'slide_from_bottom'` | How screens are pushed and popped. Modals and sheets keep the platform's animation. |
+| `animation` | `'default' \| 'none' \| 'fade' \| 'slide_from_right' \| 'slide_from_bottom'` | How screens are pushed and popped. `'default'` is each platform's own: on iOS UIKit's push, where the new screen slides in across the width while the one below moves part of the way left; on Android, Android's transition between two screens, where the new screen moves 96 dp in from the right and fades in quickly while the one below moves 96 dp left. `'slide_from_right'` slides it across the width on both. Modals and sheets keep the platform's animation. |
 | `gestureEnabled` | `boolean` | Whether screens can be swiped away. |
 | `statusBar` | `{ style?: 'auto' \| 'light' \| 'dark'; hidden?: boolean }` | The status bar. `{ style: 'auto' }` follows light and dark mode. |
 | `navigationBar` | `{ color?: string; style?: 'auto' \| 'light' \| 'dark' }` | Android's system navigation bar. |
@@ -44,7 +44,7 @@ Each screen's own [`Screen`](screen) options win over these, option by option, a
 
 ## Screen backgrounds
 
-Every screen is opaque, so a pushed screen covers the one below it while it slides in. One without a background of its own takes its stack's (a page whose `<Screen style>` sets only a padding keeps the `Stack`'s colour), else the one of the screen it is in: the screens of a tab, or of a nested stack, look as the screen around them does. A screen inside none has the system's: white or black on iOS, Material's surface on Android, in the app's light or dark mode. A transparent modal has none, and neither do the screens inside it or inside a `<Modal transparent>`. `style={{ backgroundColor }}` (or a `class`) on the `Stack` gives every screen of the stack yours, and the stacks inside them take it; [light and dark mode](styling#light-and-dark-mode) shows how to switch it with the mode.
+Every screen is opaque, so a pushed screen covers the one below it as it comes in (on Android once its fade-in, the first 133 ms of Android's transition, is done). One without a background of its own takes its stack's (a page whose `<Screen style>` sets only a padding keeps the `Stack`'s colour), else the one of the screen it is in: the screens of a tab, or of a nested stack, look as the screen around them does. A screen inside none has the system's: white or black on iOS, Material's surface on Android, in the app's light or dark mode. A transparent modal has none, and neither do the screens inside it or inside a `<Modal transparent>`. `style={{ backgroundColor }}` (or a `class`) on the `Stack` gives every screen of the stack yours, and the stacks inside them take it; [light and dark mode](styling#light-and-dark-mode) shows how to switch it with the mode.
 
 ## Loading
 

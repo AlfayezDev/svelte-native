@@ -288,6 +288,8 @@ static std::string WithoutActivityState(const std::string &nativeId) {
       return;
   }
   if (_spec.animation == svelte::kAnimationFade && !_spec.isSheet()) presented.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
+  // React Navigation's `flip` ("Requires presentation: modal on iOS"): a full-screen modal that turns over; any other presentation keeps its own.
+  if (_spec.animation == svelte::kAnimationFlip && _spec.presentation == svelte::kModal) presented.modalTransitionStyle = UIModalTransitionStyleFlipHorizontal;
   presented.modalPresentationCapturesStatusBarAppearance = YES;
   presented.presentationController.delegate = self;
   [self applyDismissalPolicy];

@@ -107,3 +107,42 @@ test("a route that fails to load throws where it renders and loads again on its 
   await turns(m);
   expect(app.modulesOf("section")).toBe("ready");
 });
+
+test("a pushed screen is made once its page has loaded, so its options are there from the start; a slow load lets it come in empty", async () => {
+  const m = await load("router-fixture.svelte");
+  const app = m.startSurface(48, m.Fixture, {}) as RouterApp;
+  const screens = () => host.roots[48][0].children;
+  app.release("home");
+  await turns(m);
+  const first = screens()[0];
+  expect(screens()).toHaveLength(1);
+  app.goto("/a");
+  await turns(m);
+  expect(app.stack()).toEqual(["/", "/a"]);
+  expect(screens()).toHaveLength(1); // the route is loading: no native screen yet
+  app.release("section");
+  await turns(m);
+  expect(screens()).toHaveLength(2); // made with its page in the same commit
+  expect(texts(48)).toEqual(["page /", "page /a"]);
+  expect(screens()[0]).toBe(first); // the screen below was never made again
+
+  app.goto("/b/7");
+  await turns(m);
+  expect(screens()).toHaveLength(2);
+  await new Promise((done) => setTimeout(done, 300)); // longer than the router waits for a page
+  await turns(m);
+  expect(screens()).toHaveLength(3); // in anyway, empty
+  expect(texts(48)).toEqual(["page /", "page /a"]);
+  app.release("item");
+  await turns(m);
+  expect(texts(48)).toEqual(["page /", "page /a", "page /b/7:7"]);
+});
+
+test("the first screen is made once and stays while its route loads", async () => {
+  const m = await load("router-fixture.svelte");
+  m.startSurface(49, m.Fixture, {});
+  const first = host.roots[49][0].children[0];
+  expect(first).toBeDefined();
+  await turns(m);
+  expect(host.roots[49][0].children[0]).toBe(first);
+});

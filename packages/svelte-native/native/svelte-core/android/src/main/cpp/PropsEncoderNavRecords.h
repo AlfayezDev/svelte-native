@@ -198,6 +198,11 @@ inline int32_t animationCode(const std::optional<std::string_view> &raw) {
   if (*raw == "fade") return 2;
   if (*raw == "slide_from_right") return 3;
   if (*raw == "slide_from_bottom") return 4;
+  if (*raw == "slide_from_left") return 5;
+  if (*raw == "fade_from_bottom") return 6;
+  if (*raw == "android_activity") return 7;
+  if (*raw == "flip") return 8;
+  if (*raw == "simple_push") return 9;
   return 0;
 }
 

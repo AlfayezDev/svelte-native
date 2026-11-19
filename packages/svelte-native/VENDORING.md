@@ -96,6 +96,10 @@ Versions 2.32.0, 4.5.1, 0.10.1 and 15.15.4, as the peers were. Three have patche
 
 The smoke app installs the production app's libraries as stand-ins (`apps/qa/qa/smoke-modules.json`, `package.json`). MMKV and Nitro are not on that list any more: their modules (`mmkv`, `nitro`) stay, still `shared`, with no `packages`; the smoke checks `require("react-native-mmkv")` and `require("react-native-nitro-modules")`, which Metro resolves to the copies. `libraryVendoredPackages` in `smoke-packages.cjs` names them (and the UI packages, which the smoke app never installed). quick-crypto and quick-base64 went the same way (modules `quick-crypto`, `quick-base64`, no `packages`), and the production app's `["react-native-quick-crypto", { sodiumEnabled: true }]` is the library plugin's `sodiumEnabled: true` in the smoke variant.
 
+## Updating a copy
+
+`vendor-updates/README.md` is the procedure an agent (or a person) follows to update a copy: pick the target by the package's policy, check the published tarball against the upstream source before it is copied, write the copy with the script, re-derive or drop the patches, update the library, prove it on both platforms, and report. `vendor-updates/<name>.md` is each package's strategy: what it is coupled to, its version policy, its patches, what the library relies on, what to look at in its source, what it downloads at build time, and what proves an update. A package added here gets its strategy file in the same change (`tests/package/vendor-updates.test.ts`).
+
 ## Adding a package
 
 1. `node scripts/vendor.ts <name>@<version>` (with `--exclude` for what the app never needs: examples, docs, build outputs, tests, `prebuilds/`); commit `vendor/<name>/`.

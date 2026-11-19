@@ -19,6 +19,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.accessibility.AccessibilityNodeInfo
+import expo.modules.svelteappearance.isNight
 import expo.modules.svelteengine.A11y
 import expo.modules.svelteengine.Fragment
 import expo.modules.svelteengine.NavEvents
@@ -151,7 +152,7 @@ class EngineToolbarItem(context: Context) : EngineView(context) {
     invalidate()
   }
 
-  private fun itemColor(): Int = toolbar?.itemColor() ?: if (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES) 0xFFCAC4D0.toInt() else 0xFF49454F.toInt()
+  private fun itemColor(): Int = toolbar?.itemColor() ?: if (isNight(resources)) 0xFFCAC4D0.toInt() else 0xFF49454F.toInt()
 
   override fun getAccessibilityClassName(): CharSequence = "android.widget.Button"
 
@@ -368,7 +369,7 @@ class EngineToolbar(context: Context) : EngineView(context) {
   }
 
   private val dark: Boolean
-    get() = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+    get() = isNight(resources)
 
   /** Icons and labels: the tint, or the theme's on-surface-variant like an inactive tab. */
   internal fun itemColor() = if (hasTint) tint else if (dark) 0xFFCAC4D0.toInt() else 0xFF49454F.toInt()

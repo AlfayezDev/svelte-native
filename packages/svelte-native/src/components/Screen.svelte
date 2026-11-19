@@ -10,8 +10,10 @@
   import { createNativeProps } from "../native-props.ts";
   import { resolveAssetSource } from "../fabric/deps-rn.ts";
   import { connectInsets, insets } from "../insets.svelte.ts";
+  import { colorScheme } from "../color-scheme.ts";
+  import { screenBackground, styleValue } from "../system-colors.ts";
   import {
-    HEADER_CONTEXT, IN_STACK_CONTEXT, PANE_CONTEXT, SCREEN_CONTEXT, SLOT_CENTER, SLOT_LEFT, SLOT_RIGHT, SLOT_SEARCH, SLOT_TOOLBAR_CENTER, TOOLBAR_CONTEXT,
+    BACKGROUND_CONTEXT, HEADER_CONTEXT, IN_STACK_CONTEXT, PANE_CONTEXT, SCREEN_CONTEXT, SLOT_CENTER, SLOT_LEFT, SLOT_RIGHT, SLOT_SEARCH, SLOT_TOOLBAR_CENTER, TOOLBAR_CONTEXT,
     headerHeight, mergeScreenOptions, toolbarHeight,
     type DetentChange, type HeaderMetrics, type NavigationPlatform, type ScreenOptions, type TabIconSource,
   } from "../fabric/navigation.ts";
@@ -147,6 +149,20 @@
     onCancel: cancel,
   }));
   const contentProps = $derived(resolveContent({ style: { flex: 1 } }));
+  // A background where the screen's class and style leave none (`{ backgroundColor: undefined }` leaves none too): the one of the screen or stack this one is in (a tab's
+  // screens look as the tab bar's screen does; a page whose `<Screen style>` has no background takes its `<Stack>`'s), else the system's. React Native leaves a screen transparent,
+  // so a pushed screen showed the one below it through itself while it slid in. A transparent modal keeps none, and so does a screen inside one or inside a transparent `Modal`
+  // (the context gives `null` there).
+  const outerBackground = getContext<(() => unknown) | undefined>(BACKGROUND_CONTEXT);
+  const inherited = $derived(outerBackground?.());
+  const transparent = $derived(presentation === "transparentModal" || inherited === null);
+  const background = $derived(transparent ? undefined : inherited ?? screenBackground(colorScheme.current, Platform.OS, presentation));
+  const ownBackground = $derived(styleValue(screenProps.style, "backgroundColor"));
+  const backgroundStyle = $derived(background === undefined ? undefined : { backgroundColor: background });
+  const screenNativeProps = $derived(
+    ownBackground == null && backgroundStyle ? { ...screenProps, style: screenProps.style == null ? backgroundStyle : [screenProps.style, backgroundStyle] } : screenProps,
+  );
+  setContext(BACKGROUND_CONTEXT, () => ownBackground ?? (transparent ? null : background));
   const toolbarProps = $derived(resolveToolbar({
     translucent: toolbar?.translucent,
     tint: toolbar?.tint,
@@ -161,7 +177,7 @@
 </script>
 
 {#snippet screen()}
-  <native-screen nativeProps={screenProps}>
+  <native-screen nativeProps={screenNativeProps}>
     {#if shown}
       <native-header nativeProps={headerProps}>
         {#if options.headerLeft}<native-header-left>{@render options.headerLeft()}</native-header-left>{/if}

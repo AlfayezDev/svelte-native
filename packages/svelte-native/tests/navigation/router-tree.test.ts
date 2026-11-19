@@ -244,6 +244,28 @@ test("a navigator layout's <Stack> lays its defaults under each screen's own opt
   expect(ofKind(home, "header").map((node) => parseNativeID(String(node.props.nativeID))?.pairs.l)).toEqual([undefined]);
 });
 
+test("a <Stack>'s background is its screens' when a page's own <Screen style> has none: the page's style replaces the layout's, and the background stays", async () => {
+  withInsets(24);
+  const stackStyle = globalThis as { __treeStackStyle?: object };
+  stackStyle.__treeStackStyle = { backgroundColor: "#abcdef" };
+  try {
+    const m = await load("tree-fixture.svelte");
+    treeGlobals.__treeRouters = {};
+    treeGlobals.__treeOptions = { "/acme/inbox": { style: { padding: 8 } } };
+    m.startSurface(89, m.Fixture, { initial: "/acme/inbox/compose" });
+    await turns(m);
+    const [, inbox] = tabScreens(host.roots[89]);
+    const flat = (style: unknown): Record<string, unknown> => (Array.isArray(style) ? Object.assign({}, ...style.map(flat)) : ((style as Record<string, unknown>) ?? {}));
+    expect(inbox.map((screen) => flat(screen.props.style))).toEqual([
+      expect.objectContaining({ padding: 8, backgroundColor: "#abcdef" }), // the page's style, and the stack's background under it
+      expect.objectContaining({ backgroundColor: "#abcdef" }), // the sheet takes the layout's style
+    ]);
+  } finally {
+    delete stackStyle.__treeStackStyle;
+    delete treeGlobals.__treeOptions;
+  }
+});
+
 test("a <Stack>'s animation is the default of its push screens only: a modal, a sheet and a form sheet keep the platform's", async () => {
   withInsets(24);
   const { router, settled, tree } = await mountTree(106, { initial: "/acme/flow/start" });

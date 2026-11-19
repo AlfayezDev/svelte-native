@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { reanimatedStubs } from "../../support/reanimated-stubs.ts";
 import type { Platform } from "../../support/rn-reference.ts";
-import { load as loadBundle, src } from "../../support/bundle.ts";
+import { appearanceStub, load as loadBundle, src } from "../../support/bundle.ts";
 import { type FakeNode, type HostCall, createHost, describeCall, flatten, settle as settleHost } from "../../support/host.ts";
 import type { ExpoViewConfig } from "../../upstream/support/specs.ts";
 
@@ -47,6 +47,7 @@ const stubs = {
   "react-native/Libraries/BatchedBridge/NativeModules": "export default globalThis.__harness.natives.modules;",
   "react-native/Libraries/ReactNative/I18nManager": "export default { get isRTL() { return globalThis.__harness.natives.rtl === true; } };",
   "react-native/Libraries/Linking/Linking": "export default { openURL: (url) => { globalThis.__harness.natives.opened.push(url); return Promise.resolve(); } };",
+  "react-native/Libraries/Utilities/Appearance": appearanceStub,
   "expo-modules-core": "export const requireOptionalNativeModule = (name) => (name === 'SvelteEngine' ? globalThis.__harness.engine : null);",
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };

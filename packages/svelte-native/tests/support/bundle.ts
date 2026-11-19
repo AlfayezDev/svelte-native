@@ -58,6 +58,13 @@ export type BundleOptions = {
 
 export type Bundle = { code: string; /** What the lowering warned about while the bundle was built. */ warnings: string[] };
 
+/**
+ * The system's light or dark mode, light until a test switches it: `__setColorScheme` (import it from this module in the test's entry) changes it and tells the listeners,
+ * as React Native's `Appearance` does when the user switches.
+ */
+export const appearanceStub =
+  "let scheme = 'light'; const listeners = new Set(); export const getColorScheme = () => scheme; export const addChangeListener = (listener) => { listeners.add(listener); return { remove() { listeners.delete(listener); } }; }; export const __setColorScheme = (next) => { scheme = next; for (const listener of [...listeners]) listener({ colorScheme: next }); };";
+
 /** The stand-ins a fixture that mounts through the host needs: Reanimated's, the platform, assets, the native components' registrations, Expo's core and the app registry. */
 export function baseStubs(platform: Platform = "android"): Record<string, string> {
   return {
@@ -67,6 +74,7 @@ export function baseStubs(platform: Platform = "android"): Record<string, string
     "react-native/Libraries/Components/View/ViewNativeComponent": "export {};",
     "react-native/Libraries/Text/TextNativeComponent": "export {};",
     "react-native/Libraries/Components/ScrollView/ScrollViewNativeComponent": "export {};",
+    "react-native/Libraries/Utilities/Appearance": appearanceStub,
     "expo-modules-core": "export const requireOptionalNativeModule = () => null;",
     "react-native": "export const AppRegistry = { registerRunnable() {} };",
   };
@@ -77,6 +85,7 @@ export const appStubs: Record<string, string> = {
   "react-native/Libraries/Utilities/BackHandler": "export default { addEventListener: () => ({ remove() {} }) };",
   "react-native/Libraries/Components/Keyboard/Keyboard": "export default { isVisible: () => false, dismiss() {} };",
   "react-native/Libraries/NativeComponent/ViewConfig": "export const createViewConfig = (partial) => partial;",
+  "react-native/Libraries/Utilities/Appearance": appearanceStub,
   "expo-modules-core": "export const EventEmitter = class {}; export const requireOptionalNativeModule = () => null;",
 };
 

@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { setContext, type Snippet } from "svelte";
+  import { getContext, setContext, type Snippet } from "svelte";
   import type {} from "../elements.d.ts";
   import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
-  import { IN_STACK_CONTEXT, PANE_CONTEXT, SCREEN_CONTEXT } from "../fabric/navigation.ts";
+  import { BACKGROUND_CONTEXT, IN_STACK_CONTEXT, PANE_CONTEXT, SCREEN_CONTEXT } from "../fabric/navigation.ts";
   import type { ModalProps } from "react-native";
   import Platform from "react-native/Libraries/Utilities/Platform";
   import { keyboard } from "../keyboard.ts";
@@ -61,6 +61,9 @@
   setContext(SCREEN_CONTEXT, undefined);
   setContext(IN_STACK_CONTEXT, undefined);
   setContext(PANE_CONTEXT, undefined);
+  // A transparent modal shows what is below it: a `Screen` inside it gives itself no background (`null`); one inside an opaque modal takes the screen's around the `<Modal>`.
+  const outerBackground = getContext<(() => unknown) | undefined>(BACKGROUND_CONTEXT);
+  setContext(BACKGROUND_CONTEXT, () => (attributes.transparent === true ? null : outerBackground?.()));
   const resolveProps = createNativeProps();
 </script>
 {#if mounted}

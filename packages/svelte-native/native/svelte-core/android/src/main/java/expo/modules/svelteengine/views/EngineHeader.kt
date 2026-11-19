@@ -1,7 +1,6 @@
 package expo.modules.svelteengine.views
 
 import android.content.Context
-import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -14,6 +13,7 @@ import android.view.WindowInsets
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.findViewTreeOnBackPressedDispatcherOwner
 import androidx.core.view.ViewCompat
+import expo.modules.svelteappearance.isNight
 import expo.modules.svelteengine.ChromeRules
 import expo.modules.svelteengine.Fragment
 import expo.modules.svelteengine.GestureRules
@@ -162,7 +162,7 @@ class EngineHeader(context: Context) : EngineView(context) {
   private fun isRtl() = isRtlLayout()
 
   private val dark: Boolean
-    get() = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+    get() = isNight(resources)
 
   private fun onSurface() = if (dark) 0xFFE6E1E5.toInt() else 0xFF1C1B1F.toInt()
   private fun surface() = if (dark) 0xFF1C1B1F.toInt() else 0xFFFFFBFE.toInt()

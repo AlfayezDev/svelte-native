@@ -1586,6 +1586,9 @@ function planAppJson(root2, names, plan) {
     slug: names.slug,
     scheme: names.slug,
     version: "1.0.0",
+    // The light and dark colours of `src/lib/theme.ts` follow the system's mode: Expo's default, `light`, would keep the app light on iOS (and, through the library's plugin, on
+    // Android). Only an app.json made here says so; an app's own keeps its mode.
+    userInterfaceStyle: "automatic",
     android: { package: names.androidPackage },
     ios: { bundleIdentifier: names.iosBundleId },
     plugins: [plugin]

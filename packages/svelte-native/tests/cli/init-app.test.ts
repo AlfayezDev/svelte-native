@@ -91,6 +91,8 @@ describe("init in a fresh sv project", () => {
     expect(readFileSync(join(root, "metro.config.cjs"), "utf8")).toContain("withSvelteNative(getDefaultConfig(__dirname))");
     const app = readJson(root, "app.json").expo;
     expect(app).toMatchObject({ name: "my-app", slug: "my-app", scheme: "my-app", android: { package: "dev.example.myapp" }, ios: { bundleIdentifier: "dev.example.myapp" }, plugins: ["@alfayez/svelte-native"] });
+    // The theme it writes has dark colours: the app follows the system's mode, where Expo's default would keep it light.
+    expect(app.userInterfaceStyle).toBe("automatic");
     const vite = readFileSync(join(root, "vite.config.ts"), "utf8");
     expect(vite).toContain("import { svelteNative } from '@alfayez/svelte-native/vite';");
     expect(vite).toContain("defineConfig(({ mode }) => ({");
@@ -215,6 +217,8 @@ describe("init in a project that already has things", () => {
     const app = readJson(root, "app.json").expo;
     expect(app).toMatchObject({ name: "Mine", slug: "mine", icon: "./icon.png", plugins: ["expo-font", "@alfayez/svelte-native"] });
     expect(app.android.package).toBe("dev.example.myapp");
+    // An app's own app.json keeps its mode: following the system is a change the app makes, not one init makes for it.
+    expect(app.userInterfaceStyle).toBeUndefined();
     expect(readFileSync(join(root, "app.json"), "utf8").startsWith('{\n  "expo"')).toBe(true);
     expect(run(root).out).toContain("Nothing to change");
   });

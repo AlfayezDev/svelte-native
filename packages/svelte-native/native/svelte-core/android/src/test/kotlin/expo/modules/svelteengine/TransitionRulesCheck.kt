@@ -9,8 +9,10 @@ import kotlin.system.exitProcess
  * against the framework's activity transition: frameworks/base, core/res/res/anim/activity_open_enter.xml (alpha 0 to 1, startOffset 50, duration 83;
  * translate 96dp to 0 over 450 on fast_out_extra_slow_in), activity_open_exit.xml (0 to -96dp, alpha 1), activity_close_enter.xml (-96dp to 0, alpha 1),
  * activity_close_exit.xml (0 to 96dp; alpha 1 to 0, startOffset 35, duration 83), and core/res/res/interpolator/fast_out_extra_slow_in.xml
- * (`M 0,0 C 0.05, 0, 0.133333, 0.06, 0.166666, 0.4 C 0.208333, 0.82, 0.25, 1, 1, 1`). The sources of EngineScreen and EngineStack are read for the calls
- * that make it the default. Usage: TransitionRulesCheck <EngineScreen.kt> <EngineStack.kt>   (src/test/run.sh)
+ * (`M 0,0 C 0.05, 0, 0.133333, 0.06, 0.166666, 0.4 C 0.208333, 0.82, 0.25, 1, 1, 1`). With an Android SDK's resources (`platforms/android-36/data/res`)
+ * the numbers are read from those files and compared, not only copied here. The sources of EngineScreen and EngineStack are read for the calls that make
+ * it the default and keep its state right when something cuts it short.
+ * Usage: TransitionRulesCheck <EngineScreen.kt> <EngineStack.kt> [<SDK res directory>]   (src/test/run.sh)
  */
 private var failures = 0
 private var checks = 0
@@ -94,6 +96,42 @@ private fun screens() {
   expect("one that did not lets Android's exit finish it", TransitionRules.exitsAcross(200f, shift), false)
 }
 
+/** The framework's own files: each number of TransitionRules against the attribute it comes from. */
+private fun framework(res: File) {
+  fun attrs(file: String, tag: String): Map<String, String> {
+    val element = Regex("<$tag\\b([^>]*)/>").find(File(res, file).readText())?.groupValues?.get(1) ?: return emptyMap()
+    return Regex("android:(\\w+)=\"([^\"]*)\"").findAll(element).associate { it.groupValues[1] to it.groupValues[2] }
+  }
+  val shift = "${TransitionRules.SHIFT_DP.toInt()}dp"
+  val duration = TransitionRules.DURATION_MS.toString()
+  val fade = TransitionRules.FADE_MS.toInt().toString()
+  val curve = "@interpolator/fast_out_extra_slow_in"
+  val openIn = attrs("anim/activity_open_enter.xml", "alpha")
+  expect("open_enter fades in from 0 to 1", openIn["fromAlpha"] to openIn["toAlpha"], "0" to "1.0")
+  expect("open_enter's fade starts at OPEN_FADE_START_MS", openIn["startOffset"], TransitionRules.OPEN_FADE_START_MS.toInt().toString())
+  expect("and lasts FADE_MS, linearly", openIn["duration"] to openIn["interpolator"], fade to "@interpolator/linear")
+  val openMove = attrs("anim/activity_open_enter.xml", "translate")
+  expect("open_enter moves from SHIFT_DP right to its place", openMove["fromXDelta"] to openMove["toXDelta"], shift to "0")
+  expect("over DURATION_MS on fast_out_extra_slow_in", openMove["duration"] to openMove["interpolator"], duration to curve)
+  val belowOut = attrs("anim/activity_open_exit.xml", "translate")
+  expect("open_exit moves the screen below SHIFT_DP left", belowOut["fromXDelta"] to belowOut["toXDelta"], "0" to "-$shift")
+  expect("over the same time and curve", belowOut["duration"] to belowOut["interpolator"], duration to curve)
+  val belowAlpha = attrs("anim/activity_open_exit.xml", "alpha")
+  expect("and keeps it opaque", belowAlpha["fromAlpha"] to belowAlpha["toAlpha"], "1.0" to "1.0")
+  val belowIn = attrs("anim/activity_close_enter.xml", "translate")
+  expect("close_enter brings the screen below back from SHIFT_DP left", belowIn["fromXDelta"] to belowIn["toXDelta"], "-$shift" to "0")
+  expect("over the same time and curve", belowIn["duration"] to belowIn["interpolator"], duration to curve)
+  val closeOut = attrs("anim/activity_close_exit.xml", "alpha")
+  expect("close_exit fades out from 1 to 0", closeOut["fromAlpha"] to closeOut["toAlpha"], "1.0" to "0.0")
+  expect("close_exit's fade starts at CLOSE_FADE_START_MS", closeOut["startOffset"], TransitionRules.CLOSE_FADE_START_MS.toInt().toString())
+  expect("and lasts FADE_MS, linearly", closeOut["duration"] to closeOut["interpolator"], fade to "@interpolator/linear")
+  val closeMove = attrs("anim/activity_close_exit.xml", "translate")
+  expect("close_exit moves the screen SHIFT_DP right", closeMove["fromXDelta"] to closeMove["toXDelta"], "0" to shift)
+  val path = attrs("interpolator/fast_out_extra_slow_in.xml", "pathInterpolator")["pathData"] ?: ""
+  val numbers = Regex("-?[0-9]*\\.?[0-9]+").findAll(path).map { it.value.toFloat() }.toList()
+  expect("fast_out_extra_slow_in's path is TransitionRules.PATH ($path)", numbers.size == TransitionRules.PATH.size && numbers.indices.all { abs(numbers[it] - TransitionRules.PATH[it]) < 1e-6f }, true)
+}
+
 private fun sources(screen: String, stack: String) {
   val kind = screen.substringAfter("fun transitionKind(): Int").substringBefore("\n  }\n")
   expect("a push screen with the default animation plays Android's own transition", kind.contains("0 -> 4"), true)
@@ -107,6 +145,21 @@ private fun sources(screen: String, stack: String) {
     expect("the transition uses $call", system.contains(call), true)
   val draw = stack.substringAfter("private fun drawEdge(").substringBefore("\n  private fun fillEdge(")
   expect("the strip is the one TransitionRules gives", draw.contains("TransitionRules.stripStart(") && draw.contains("TransitionRules.stripEnd("), true)
+  // What keeps the state right when something cuts the transition short, or a gesture ends it.
+  expect("only a transition with a screen moving below draws strips (after a gesture the strip would cover what it showed)", system.contains("s.extendsEdge = under != null"), true)
+  expect("a pop goes on right from where a gesture left the screen", system.contains("val toX = if (entering) 0f else max(shift, fromX)"), true)
+  expect("the screen below goes back in place when the transition ends or is cut short", system.contains("under.translationX = 0f") && system.contains("putBack()"), true)
+  expect("a transition that lands puts the scale back", system.substringAfter("s.landing = {").contains("s.scaleX = 1f"), true)
+  expect("a screen moved as the one below another's transition is freed first", system.contains("freeUnder(s)") && system.contains("freeUnder(under)"), true)
+  val dismiss = stack.substringAfter("internal fun dismissTop(").substringBefore("\n  /** JavaScript did not remove")
+  expect("only the edge swipe can take a screen across the width", dismiss.contains("if (kind == 4 && dragged && TransitionRules.exitsAcross("), true)
+  expect("a gesture's dismissal leaves the screen below where the gesture showed it", dismiss.contains("moveUnder = !byGesture"), true)
+  expect("the edge swipe's dismissal says it was dragged", stack.contains("dismissTop(dragged = true)"), true)
+  expect("the edge swipe does not start on a screen a transition is moving", stack.substringAfter("private fun swipesBack(").substringBefore("\n").contains("&& canDrag()"), true)
+  val started = stack.substringAfter("override fun handleOnBackStarted(").substringBefore("override fun handleOnBackProgressed")
+  expect("predictive back takes the screen whole and opaque from a transition it cut short", started.contains("freeUnder(top)") && started.contains("top.alpha = 1f"), true)
+  val insert2 = stack.substringAfter("fun insertScreen(").substringBefore("val others = live()")
+  expect("a re-inserted screen starts unscaled", insert2.contains("child.scaleX = 1f"), true)
 }
 
 fun main(args: Array<String>) {
@@ -114,6 +167,9 @@ fun main(args: Array<String>) {
   curve()
   screens()
   sources(File(args[0]).readText(), File(args[1]).readText())
+  val res = args.getOrNull(2)?.let { File(it) }
+  if (res != null && File(res, "anim/activity_open_enter.xml").isFile) framework(res)
+  else println("transition rules: no Android SDK resources${if (res != null) " at $res" else ""}, the framework files were not compared")
   println("transition rules: $checks checks, $failures failed")
   if (failures > 0) exitProcess(1)
 }

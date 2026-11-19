@@ -14,7 +14,7 @@ class NavProps {
   /** 0 push, 1 modal, 2 transparentModal, 3 sheet, 4 formSheet. */
   var presentation = 0
   var gestureEnabled = true
-  /** 0 default, 1 none, 2 fade, 3 slide_from_right, 4 slide_from_bottom. */
+  /** 0 default, 1 none, 2 fade, 3 slide_from_right, 4 slide_from_bottom, 5 slide_from_left, 6 fade_from_bottom, 7 android_activity, 8 flip, 9 simple_push. */
   var animation = 0
   var backDismissal = true
 

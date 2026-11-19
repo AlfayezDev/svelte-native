@@ -29,6 +29,10 @@ const add = (name: string, attributes: Record<string, unknown>) => ids.push(Stri
 for (const stackPresentation of ["push", "modal", "transparentModal", "sheet", "formSheet"]) add("native-screen", { stackPresentation });
 add("native-screen", { activityState: 0, gestureEnabled: false, stackAnimation: "slide_from_bottom", nativeBackButtonDismissalEnabled: false });
 add("native-screen", { activityState: 1, stackAnimation: "fade" });
+// Every animation React Navigation's native stack names, and the activity transition.
+for (const stackAnimation of ["default", "none", "fade", "slide_from_right", "slide_from_left", "slide_from_bottom", "fade_from_bottom", "simple_push", "flip", "android_activity"]) {
+  add("native-screen", { stackAnimation });
+}
 add("native-screen", { stackAnimation: "none", statusBarStyle: "light", statusBarHidden: true });
 add("native-screen", { stackPresentation: "sheet", sheetDetents: ["auto", 0.75, 1, 0.1], sheetInitialDetent: 0.75, sheetGrabber: false, sheetDismissible: false, sheetBackdrop: "none" });
 add("native-screen", { stackPresentation: "sheet", sheetDetents: [0.3], navigationBarColor: "#102030", navigationBarStyle: "dark", statusBarStyle: "dark" });

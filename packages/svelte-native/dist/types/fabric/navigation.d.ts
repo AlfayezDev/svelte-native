@@ -198,7 +198,7 @@ export type HeaderMetrics = {
     height: number;
     inset: number;
 };
-export type ScreenAnimation = "default" | "none" | "fade" | "slide_from_right" | "slide_from_bottom";
+export type ScreenAnimation = "default" | "none" | "fade" | "slide_from_right" | "slide_from_left" | "slide_from_bottom" | "fade_from_bottom" | "simple_push" | "flip" | "android_activity";
 /** Everything a `Screen` takes besides its content. Nested screens of one stack entry merge into one of these. */
 export type ScreenOptions = {
     title?: string;

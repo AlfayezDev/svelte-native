@@ -83,6 +83,8 @@ export interface Router {
   preload(route: PageRoute | RouteNode): Promise<void>;
   /** The route's page and layouts once loaded, `undefined` while loading; throws what a failed load threw. */
   modules(route: PageRoute | RouteNode): RouteModules | undefined;
+  /** Whether a load of the route's modules is in flight (started and neither loaded nor failed yet). */
+  loading(route: PageRoute | RouteNode): boolean;
   /** Navigates anywhere in the tree: the plan selects tabs, pops covering screens and pushes where the route belongs. */
   goto(href: string, navigation?: NavigateOptions): void;
   /**
@@ -293,6 +295,10 @@ function createStore(tree: StackNode) {
     load(route);
     await loads.get(route);
     modules(route);
+  }
+  function loading(route: PageRoute | RouteNode): boolean {
+    const slot = slots.get(route);
+    return slot !== undefined && "pending" in slot;
   }
   function modules(route: PageRoute | RouteNode): RouteModules | undefined {
     const slot = slots.get(route);
@@ -596,7 +602,7 @@ function createStore(tree: StackNode) {
   }
 
   return {
-    tree, root, load, preload, modules, snapshot: () => snapshot(root), state: (): NavigationState => ({ stack: snapshot(root), launch: launched }), resolved,
+    tree, root, load, preload, modules, loading, snapshot: () => snapshot(root), state: (): NavigationState => ({ stack: snapshot(root), launch: launched }), resolved,
     navigate,
     prepare,
     /**
@@ -703,6 +709,7 @@ function makeRouter({ store, node, scope, above, navigator, active, entry }: Spe
     load: store.load,
     preload: store.preload,
     modules: store.modules,
+    loading: store.loading,
     goto(href, navigation = {}) { store.navigate(href, navigation); },
     prepare(href, navigation = {}) { return store.prepare(href, navigation); },
     back() {

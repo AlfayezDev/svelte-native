@@ -67,7 +67,7 @@ The Android values other than `'default'` and `'android_activity'` are react-nat
 
 ## Loading
 
-Pages load when they're first shown. The `loading` snippet fills the screen meanwhile, usually for a split second:
+Pages load when they're first shown. Without a `loading` snippet, a screen you navigate to comes in once its page has loaded (in an app's bundle that takes a moment, not a frame), so its own `<Screen>` options, its `animation` included, are there from the start. With one, the screen comes in at once and the snippet fills it meanwhile, usually for a split second; the page's options then arrive with the page, too late for the push's animation (put the animation on the `Stack` instead):
 
 ```svelte
 <Stack>

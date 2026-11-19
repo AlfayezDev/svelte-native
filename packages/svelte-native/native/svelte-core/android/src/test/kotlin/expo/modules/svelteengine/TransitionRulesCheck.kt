@@ -5,10 +5,9 @@ import kotlin.math.abs
 import kotlin.system.exitProcess
 
 /**
- * Plain-JVM check of Android's own transition between two screens (`TransitionRules`, SPEC.md "Navigation"), the default push and pop of a stack on Android,
- * against the framework's activity transition: frameworks/base, core/res/res/anim/activity_open_enter.xml (alpha 0 to 1, startOffset 50, duration 83;
- * translate 96dp to 0 over 450 on fast_out_extra_slow_in), activity_open_exit.xml (0 to -96dp, alpha 1), activity_close_enter.xml (-96dp to 0, alpha 1),
- * activity_close_exit.xml (0 to 96dp; alpha 1 to 0, startOffset 35, duration 83), and core/res/res/interpolator/fast_out_extra_slow_in.xml
+ * Plain-JVM check of the default push and pop of a stack on Android (`TransitionRules`, SPEC.md "Navigation"): the movement against the framework's activity
+ * transition, frameworks/base core/res/res/anim/activity_open_enter.xml (translate 96dp to 0 over 450 on fast_out_extra_slow_in), activity_open_exit.xml
+ * (0 to -96dp), activity_close_enter.xml (-96dp to 0), activity_close_exit.xml (0 to 96dp), and core/res/res/interpolator/fast_out_extra_slow_in.xml
  * (`M 0,0 C 0.05, 0, 0.133333, 0.06, 0.166666, 0.4 C 0.208333, 0.82, 0.25, 1, 1, 1`). With an Android SDK's resources (`platforms/android-36/data/res`)
  * the numbers are read from those files and compared, not only copied here. The sources of EngineScreen and EngineStack are read for the calls that make
  * it the default and keep its state right when something cuts it short.
@@ -47,16 +46,23 @@ private fun reference(x: Double): Double {
 private fun timing() {
   expect("both screens move 96 dp", TransitionRules.SHIFT_DP, 96f)
   expect("over 450 ms", TransitionRules.DURATION_MS, 450L)
-  near("the pushed screen is transparent at the start", TransitionRules.openEnterAlpha(0f), 0f)
-  near("and until 50 ms", TransitionRules.openEnterAlpha(50f), 0f)
-  near("half way through its 83 ms fade at 91.5 ms", TransitionRules.openEnterAlpha(91.5f), 0.5f)
-  near("opaque at 133 ms", TransitionRules.openEnterAlpha(133f), 1f)
-  near("and to the end", TransitionRules.openEnterAlpha(450f), 1f)
-  near("the popped screen is opaque at the start", TransitionRules.closeExitAlpha(0f), 1f)
-  near("and until 35 ms", TransitionRules.closeExitAlpha(35f), 1f)
-  near("half way through its 83 ms fade at 76.5 ms", TransitionRules.closeExitAlpha(76.5f), 0.5f)
-  near("gone at 118 ms", TransitionRules.closeExitAlpha(118f), 0f)
-  near("and to the end", TransitionRules.closeExitAlpha(450f), 0f)
+  // The fade-through (Material's; the predictive back guide: "At the 35% mark, neither screen is showing").
+  near("the screen going away is opaque at the start", TransitionRules.fadeOut(0f), 1f)
+  near("half gone at 17.5 % of the movement", TransitionRules.fadeOut(0.175f), 0.5f)
+  near("gone at 35 %", TransitionRules.fadeOut(0.35f), 0f)
+  near("and after", TransitionRules.fadeOut(1f), 0f)
+  near("the screen coming is transparent at the start", TransitionRules.fadeIn(0f), 0f)
+  near("and at 35 %", TransitionRules.fadeIn(0.35f), 0f)
+  near("half there at 67.5 %", TransitionRules.fadeIn(0.675f), 0.5f)
+  near("opaque at the end", TransitionRules.fadeIn(1f), 1f)
+  var both = 0
+  for (i in 0..1000) { val p = i / 1000f; if (TransitionRules.fadeOut(p) > 0f && TransitionRules.fadeIn(p) > 0f) both++ }
+  expect("the two screens never show at once", both, 0)
+  // On the movement's curve the screen going away is gone at about 70 ms of the 450, and the one coming is 90 % there at 200 ms.
+  var gone = 0
+  while (TransitionRules.fadeOut(TransitionRules.emphasized(gone / 450f)) > 0f) gone++
+  expect("the screen going away is gone by 75 ms (at $gone ms)", gone in 60..75, true)
+  near("the screen coming is about 90 % there at 200 ms", TransitionRules.fadeIn(TransitionRules.emphasized(200f / 450f)), 0.895f, 0.01f)
 }
 
 private fun curve() {
@@ -102,31 +108,22 @@ private fun framework(res: File) {
     val element = Regex("<$tag\\b([^>]*)/>").find(File(res, file).readText())?.groupValues?.get(1) ?: return emptyMap()
     return Regex("android:(\\w+)=\"([^\"]*)\"").findAll(element).associate { it.groupValues[1] to it.groupValues[2] }
   }
+  // The movement only: the fade is Material's fade-through, not the framework's (which fades the screen on top over an opaque one).
   val shift = "${TransitionRules.SHIFT_DP.toInt()}dp"
   val duration = TransitionRules.DURATION_MS.toString()
-  val fade = TransitionRules.FADE_MS.toInt().toString()
   val curve = "@interpolator/fast_out_extra_slow_in"
-  val openIn = attrs("anim/activity_open_enter.xml", "alpha")
-  expect("open_enter fades in from 0 to 1", openIn["fromAlpha"] to openIn["toAlpha"], "0" to "1.0")
-  expect("open_enter's fade starts at OPEN_FADE_START_MS", openIn["startOffset"], TransitionRules.OPEN_FADE_START_MS.toInt().toString())
-  expect("and lasts FADE_MS, linearly", openIn["duration"] to openIn["interpolator"], fade to "@interpolator/linear")
   val openMove = attrs("anim/activity_open_enter.xml", "translate")
   expect("open_enter moves from SHIFT_DP right to its place", openMove["fromXDelta"] to openMove["toXDelta"], shift to "0")
   expect("over DURATION_MS on fast_out_extra_slow_in", openMove["duration"] to openMove["interpolator"], duration to curve)
   val belowOut = attrs("anim/activity_open_exit.xml", "translate")
   expect("open_exit moves the screen below SHIFT_DP left", belowOut["fromXDelta"] to belowOut["toXDelta"], "0" to "-$shift")
   expect("over the same time and curve", belowOut["duration"] to belowOut["interpolator"], duration to curve)
-  val belowAlpha = attrs("anim/activity_open_exit.xml", "alpha")
-  expect("and keeps it opaque", belowAlpha["fromAlpha"] to belowAlpha["toAlpha"], "1.0" to "1.0")
   val belowIn = attrs("anim/activity_close_enter.xml", "translate")
   expect("close_enter brings the screen below back from SHIFT_DP left", belowIn["fromXDelta"] to belowIn["toXDelta"], "-$shift" to "0")
   expect("over the same time and curve", belowIn["duration"] to belowIn["interpolator"], duration to curve)
-  val closeOut = attrs("anim/activity_close_exit.xml", "alpha")
-  expect("close_exit fades out from 1 to 0", closeOut["fromAlpha"] to closeOut["toAlpha"], "1.0" to "0.0")
-  expect("close_exit's fade starts at CLOSE_FADE_START_MS", closeOut["startOffset"], TransitionRules.CLOSE_FADE_START_MS.toInt().toString())
-  expect("and lasts FADE_MS, linearly", closeOut["duration"] to closeOut["interpolator"], fade to "@interpolator/linear")
   val closeMove = attrs("anim/activity_close_exit.xml", "translate")
   expect("close_exit moves the screen SHIFT_DP right", closeMove["fromXDelta"] to closeMove["toXDelta"], "0" to shift)
+  expect("over the same time and curve", closeMove["duration"] to closeMove["interpolator"], duration to curve)
   val path = attrs("interpolator/fast_out_extra_slow_in.xml", "pathInterpolator")["pathData"] ?: ""
   val numbers = Regex("-?[0-9]*\\.?[0-9]+").findAll(path).map { it.value.toFloat() }.toList()
   expect("fast_out_extra_slow_in's path is TransitionRules.PATH ($path)", numbers.size == TransitionRules.PATH.size && numbers.indices.all { abs(numbers[it] - TransitionRules.PATH[it]) < 1e-6f }, true)
@@ -141,7 +138,7 @@ private fun sources(screen: String, stack: String) {
   val exit = stack.substringAfter("private fun exitTo(").substringBefore("\n  }\n")
   expect("an exit of kind 4 runs it with the screen that will be on top", exit.contains("4 -> system(s,"), true)
   val system = stack.substringAfter("private fun system(").substringBefore("\n  private fun animate(")
-  for (call in listOf("TransitionRules.emphasized(f)", "TransitionRules.openEnterAlpha(ms)", "TransitionRules.closeExitAlpha(ms)", "TransitionRules.underX(s.translationX, shift)", "TransitionRules.DURATION_MS"))
+  for (call in listOf("TransitionRules.emphasized(f)", "TransitionRules.fadeIn(p)", "TransitionRules.fadeOut(p)", "TransitionRules.underX(s.translationX, shift)", "TransitionRules.DURATION_MS"))
     expect("the transition uses $call", system.contains(call), true)
   val draw = stack.substringAfter("private fun drawEdge(").substringBefore("\n  private fun fillEdge(")
   expect("the strip is the one TransitionRules gives", draw.contains("TransitionRules.stripStart(") && draw.contains("TransitionRules.stripEnd("), true)
@@ -150,6 +147,13 @@ private fun sources(screen: String, stack: String) {
   expect("a pop goes on right from where a gesture left the screen", system.contains("val toX = if (entering) 0f else max(shift, fromX)"), true)
   expect("the screen below goes back in place when the transition ends or is cut short", system.contains("under.translationX = 0f") && system.contains("putBack()"), true)
   expect("a transition that lands puts the scale back", system.substringAfter("s.landing = {").contains("s.scaleX = 1f"), true)
+  expect("the screen below fades too: out on a push, in on a pop", system.contains("under.alpha = if (entering) TransitionRules.fadeOut(p) else TransitionRules.fadeIn(p)"), true)
+  expect("the stack draws the coming screen's surface under both", system.contains("under.silhouette = if (entering) s else under"), true)
+  expect("the screen below is whole again after (hidden if a push hid it)", system.contains("under.silhouette = null") && system.contains("under.alpha = if (under.hidden) 0f else 1f"), true)
+  // `releaseUnder()` is defined once and called twice (the animator's end, the landing); it lets go only once.
+  expect("its layer is held for the transition and let go at its end", system.contains("under.holdLayer()") && system.split("releaseUnder()").size - 1 == 3 && system.contains("if (!underHeld) return"), true)
+  val drawChild = stack.substringAfter("override fun drawChild(").substringBefore("\n  /** The strip in")
+  expect("the surface is drawn before the screen below, across the stack", drawChild.indexOf("drawSurface(canvas, it, 0f, width.toFloat(), 1f, REACH_ACROSS)") in 0 until drawChild.indexOf("super.drawChild("), true)
   expect("a screen moved as the one below another's transition is freed first", system.contains("freeUnder(s)") && system.contains("freeUnder(under)"), true)
   val dismiss = stack.substringAfter("internal fun dismissTop(").substringBefore("\n  /** JavaScript did not remove")
   expect("only the edge swipe can take a screen across the width", dismiss.contains("if (kind == 4 && dragged && TransitionRules.exitsAcross("), true)

@@ -57,6 +57,13 @@ kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/ChromeRules.kt" \
 java -cp "$work/chrome-check.jar" expo.modules.svelteengine.ChromeRulesCheckKt "$here/../main/java/expo/modules/svelteengine/views/EngineHeader.kt" \
   "$here/../main/java/expo/modules/svelteengine/views/EngineSheet.kt" "$here/../main/java/expo/modules/svelteengine/views/EngineStack.kt"
 
+# Android's own transition between two screens, the default push and pop (SPEC.md, "Navigation"): its timing and curve against the framework's activity
+# transition, how the two screens move together, the strip each one uncovers. The sources of EngineScreen and EngineStack are read for the calls that make it the default.
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/TransitionRules.kt" \
+  "$here/kotlin/expo/modules/svelteengine/TransitionRulesCheck.kt" -include-runtime -d "$work/transition-check.jar"
+java -cp "$work/transition-check.jar" expo.modules.svelteengine.TransitionRulesCheckKt "$here/../main/java/expo/modules/svelteengine/views/EngineScreen.kt" \
+  "$here/../main/java/expo/modules/svelteengine/views/EngineStack.kt"
+
 # The order the engine applies Fabric's transactions in (SPEC.md, "Transaction order"): the main thread, asked to apply a transaction, applies the ones the JavaScript
 # thread pulled before it first; a message of the main looper applies one, and the one a release posts applies what was held, within a time budget; MountingManager's source is
 # read for the one call that applies a batch.

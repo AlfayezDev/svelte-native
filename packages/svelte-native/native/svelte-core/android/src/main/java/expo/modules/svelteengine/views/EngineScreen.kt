@@ -60,7 +60,12 @@ open class EngineScreen(context: Context) : EngineView(context) {
   /** A screen above holds focus for accessibility services: this one is hidden from them. */
   private var a11yHidden = false
 
-  internal var running: android.view.ViewPropertyAnimator? = null
+  /** The transition moving this view: a `ViewPropertyAnimator`, or the `ValueAnimator` of Android's own transition ([EngineStack.system]). */
+  internal var running: Any? = null
+  /** The screen whose transition moves this one along as the full screen below it (Android's own transition, [EngineStack.system]); null otherwise. */
+  internal var mover: EngineScreen? = null
+  /** Android's own transition is moving this screen: the stack draws the strip it uncovers in the screen's own colours (the framework's `extend`). */
+  internal var extendsEdge = false
   /** Where the running transition lands and what its end does; the stack runs it when it leaves the window mid-transition. */
   internal var landing: (() -> Unit)? = null
 
@@ -230,14 +235,17 @@ open class EngineScreen(context: Context) : EngineView(context) {
     }
   }
 
-  /** The transition this screen plays: 0 none, 1 fade, 2 from the right, 3 from the bottom. */
+  /**
+   * The transition this screen plays: 0 none, 1 fade, 2 from the right across the width (`slide_from_right`), 3 from the bottom, 4 Android's own
+   * transition between two screens ([expo.modules.svelteengine.TransitionRules]), the default of a push.
+   */
   fun transitionKind(): Int = when (animation) {
     1 -> 0
     2 -> 1
     3 -> 2
     4 -> 3
     else -> when (presentation) {
-      0 -> 2
+      0 -> 4
       1, 3, 4 -> 3
       else -> 1
     }

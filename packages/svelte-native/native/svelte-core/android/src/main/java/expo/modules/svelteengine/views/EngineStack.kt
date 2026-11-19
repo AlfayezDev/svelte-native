@@ -1,30 +1,43 @@
 package expo.modules.svelteengine.views
 
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.view.ViewPropertyAnimator
 import android.view.animation.DecelerateInterpolator
+import android.view.animation.LinearInterpolator
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.findViewTreeOnBackPressedDispatcherOwner
 import expo.modules.svelteengine.DownPointer
 import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.NavEvents
+import expo.modules.svelteengine.TransitionRules
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * The navigation container (SPEC.md "Navigation"): [EngineScreen] children, the last live one on top.
  *
- * Push: an inserted top screen slides in (from the right for push, from the bottom for modal, sheets and form sheets,
- * fade for transparentModal; `stackAnimation` overrides, `none` skips) over 250 ms, decelerating. Pop: the mutation
+ * Push: an inserted top screen comes in. A push screen with the default animation plays Android's own transition between two screens ([system],
+ * [TransitionRules]): it moves 96 dp in from the right and fades in while the screen below moves 96 dp left, over 450 ms. The others slide in
+ * (`slide_from_right` across the width, from the bottom for modal, sheets and form sheets, fade for transparentModal; `stackAnimation` overrides,
+ * `none` skips) over 250 ms, decelerating. Pop: the mutation
  * stream removes the screen, the stack keeps the view attached while its exit plays and detaches it afterwards
  * (Fabric's `delete` only drops the registry entry). A user dismissal (back button, header back button, predictive
  * back, edge swipe, sheet drag or scrim) plays the exit first, then sends `onDismissed`; the removal JavaScript performs
@@ -35,6 +48,9 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
   private val slop = ViewConfiguration.get(context).scaledTouchSlop
   private val edge = EDGE_DP * density
   private val interpolator = DecelerateInterpolator(DECELERATION)
+  /** How far Android's own transition moves both screens, in px. */
+  private val shift = TransitionRules.SHIFT_DP * density
+  private val edgePaint = Paint()
 
   private var dragging = false
   private var edgeCandidate = false
@@ -66,6 +82,7 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     override fun handleOnBackStarted(backEvent: BackEventCompat) {
       val top = top() ?: return
       if (!top.gestureEnabled || !top.dismissible) return
+      freeUnder(top)
       cancelRunning(top)
       top.transitioning = false
       predictive = true
@@ -132,6 +149,48 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
       scrim.measure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY))
       scrim.layout(0, 0, w, h)
     }
+  }
+
+  /** A screen Android's own transition moves is drawn on across the strip it uncovers, on the side it moved away from (the framework's `extend`). */
+  override fun drawChild(canvas: Canvas, child: View, drawingTime: Long): Boolean {
+    val drawn = super.drawChild(canvas, child, drawingTime)
+    val s = child as? EngineScreen
+    if (s != null && s.extendsEdge && s.visibility == View.VISIBLE && s.alpha > 0f) drawEdge(canvas, s)
+    return drawn
+  }
+
+  /** The strip in the screen's own colours: its background, then each child along that edge that paints one (the header, down to its visible bottom). */
+  private fun drawEdge(canvas: Canvas, s: EngineScreen) {
+    val tx = s.translationX
+    val x0 = TransitionRules.stripStart(s.left.toFloat(), s.right.toFloat(), tx)
+    val x1 = TransitionRules.stripEnd(s.left.toFloat(), s.right.toFloat(), tx)
+    if (x1 <= x0) return
+    val top = s.top + s.translationY
+    fillEdge(canvas, solidColor(s.background), s.alpha, x0, top, x1, top + s.height)
+    for (i in 0 until s.childCount) {
+      val c = s.getChildAt(i)
+      if (c.visibility != View.VISIBLE) continue
+      // Only what reaches the edge the strip extends: the right edge when the screen moved left, the left one when it moved right.
+      if (if (tx < 0f) c.right < s.width else c.left > 0) continue
+      val y = top + c.top + c.translationY
+      if (c is EngineHeader) fillEdge(canvas, c.edgeColor(), s.alpha * c.alpha, x0, y, x1, y + c.edgeBottom())
+      else fillEdge(canvas, solidColor(c.background), s.alpha * c.alpha, x0, y, x1, y + c.height)
+    }
+  }
+
+  private fun fillEdge(canvas: Canvas, color: Int?, alpha: Float, x0: Float, y0: Float, x1: Float, y1: Float) {
+    if (color == null) return
+    val a = (Color.alpha(color) * alpha).roundToInt()
+    if (a <= 0) return
+    edgePaint.color = color
+    edgePaint.alpha = a
+    canvas.drawRect(x0, y0, x1, y1, edgePaint)
+  }
+
+  private fun solidColor(d: Drawable?): Int? = when (d) {
+    is ColorDrawable -> d.color
+    is GradientDrawable -> d.color?.defaultColor
+    else -> null
   }
 
   override fun onAttachedToWindow() {
@@ -374,11 +433,13 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     if (atTop && others.isNotEmpty() && kind != 0 && isLaidOut && width > 0) {
       enterFrom(child, kind)
       child.transitioning = true
-      animate(child, 0f, child.restY, 1f, 1f, DURATION) {
+      val settled = {
         child.transitioning = false
         (child as? EngineSheet)?.snapToRest()
         refresh()
       }
+      if (kind == 4) system(child, others.lastOrNull { it.activityState == 2 }?.takeIf { movesUnder(it) }, true, settled)
+      else animate(child, 0f, child.restY, 1f, 1f, DURATION, settled)
     }
     refresh()
   }
@@ -471,21 +532,95 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
       1 -> s.alpha = 0f
       2 -> s.translationX = width.toFloat()
       3 -> s.translationY = height.toFloat()
+      4 -> { s.translationX = shift; s.alpha = 0f }
     }
   }
 
-  private fun exitTo(s: EngineScreen, kind: Int, duration: Long, done: () -> Unit) {
+  /** [moveUnder] false: the screen below is in place already (a gesture showed it), so Android's own exit leaves it there. */
+  private fun exitTo(s: EngineScreen, kind: Int, duration: Long, moveUnder: Boolean = true, done: () -> Unit) {
     when (kind) {
       1 -> animate(s, s.translationX, s.translationY, 0f, 1f, duration, done)
       2 -> animate(s, width.toFloat(), s.translationY, s.alpha, 1f, duration, done)
+      4 -> system(s, if (moveUnder) top()?.takeIf { it !== s && movesUnder(it) } else null, false, done)
       else -> animate(s, s.translationX, height.toFloat(), s.alpha, 1f, duration, done)
     }
+  }
+
+  /** A full screen moves along under Android's own transition; a sheet, a form sheet or a transparent modal stays where it is. */
+  private fun movesUnder(u: EngineScreen) = u.presentation <= 1 && u !is EngineSheet && !u.displayNone
+
+  /** [s] is being moved as the screen below another one's transition: that transition lands first, so only one animation moves [s]. */
+  private fun freeUnder(s: EngineScreen) {
+    s.mover?.let { land(it) }
+  }
+
+  /**
+   * Android's own transition between two full screens ([TransitionRules], SPEC.md "Navigation"): [s] comes in from 96 dp on the right and fades in (a push,
+   * [entering]) or goes 96 dp to the right and fades out (a pop), from wherever it is; [under], the full screen below it, moves the other way, opaque, kept
+   * 96 dp from it by the same animator ([TransitionRules.underX]). Both draw their uncovered strip in their own colours ([drawChild]). A cancelled
+   * transition puts [under] back in place; one that takes over (a pop during the push) moves it again from where the screens were, in the same frame.
+   */
+  private fun system(s: EngineScreen, under: EngineScreen?, entering: Boolean, done: () -> Unit) {
+    s.holdLayer()
+    freeUnder(s)
+    cancelRunning(s)
+    if (under != null) {
+      freeUnder(under)
+      if (under.running != null) land(under)
+      under.mover = s
+      under.extendsEdge = true
+    }
+    s.extendsEdge = true
+    val fromX = s.translationX
+    val toX = if (entering) 0f else shift
+    val fromAlpha = s.alpha
+    fun frame(f: Float) {
+      val ms = f * TransitionRules.DURATION_MS
+      s.translationX = fromX + (toX - fromX) * TransitionRules.emphasized(f)
+      s.alpha = if (entering) TransitionRules.openEnterAlpha(ms) else fromAlpha * TransitionRules.closeExitAlpha(ms)
+      under?.translationX = TransitionRules.underX(s.translationX, shift)
+      // The strips are drawn by the stack, from where the screens are now.
+      invalidate()
+    }
+    fun putBack() {
+      if (under == null || (under.mover != null && under.mover !== s)) return
+      under.mover = null
+      under.extendsEdge = false
+      under.translationX = 0f
+    }
+    val a = ValueAnimator.ofFloat(0f, 1f).setDuration(TransitionRules.DURATION_MS)
+    a.interpolator = LinearInterpolator()
+    a.addUpdateListener { frame(it.animatedFraction) }
+    var cancelled = false
+    a.addListener(object : AnimatorListenerAdapter() {
+      override fun onAnimationCancel(animation: Animator) { cancelled = true }
+      override fun onAnimationEnd(animation: Animator) {
+        if (s.running === a) { s.running = null; s.landing = null }
+        s.extendsEdge = false
+        // A push's end hides the screen below (refresh) before it goes back in place, so it is never seen jumping.
+        if (!cancelled) done()
+        putBack()
+        invalidate()
+        s.releaseLayer()
+      }
+    })
+    s.running = a
+    s.landing = {
+      s.translationX = toX
+      s.alpha = if (entering) 1f else 0f
+      s.extendsEdge = false
+      done()
+      putBack()
+    }
+    frame(0f)
+    a.start()
   }
 
   private fun animate(s: EngineScreen, x: Float, y: Float, alpha: Float, scale: Float, duration: Long, done: () -> Unit) {
     // The moving screen is composited from a layer for the whole animation; taken before the old animation is cancelled so
     // the layer is handed over, not rebuilt.
     s.holdLayer()
+    freeUnder(s)
     cancelRunning(s)
     val a = s.animate().translationX(x).translationY(y).alpha(alpha).scaleX(scale).scaleY(scale)
       .setDuration(duration).setInterpolator(interpolator)
@@ -518,7 +653,10 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     s.landing = null
     val running = s.running ?: return
     s.running = null
-    running.cancel()
+    when (running) {
+      is ViewPropertyAnimator -> running.cancel()
+      is Animator -> running.cancel()
+    }
   }
 
   // User dismissal -----------------------------------------------------------------------------------------------
@@ -526,7 +664,12 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
   /** Plays the exit of the top screen from its current position, then tells JavaScript. */
   internal fun dismissTop() {
     val s = top() ?: return
-    val kind = s.transitionKind().let { if (it == 0) 2 else it }
+    var kind = s.transitionKind().let { if (it == 0) 2 else it }
+    // A gesture (predictive back, the edge swipe) has shown the screen below in place: Android's own exit leaves it there, and a screen the gesture
+    // took further than the shift slides off across the width instead of coming back to it.
+    val byGesture = s.gesturing
+    if (kind == 4 && byGesture && TransitionRules.exitsAcross(s.translationX, shift)) kind = 2
+    freeUnder(s)
     cancelRunning(s)
     s.leaving = true
     s.dismissed = true
@@ -534,7 +677,7 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     refresh()
     val remaining = if (kind == 2) 1f - s.translationX / max(1, width) else 1f
     val duration = max(120L, (DURATION * remaining).toLong())
-    exitTo(s, kind, duration) {
+    exitTo(s, kind, duration, moveUnder = !byGesture) {
       s.transitioning = false
       if (s.parent !== this) return@exitTo
       if (!s.dismissed) {
@@ -620,7 +763,7 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     parent?.requestDisallowInterceptTouchEvent(true)
     dragging = true
     dragX = 0f
-    top()?.let { holdGesture(it) }
+    top()?.let { freeUnder(it); holdGesture(it) }
     tracker?.recycle()
     tracker = VelocityTracker.obtain().also { it.addMovement(ev) }
     refresh()

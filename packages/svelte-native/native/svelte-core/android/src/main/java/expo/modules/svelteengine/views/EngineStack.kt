@@ -84,6 +84,8 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
       if (!top.gestureEnabled || !top.dismissible) return
       freeUnder(top)
       cancelRunning(top)
+      // A transition it cut short (a push still fading in) leaves the screen opaque: it follows the gesture whole.
+      top.alpha = 1f
       top.transitioning = false
       predictive = true
       holdGesture(top)
@@ -167,14 +169,17 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     if (x1 <= x0) return
     val top = s.top + s.translationY
     fillEdge(canvas, solidColor(s.background), s.alpha, x0, top, x1, top + s.height)
-    for (i in 0 until s.childCount) {
-      val c = s.getChildAt(i)
-      if (c.visibility != View.VISIBLE) continue
-      // Only what reaches the edge the strip extends: the right edge when the screen moved left, the left one when it moved right.
-      if (if (tx < 0f) c.right < s.width else c.left > 0) continue
-      val y = top + c.top + c.translationY
-      if (c is EngineHeader) fillEdge(canvas, c.edgeColor(), s.alpha * c.alpha, x0, y, x1, y + c.edgeBottom())
-      else fillEdge(canvas, solidColor(c.background), s.alpha * c.alpha, x0, y, x1, y + c.height)
+    // Then each first-level child that reaches the edge the strip extends (the right edge when the screen moved left, the left one when it moved right)
+    // and paints a solid background, the headers last: a large or translucent header lies over the content.
+    for (pass in 0..1) {
+      for (i in 0 until s.childCount) {
+        val c = s.getChildAt(i)
+        if (c.visibility != View.VISIBLE || (c is EngineHeader) != (pass == 1)) continue
+        if (if (tx < 0f) c.right < s.width else c.left > 0) continue
+        val y = top + c.top + c.translationY
+        if (c is EngineHeader) fillEdge(canvas, c.edgeColor(), s.alpha * c.alpha, x0, y, x1, y + c.edgeBottom())
+        else fillEdge(canvas, solidColor(c.background), s.alpha * c.alpha, x0, y, x1, y + c.height)
+      }
     }
   }
 
@@ -408,6 +413,8 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     child.exited = false
     child.alpha = 1f
     child.translationX = 0f
+    child.scaleX = 1f
+    child.scaleY = 1f
     val others = live().filter { it !== child }
     val atTop = index >= others.size
     val position = if (atTop) childCount else indexOfChild(anchor(others[index]))
@@ -570,13 +577,19 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
       under.mover = s
       under.extendsEdge = true
     }
-    s.extendsEdge = true
+    // Without a screen moving below (a gesture has shown it in place) there is no strip to draw: the strip would cover what the gesture showed.
+    s.extendsEdge = under != null
     val fromX = s.translationX
-    val toX = if (entering) 0f else shift
+    // A pop goes on to the right from where a gesture left the screen, never back to the left.
+    val toX = if (entering) 0f else max(shift, fromX)
     val fromAlpha = s.alpha
+    // Predictive back scales the screen down; the exit brings it back to 1 as the other transitions do, so a screen shown again is whole.
+    val fromScale = s.scaleX
     fun frame(f: Float) {
       val ms = f * TransitionRules.DURATION_MS
-      s.translationX = fromX + (toX - fromX) * TransitionRules.emphasized(f)
+      val p = TransitionRules.emphasized(f)
+      s.translationX = fromX + (toX - fromX) * p
+      if (fromScale != 1f) { s.scaleX = fromScale + (1f - fromScale) * p; s.scaleY = s.scaleX }
       s.alpha = if (entering) TransitionRules.openEnterAlpha(ms) else fromAlpha * TransitionRules.closeExitAlpha(ms)
       under?.translationX = TransitionRules.underX(s.translationX, shift)
       // The strips are drawn by the stack, from where the screens are now.
@@ -608,6 +621,8 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     s.landing = {
       s.translationX = toX
       s.alpha = if (entering) 1f else 0f
+      s.scaleX = 1f
+      s.scaleY = 1f
       s.extendsEdge = false
       done()
       putBack()
@@ -662,13 +677,13 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
   // User dismissal -----------------------------------------------------------------------------------------------
 
   /** Plays the exit of the top screen from its current position, then tells JavaScript. */
-  internal fun dismissTop() {
+  internal fun dismissTop(dragged: Boolean = false) {
     val s = top() ?: return
     var kind = s.transitionKind().let { if (it == 0) 2 else it }
-    // A gesture (predictive back, the edge swipe) has shown the screen below in place: Android's own exit leaves it there, and a screen the gesture
-    // took further than the shift slides off across the width instead of coming back to it.
+    // A gesture (predictive back, the edge swipe) has shown the screen below in place: Android's own exit leaves it there. A screen the edge swipe
+    // ([dragged]) took further than the shift slides off across the width, as it did with the finger.
     val byGesture = s.gesturing
-    if (kind == 4 && byGesture && TransitionRules.exitsAcross(s.translationX, shift)) kind = 2
+    if (kind == 4 && dragged && TransitionRules.exitsAcross(s.translationX, shift)) kind = 2
     freeUnder(s)
     cancelRunning(s)
     s.leaving = true
@@ -712,9 +727,10 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
 
   /**
    * A drag that went [dx], [dy] from the touch-down is the edge swipe when it started in the edge zone, has covered a touch slop
-   * (as far as a default Pan's `minDist`, so that the two reach it on the same move) and goes mostly to the right.
+   * (as far as a default Pan's `minDist`, so that the two reach it on the same move) and goes mostly to the right, and the top screen can still be
+   * dragged then (a push may have started since the touch went down: the swipe must not move a screen a transition is moving).
    */
-  private fun swipesBack(dx: Float, dy: Float) = edgeCandidate && !dragging && GestureRules.edgeSwipe(dx, dy, slop.toFloat())
+  private fun swipesBack(dx: Float, dy: Float) = edgeCandidate && !dragging && GestureRules.edgeSwipe(dx, dy, slop.toFloat()) && canDrag()
 
   override fun claims(dx: Float, dy: Float) = swipesBack(dx, dy)
 
@@ -794,7 +810,7 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
         downPointer.clear()
         parent?.requestDisallowInterceptTouchEvent(false)
         if (top != null && event.actionMasked == MotionEvent.ACTION_UP && (dragX > width / 3f || velocity > FLING_DP)) {
-          dismissTop()
+          dismissTop(dragged = true)
         } else if (top != null) {
           top.transitioning = true
           animate(top, 0f, 0f, 1f, 1f, 150L) { top.transitioning = false; refresh() }

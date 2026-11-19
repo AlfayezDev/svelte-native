@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { dirname, isAbsolute, resolve } from "node:path";
 import type { Plugin } from "esbuild";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
-import { bundle, evaluate, src, tests } from "./bundle.ts";
+import { appearanceStub, bundle, evaluate, src, tests } from "./bundle.ts";
 import { type FakeNode, createHost, flatten } from "./host.ts";
 
 /**
@@ -36,7 +36,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Components/ScrollView/ScrollViewNativeComponent": "export {};",
   "expo-modules-core": "export const EventEmitter = class {}; export const requireOptionalNativeModule = () => null;",
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
-  "react-native/Libraries/Utilities/Appearance": "export const getColorScheme = () => 'light'; export const addChangeListener = () => ({ remove() {} });",
+  "react-native/Libraries/Utilities/Appearance": appearanceStub,
   "react-native/Libraries/Utilities/PixelRatio": "export default { get: () => 2, roundToNearestPixel: (value) => Math.round(value * 2) / 2 };",
   "react-native/Libraries/Utilities/Dimensions": "export default { get: () => ({ width: 400, height: 800 }), addEventListener: () => ({ remove() {} }) };",
   // The `Text` and `View` a fixture imports are lowered to `<native-text>` and `<native-view>`, and the import is then unused.
@@ -99,14 +99,15 @@ export async function load(fixture = resolve(tests, "components/fixtures/html-ro
         import '../src/css/load-table.ts';
         import { startSurface, stopSurface } from '../src/fabric/host.ts';
         import { tick } from 'svelte';
-        export { startSurface, stopSurface, tick, Fixture };`,
+        import { __setColorScheme } from 'react-native/Libraries/Utilities/Appearance';
+        export { startSurface, stopSurface, tick, Fixture, __setColorScheme };`,
     stubs, viewConfigs: "pass-through", converters: false, lower: { html: true }, plugins: [aliases], cacheKey: "html-harness",
     esbuild: { mainFields: [], nodePaths: [nodeModules] },
   });
   host.warnings = [...built.warnings];
   // The bundled host reads the binding when the bundle is evaluated; another file's fake may have been put in its place since the last load.
   binding.install();
-  return evaluate<{ startSurface: (rootTag: number, app: unknown, props: Record<string, unknown>) => Record<string, unknown>; stopSurface: (rootTag: number) => void; tick: () => Promise<void>; Fixture: unknown }>(built.code);
+  return evaluate<{ startSurface: (rootTag: number, app: unknown, props: Record<string, unknown>) => Record<string, unknown>; stopSurface: (rootTag: number) => void; tick: () => Promise<void>; Fixture: unknown; __setColorScheme: (scheme: "light" | "dark") => void }>(built.code);
 }
 
 export type Module = Awaited<ReturnType<typeof load>>;

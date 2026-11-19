@@ -19,6 +19,7 @@ import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputConnectionWrapper
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import expo.modules.svelteappearance.isNight
 import expo.modules.svelteengine.InputRules
 import expo.modules.svelteengine.TextLayouts
 import expo.modules.svelteengine.ViewEvents
@@ -184,7 +185,8 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
 
     val hint = v.placeholder
     if (this.hint?.toString() != hint) this.hint = hint
-    if (v.hasPlaceholderColor) setHintTextColor(v.placeholderColor) else setHintTextColor(0x66000000)
+    // The default hint is 40 % of the mode's text colour: on a dark surface a black one could not be read. JavaScript sends the props again when the mode changes (the text's default colour).
+    setHintTextColor(if (v.hasPlaceholderColor) v.placeholderColor else if (isNight(resources)) 0x66FFFFFF else 0x66000000)
 
     isEnabled = v.editable
     submitBehavior = v.submitBehavior

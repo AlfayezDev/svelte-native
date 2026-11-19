@@ -20,6 +20,7 @@ import android.view.WindowInsets
 import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import expo.modules.svelteappearance.isNight
 import expo.modules.svelteengine.Fragment
 import expo.modules.svelteengine.NavEvents
 import expo.modules.svelteengine.NavProps
@@ -137,7 +138,7 @@ class EngineTabs(context: Context) : EngineView(context) {
   }
 
   private val dark: Boolean
-    get() = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+    get() = isNight(resources)
 
   internal fun activeColor() = if (hasTint) tint else if (dark) 0xFFE6E1E5.toInt() else 0xFF1C1B1F.toInt()
   internal fun inactiveColor() = if (hasInactiveTint) inactiveTint else if (dark) 0xFFCAC4D0.toInt() else 0xFF49454F.toInt()

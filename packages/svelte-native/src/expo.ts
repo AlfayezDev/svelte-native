@@ -8,6 +8,7 @@ import { checkLibraries, LibrariesConfigError, libraryLinks, libraryPlugin, type
 export type { LibrariesOption, LibraryOptions } from "./libraries.ts";
 import { EXTRA_KEY, type RemoteHostConfig } from "./remote/host.ts";
 import { withRemoteHost } from "./remote/plugin.ts";
+import { applyUserInterfaceStyle, hasSystemUi, userInterfaceStyleOf } from "./user-interface-style.ts";
 import { collisionMessage, declaredVendored, optionalPackages, vendoredPackage } from "./vendored.ts";
 
 export type ViewRecycling = { view?: boolean; text?: boolean; image?: boolean; scrollView?: boolean };
@@ -694,6 +695,7 @@ const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined> = (config,
     if (startup) startup["meta-data"] = [...(startup["meta-data"] ?? []).filter((item) => item.$["android:name"] !== emoji), entry];
     else providers.push({ $: { "android:name": "androidx.startup.InitializationProvider", "android:authorities": `${config.android?.package}.androidx-startup`, "android:exported": "false", "tools:node": "merge" }, "meta-data": [entry] });
     application.provider = providers;
+    applyUserInterfaceStyle(application as AndroidConfig.Manifest.ManifestApplication, hasSystemUi(config.modRequest.projectRoot) ? null : userInterfaceStyleOf(config));
     return config;
   });
   config = withSettingsGradle(config, (config) => {

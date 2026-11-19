@@ -25,7 +25,7 @@ video: text
 </Screen>
 ```
 
-A `Text` without a `color` is black, also in dark mode. Give your text colours: [light and dark mode](styling#light-and-dark-mode) shows how.
+A `Text` without a `color` has the system's text colour, in the app's light or dark mode: black or white on iOS, Material's near-black or near-white on Android. A `Text` inside another takes its colour from it. [Light and dark mode](styling#light-and-dark-mode) shows how to switch your own colours.
 
 ## Props
 

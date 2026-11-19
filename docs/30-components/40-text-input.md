@@ -38,7 +38,7 @@ A `TextInput` has no border or padding of its own. Give it a style, and a `minHe
 | `value` | `string` | `''` | The text. Use `bind:value` to keep a variable and the field in step. |
 | `onChangeText` | `(text: string) => void` | | Called on every edit, after the bound `value` is updated. |
 | `placeholder` | `string` | | Shown while the field is empty. |
-| `placeholderTextColor` | `string` | | The placeholder's colour. |
+| `placeholderTextColor` | `string` | a grey of the mode | The placeholder's colour: without one, the system's placeholder grey on iOS and 40 % of the mode's text colour on Android. The typed text's is `style.color`, and without one it is the system's text colour in the app's light or dark mode, as a `Text`'s. |
 | `multiline` | `boolean` | `false` | Allows several lines. Return inserts a line break instead of submitting. |
 | `maxLength` | `number` | | The most characters the field accepts. |
 | `editable` | `boolean` | `true` | `false` makes the field read-only. |

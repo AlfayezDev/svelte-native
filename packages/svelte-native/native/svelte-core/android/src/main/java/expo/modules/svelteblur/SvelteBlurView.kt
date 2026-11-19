@@ -9,6 +9,7 @@ import android.os.Build
 import android.view.ViewTreeObserver
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
+import expo.modules.svelteappearance.isNight
 
 /**
  * The view of `BlurView` (`@alfayez/svelte-native/foreign`): it blurs what is drawn behind it, and what a view draws inside it (a child of an Expo view is a child
@@ -44,7 +45,7 @@ class SvelteBlurView(context: Context, appContext: AppContext) : ExpoView(contex
   }
 
   private val night: Boolean
-    get() = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    get() = isNight(resources)
 
   fun setIntensity(value: Double?) {
     val next = BlurRules.intensity(value)

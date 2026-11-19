@@ -56,7 +56,7 @@ __export(expo_exports, {
 });
 module.exports = __toCommonJS(expo_exports);
 var import_promises2 = require("node:fs/promises");
-var import_node_path7 = require("node:path");
+var import_node_path8 = require("node:path");
 var import_config_plugins3 = require("expo/config-plugins");
 
 // src/build.ts
@@ -1320,6 +1320,32 @@ var withRemoteHost = (config, remote) => {
   });
 };
 
+// src/user-interface-style.ts
+var import_node_fs5 = require("node:fs");
+var import_node_path7 = require("node:path");
+var userInterfaceStyleMetaData = "expo.modules.svelteappearance.user_interface_style";
+function userInterfaceStyleOf(config) {
+  const style = config.android?.userInterfaceStyle ?? config.userInterfaceStyle ?? "light";
+  if (style !== "light" && style !== "dark" && style !== "automatic") throw new Error(`Svelte native: userInterfaceStyle must be "light", "dark" or "automatic", not ${JSON.stringify(style)}`);
+  return style;
+}
+function hasSystemUi(projectRoot) {
+  let manifest;
+  try {
+    manifest = JSON.parse((0, import_node_fs5.readFileSync)((0, import_node_path7.join)(projectRoot, "package.json"), "utf8"));
+  } catch {
+    return false;
+  }
+  return ["dependencies", "devDependencies"].some((group) => {
+    const entries = manifest[group];
+    return typeof entries === "object" && entries !== null && Object.hasOwn(entries, "expo-system-ui");
+  });
+}
+function applyUserInterfaceStyle(application, style) {
+  const others = (application["meta-data"] ?? []).filter((item) => item.$["android:name"] !== userInterfaceStyleMetaData);
+  application["meta-data"] = style === null ? others : [...others, { $: { "android:name": userInterfaceStyleMetaData, "android:value": style } }];
+}
+
 // src/expo.ts
 var headlessExcludedPackages = [
   "react-native-screens",
@@ -1783,11 +1809,11 @@ var withSvelteNative = (config, options) => {
   config = (0, import_config_plugins3.withDangerousMod)(config, ["android", async (config2) => {
     const applicationId = config2.android?.package;
     if (!applicationId) throw new Error("Svelte native needs android.package in the Expo config");
-    const directory = (0, import_node_path7.join)(config2.modRequest.platformProjectRoot, "app/src/main/java", ...applicationId.split("."));
-    const file = (0, import_node_path7.join)(directory, `${headlessPackageName}.kt`);
+    const directory = (0, import_node_path8.join)(config2.modRequest.platformProjectRoot, "app/src/main/java", ...applicationId.split("."));
+    const file = (0, import_node_path8.join)(directory, `${headlessPackageName}.kt`);
     await (0, import_promises2.mkdir)(directory, { recursive: true });
     await (0, import_promises2.writeFile)(file, headlessPackageSource(applicationId));
-    await (0, import_promises2.writeFile)((0, import_node_path7.join)(directory, `${onDemandPackageName}.kt`), onDemandPackageSource(applicationId));
+    await (0, import_promises2.writeFile)((0, import_node_path8.join)(directory, `${onDemandPackageName}.kt`), onDemandPackageSource(applicationId));
     return config2;
   }]);
   config = (0, import_config_plugins3.withAndroidManifest)(config, (config2) => {
@@ -1802,6 +1828,7 @@ var withSvelteNative = (config, options) => {
     if (startup) startup["meta-data"] = [...(startup["meta-data"] ?? []).filter((item) => item.$["android:name"] !== emoji), entry];
     else providers.push({ $: { "android:name": "androidx.startup.InitializationProvider", "android:authorities": `${config2.android?.package}.androidx-startup`, "android:exported": "false", "tools:node": "merge" }, "meta-data": [entry] });
     application.provider = providers;
+    applyUserInterfaceStyle(application, hasSystemUi(config2.modRequest.projectRoot) ? null : userInterfaceStyleOf(config2));
     return config2;
   });
   config = (0, import_config_plugins3.withSettingsGradle)(config, (config2) => {
@@ -1825,9 +1852,9 @@ var withSvelteNative = (config, options) => {
     });
   }
   config = (0, import_config_plugins3.withDangerousMod)(config, ["android", async (config2) => {
-    const dir = (0, import_node_path7.join)(config2.modRequest.platformProjectRoot, "app", "src", "main");
+    const dir = (0, import_node_path8.join)(config2.modRequest.platformProjectRoot, "app", "src", "main");
     await (0, import_promises2.mkdir)(dir, { recursive: true });
-    await (0, import_promises2.writeFile)((0, import_node_path7.join)(dir, "baseline-prof.txt"), baselineProfile());
+    await (0, import_promises2.writeFile)((0, import_node_path8.join)(dir, "baseline-prof.txt"), baselineProfile());
     return config2;
   }]);
   config = (0, import_config_plugins3.withMainActivity)(config, (config2) => {

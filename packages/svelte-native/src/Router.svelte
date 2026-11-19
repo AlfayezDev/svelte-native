@@ -34,23 +34,27 @@
   onMount(() => connectHost(router));
   /** How long a pushed screen waits for its page before it comes in anyway, empty. */
   const LOAD_WAIT_MS = 250;
-  // The screens made, by entry key: plain, not state, so the decision is taken once (the first screen's load starts after it renders, and must not unmake it).
-  const made = new Set<string>();
-  let overdue = $state<Record<string, true>>({});
-  $effect(() => {
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    for (const { entry } of router.screens) {
-      if (made.has(entry.key) || overdue[entry.key] || !router.loading(entry.route)) continue;
-      const key = entry.key;
-      timers.push(setTimeout(() => { overdue[key] = true; }, LOAD_WAIT_MS));
-    }
-    return () => { for (const timer of timers) clearTimeout(timer); };
-  });
+  // The screens made, by entry key: plain, not state, so the decision is taken once (the first screen's load starts after it renders, and must not unmake
+  // it). The screens waiting for their page, and those that waited too long. No effect watches the screens: a navigation prepared off screen (`prepare`,
+  // Svelte's `fork`) and then discarded must leave nothing of its screen behind, and an effect it held back would.
+  const made: Record<number, true> = {};
+  const waiting: Record<number, true> = {};
+  let overdue = $state<Record<number, true>>({});
   function shown(entry: NativeLocation, leaving: boolean): boolean {
-    if (made.has(entry.key)) return true;
-    if (!(placeholder || leaving || overdue[entry.key] || !router.loading(entry.route))) return false;
-    made.add(entry.key);
-    return true;
+    if (made[entry.key]) return true;
+    if (placeholder || leaving || overdue[entry.key] || !router.loading(entry.route)) {
+      made[entry.key] = true;
+      return true;
+    }
+    if (!waiting[entry.key]) {
+      waiting[entry.key] = true;
+      const { key, route } = entry;
+      setTimeout(() => {
+        delete waiting[key];
+        if (router.loading(route)) overdue[key] = true;
+      }, LOAD_WAIT_MS);
+    }
+    return false;
   }
 </script>
 

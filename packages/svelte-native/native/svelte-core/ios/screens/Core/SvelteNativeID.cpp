@@ -110,6 +110,11 @@ int animationCode(const std::string *raw) {
   if (*raw == "fade") return kAnimationFade;
   if (*raw == "slide_from_right") return kSlideFromRight;
   if (*raw == "slide_from_bottom") return kSlideFromBottom;
+  if (*raw == "slide_from_left") return kSlideFromLeft;
+  if (*raw == "fade_from_bottom") return kFadeFromBottom;
+  if (*raw == "android_activity") return kAndroidActivity;
+  if (*raw == "flip") return kAnimationFlip;
+  if (*raw == "simple_push") return kSimplePush;
   return kAnimationDefault;
 }
 

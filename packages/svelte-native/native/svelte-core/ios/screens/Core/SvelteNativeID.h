@@ -36,7 +36,11 @@ struct Color {
 };
 
 enum Presentation { kPush = 0, kModal = 1, kTransparentModal = 2, kSheet = 3, kFormSheet = 4 };
-enum Animation { kAnimationDefault = 0, kAnimationNone = 1, kAnimationFade = 2, kSlideFromRight = 3, kSlideFromBottom = 4 };
+// The codes are Android's (record 110); on iOS a push is UIKit's push whatever the code but none, a modal cross-dissolves for fade and flips for flip.
+enum Animation {
+  kAnimationDefault = 0, kAnimationNone = 1, kAnimationFade = 2, kSlideFromRight = 3, kSlideFromBottom = 4,
+  kSlideFromLeft = 5, kFadeFromBottom = 6, kAndroidActivity = 7, kAnimationFlip = 8, kSimplePush = 9
+};
 enum Slot { kSlotLeft = 0, kSlotCenter = 1, kSlotRight = 2, kSlotSearch = 3, kSlotToolbarCenter = 4 };
 enum BarStyle { kBarAuto = 0, kBarLight = 1, kBarDark = 2 };
 

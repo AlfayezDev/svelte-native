@@ -15,6 +15,7 @@ import expo.modules.svelteappearance.isNight
 import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.NavProps
 import expo.modules.svelteengine.SystemBarsRules
+import expo.modules.svelteengine.TransitionRules
 import kotlin.math.max
 
 /** The system bar options of a screen (record 125); styles are 0 auto, 1 light icons, 2 dark icons. */
@@ -31,7 +32,7 @@ open class EngineScreen(context: Context) : EngineView(context) {
   /** 0 push, 1 modal, 2 transparentModal, 3 sheet, 4 formSheet. */
   var presentation = 0
   var gestureEnabled = true
-  /** 0 default, 1 none, 2 fade, 3 slide_from_right, 4 slide_from_bottom. */
+  /** 0 default, 1 none, 2 fade, 3 slide_from_right, 4 slide_from_bottom, 5 slide_from_left, 6 fade_from_bottom, 7 android_activity, 8 flip, 9 simple_push. */
   var animation = 0
   var backDismissal = true
   /** Record 125; null when the screen sets no system bar option. */
@@ -60,13 +61,13 @@ open class EngineScreen(context: Context) : EngineView(context) {
   /** A screen above holds focus for accessibility services: this one is hidden from them. */
   private var a11yHidden = false
 
-  /** The transition moving this view: a `ViewPropertyAnimator`, or the `ValueAnimator` of Android's own transition ([EngineStack.system]). */
+  /** The transition moving this view: a `ViewPropertyAnimator` (one screen), or the `ValueAnimator` of a transition between two screens ([EngineStack.system]). */
   internal var running: Any? = null
-  /** The screen whose transition moves this one along as the full screen below it (Android's own transition, [EngineStack.system]); null otherwise. */
+  /** The screen whose transition moves or fades this one as the full screen below it ([EngineStack.system]); null otherwise. */
   internal var mover: EngineScreen? = null
-  /** Android's own transition is moving this screen: the stack draws the strip it uncovers in the screen's own colours (the framework's `extend`). */
+  /** A transition is moving this screen less than the width: the stack draws the strip it uncovers in the screen's own colours (the framework's `extend`). */
   internal var extendsEdge = false
-  /** While this screen is the one below a fade-through ([EngineStack.system]): the screen whose surface the stack draws under it, the one coming. */
+  /** While this screen is the one below a transition that fades it ([EngineStack.system]): the screen whose surface the stack draws under it, the one coming. */
   internal var silhouette: EngineScreen? = null
   /** Where the running transition lands and what its end does; the stack runs it when it leaves the window mid-transition. */
   internal var landing: (() -> Unit)? = null
@@ -238,19 +239,29 @@ open class EngineScreen(context: Context) : EngineView(context) {
   }
 
   /**
-   * The transition this screen plays: 0 none, 1 fade, 2 from the right across the width (`slide_from_right`), 3 from the bottom, 4 Android's own
-   * transition between two screens ([expo.modules.svelteengine.TransitionRules]), the default of a push.
+   * The transition this screen plays: 0 none, and for a modal, a transparent modal or a sheet 1 a fade, 2 from the right, 3 from the bottom (one screen
+   * moves); for a push screen a transition between it and the screen below ([TransitionRules.motion]): the default, Android's activity transition, and
+   * react-native-screens' fade, slides and fade from the bottom. `flip` and `simple_push` are the default on Android, as in React Navigation.
    */
-  fun transitionKind(): Int = when (animation) {
-    1 -> 0
-    2 -> 1
-    3 -> 2
-    4 -> 3
-    else -> when (presentation) {
-      0 -> 4
-      1, 3, 4 -> 3
-      else -> 1
+  fun transitionKind(): Int {
+    val push = presentation == 0
+    return when (animation) {
+      1 -> 0
+      2 -> if (push) TransitionRules.KIND_FADE else 1
+      3 -> if (push) TransitionRules.KIND_SLIDE_RIGHT else 2
+      4 -> if (push) TransitionRules.KIND_SLIDE_BOTTOM else 3
+      5 -> if (push) TransitionRules.KIND_SLIDE_LEFT else presentationKind()
+      6 -> if (push) TransitionRules.KIND_FADE_FROM_BOTTOM else presentationKind()
+      7 -> if (push) TransitionRules.KIND_ACTIVITY else presentationKind()
+      else -> presentationKind()
     }
+  }
+
+  /** The default of the presentation: Android's transition between two screens for a push, from the bottom for a modal or a sheet, a fade for a transparent modal. */
+  private fun presentationKind(): Int = when (presentation) {
+    0 -> TransitionRules.KIND_DEFAULT
+    1, 3, 4 -> 3
+    else -> 1
   }
 }
 

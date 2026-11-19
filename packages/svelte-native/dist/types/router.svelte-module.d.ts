@@ -70,6 +70,8 @@ export interface Router {
     preload(route: PageRoute | RouteNode): Promise<void>;
     /** The route's page and layouts once loaded, `undefined` while loading; throws what a failed load threw. */
     modules(route: PageRoute | RouteNode): RouteModules | undefined;
+    /** Whether a load of the route's modules is in flight (started and neither loaded nor failed yet). */
+    loading(route: PageRoute | RouteNode): boolean;
     /** Navigates anywhere in the tree: the plan selects tabs, pops covering screens and pushes where the route belongs. */
     goto(href: string, navigation?: NavigateOptions): void;
     /**

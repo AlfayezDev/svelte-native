@@ -44,7 +44,7 @@ Each screen's own [`Screen`](screen) options win over these, option by option, a
 
 ## Screen backgrounds
 
-Every screen is opaque, so a pushed screen hides the one below it once it is in: with the default animation on Android the one below fades out before the new one fades in, and the others cover it as they move. One without a background of its own takes its stack's (a page whose `<Screen style>` sets only a padding keeps the `Stack`'s colour), else the one of the screen it is in: the screens of a tab, or of a nested stack, look as the screen around them does. A screen inside none has the system's: white or black on iOS, Material's surface on Android, in the app's light or dark mode. A transparent modal has none, and neither do the screens inside it or inside a `<Modal transparent>`. `style={{ backgroundColor }}` (or a `class`) on the `Stack` gives every screen of the stack yours, and the stacks inside them take it; [light and dark mode](styling#light-and-dark-mode) shows how to switch it with the mode.
+Every screen is opaque, so a pushed screen hides the one below it once it is in. On Android, with the default animation the one below fades out before the new one fades in, with `'fade'` the two crossfade over the new screen's background, and the others cover it as they move. One without a background of its own takes its stack's (a page whose `<Screen style>` sets only a padding keeps the `Stack`'s colour), else the one of the screen it is in: the screens of a tab, or of a nested stack, look as the screen around them does. A screen inside none has the system's: white or black on iOS, Material's surface on Android, in the app's light or dark mode. A transparent modal has none, and neither do the screens inside it or inside a `<Modal transparent>`. `style={{ backgroundColor }}` (or a `class`) on the `Stack` gives every screen of the stack yours, and the stacks inside them take it; [light and dark mode](styling#light-and-dark-mode) shows how to switch it with the mode.
 
 ## Animations
 
@@ -63,7 +63,7 @@ Every screen is opaque, so a pushed screen hides the one below it once it is in:
 | `'flip'` | The default. | A full-screen modal flips over. | Android: the default. iOS: the same flip. |
 | `'none'` | No animation. | No animation. | No animation. |
 
-The Android values other than `'default'` and `'android_activity'` are react-native-screens' own: the same distances, times and curves. A modal, a sheet or a form sheet on Android comes up from the bottom, and a transparent modal fades in; of the values, only `'none'`, `'fade'` (it fades in alone) and `'slide_from_right'` change that. The back gesture and the edge swipe move the screen with the finger whatever the animation; when they complete, the screen leaves from where they took it.
+The Android values other than `'default'` and `'android_activity'` are react-native-screens' own: the same distances, times and curves. A modal, a sheet or a form sheet on Android comes up from the bottom, and a transparent modal fades in; of the values, only `'none'`, `'fade'` (it fades in alone), `'slide_from_right'` and `'slide_from_bottom'` (a transparent modal then comes from the bottom) change that. The back gesture and the edge swipe move the screen with the finger whatever the animation; when they complete, the screen leaves to the right from where they took it: with `'default'` and `'android_activity'` it moves on and fades out, with the others it slides off across the width.
 
 ## Loading
 

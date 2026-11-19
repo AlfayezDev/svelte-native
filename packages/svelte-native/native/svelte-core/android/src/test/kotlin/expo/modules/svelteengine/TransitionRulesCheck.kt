@@ -11,7 +11,7 @@ import kotlin.system.exitProcess
  * (`M 0,0 C 0.05, 0, 0.133333, 0.06, 0.166666, 0.4 C 0.208333, 0.82, 0.25, 1, 1, 1`). With an Android SDK's resources (`platforms/android-36/data/res`)
  * the numbers are read from those files and compared, not only copied here. The sources of EngineScreen and EngineStack are read for the calls that make
  * it the default and keep its state right when something cuts it short.
- * Usage: TransitionRulesCheck <EngineScreen.kt> <EngineStack.kt> [<SDK res directory>]   (src/test/run.sh)
+ * Usage: TransitionRulesCheck <EngineScreen.kt> <EngineStack.kt> <cpp/PropsEncoderNavRecords.h> [<SDK res directory>]   (src/test/run.sh)
  */
 private var failures = 0
 private var checks = 0
@@ -205,6 +205,22 @@ private fun framework(res: File) {
   expect("fast_out_extra_slow_in's path is TransitionRules.PATH ($path)", numbers.size == TransitionRules.PATH.size && numbers.indices.all { abs(numbers[it] - TransitionRules.PATH[it]) < 1e-6f }, true)
 }
 
+/** The codes on the wire: the C++ encoder's number for each `animation` name is the one `transitionKind` reads. */
+private fun codes(screen: String, encoder: String) {
+  val kind = screen.substringAfter("fun transitionKind(): Int").substringBefore("\n  }\n")
+  val table = listOf(
+    Triple("none", 1, "1 -> 0"), Triple("fade", 2, "2 -> if (push) TransitionRules.KIND_FADE"), Triple("slide_from_right", 3, "3 -> if (push) TransitionRules.KIND_SLIDE_RIGHT"),
+    Triple("slide_from_bottom", 4, "4 -> if (push) TransitionRules.KIND_SLIDE_BOTTOM"), Triple("slide_from_left", 5, "5 -> if (push) TransitionRules.KIND_SLIDE_LEFT"),
+    Triple("fade_from_bottom", 6, "6 -> if (push) TransitionRules.KIND_FADE_FROM_BOTTOM"), Triple("android_activity", 7, "7 -> if (push) TransitionRules.KIND_ACTIVITY"),
+  )
+  for ((name, code, branch) in table) {
+    expect("the encoder sends $name as $code", encoder.contains("if (*raw == \"$name\") return $code;"), true)
+    expect("and transitionKind reads $code as $name", kind.contains(branch), true)
+  }
+  // flip and simple_push have codes of their own (iOS flips a modal) and are the default on Android.
+  expect("the encoder sends flip as 8 and simple_push as 9", encoder.contains("if (*raw == \"flip\") return 8;") && encoder.contains("if (*raw == \"simple_push\") return 9;"), true)
+}
+
 private fun sources(screen: String, stack: String) {
   val kind = screen.substringAfter("fun transitionKind(): Int").substringBefore("\n  }\n")
   val presentationKind = screen.substringAfter("private fun presentationKind(): Int").substringBefore("\n  }\n")
@@ -235,7 +251,8 @@ private fun sources(screen: String, stack: String) {
   expect("the surface is drawn before the screen below, across the stack", drawChild.indexOf("drawSurface(canvas, it, 0f, width.toFloat(), 1f, REACH_ACROSS)") in 0 until drawChild.indexOf("super.drawChild("), true)
   expect("a screen moved as the one below another's transition is freed first", system.contains("freeUnder(s)") && system.contains("freeUnder(under)"), true)
   val dismiss = stack.substringAfter("internal fun dismissTop(").substringBefore("\n  /** JavaScript did not remove")
-  expect("only the edge swipe can take a screen across the width", dismiss.contains("if (dragged && TransitionRules.paired(kind) && (!small || TransitionRules.exitsAcross("), true)
+  expect("a gesture's exit goes right: across the width but for a default or activity screen, unless the edge swipe took it past 96 dp",
+    dismiss.contains("if (byGesture && TransitionRules.paired(kind) && (!small || (dragged && TransitionRules.exitsAcross("), true)
   expect("a gesture's dismissal leaves the screen below where the gesture showed it", dismiss.contains("moveUnder = !byGesture"), true)
   expect("the edge swipe's dismissal says it was dragged", stack.contains("dismissTop(dragged = true)"), true)
   expect("the edge swipe does not start on a screen a transition is moving", stack.substringAfter("private fun swipesBack(").substringBefore("\n").contains("&& canDrag()"), true)
@@ -251,7 +268,8 @@ fun main(args: Array<String>) {
   motions()
   screens()
   sources(File(args[0]).readText(), File(args[1]).readText())
-  val res = args.getOrNull(2)?.let { File(it) }
+  codes(File(args[0]).readText(), File(args[2]).readText())
+  val res = args.getOrNull(3)?.let { File(it) }
   if (res != null && File(res, "anim/activity_open_enter.xml").isFile) framework(res)
   else println("transition rules: no Android SDK resources${if (res != null) " at $res" else ""}, the framework files were not compared")
   println("transition rules: $checks checks, $failures failed")

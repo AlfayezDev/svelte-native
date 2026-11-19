@@ -63,7 +63,8 @@ java -cp "$work/chrome-check.jar" expo.modules.svelteengine.ChromeRulesCheckKt "
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/TransitionRules.kt" \
   "$here/kotlin/expo/modules/svelteengine/TransitionRulesCheck.kt" -include-runtime -d "$work/transition-check.jar"
 java -cp "$work/transition-check.jar" expo.modules.svelteengine.TransitionRulesCheckKt "$here/../main/java/expo/modules/svelteengine/views/EngineScreen.kt" \
-  "$here/../main/java/expo/modules/svelteengine/views/EngineStack.kt" "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/platforms/android-36/data/res"
+  "$here/../main/java/expo/modules/svelteengine/views/EngineStack.kt" "$here/../main/cpp/PropsEncoderNavRecords.h" \
+  "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/platforms/android-36/data/res"
 
 # The order the engine applies Fabric's transactions in (SPEC.md, "Transaction order"): the main thread, asked to apply a transaction, applies the ones the JavaScript
 # thread pulled before it first; a message of the main looper applies one, and the one a release posts applies what was held, within a time budget; MountingManager's source is

@@ -37,17 +37,22 @@ A `TextInput` has no border or padding of its own. Give it a style, and a `minHe
 | --- | --- | --- | --- |
 | `value` | `string` | `''` | The text. Use `bind:value` to keep a variable and the field in step. |
 | `onChangeText` | `(text: string) => void` | | Called on every edit, after the bound `value` is updated. |
+| `onChange` | `(event) => void` | | Called on every edit before `onChangeText`, with `event.nativeEvent.text` and `eventCount`. It doesn't replace `onChangeText` or `bind:value`. |
 | `placeholder` | `string` | | Shown while the field is empty. |
 | `placeholderTextColor` | `string` | a grey of the mode | The placeholder's colour: without one, the system's placeholder grey on iOS and 40 % of the mode's text colour on Android. The typed text's is `style.color`, and without one it is the system's text colour in the app's light or dark mode, as a `Text`'s. |
 | `multiline` | `boolean` | `false` | Allows several lines. Return inserts a line break instead of submitting. |
 | `maxLength` | `number` | | The most characters the field accepts. |
 | `editable` | `boolean` | `true` | `false` makes the field read-only. |
+| `readOnly` | `boolean` | | The web's name: `readOnly` wins over `editable`. |
 | `keyboardType` | `'default' \| 'email-address' \| 'numeric' \| 'phone-pad' \| 'number-pad' \| 'decimal-pad' \| 'url'` | `'default'` | Which keyboard opens. |
+| `inputMode` | `'none' \| 'text' \| 'decimal' \| 'numeric' \| 'tel' \| 'search' \| 'email' \| 'url'` | | The web's name for the keyboard. It wins over `keyboardType`, and `'none'` opens no keyboard. |
 | `secureTextEntry` | `boolean` | `false` | Hides the text, for passwords. |
 | `autoCapitalize` | `'none' \| 'sentences' \| 'words' \| 'characters'` | `'sentences'` | Which letters the keyboard capitalises. |
 | `autoCorrect` | `boolean` | `true` | Autocorrect. Turn it off for email addresses and user names. |
-| `autoComplete`, `textContentType` | `string` | | What the field holds (`'email'`, `'password'`, `'one-time-code'`, ...), for autofill and password managers. |
+| `autoComplete`, `textContentType` | `string` | | What the field holds (`'email'`, `'current-password'`, `'new-password'`, `'one-time-code'`, `'off'`, ...), for autofill and password managers. As in React Native, `autoComplete` is Android's autofill hint and becomes `textContentType` on iOS; a `textContentType` you set wins there. |
 | `returnKeyType` | `'done' \| 'go' \| 'next' \| 'search' \| 'send'` | | The label of the return key. |
+| `enterKeyHint` | `'enter' \| 'done' \| 'go' \| 'next' \| 'previous' \| 'search' \| 'send'` | | The web's name for the return key. It wins over `returnKeyType`. |
+| `selection` | `{ start: number; end?: number }` | | Selects that range, or puts the caret at `start` when there is no `end`. It applies when the field mounts and when `selection` changes. In between, the user moves the caret as usual. |
 | `onSubmitEditing` | `(event) => void` | | The return key was pressed, in a single-line field. |
 | `onFocus`, `onBlur` | `(event) => void` | | The field gained or lost focus. |
 | `autoFocus` | `boolean` | `false` | Focuses the field, and opens the keyboard, when it mounts. |
@@ -56,7 +61,7 @@ A `TextInput` has no border or padding of its own. Give it a style, and a `minHe
 | `class` | `ClassValue` | | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs the `css` option ([Classes](styling#classes)). |
 | `accessibilityLabel` | `string` | | What a screen reader calls the field. A placeholder isn't a label. |
 
-It also takes the other props of React Native's [`TextInput`](https://reactnative.dev/docs/textinput).
+It also takes the other props of React Native's [`TextInput`](https://reactnative.dev/docs/textinput). On Android the field doesn't send `onContentSizeChange` or `onScroll` yet, multiline or not: a composer that grows with its text gets its size from `onLayout` on Android.
 
 ## ref
 

@@ -14,6 +14,25 @@ Notable changes to `@alfayez/svelte-native` (named `@rasheed/svelte-native` up t
 - `svelte-native init` writes `"userInterfaceStyle": "automatic"` in the `app.json` it creates, so the light and dark colours of the theme it writes show on both platforms. An existing `app.json` keeps its mode.
 - `svelte-native android`, `ios` and `dev` run Expo with its TypeScript setup off (`EXPO_NO_TYPESCRIPT_SETUP=1`). The first run of a new app no longer stops to ask whether to install `@types/react`, which the setup asks for and building or running a Svelte app doesn't need. Expo prints one line saying it skipped the setup. Setting `EXPO_NO_TYPESCRIPT_SETUP=0` in the environment gives Expo's setup back.
 
+### Fixed
+
+- A rest route matches zero segments, as in SvelteKit: `files/[...path]` opens `/files` (with `path` `""`) as well as `/files/a/b`, and `a/[...rest]/z` opens `/a/z`. Before, the base path matched no route (#80).
+- When several routes match a URL, the native router opens the one SvelteKit opens: SvelteKit's route sort, segment by segment, across every navigator. `/files/report` opens `files/[id]` and not `files/[...path]`, and `/settings/account/edit` opens `settings/[area]/[action]` and not `[section]/account/edit`. Before, the route with more static segments won, then the first file (#82).
+- `goto(href, { replace: true })` (and `replaceState`) to a page in tabs or a stack that isn't open yet replaces the screen on top. A sheet opened by a link and replaced by a tab route is no longer left under the tabs for Back to show again (#88).
+- A link that arrives and opens a screen while the platform is still answering for the launch link wins over it: the launch link no longer resets the app and takes the newer screen away (#85).
+- Enter in an input of a `<form>` presses the form's default button (its first submit button), as a browser does: the button's `onclick` runs, it is `event.submitter`, and a disabled one stops the submission. Before, Enter submitted the form directly, even with the Send button disabled, and named the input as the submitter. A form with no submit button is submitted by Enter only when the input is its one single-line field (#79).
+- A `<dialog>` hears `onclose` when it comes in a spread (`<dialog {...rest}>`), as it does when written on the element (#81).
+- An input's `autocomplete` goes over the hint its `type` gives (`type="password" autocomplete="new-password"`, `type="email" autocomplete="off"`), under a native `autoComplete` the element sets itself. As in React Native's `TextInput`, `autoComplete` becomes `textContentType` on iOS, where the views have no `autoComplete`, and React Native's Android autofill name on Android, where the engine now applies it as the field's autofill hint (it applied none) (#86).
+- `inputmode` and `enterkeyhint` (and `TextInput`'s `inputMode`, `enterKeyHint` and `readOnly`) are the keyboard, the return key and `editable`, as in React Native's `TextInput`; the native views have only those names, so the props were dropped. `inputmode="none"` opens no keyboard: the Android engine applies `showSoftInputOnFocus` now (#87).
+- `TextInput`'s `selection` places the caret on Android, at mount and when it changes, as on iOS: the prop was dropped there. The `setTextAndSelection` command works on Android too (#90).
+- A `TextInput` or `Switch` with a raw `onChange` still runs `onChangeText` or `onValueChange` and updates `bind:value`, after `onChange`, as React Native does. Before, `onChange` took both away, and a controlled field sent a stale event count (#91).
+
+### Docs
+
+- Getting Started no longer says Svelte transitions are unsupported: they play on HTML elements, with the limits the animation guide lists (#78).
+- The speculative navigation example in Routing navigates when a screen reader or a keyboard activates the button, which calls `onPress` with no `onPressIn`, and forgets a handle once it is used (#84).
+- The TextInput page says that Android doesn't send `onContentSizeChange` or `onScroll` yet (#89).
+
 ## 0.4.0-rc.9 - 2026-11-18
 
 ### Added

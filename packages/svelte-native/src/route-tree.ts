@@ -199,20 +199,22 @@ export function buildTree(files: readonly RouteFile[]): StackNode {
 
 // Resolution.
 
-const patterns = new Map<string, { expression: RegExp; names: string[] }>();
+const patterns = new Map<string, { expression: RegExp; names: { name: string; rest: boolean }[] }>();
 const parameterName = (name: string) => name.replace(/^\.\.\./, "").split("=")[0];
 
 function patternOf(path: string) {
   let known = patterns.get(path);
   if (known) return known;
-  const names: string[] = [];
+  const names: { name: string; rest: boolean }[] = [];
   const source = path.split("/").filter(Boolean).map((part) => {
     const optional = /^\[\[([^\]]+)\]\]$/.exec(part);
     const parameter = /^\[([^\]]+)\]$/.exec(part);
     if (optional || parameter) {
       const name = (optional ?? parameter)?.[1] ?? "";
-      names.push(parameterName(name));
-      return optional ? "(?:/([^/]+))?" : name.startsWith("...") ? "/(.*)" : "/([^/]+)";
+      const rest = !optional && name.startsWith("...");
+      names.push({ name: parameterName(name), rest });
+      // A rest parameter takes zero or more segments, as in SvelteKit: `/files/[...path]` matches `/files`, and `/a/[...rest]/z` matches `/a/z`.
+      return optional ? "(?:/([^/]+))?" : rest ? "(?:/(.*))?" : "/([^/]+)";
     }
     return `/${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
   }).join("");
@@ -227,7 +229,10 @@ export function matchPath(path: string, pathname: string): Record<string, string
   const match = expression.exec(pathname);
   if (!match) return null;
   try {
-    return Object.fromEntries(names.flatMap((name, index) => match[index + 1] === undefined ? [] : [[name, decodeURIComponent(match[index + 1])]]));
+    return Object.fromEntries(names.flatMap(({ name, rest }, index) => {
+      const value = match[index + 1] ?? (rest ? "" : undefined);
+      return value === undefined ? [] : [[name, decodeURIComponent(value)]];
+    }));
   } catch (error) {
     if (error instanceof URIError) return null;
     throw error;
@@ -241,9 +246,10 @@ export function fillPath(path: string, params: Readonly<Record<string, string>>)
     const parameter = /^\[([^\]]+)\]$/.exec(part);
     if (!optional && !parameter) return [part];
     const raw = (optional ?? parameter)?.[1] ?? "";
+    const rest = !optional && raw.startsWith("...");
     const value = params[parameterName(raw)];
-    if (value === undefined) return optional ? [] : [""];
-    return [raw.startsWith("...") ? value.split("/").map(encodeURIComponent).join("/") : encodeURIComponent(value)];
+    if (value === undefined || (rest && value === "")) return optional || rest ? [] : [""];
+    return [rest ? value.split("/").map(encodeURIComponent).join("/") : encodeURIComponent(value)];
   });
   return `/${parts.join("/")}`;
 }
@@ -256,42 +262,131 @@ export type ChainStep = { node: RouteNode; select?: string };
  */
 export type Resolution = { page: PageRoute; params: Record<string, string>; chain: ChainStep[]; href: string };
 
-type Hit = { page: PageRoute; params: Record<string, string>; chain: ChainStep[]; canonical?: boolean };
+/** A route that matched: `path` is the pattern that did (the tabs node's own for a tabs screen), `id` the route's directory. */
+type Hit = { page: PageRoute; params: Record<string, string>; chain: ChainStep[]; path: string; id: string; canonical?: boolean };
 /** The origin every route URL of the app is built on (`page.url`, `NativeLocation.url`): a native screen has no real one. */
 export const BASE = "https://native.invalid";
 
 const baseOf = (stack: StackNode) => stack.routes.find((route): route is PageRoute => route.kind === "page" && route.path === stack.path);
 
-function inStack(stack: StackNode, pathname: string): Hit | null {
-  for (const route of stack.routes) {
-    if (route.kind === "page") {
-      const params = matchPath(route.path, pathname);
-      if (params) return { page: route, params, chain: [{ node: stack }] };
-    } else {
-      const hit = inNode(route, pathname);
-      if (hit) return { ...hit, chain: [{ node: stack }, ...hit.chain] };
+// Ranking: when several routes match a URL, the one SvelteKit would choose wins, so a URL opens the same page on the web and on a
+// phone. This is SvelteKit's route sort (`kit/src/core/sync/create_manifest_data/sort.js`), segment by segment: a static segment
+// outranks a parameter, a required parameter an optional one, a parameter with a matcher one without, and a rest parameter comes
+// last unless a static segment follows it; a shallower path outranks a deeper one with the same start. Ties go by route id, as there.
+type Part = { type: "static" | "required" | "optional" | "rest"; content: string; matched: boolean };
+const EMPTY: Part = { type: "static", content: "", matched: false };
+const partsCache = new Map<string, Part[]>();
+
+/** A segment's parts: static text and parameters alternate, starting (and ending) with static text, which may be empty. */
+function partsOf(segment: string): Part[] {
+  const known = partsCache.get(segment);
+  if (known) return known;
+  const parts: Part[] = [];
+  let at = 0;
+  while (at <= segment.length) {
+    const start = segment.indexOf("[", at);
+    if (start === -1) {
+      parts.push({ type: "static", content: segment.slice(at), matched: false });
+      break;
     }
+    parts.push({ type: "static", content: segment.slice(at, start), matched: false });
+    const type = segment[start + 1] === "[" ? "optional" : segment[start + 1] === "." ? "rest" : "required";
+    const delimiter = type === "optional" ? "]]" : "]";
+    const end = segment.indexOf(delimiter, start);
+    if (end === -1) throw new Error(`unbalanced brackets in the route segment ${segment}`);
+    at = end + delimiter.length;
+    const content = segment.slice(start, at);
+    parts.push({ type, content, matched: content.includes("=") });
   }
-  return null;
+  partsCache.set(segment, parts);
+  return parts;
 }
 
-function inNode(node: RouteNode, pathname: string): Hit | null {
-  if (node.kind === "stack") return inStack(node, pathname);
-  for (const pane of node.panes) {
-    const hit = inStack(pane.stack, pathname);
-    if (hit) return { ...hit, chain: [{ node, select: pane.key }, ...hit.chain] };
+// An optional parameter takes part only at the end of the path.
+const segmentsOf = (path: string) => path.replace(/\[\[[^\]]+\]\](?!$)/g, "").split("/").filter(Boolean).map(partsOf);
+
+/** `foobar` outranks `foo`; otherwise character order. */
+function compareStatic(a: string, b: string): number {
+  for (let at = 0; ; at++) {
+    if (a[at] === b[at]) {
+      if (a[at] === undefined) return 0;
+      continue;
+    }
+    if (a[at] === undefined) return 1;
+    if (b[at] === undefined) return -1;
+    return a[at] < b[at] ? -1 : 1;
   }
+}
+
+/** Negative when the route `a` outranks `b`, positive when `b` outranks it, as SvelteKit sorts them. */
+export function compareRoutes(a: { path: string; id: string }, b: { path: string; id: string }): number {
+  const segmentsA = segmentsOf(a.path);
+  const segmentsB = segmentsOf(b.path);
+  for (let i = 0; i < Math.max(segmentsA.length, segmentsB.length); i++) {
+    const segmentA = segmentsA[i] ?? [EMPTY];
+    const segmentB = segmentsB[i] ?? [EMPTY];
+    for (let j = 0; j < Math.max(segmentA.length, segmentB.length); j++) {
+      const partA = segmentA[j];
+      const partB = segmentB[j];
+      if (j % 2 === 1) {
+        if (!partA) return -1;
+        if (!partB) return 1;
+        // The next static text, so `[...rest]/x` outranks `[...rest]`, `[required]` and `[required]/[required]`, but not `[required]/x`.
+        const nextA = segmentA[j + 1]?.content || segmentsA[i + 1]?.[0]?.content;
+        const nextB = segmentB[j + 1]?.content || segmentsB[i + 1]?.[0]?.content;
+        if (partA.type === "rest" && partB.type === "rest") {
+          if (nextA && nextB) continue;
+          if (nextA) return -1;
+          if (nextB) return 1;
+        }
+        if (partA.type === "rest") return nextA && !nextB ? -1 : 1;
+        if (partB.type === "rest") return nextB && !nextA ? 1 : -1;
+        if (partA.matched !== partB.matched) return partA.matched ? -1 : 1;
+        if (partA.type !== partB.type) {
+          if (partA.type === "required") return -1;
+          if (partB.type === "required") return 1;
+        }
+      } else if (partA && partB && partA.content !== partB.content) {
+        if (partA === EMPTY) return -1;
+        if (partB === EMPTY) return 1;
+        return compareStatic(partA.content, partB.content);
+      }
+    }
+  }
+  return a.id === b.id ? 0 : a.id < b.id ? 1 : -1;
+}
+
+/** Every route of `stack` and below it that matches `pathname`, in the order of the tree. */
+function inStack(stack: StackNode, pathname: string): Hit[] {
+  return stack.routes.flatMap((route): Hit[] => {
+    if (route.kind !== "page") return inNode(route, pathname).map((hit) => ({ ...hit, chain: [{ node: stack }, ...hit.chain] }));
+    const params = matchPath(route.path, pathname);
+    return params ? [{ page: route, params, chain: [{ node: stack }], path: route.path, id: route.id }] : [];
+  });
+}
+
+function inNode(node: RouteNode, pathname: string): Hit[] {
+  if (node.kind === "stack") return inStack(node, pathname);
+  const hits = node.panes.flatMap((pane) => inStack(pane.stack, pathname).map((hit) => ({ ...hit, chain: [{ node, select: pane.key }, ...hit.chain] })));
   // The tabs screen itself (its own path): its first pane's index page.
   const first = node.panes[0];
   const page = first && baseOf(first.stack);
   const params = page && matchPath(node.path, pathname);
-  return first && page && params ? { page, params, chain: [{ node, select: first.key }, { node: first.stack }], canonical: true } : null;
+  if (first && page && params) hits.push({ page, params, chain: [{ node, select: first.key }, { node: first.stack }], path: node.path, id: node.id, canonical: true });
+  return hits;
 }
 
-/** The page `href` names and the chain of navigators above it, or `null` when no page matches. Query and hash do not take part in matching. */
+/** The first of the best: a later route replaces the one held only when it outranks it. */
+const best = <T extends { path: string; id: string }>(candidates: readonly T[]): T | undefined =>
+  candidates.reduce<T | undefined>((held, candidate) => (held === undefined || compareRoutes(candidate, held) < 0 ? candidate : held), undefined);
+
+/**
+ * The page `href` names and the chain of navigators above it, or `null` when no page matches. Query and hash do not take part in
+ * matching. When several routes match, the one SvelteKit would choose wins, wherever it is in the tree.
+ */
 export function resolve(tree: StackNode, href: string): Resolution | null {
   const url = new URL(href, BASE);
-  const hit = inStack(tree, url.pathname);
+  const hit = best(inStack(tree, url.pathname));
   if (!hit) return null;
   const rest = `${url.search}${url.hash}`;
   return { page: hit.page, params: hit.params, chain: hit.chain, href: `${hit.canonical ? fillPath(hit.page.path, hit.params) : url.pathname}${rest}` };
@@ -299,7 +394,7 @@ export function resolve(tree: StackNode, href: string): Resolution | null {
 
 /**
  * The route of `stack` an entry shows: the one with the `id` it was recorded with when that route is still there and still matches
- * the href (a page and a navigator of one stack can share a path: only the id says which it was), else the first route whose own
+ * the href (a page and a navigator of one stack can share a path: only the id says which it was), else the best route whose own
  * path matches, a page or the screen of a navigator.
  */
 export function locate(stack: StackNode, href: string, id?: string): { route: PageRoute | RouteNode; params: Record<string, string> } | null {
@@ -307,11 +402,11 @@ export function locate(stack: StackNode, href: string, id?: string): { route: Pa
   const known = id === undefined ? undefined : stack.routes.find((route) => route.id === id);
   const knownParams = known && matchPath(known.path, pathname);
   if (known && knownParams) return { route: known, params: knownParams };
-  for (const route of stack.routes) {
+  const found = best(stack.routes.flatMap((route) => {
     const params = matchPath(route.path, pathname);
-    if (params) return { route, params };
-  }
-  return null;
+    return params ? [{ route, params, path: route.path, id: route.id }] : [];
+  }));
+  return found ? { route: found.route, params: found.params } : null;
 }
 
 // Navigation plan.
@@ -362,7 +457,8 @@ export function plan(state: State, target: Resolution, navigation: Navigation): 
         }
       }
       if (!navigation.reset && entries[entries.length - 1] === target.href) return;
-      const op = navigation.reset ? "reset" : navigation.replaceState ? "replace" : "push";
+      // In a navigator the plan put on, the replacement has happened above: the target goes on its new stack.
+      const op = navigation.reset ? "reset" : navigation.replaceState && !fresh ? "replace" : "push";
       operations.push({ node: node.id, op, href: target.href, presentation });
       return;
     }
@@ -375,7 +471,11 @@ export function plan(state: State, target: Resolution, navigation: Navigation): 
       return;
     }
     if (index < 0) {
-      operations.push({ node: node.id, op: "push", href: screen, presentation: "push" });
+      // A replacement whose target is in a navigator that isn't there yet replaces the top screen of the stack the navigator goes on,
+      // when that top screen is the one shown: nothing above it popped or switched panes. A sheet opened by a link, replaced by a
+      // page in tabs, leaves no sheet under the tabs.
+      const op = navigation.replaceState && operations.length === 0 && entries.length > 0 ? "replace" : "push";
+      operations.push({ node: node.id, op, href: screen, presentation: "push" });
       fresh = true;
     } else if (index < entries.length - 1) {
       operations.push({ node: node.id, op: "popTo", href: screen });

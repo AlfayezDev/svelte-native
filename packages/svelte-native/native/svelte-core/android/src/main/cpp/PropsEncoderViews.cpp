@@ -33,6 +33,8 @@ enum ViewPropId : int32_t {
   kInputColors = 46,
   kInputFocusFlags = 47,
   kInputStateText = 48,
+  kInputSelection = 49,
+  kInputAutofill = 50,
   kSwitchValue = 60,
   kSwitchEnabled = 61,
   kSwitchThumb = 62,
@@ -125,6 +127,48 @@ int32_t autoCorrectCode(const AndroidTextInputProps &p) {
   return autoCorrectOfRaw(raw != nullptr, isBool, isBool && raw->getBool());
 }
 
+// `showSoftInputOnFocus` is a nullable Boolean as `autoCorrect` is (unset keeps the keyboard opening on focus), and its typed prop is
+// false until set, while React Native's default is true: the same raw-props code (InputRules.kt).
+int32_t softInputCode(const AndroidTextInputProps &p) {
+  const folly::dynamic *raw = p.rawProps.isObject() ? p.rawProps.get_ptr("showSoftInputOnFocus") : nullptr;
+  const bool isBool = raw != nullptr && raw->isBool();
+  return autoCorrectOfRaw(raw != nullptr, isBool, isBool && raw->getBool());
+}
+
+// `selection` is no typed prop of Android's text input (React Native's own TextInput sets it with the `setTextAndSelection` command).
+// The commit's raw props carry it only when it changed: 1 with the range (a missing `end` is `start`, a caret), 0 when it was removed,
+// -1 when this update does not mention it, so that the caret the user moved is not put back by an update about something else.
+void encodeSelection(Out &o, const AndroidTextInputProps &p) {
+  int32_t code = -1;
+  int32_t start = -1;
+  int32_t end = -1;
+  const folly::dynamic *raw = p.rawProps.isObject() ? p.rawProps.get_ptr("selection") : nullptr;
+  if (raw != nullptr) {
+    const folly::dynamic *from = raw->isObject() ? raw->get_ptr("start") : nullptr;
+    if (from != nullptr && from->isNumber()) {
+      const folly::dynamic *to = raw->get_ptr("end");
+      code = 1;
+      start = static_cast<int32_t>(from->asDouble());
+      end = to != nullptr && to->isNumber() ? static_cast<int32_t>(to->asDouble()) : start;
+    } else {
+      code = 0;
+    }
+  }
+  o.begin(kInputSelection);
+  o.b.putInt(code);
+  o.b.putInt(start);
+  o.b.putInt(end);
+}
+
+// `importantForAutofill` as `ReactTextInputManager.setImportantForAutofill` reads it: 0 auto, 1 no, 2 noExcludeDescendants, 3 yes, 4 yesExcludeDescendants.
+int32_t importantForAutofillCode(const std::string &s) {
+  if (s == "no") return 1;
+  if (s == "noExcludeDescendants") return 2;
+  if (s == "yes") return 3;
+  if (s == "yesExcludeDescendants") return 4;
+  return 0;
+}
+
 void encodeInput(Out &o, const ShadowView &view, float scale) {
   const auto &p = static_cast<const AndroidTextInputProps &>(*view.props);
   auto &b = o.b;
@@ -183,6 +227,14 @@ void encodeInput(Out &o, const ShadowView &view, float scale) {
   b.putInt(p.autoFocus ? 1 : 0);
   b.putInt(p.selectTextOnFocus ? 1 : 0);
   b.putInt(p.caretHidden ? 1 : 0);
+
+  encodeSelection(o, p);
+
+  // The autofill name (`autoComplete`, React Native's Android tokens: `password-new`, `sms-otp`, ...; empty when unset), `importantForAutofill`, and `showSoftInputOnFocus`.
+  o.begin(kInputAutofill);
+  b.putInt(p.autoComplete.empty() ? -1 : o.str(p.autoComplete));
+  b.putInt(importantForAutofillCode(p.importantForAutofill));
+  b.putInt(softInputCode(p));
 }
 
 void encodeSwitch(Out &o, const ShadowView &view) {

@@ -223,7 +223,7 @@ test("`use:gesture` of the main entry, under its own name or an alias, is not wa
 
 const html = (source: string, options: { filename?: string; warn?: (message: string) => void } = {}) => lowerPrimitives(source, { filename: "page.svelte", warn: () => {}, ...options, html: true });
 /** What the markers of an HTML element and its class helper are called is not what most of these tests are about: `plainHtml` takes them out (the raw output has them: "an HTML element is marked"). */
-const plainHtml = (code: string) => code.replaceAll(" nativeHtml={true}", "").replaceAll(' nativeHtml="inline"', "").replace(/ nativeBase="[^"]*"/g, "").replaceAll("__svelteNativeHtmlClass", "__svelteNativeClass");
+const plainHtml = (code: string) => code.replaceAll(" nativeHtml={true}", "").replaceAll(" nativeButton={true}", "").replaceAll(' nativeHtml="inline"', "").replace(/ nativeBase="[^"]*"/g, "").replaceAll("__svelteNativeHtmlClass", "__svelteNativeClass");
 /** The markup after the script(s), whatever the lowering put into the script. */
 const body = (source: string) => { const out = html(source); const end = out.lastIndexOf("</script>"); return plainHtml(end < 0 ? out : out.slice(end + "</script>".length).replace(/^\n/, "")); };
 const compiled = (lowered: string) => compile(lowered, { filename: "/app/page.svelte", generate: "client", runes: true, experimental: { customRenderer: "@alfayez/svelte-native/renderer" } }).js.code;
@@ -285,6 +285,7 @@ test("a button is a pressable with the button role; its press reads its own type
   expect(body(`<button type="submit" onclick={go} class="b" disabled={busy}>Save</button>`))
     .toBe(`<native-pressable accessibilityRole="button" type="submit" ${submitHook("go")} nativeClass={__svelteNativeClass(\`b\`)} disabled={busy}>Save</native-pressable>`);
   expect(body(`<button>x</button>`)).toBe(`<native-pressable accessibilityRole="button" ${submitHook()}>x</native-pressable>`);
+  expect(html(`<button>x</button>`)).toContain(" nativeButton={true} "); // the default button of a form is found by it (`hostSubmit`)
   expect(body(`<button type={kind} onclick={clear}>x</button>`)).toBe(`<native-pressable accessibilityRole="button" type={kind} ${submitHook("clear")}>x</native-pressable>`);
   expect(body(`<button on:click={go} role="tab">x</button>`)).toBe(`<native-pressable ${submitHook("go")} role="tab">x</native-pressable>`);
   // What the author said about the role stands; a disabled button is dimmed for the screen reader by the host (a press reads `disabled`), so nothing is copied.

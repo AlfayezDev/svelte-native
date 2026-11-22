@@ -699,3 +699,15 @@ test("a reset that keeps a nested stack navigator's screen moves it to the root'
   await settled();
   expect(arrows(flow)).toEqual([false, true]);
 });
+
+test("a root page opened by a link and replaced by a page in the tabs leaves nothing to go back to (#88)", async () => {
+  withInsets(24);
+  const { router, settled } = await mountTree(205, { initial: "/account" });
+  expect(pathsOf(router)).toEqual(["/account"]);
+  router.goto("/acme/home", { replaceState: true });
+  await settled();
+  expect(pathsOf(router)).toEqual(["/acme"]);
+  expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home"]);
+  expect(router.back()).toBe(false);
+  expect(pathsOf(router)).toEqual(["/acme"]);
+});

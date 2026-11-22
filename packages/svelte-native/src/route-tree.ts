@@ -216,19 +216,34 @@ function patternOf(path: string) {
       // A rest parameter takes zero or more segments, as in SvelteKit: `/files/[...path]` matches `/files`, and `/a/[...rest]/z` matches `/a/z`.
       return optional ? "(?:/([^/]+))?" : rest ? "(?:/(.*))?" : "/([^/]+)";
     }
-    return `/${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
+    return `/${staticPattern(part)}`;
   }).join("");
   known = { expression: new RegExp(`^${source || "/"}/?$`), names };
   patterns.set(path, known);
   return known;
 }
 
-/** The parameters of `pathname` against a route path (`[id]`, `[[id]]`, `[...rest]`), or `null` when it does not match or has a bad escape. */
+/**
+ * A static route segment as the source of a pattern for a decoded pathname, as SvelteKit's `escape` makes it: the name in NFC form, with the
+ * characters a decoded pathname still has encoded (`%`, `/`, `?`, `#`) in their encoded form. `café` matches `/café` and `/caf%C3%A9`.
+ */
+function staticPattern(part: string): string {
+  return part.normalize().split(/([%/?#])/).map((piece, index) => (index % 2 ? STILL_ENCODED[piece] : piece.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).join("");
+}
+const STILL_ENCODED: Readonly<Record<string, string>> = { "%": "%25", "/": "%2[Ff]", "?": "%3[Ff]", "#": "%23" };
+
+/** A URL's pathname with its escapes decoded but for `%25` and the ones `decodeURI` keeps (`%2F`, `%3F`, `%23` …), which SvelteKit matches routes against. */
+const decodePathname = (pathname: string): string => pathname.split("%25").map(decodeURI).join("%25");
+
+/**
+ * The parameters of `pathname` (as a URL has it, percent-encoded or not) against a route path (`[id]`, `[[id]]`, `[...rest]`), or `null` when it
+ * does not match or has a bad escape. It is matched decoded, as SvelteKit matches it, so a static segment named `العربية` matches its encoded form.
+ */
 export function matchPath(path: string, pathname: string): Record<string, string> | null {
   const { expression, names } = patternOf(path);
-  const match = expression.exec(pathname);
-  if (!match) return null;
   try {
+    const match = expression.exec(decodePathname(pathname));
+    if (!match) return null;
     return Object.fromEntries(names.flatMap(({ name, rest }, index) => {
       const value = match[index + 1] ?? (rest ? "" : undefined);
       return value === undefined ? [] : [[name, decodeURIComponent(value)]];
@@ -239,12 +254,15 @@ export function matchPath(path: string, pathname: string): Record<string, string
   }
 }
 
+/** A static route segment as a URL's pathname writes it: `café` is `caf%C3%A9`, as the pathname of a resolved href has it. */
+const staticHref = (part: string): string => encodeURI(part.normalize()).replace(/\?/g, "%3F").replace(/#/g, "%23");
+
 /** The path of a route with its parameters in place: `/[slug]/inbox` with `{ slug: "acme" }` is `/acme/inbox`. */
 export function fillPath(path: string, params: Readonly<Record<string, string>>): string {
   const parts = path.split("/").filter(Boolean).flatMap((part) => {
     const optional = /^\[\[([^\]]+)\]\]$/.exec(part);
     const parameter = /^\[([^\]]+)\]$/.exec(part);
-    if (!optional && !parameter) return [part];
+    if (!optional && !parameter) return [staticHref(part)];
     const raw = (optional ?? parameter)?.[1] ?? "";
     const rest = !optional && raw.startsWith("...");
     const value = params[parameterName(raw)];

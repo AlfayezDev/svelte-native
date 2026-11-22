@@ -473,6 +473,43 @@ describe("what is sent is what is shown (as a browser posts the defaults of its 
     large.ref(null);
     expect((await submit()).size).toBe("l");
   });
+  test("a box of a list, or a radio, that scrolled away while others of its field are on screen keeps the choice made on it (#96)", async () => {
+    const { form, submit } = recording();
+    const work = form.fields.topics.as("checkbox", "work");
+    const personal = form.fields.topics.as("checkbox", "personal");
+    work.ref({});
+    personal.ref({});
+    work.onValueChange(true);
+    personal.onValueChange(true);
+    expect((await submit()).topics).toEqual(["work", "personal"]);
+    // Work's row scrolls out of a List: it is still checked, in what is sent and in the field's value.
+    work.ref(null);
+    expect((await submit()).topics).toEqual(["work", "personal"]);
+    expect(form.fields.topics.value()).toEqual(["work", "personal"]);
+    // Unchecking the box still on screen leaves the one that scrolled away checked.
+    personal.onValueChange(false);
+    expect(form.fields.topics.value()).toEqual(["work"]);
+    expect((await submit()).topics).toEqual(["work"]);
+    // Back on screen, unedited: as it was.
+    form.fields.topics.as("checkbox", "work").ref({});
+    expect((await submit()).topics).toEqual(["work"]);
+    // A radio chosen and then scrolled away while another of its field is on screen.
+    const small = form.fields.size.as("radio", "s");
+    const large = form.fields.size.as("radio", "l");
+    small.ref({});
+    large.ref({});
+    small.onValueChange(true);
+    small.ref(null);
+    expect((await submit()).size).toBe("s");
+    // A box that is checked by default and gone is not sent, as the default of any input that is gone is not.
+    const other = recording();
+    const news = other.form.fields.lists.as("checkbox", "news", true);
+    const offers = other.form.fields.lists.as("checkbox", "offers");
+    news.ref({});
+    offers.ref({});
+    news.ref(null);
+    expect(Object.keys(await other.submit())).not.toContain("lists");
+  });
   test("the submit button that was pressed last is the only one posted", async () => {
     const { form, sent } = recording();
     const save = form.fields.save.as("submit", "1");

@@ -1,6 +1,6 @@
 <script lang="ts">
   // A raw onChange next to the conveniences and the binding (#91), and a declarative selection (#90).
-  import { Switch, TextInput } from "@alfayez/svelte-native";
+  import { Switch, TextInput } from "@alfayez/svelte-native/core";
   const probe = globalThis as unknown as { __htmlLog: (entry: string) => void; __changes: Record<string, unknown> };
   const log = (entry: string) => probe.__htmlLog(entry);
   let value = $state("abcdefgh");

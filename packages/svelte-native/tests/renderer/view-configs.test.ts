@@ -68,6 +68,12 @@ const eventsOf = (config: RegisteredConfig): Record<string, string> => ({
   ...Object.fromEntries(Object.entries(config.directEventTypes ?? {}).map(([type, event]) => [type, event.registrationName])),
 });
 
+/**
+ * Attributes a table has beyond React Native's: `selection` on Android, where React Native's TextInput sets it with the `setTextAndSelection` command and the
+ * engine reads it from the props instead (native/svelte-core/SPEC.md, "TextInput: selection and autofill").
+ */
+const additions: Readonly<Record<string, readonly string[]>> = { AndroidTextInput: ["selection"] };
+
 for (const platform of platforms) {
   test(`${platform}: every static table has React Native's attributes, converters and events`, async () => {
     const reference = await loadReference(platform);
@@ -76,7 +82,13 @@ for (const platform of platforms) {
       const registered = reference.get(name);
       const mine = reference.configs.viewConfigFor(name, platform);
       expect(mine.foreign, name).toBe(false);
-      sameAttributes(name, registered.validAttributes, mine.attributes as Table, converters);
+      const attributes = { ...(mine.attributes as Table) };
+      for (const extra of additions[name] ?? []) {
+        expect(Object.hasOwn(attributes, extra), `${name}.${extra}`).toBe(true);
+        expect(Object.hasOwn(registered.validAttributes, extra), `${name}.${extra} is React Native's now: drop the addition`).toBe(false);
+        delete attributes[extra];
+      }
+      sameAttributes(name, registered.validAttributes, attributes, converters);
       expect(Object.fromEntries(mine.events), `${name} events`).toEqual(eventsOf(registered));
       expect(reference.configs.viewConfigFor(name, platform), `${name} is built once`).toBe(mine);
     }

@@ -183,13 +183,14 @@ test("(c) committing a fork that was discarded fails with Svelte's fork_discarde
 
 // What a fork may not do, and what it needs.
 
-test("a fork needs a quiet moment: a state change that is still pending makes it throw fork_timing, and flushSync first makes room", async () => {
+test("a fork flushes a state change that is pending first, and cannot be made inside an effect or another fork: fork_timing", async () => {
   const { m, app } = await mountPanel();
+  // Svelte before 5.59 threw fork_timing for a change that was still pending, and flushSync first made room.
   app.bump();
-  expect(() => m.fork(() => app.set(true))).toThrow(/fork_timing/);
-  m.flushSync();
   const fork = m.fork(() => app.set(true));
   fork.discard();
+  expect(() => m.fork(() => { m.fork(() => app.set(true)); })).toThrow(/fork_timing/);
+  expect(app.get()).toBe(false);
 });
 
 test.skipIf(asyncRun)("without async mode there is no fork: it throws experimental_async_required, the flag is off, and the bundle is the same otherwise", async () => {

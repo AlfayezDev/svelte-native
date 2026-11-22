@@ -15,14 +15,12 @@ on:
     paths:
       - "packages/**"
       - "examples/**"
-      - "vendor/**"
       - "scripts/consumer-check.sh"
       - ".github/workflows/consumer.yml"
   pull_request:
     paths:
       - "packages/**"
       - "examples/**"
-      - "vendor/**"
       - "scripts/consumer-check.sh"
       - ".github/workflows/consumer.yml"
   workflow_dispatch:

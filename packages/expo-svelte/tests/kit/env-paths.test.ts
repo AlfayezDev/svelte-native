@@ -41,6 +41,9 @@ describe("$app/paths", () => {
     expect(paths.asset("potato.jpg")).toBe("/potato.jpg");
     expect(paths.asset("/potato.jpg")).toBe("/potato.jpg");
     expect(() => paths.resolve("/blog/[slug]")).toThrow("Missing params for dynamic route ID `/blog/[slug]`");
+    // SvelteKit 3.4 refuses what is not a route id or a pathname of the app: a URL with a scheme, and one with an authority.
+    expect(() => paths.resolve("https://example.com/a" as never)).toThrow('Cannot use `resolve(...)` with an absolute or protocol-relative URL (got "https://example.com/a")');
+    expect(() => paths.resolve("//example.com/a" as never)).toThrow("protocol-relative URL");
   });
 
   test("match finds the route of a path, with its parameters, through the root router", async () => {

@@ -28,9 +28,16 @@ describe("resolveRoute: SvelteKit's route ids with their parameters", () => {
     // A route id with a trailing slash keeps it, and a search or a hash after the id stays.
     expect(resolveRoute("/blog/[slug]/", { slug: "a" })).toBe("/blog/a/");
     expect(resolveRoute("/blog/[slug]?page=2#top", { slug: "a" })).toBe("/blog/a?page=2#top");
+    // Only the route is resolved: what follows a `?` or a `#` is the caller's, whatever it looks like.
+    expect(resolveRoute("/blog/[slug]?next=/a/[b]#(c)", { slug: "a" })).toBe("/blog/a?next=/a/[b]#(c)");
+    expect(resolveRoute("/(app)/?x=1")).toBe("/?x=1");
+    // A route that has no parameter is given none, and an escape is not a parameter.
+    expect(resolveRoute("/about")).toBe("/about");
+    expect(resolveRoute("/a[x+2f]b")).toBe("/a%2Fb");
   });
 
   test("it refuses a missing parameter, one with a slash at either end, and one that is not a scalar", () => {
+    expect(() => resolveRoute("/blog/[slug]")).toThrow("Missing params for dynamic route ID `/blog/[slug]`");
     expect(() => resolveRoute("/blog/[slug]", {})).toThrow("Missing parameter `slug` in route `/blog/[slug]`");
     expect(() => resolveRoute("/blog/[slug]", { slug: "" })).toThrow("Missing parameter `slug`");
     expect(() => resolveRoute("/blog/[slug]", { slug: "/a" })).toThrow("Parameter `slug` in route `/blog/[slug]` cannot start or end with a slash");

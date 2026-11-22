@@ -158,6 +158,29 @@ test("in:fly plays when its element appears: first commit at the first keyframe,
   expect(app.seen()).toEqual(["introstart"]);
 });
 
+test("the commit that brings an element with in: carries the transition's first frame: Svelte starts the animation a microtask after the element's effect, and the commit waits for it", async () => {
+  const m = await fresh();
+  const app = m.startSurface(53, m.Fixture, {});
+  await settle(m);
+  // The element as every commit has it: a commit with the element and no first frame is the frame in which it is drawn whole before the transition starts.
+  const seen: unknown[] = [];
+  const completeRoot = host.fake.completeRoot;
+  host.fake.completeRoot = (root, set) => {
+    completeRoot.call(host.fake, root, set);
+    const intro = find(set.children as unknown as FakeNode[], "RCTView").find((node) => node.props.testID === "intro");
+    if (intro) seen.push(intro.props.opacity);
+  };
+  try {
+    app.setIntro(true);
+    // Not `settle`: its `tick` flushes Svelte's effects itself, and then Svelte's microtask runs inside that flush, as it does not when Svelte flushes after a state change on its own.
+    await new Promise((done) => realSetTimeout(done, 0));
+  } finally {
+    host.fake.completeRoot = completeRoot;
+  }
+  expect(seen.length).toBeGreaterThan(0);
+  expect(seen).toEqual(seen.map(() => 0));
+});
+
 test("onfinish is called when the shared value's animation ends, playState follows, and cancel() puts the node's own values back and never host.calls onfinish", async () => {
   const m = await fresh();
   const app = m.startSurface(52, m.Fixture, {});

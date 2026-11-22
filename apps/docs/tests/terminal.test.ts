@@ -30,7 +30,7 @@ describe("npx", () => {
 describe("npm install", () => {
 	test("a package, a dev package, an exact one", () => {
 		expect(of("npm install zod")).toMatchObject({ yarn: "yarn add zod", pnpm: "pnpm add zod", bun: "bun add zod" });
-		expect(of("npm install -D tailwindcss@4.3.3")).toMatchObject({ npm: "npm install -D tailwindcss@4.3.3", yarn: "yarn add -D tailwindcss@4.3.3", pnpm: "pnpm add -D tailwindcss@4.3.3", bun: "bun add -d tailwindcss@4.3.3" });
+		expect(of("npm install -D tailwindcss@4.3.5")).toMatchObject({ npm: "npm install -D tailwindcss@4.3.5", yarn: "yarn add -D tailwindcss@4.3.5", pnpm: "pnpm add -D tailwindcss@4.3.5", bun: "bun add -d tailwindcss@4.3.5" });
 		expect(of("npm i --save-dev --save-exact a b")).toMatchObject({ npm: "npm install -D -E a b", yarn: "yarn add -D --exact a b", pnpm: "pnpm add -D --save-exact a b", bun: "bun add -d --exact a b" });
 		expect(of("npm install zod -D")).toMatchObject({ yarn: "yarn add -D zod", bun: "bun add -d zod" });
 		expect(of('npm install "zod@^3"')).toMatchObject({ pnpm: 'pnpm add "zod@^3"' });

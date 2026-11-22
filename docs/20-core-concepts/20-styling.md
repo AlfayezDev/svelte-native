@@ -56,7 +56,7 @@ To share styles across screens, export the objects from a module in `src/lib`.
 Install Tailwind, at the version Expo Svelte is made for:
 
 ```sh
-pnpm add -D tailwindcss@4.3.3
+pnpm add -D tailwindcss@4.3.5
 ```
 
 Create the CSS file. A SvelteKit app can use the same file for its web pages, with Tailwind's Vite plugin:

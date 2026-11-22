@@ -17,9 +17,9 @@
 #               pnpm add "git+file://<repo>#<commit>&path:packages/expo-svelte"      (the first install: Svelte is still the registry's)
 #               pnpm exec expo-svelte init                                              (the install and the doctor are part of it)
 #             and then what the guide promises: init again changes nothing, `pnpm check` has no error, `pnpm build` builds the web app, and the
-#             native stages below. Svelte comes from pkg.pr.new, as it does for a person (SV_VERSION is the sv release asked for, 1.3.0).
+#             native stages below. `init` makes Svelte the registry's exact 5.59.1, as it does for a person (SV_VERSION is the sv release asked for, 1.3.0).
 #
-# The tarball and git modes install the custom-renderer Svelte from the tarball vendored in vendor/ (no registry, no preview server), then run the stages
+# The tarball and git modes install the Svelte the library's peer dependency names (5.59.1, from the registry), then run the stages
 # below in order. Each stage prints its result; its log is `<scratch>/<mode>/logs/NN-<stage>.log`.
 #
 #   scratch   the scratch directory is outside this repository and outside any pnpm workspace
@@ -190,19 +190,18 @@ st_source_git() {
   git -C "$repo" cat-file -e "$git_ref^{commit}" 2>/dev/null || [ "${GIT_URL:-}" != "" ] || die "$git_ref is not a commit of $repo"
   echo "installing: $git_url#$git_ref&path:packages/expo-svelte"
   local dirty
-  dirty=$(git -C "$repo" status --porcelain -- packages/expo-svelte vendor)
+  dirty=$(git -C "$repo" status --porcelain -- packages/expo-svelte)
   [ -z "$dirty" ] || { echo "warning: uncommitted changes in the library; the git dependency installs the commit, not the working tree:"; echo "$dirty"; }
 }
 
+# The version of Svelte the library names as its peer dependency: exact, and the registry's.
+svelte_pin() { node -e 'console.log(require(process.argv[1]).peerDependencies.svelte)' "$package/package.json"; }
+
 st_svelte() {
-  local tgz
-  tgz=$(ls "$repo"/vendor/svelte-*.tgz)
-  [ "$(wc -w <<<"$tgz")" -eq 1 ] || die "expected one vendored svelte tarball in vendor/"
-  cp "$tgz" "$tarballs/"
-  tar xzOf "$tgz" package/package.json | node -e 'const p=JSON.parse(require("fs").readFileSync(0,"utf8"));if(p.name!=="svelte")process.exit(1);console.log("svelte "+p.version)'
-  local listing
-  listing=$(tar tzf "$tgz")
-  grep -qx 'package/src/renderer/index.js' <<<"$listing" || die "the vendored svelte has no renderer"
+  local version
+  version=$(svelte_pin)
+  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "the library's peer dependency on svelte ($version) is not an exact version"
+  echo "svelte $version, from the registry"
 }
 
 st_template() {
@@ -221,10 +220,11 @@ st_template() {
 
 st_install() {
   cd "$app"
-  local library
+  local library svelte
   if [ "$mode" = tarball ]; then library=$(ls "$tarballs"/expo-svelte-*.tgz); else library="$git_url#$git_ref&path:packages/expo-svelte"; fi
-  echo "+ pnpm add $library $(ls "$tarballs"/svelte-*.tgz)"
-  cap pnpm add "${pnpm_flags[@]}" "$library" "$(ls "$tarballs"/svelte-*.tgz)"
+  svelte=svelte@$(svelte_pin)
+  echo "+ pnpm add $library $svelte"
+  cap pnpm add "${pnpm_flags[@]}" "$library" "$svelte"
   echo "package.json: \"expo-svelte\": \"$(spec_of expo-svelte)\""
   echo "package.json: \"svelte\": \"$(spec_of svelte)\""
   [ -f node_modules/expo-svelte/package.json ] || die "node_modules/expo-svelte is missing"

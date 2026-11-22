@@ -297,7 +297,7 @@ The main entry puts react-native-gesture-handler (RNGH 2.32, the version Expo SD
 
 ## Remote functions
 
-The guide is [README](README.md#remote-functions); this is the map. SvelteKit's version is 3.1.1 (`peerDependencies`); every file named `kit/…` is `node_modules/@sveltejs/kit/src/…`.
+The guide is [README](README.md#remote-functions); this is the map. SvelteKit's version is 3.4.0 (`peerDependencies`); every file named `kit/…` is `node_modules/@sveltejs/kit/src/…`.
 
 ### From a `*.remote.ts` to a call
 
@@ -462,7 +462,7 @@ The gesture host loads on the first node with a `gesture` attribute (the host `r
 |---|---|---|
 | node | the Node version satisfies `requirements.node.app` (`src/doctor/requirements.ts`: `^22.17.0 \|\| ^24.3.0 \|\| >=26.0.0`, what a fresh install of an `sv create` project accepts; not Node 25), or `requirements.node.repository` (the root `engines.node`, `>=25.0.0`) for an app that is a member of this repository's workspace (`apps/qa`, `apps/example`): the running Node's, and on Bun that of `node --version` | fails outside it, with the Node to install; `unknown` when no `node` can be run |
 | pnpm | `pnpm --version` run in the app satisfies `requirements.pnpm` (the root `packageManager`) | fails below it; `unknown` when pnpm cannot be run |
-| svelte | the `svelte` the app resolves has a `./renderer` export whose file exists and a compiler that knows `customRenderer`, and its version satisfies the peer range when the range is a version range | fails for the stock Svelte, naming which of the two is missing |
+| svelte | the `svelte` the app resolves has a `./renderer` export whose file exists and a compiler that knows `customRenderer`, and its version satisfies the peer range when the range is a version range | fails for a Svelte before 5.59.0, naming which of the two is missing |
 | peer dependencies | each package of `peerDependencies` the app resolves satisfies its range (exact, `~`, `^`, comparators, `\|\|`); an optional peer that is not installed (`@sveltejs/kit`, `tailwindcss`, `vite`) is skipped in one line; the installed `expo` has `src/winter` (which `polyfills.ts` loads through `expo-runtime.ts`: a standard `URL` for the router) | fails for a version out of range or a required peer that is missing, and for an `expo` without `src/winter`; `unknown` for a range that is not a version range (`file:`, a URL) |
 | vendored packages | each package the library carries (`src/vendored.ts`: `react-native-nitro-modules`, `react-native-mmkv`, `react-native-quick-base64`, `react-native-quick-crypto`, `hermes-intl`, `react-native-gesture-handler`, `react-native-worklets`, `react-native-reanimated` and `react-native-svg`, and the optional libraries of `src/optional-libraries.ts`) is in the installed library's `vendor/` at the version it pins, and is not among the app's own `dependencies`, `devDependencies` or `optionalDependencies`; the optional libraries are one line, and the app's `libraries` option is read from its config and listed (or refused, with what to write); the patches of the copies (`vendored: true` in `patchSpecs`: gesture handler, Reanimated, Worklets and the view libraries; applied when the library is written, `vendor-patches/`) are looked for in `vendor/`, by the shapes of `shapes.ts` | fails for a copy that is missing or of another version (an incomplete install), and for an app that lists one: the library links its copy, and the app's own would be linked beside it (the Expo plugin stops the prebuild with the same message, and `ios-autolinking` and `android-autolinking` refuse it at build time) |
 | patches | for each file of `patches/` (the packages an app installs and patches: SvelteKit, `expo-modules-core`): the installed package has exactly the patch's version and carries the patch | fails with what is missing, and a fix that depends on whether the app declares the patch |
@@ -511,11 +511,11 @@ Types that were wider than the host or narrower than what it does (found by chec
 
 ## Experimental dependency
 
-Native compilation depends on Svelte's [unmerged custom-renderer PR](https://github.com/sveltejs/svelte/pull/18042), pinned to commit `216f258068d93170a927ad4d27ee6864b0b305c5` (5.56.7). The package and the example app, the web target included, both depend on that build, vendored as `vendor/svelte-5.56.7-216f258.tgz`. The package also owns a small pnpm patch to SvelteKit 3.1.1 so its route scanner accepts mobile siblings. Both pins must be reviewed when updating Svelte or SvelteKit.
+Native compilation depends on Svelte's custom renderers (`svelte/renderer` and the compiler's `customRenderer` option), which came with Svelte 5.59.0 and are used from the registry's 5.59.1. The package and the example app, the web target included, both depend on that release. The package also owns a small pnpm patch to SvelteKit 3.4.0 so its route scanner accepts mobile siblings. Both pins must be reviewed when updating Svelte or SvelteKit.
 
 The pinned compiler currently requires boundary failure snippets to be declared outside `<svelte:boundary>` and passed with `{failed}`. Svelte DOM transitions, React widgets and Svelte DOM libraries are not adapted; a further native view needs an entry in the host's view-name table (`viewNames` in `src/fabric/host.ts`) or a wrapper in `expo-svelte/foreign`. Android and iOS run on physical phones (Samsung SM-A165F, iPhone SE 3rd generation) and, for Android, on an emulator; tablets and foldables have not been exercised.
 
-pnpm reports Svelte peer-range warnings for the compiler's URL dependency even though its package version is 5.56.7. The compiler/runtime pin is intentional; changing it requires native compilation and device checks.
+The compiler/runtime pin is intentional; changing it requires native compilation and device checks.
 
 `bun test tests/renderer/renderer.test.ts` exercises compiled reactive updates, keyed identity, conditional removal, event delivery and effect disposal. `pnpm typecheck` validates the public primitives and tooling.
 

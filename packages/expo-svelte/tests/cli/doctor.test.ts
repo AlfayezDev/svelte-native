@@ -10,7 +10,7 @@ import { expoPluginFinding, metroFinding, withoutJsComments } from "../../src/do
 import { patchFiles, patchKey, patchSpecs } from "../../src/doctor/patches.ts";
 import { compareVersions, parseVersion, satisfies } from "../../src/doctor/semver.ts";
 import { alwaysLinkedPackages, collisionMessage, optionalPackages, vendoredPackages, vendoredRoot } from "../../src/vendored.ts";
-import { patchVersion, peerVersion } from "../support/versions.ts";
+import { patchVersion, peerRange, peerVersion } from "../support/versions.ts";
 import { createProject } from "../support/project.ts";
 import { library, makeFakeApp, repository, type FakeApp } from "./support/doctor-fixture.ts";
 
@@ -338,7 +338,7 @@ describe("versions", () => {
 
   test("an optional peer that is installed must match too", () => {
     const { checks } = check({ versions: { vite: "7.0.0" } });
-    expect(find(checks, "vite 7.0.0 does not satisfy ^8.1.4")?.status).toBe("fail");
+    expect(find(checks, `vite 7.0.0 does not satisfy ${peerRange("vite")}`)?.status).toBe("fail");
   });
 
   test("a peer that is not installed is a failure unless it is optional", () => {
@@ -369,16 +369,16 @@ describe("versions", () => {
 });
 
 describe("Svelte", () => {
-  test("the stock build, without the renderer export, is a failure that names it", () => {
-    const { checks } = check({ stockSvelte: true });
-    const failure = find(checks, `svelte ${peerVersion("svelte")} is the stock Svelte: it has no ./renderer export`);
+  test("a Svelte without the renderer export (a release before 5.59.0) is a failure that names it", () => {
+    const { checks } = check({ oldSvelte: true });
+    const failure = find(checks, `svelte ${peerVersion("svelte")} has no custom renderers: it has no ./renderer export`);
     expect(failure?.status).toBe("fail");
-    expect(failure?.fix).toContain("custom-renderer build of Svelte");
+    expect(failure?.fix).toContain(`install svelte ${peerVersion("svelte")} from the registry`);
   });
 
   test("an export that points at a file that is not there does not count", () => {
     const { checks } = check({ files: { "node_modules/svelte/src/renderer/index.js": null } });
-    expect(find(checks, `svelte ${peerVersion("svelte")} is the stock Svelte`)?.status).toBe("fail");
+    expect(find(checks, `svelte ${peerVersion("svelte")} has no custom renderers`)?.status).toBe("fail");
   });
 
   test("a compiler without the customRenderer option does not count", () => {
@@ -585,7 +585,7 @@ describe("the report and the exit status", () => {
     expect(runDoctor(root, [], out, { ...tools })).toBe(1);
     const text = out.text();
     expect(text).toMatch(/ {2}FAIL {2}react 19\.0\.0 does not satisfy 19\.2\.7\n {8}fix: pnpm add react@19\.2\.7\n/);
-    expect(text).toMatch(/ {2}FAIL {2}@sveltejs\/kit@3\.1\.1 is not applied: .*\n {8}src\/core\/sync\/create_manifest_data\/index\.js: does not skip the \+mobile files of a route directory\n(?: {8}.*\n)* {8}fix: /);
+    expect(text).toMatch(/ {2}FAIL {2}@sveltejs\/kit@3\.4\.0 is not applied: .*\n {8}src\/core\/sync\/create_manifest_data\/index\.js: does not skip the \+mobile files of a route directory\n(?: {8}.*\n)* {8}fix: /);
     expect(text).toMatch(/2 failed/);
   });
 
@@ -629,7 +629,7 @@ describe("the command", () => {
   test("`expo-svelte doctor` exits 1 for an app that is not set up, prints the report, and writes nothing into the app", () => {
     const node = Bun.which("node");
     if (!node) return;
-    const root = makeFakeApp({ unpatched: "all", stockSvelte: true });
+    const root = makeFakeApp({ unpatched: "all", oldSvelte: true });
     apps.push(root);
     const run = Bun.spawnSync([node, join(repository, "packages/expo-svelte/src/cli.ts"), "doctor"], { cwd: root, env: { ...process.env, NO_COLOR: "1" } });
     const out = run.stdout.toString();

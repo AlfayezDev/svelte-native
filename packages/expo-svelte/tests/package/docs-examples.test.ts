@@ -42,10 +42,10 @@ describe("examples/minimal is what init writes", () => {
 });
 
 describe("the guide says what init writes", () => {
-  test("the configuration page's snippets carry the versions, the patches and the Svelte build init writes", () => {
+  test("the configuration page's snippets carry the versions, the patches and the Svelte init writes", () => {
     const page = readFileSync(join(repository, "docs/70-reference/20-configuration.md"), "utf8");
     for (const [name, version] of Object.entries(appDependencies)) expect(page, name).toContain(`"${name}": "${version}"`);
-    expect(page).toContain(`"svelte": "${requiredSvelte.preview}"`);
+    expect(page).toContain(`"svelte": "${requiredSvelte.version}"`);
     expect(page).toContain('"main": ".expo-svelte/entry.ts"');
     // The yaml of the page is the one a run writes for an sv project, from "overrides" on.
     const root = project();

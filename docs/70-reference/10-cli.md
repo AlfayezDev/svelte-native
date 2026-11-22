@@ -79,7 +79,7 @@ environment
   pass  pnpm 12.3.4 (needs >=12.3.4)
 
 svelte
-  pass  svelte 5.56.7 has the ./renderer export and the customRenderer compiler option
+  pass  svelte 5.59.1 has the ./renderer export and the customRenderer compiler option
 
 peer dependencies
   pass  react-native 0.86.3 satisfies 0.86.3
@@ -111,7 +111,7 @@ build integration
 | `skip` | Nothing to check, such as an optional package you haven't installed. |
 | `????` | It couldn't tell, such as a Metro config that applies the library from another file. |
 
-It checks Node and pnpm; that Svelte is the custom-renderer build; the versions of the peer dependencies; that each patch is applied to the installed package (not just declared); that the packages Expo Svelte carries are all there and patched, that the app doesn't list one of them, and which of the optional libraries its config turns on; that Metro and Expo are wired up; and, for an app that has push, its push setup (below). It exits with status 1 when a check failed, and 0 otherwise. `--json` prints the same checks as JSON.
+It checks Node and pnpm; that Svelte has custom renderers (5.59.0 or newer, and the exact version the library asks for); the versions of the peer dependencies; that each patch is applied to the installed package (not just declared); that the packages Expo Svelte carries are all there and patched, that the app doesn't list one of them, and which of the optional libraries its config turns on; that Metro and Expo are wired up; and, for an app that has push, its push setup (below). It exits with status 1 when a check failed, and 0 otherwise. `--json` prints the same checks as JSON.
 
 Run it after an install that went wrong, after an upgrade, and before you report a bug. [Troubleshooting](troubleshooting) explains the failures you're likely to see.
 

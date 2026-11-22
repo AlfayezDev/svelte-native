@@ -26,7 +26,7 @@ async function scripts(directory: string): Promise<string[]> {
 test("Expo's TypeScript prerequisite returns on EXPO_NO_TYPESCRIPT_SETUP before it asks for packages", async () => {
   const prerequisite = await readFile(resolve(cli, prerequisiteFile), "utf8");
   const env = await readFile(resolve(cli, "build/src/utils/env.js"), "utf8");
-  expect(env).toContain("(0, _getenv().boolish)('EXPO_NO_TYPESCRIPT_SETUP', false)");
+  expect(env).toMatch(/\(0, _\w+\(\)\.boolish\)\('EXPO_NO_TYPESCRIPT_SETUP', false\)/);
   for (const [method, returned] of [["async assertImplementation() {", "return true;"], ["async bootstrapAsync() {", "return;"]] as const) {
     const at = prerequisite.indexOf(method);
     expect([method, at > -1]).toEqual([method, true]);

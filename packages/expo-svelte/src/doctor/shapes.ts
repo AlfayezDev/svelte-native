@@ -217,6 +217,14 @@ export function expoModulesCoreProblems(read: Reader, patch: string): string[] {
   ];
 }
 
+/** react-native-blob-util's Gradle file names AGP's default Proguard file that AGP 9 (React Native 0.88, Expo SDK 58) refuses: it carries `-dontoptimize`, so the optimizing one is named. */
+export function blobUtilProblems(read: Reader): string[] {
+  return inFile(read, "android/build.gradle", [
+    ["still names `proguard-android.txt`, which AGP 9 refuses", (code) => !code.includes("getDefaultProguardFile('proguard-android.txt')")],
+    ["does not name `proguard-android-optimize.txt`", has("getDefaultProguardFile('proguard-android-optimize.txt')")],
+  ], true);
+}
+
 export function riveProblems(read: Reader): string[] {
   return inFile(read, "android/src/main/java/com/rivereactnative/RiveReactNativeView.kt", [
     ["an event still goes through the old architecture's event emitter (a soft exception for every event in a bridgeless app)", (code) => !code.includes("RCTEventEmitter")],

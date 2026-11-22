@@ -15,6 +15,7 @@ import { vendored } from "../support/paths.ts";
 type Scope = {
   __nativeRequestAnimationFrame?: (callback: (timestamp: number) => void) => void;
   __callMicrotasks?: () => void;
+  __drainMicrotasks?: () => void;
   requestAnimationFrame?: (callback: (timestamp: number) => void) => number;
   requestAnimationFrameFinalizer?: (callback: () => void) => void;
   __flushAnimationFrame?: unknown;
@@ -22,7 +23,7 @@ type Scope = {
   __frameTimestamp?: number;
 };
 const scope = globalThis as unknown as Scope;
-const keys = ["__nativeRequestAnimationFrame", "__callMicrotasks", "requestAnimationFrame", "requestAnimationFrameFinalizer", "__flushAnimationFrame", "cancelAnimationFrame", "__frameTimestamp"] as const;
+const keys = ["__nativeRequestAnimationFrame", "__callMicrotasks", "__drainMicrotasks", "requestAnimationFrame", "requestAnimationFrameFinalizer", "__flushAnimationFrame", "cancelAnimationFrame", "__frameTimestamp"] as const;
 const saved = Object.fromEntries(keys.map((key) => [key, scope[key]]));
 afterEach(() => { for (const key of keys) (scope as Record<string, unknown>)[key] = saved[key]; });
 
@@ -32,6 +33,8 @@ async function runtime() {
   const requested: ((timestamp: number) => void)[] = [];
   scope.__nativeRequestAnimationFrame = (callback) => { requested.push(callback); };
   scope.__callMicrotasks = () => {};
+  // Worklets 0.13 drains the microtasks after each callback through this global (0.10 called `__callMicrotasks` once, after the queue).
+  scope.__drainMicrotasks = () => {};
   setupRequestAnimationFrame();
   /** One native frame: the callback the runtime asked for runs with the timestamp. */
   const frame = (timestamp: number) => { const callback = requested.shift(); if (!callback) throw new Error("no frame was requested"); callback(timestamp); };

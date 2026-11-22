@@ -21,7 +21,8 @@ import { createUiPath, disposeUiPath, rebuildUiPath, shareHandlers, type UiPath 
 import { ALLOWED_PROPS, extractGestureRelations, filterConfig, needsToReattach } from "../gestures/config.ts";
 import { forgetHandler, startListening } from "../gestures/events.ts";
 import { checkGestureCallbacksForWorklets, checkUiClosures } from "../gestures/guards.ts";
-import { defer, enableNative, nativeModule } from "../gestures/native.ts";
+import { getUIRuntimeHolder } from "#vendor/react-native-worklets";
+import { defer, enableNative, installUiRuntimeBindings, nativeModule } from "../gestures/native.ts";
 import { ActionType, MountRegistry, registerHandler, unregisterHandler, type ComposedGesture, type GestureRef, type GestureType } from "../gestures/rngh.js";
 
 type Gesture = ComposedGesture | GestureType;
@@ -147,7 +148,10 @@ function release(record: GestureRecord): void {
 /** The UI-thread registration follows the gestures: made when one runs there, rebuilt when the handlers were attached again, dropped when none does. */
 function syncUi(record: GestureRecord, gestures: readonly GestureType[], rebuild: boolean): void {
   if (gestures.some((gesture) => gesture.shouldUseReanimated)) {
-    if (!record.ui) record.ui = createUiPath(record.target.tag);
+    if (!record.ui) {
+      installUiRuntimeBindings(getUIRuntimeHolder);
+      record.ui = createUiPath(record.target.tag);
+    }
     else if (rebuild) rebuildUiPath(record.ui);
     shareHandlers(record.ui, gestures);
   } else if (record.ui) {

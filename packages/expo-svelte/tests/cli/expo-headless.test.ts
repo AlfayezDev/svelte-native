@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createRunOncePlugin } from "expo/config-plugins";
+import { expoTemplateSceneDelegate } from "./support/app-delegate.ts";
 import { applyAppDelegate, applySceneDelegate, applyHeadlessApplication, applyHeadlessSettings, applyMainActivity, applyPodfileAutolinkingExclude, applyPodfileVendoredLinking, leaveOutOfAutoPlugins, headlessExcludedPackages, headlessPackageSource, onDemandPackageSource } from "../../src/expo.ts";
 
 const application = `class MainApplication {
@@ -261,6 +262,10 @@ describe("headless Android config", () => {
     expect(applySceneDelegate(once)).toBe(once);
     expect(once.match(/import SvelteCore/g)).toHaveLength(1);
     expect(once.match(/import UIKit/g)).toHaveLength(1);
+  });
+  test("SceneDelegate: the template of the installed Expo is the file the plugin was written against", () => {
+    expect(expoTemplateSceneDelegate()).toBe(sceneDelegate);
+    expect(applySceneDelegate(expoTemplateSceneDelegate())).toBe(applySceneDelegate(sceneDelegate));
   });
   test("SceneDelegate: a file without the expected shape fails with a message", () => {
     expect(() => applySceneDelegate("import UIKit\nclass SceneDelegate: UIResponder {}")).toThrow("could not find the imports and `class SceneDelegate: ExpoAppSceneDelegate` in SceneDelegate.swift");

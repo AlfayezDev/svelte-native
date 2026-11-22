@@ -392,51 +392,58 @@ export function pushSettings(push: unknown, appPackage: string | undefined, proj
   return settings;
 }
 
-const holdBegin = "    // Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
-const holdOpen = "      surface: { [self] in";
-const holdClose = "      })";
-const holdEnd = "    // Svelte native: end of the first screen of a launch in the background";
+const holdBegin = "    // Svelte native: push, a launch in the background starts the React host and no screen (generated, do not edit)";
+const holdEnd = "    // Svelte native: end of the launch in the background";
+// What an older version wrote around the template's `startReactNative` call (Expo SDK 57's template made the surface in `didFinishLaunching`): taken away too, so that a file it patched is cleaned.
+const oldHoldBegin = "    // Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
+const oldHoldOpen = "      surface: { [self] in";
+const oldHoldClose = "      })";
+const oldHoldEnd = "    // Svelte native: end of the first screen of a launch in the background";
 // `internal`, as `applyAppDelegate` (`expo.ts`) writes its own import of the same module, SvelteCore, which holds `SveltePushBackgroundLaunch`, under a comment of its own: Expo's generated
 // ExpoModulesProvider imports every module as `internal import`, and a plain import of the same module in the app target is ambiguous.
-const holdImportComment = "// Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
+const holdImportComment = "// Svelte native: push, a launch in the background starts the React host and no screen (generated, do not edit)";
 const holdImport = `internal import SvelteCore ${holdImportComment}`;
+const oldHoldImportComment = "// Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
 const escapeText = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-/** The head and the tail of the wrapper, each with the newline before it, so that taking both away leaves the template's call where it was. */
-const holdHead = new RegExp(`\\n${escapeText(holdBegin)}\\n[\\s\\S]*?${escapeText(holdOpen)}(?=\\n)`);
-const holdTail = new RegExp(`\\n${escapeText(holdClose)}\\n${escapeText(holdEnd)}(?=\\n)`);
+/** The block, with the newline before it and the one after it, so that taking it away leaves the template where it was. */
+const holdBlock = new RegExp(`\\n${escapeText(holdBegin)}\\n[\\s\\S]*?${escapeText(holdEnd)}\\n(?=\\n)`);
+const oldHoldHead = new RegExp(`\\n${escapeText(oldHoldBegin)}\\n[\\s\\S]*?${escapeText(oldHoldOpen)}(?=\\n)`);
+const oldHoldTail = new RegExp(`\\n${escapeText(oldHoldClose)}\\n${escapeText(oldHoldEnd)}(?=\\n)`);
 // The import of an earlier version of the capability named the module of the separate package (`SveltePush`): an AppDelegate it wrote is cleaned the same way, or it would stop the build.
-const holdImportLine = new RegExp(`^internal import (?:SvelteCore|SveltePush) ${escapeText(holdImportComment)}\\n`, "m");
+const holdImportLine = new RegExp(`^internal import (?:SvelteCore|SveltePush) (?:${escapeText(holdImportComment)}|${escapeText(oldHoldImportComment)})\\n`, "m");
 
 /**
- * `AppDelegate.swift` without what `applyPushAppDelegate` wrote (the wrapper of the template's call, and the import of the module that holds it): the template's own text again. A file that has
+ * `AppDelegate.swift` without what `applyPushAppDelegate` wrote (the block in `didFinishLaunching`, and the import of the module that holds it): the template's own text again. A file that has
  * none of it is returned as it is, so this is the whole of what an app that turned push off needs, and the first half of `applyPushAppDelegate`.
  */
 export function removePushAppDelegate(contents: string): string {
-  return contents.replace(holdHead, "").replace(holdTail, "").replace(holdImportLine, "");
+  return contents.replace(holdBlock, "").replace(oldHoldHead, "").replace(oldHoldTail, "").replace(holdImportLine, "");
 }
 
 /**
- * `AppDelegate.swift` (iOS) for an app with push: rule 2 of PUSH.md, a push that wakes the app mounts no screen. Expo's template starts React Native's surface in
- * `application(_:didFinishLaunchingWithOptions:)`, which mounts the first screen, and iOS also runs that method when it launches the app in the background for a silent push,
- * where nobody can see the screen. The template's `factory.startReactNative(...)` call is wrapped in `SveltePushBackgroundLaunch.start` (SvelteCore, the library's pod),
- * which makes the same call in the same place in every launch the user makes, and in a launch in the background starts only the React host (`initializeReactHost`, which
- * is what the first `startReactNative` would have done before it made the surface) and makes the call at the first `didBecomeActive`. JavaScript, `init` and the push hooks
- * run meanwhile. The template's call is not touched, only wrapped, so that taking the wrapper away gives the template back: the patch is idempotent, and a prebuild replaces
- * what an older version wrote. Throws when the template has no such call, since a build that lost this silently would mount a screen in the background.
+ * `AppDelegate.swift` (iOS) for an app with push: rule 2 of PUSH.md, a push that wakes the app mounts no screen. Expo SDK 58's template starts React Native from the scene
+ * (`SceneDelegate`, `ExpoAppSceneDelegate`: the window and the surface are made when UIKit connects a scene, which it does for a launch the user makes and not for the one iOS makes in
+ * the background for a silent push), so the `AppDelegate` starts nothing and a launch in the background would run no JavaScript: no `init`, no push hook. The block this adds to
+ * `application(_:didFinishLaunchingWithOptions:)`, before it returns, starts the React host and no surface in a launch in the background (`SveltePushBackgroundLaunch.start`, SvelteCore,
+ * the library's pod: `initializeReactHost`, which is what the first `startReactNative` does before it makes the surface), so that JavaScript, `init` and the push hooks run. When the user opens
+ * the app UIKit connects the scene, which makes the surface by the template's own call, and React Native's root view factory reuses the host that is already running
+ * (`createReactHostIfNeeded`). Nothing of the template is changed: the block only adds, so taking it away gives the template back, the patch is idempotent, and a prebuild replaces what an
+ * older version wrote. Throws when the template has no such place, since a build that lost this silently would run no JavaScript for a push in the background.
  */
 export function applyPushAppDelegate(contents: string): string {
   const stripped = removePushAppDelegate(contents);
   const imports = [...stripped.matchAll(/^(?:(?:internal|public|package|private|fileprivate) |@_exported |@preconcurrency )*import [\w.]+[ \t]*$/gm)];
   const lastImport = imports.at(-1);
-  const call = /^[ \t]*factory\.startReactNative\([^)]*\)[ \t]*$/m.exec(stripped);
   const launching = /_ application: UIApplication,\s*didFinishLaunchingWithOptions launchOptions: \[UIApplication\.LaunchOptionsKey: Any\]\?/.test(stripped);
-  if (!lastImport || !call || !launching || !/withModuleName: "[^"]+",\s*in: window,\s*launchOptions: launchOptions\)/.test(call[0])) {
+  const factory = /^[ \t]*let factory = ExpoReactNativeFactory\(delegate: \w+\)[ \t]*$/m.test(stripped);
+  const last = /^[ \t]*return super\.application\(application, didFinishLaunchingWithOptions: launchOptions\)[ \t]*$/m.exec(stripped);
+  if (!lastImport || !launching || !factory || !last) {
     throw new Error(
-      "Svelte native could not find the imports and `factory.startReactNative(withModuleName: …, in: window, launchOptions: launchOptions)` in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift. " +
-        "Push needs the call to keep a launch in the background (a silent push) from mounting the first screen.",
+      "Svelte native could not find the imports, `let factory = ExpoReactNativeFactory(delegate: …)` and `return super.application(application, didFinishLaunchingWithOptions: launchOptions)` in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift. " +
+        "Push needs them to start the React host in a launch in the background (a silent push).",
     );
   }
-  const head = [
+  const block = [
     holdBegin,
     "    SveltePushBackgroundLaunch.start(",
     "      application,",
@@ -447,14 +454,13 @@ export function applyPushAppDelegate(contents: string): string {
     "          launchOptions: launchOptions,",
     "          bundleConfiguration: factory.bundleConfiguration,",
     "          devMenuConfiguration: factory.devMenuConfiguration ?? RCTDevMenuConfiguration.default())",
-    "      },",
-    holdOpen,
+    "      })",
+    holdEnd,
+    "",
     "",
   ].join("\n");
-  const tail = ["", holdClose, holdEnd].join("\n");
-  const callEnd = call.index + call[0].length;
   const importEnd = lastImport.index + lastImport[0].length;
-  return `${stripped.slice(0, importEnd)}\n${holdImport}${stripped.slice(importEnd, call.index)}${head}${call[0]}${tail}${stripped.slice(callEnd)}`;
+  return `${stripped.slice(0, importEnd)}\n${holdImport}${stripped.slice(importEnd, last.index)}${block}${stripped.slice(last.index)}`;
 }
 
 /**

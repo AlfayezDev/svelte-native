@@ -1,9 +1,9 @@
 /**
  * The `aria-*` props of a host element, turned into the accessibility props Fabric understands, the way React Native's `View.js`
- * (and `Text.js`) do it in JavaScript. React Native 0.86 only does this in C++ behind `enableNativeViewPropTransformations`, which is
- * off, so without this step `aria-checked` and its kin reach the shadow tree as unknown props on both platforms and nothing reads them.
+ * (and `Text.js`) do it in JavaScript. React Native 0.88 does this in `View.js` alone (the C++ transformation behind `enableNativeViewPropTransformations`, which 0.86 kept
+ * off, is gone), so without this step `aria-checked` and its kin reach the shadow tree as unknown props on both platforms and nothing reads them.
  *
- * The rules are `View.js`'s (the branch for the flag being off):
+ * The rules are `View.js`'s:
  * - `aria-label` becomes `accessibilityLabel`, and wins over it;
  * - `aria-live` becomes `accessibilityLiveRegion` (`off` is `none`);
  * - `aria-hidden` becomes `accessibilityElementsHidden`, and `true` also makes the view `importantForAccessibility: "no-hide-descendants"`;

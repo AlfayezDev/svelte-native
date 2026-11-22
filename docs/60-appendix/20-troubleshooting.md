@@ -102,7 +102,7 @@ Gradle needs a JDK 17 and the Android SDK packages the project asks for: platfor
 | `capabilities.push.android needs googleServicesFile` | Give the path of `google-services.json`, or leave `android` out for an app with no push on Android. |
 | `capabilities.push.android needs android.package in the Expo config` | Set `android.package`: the Google services file is checked against it. |
 | `capabilities.push.ios.mode must be "development" or "production"` | It is the `aps-environment` entitlement: `"development"` for a build signed for development, `"production"` for TestFlight and the App Store. |
-| `Svelte native could not find the imports and factory.startReactNative(…) in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift` | The app uses Expo's scene-based iOS template, which push doesn't support yet ([Push notifications](push-notifications#on-ios)). |
+| `Svelte native could not find the imports, let factory = ExpoReactNativeFactory(…) and return super.application(…) in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift` | The `AppDelegate.swift` is not the one Expo SDK 58's template writes, which the push patch needs ([Push notifications](push-notifications#on-ios)). Prebuild again with `--clean`, or restore the template's file. |
 
 A build that runs and logs `[Svelte push] push is not part of this app's build` doesn't have the native package: `push.permission` reads `"denied"` and `push.subscribe` resolves with `null`. Install the package, turn `capabilities.push` on, and make a new native build. An over-the-air update can't add it.
 

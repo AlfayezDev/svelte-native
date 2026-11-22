@@ -431,14 +431,14 @@ describe("a project that lists a package the library carries", () => {
   test("init says why the prebuild refuses it and does not remove it: the person's package.json is theirs", () => {
     const root = project((directory) => {
       const manifest = readJson(directory, "package.json");
-      manifest.dependencies = { ...manifest.dependencies, "react-native-reanimated": "4.5.1", "react-native-gesture-handler": "~2.32.0" };
+      manifest.dependencies = { ...manifest.dependencies, "react-native-reanimated": "4.7.1", "react-native-gesture-handler": "~3.3.0" };
       writeFileSync(join(directory, "package.json"), `${JSON.stringify(manifest, null, "\t")}\n`);
     });
     const plan = planInit(root);
     expect(plan.warnings).toContain(`package.json: ${collisionMessage(["react-native-gesture-handler", "react-native-reanimated"])}`);
     run(root);
     const manifest = readJson(root, "package.json");
-    expect([manifest.dependencies["react-native-reanimated"], manifest.dependencies["react-native-gesture-handler"]]).toEqual(["4.5.1", "~2.32.0"]);
+    expect([manifest.dependencies["react-native-reanimated"], manifest.dependencies["react-native-gesture-handler"]]).toEqual(["4.7.1", "~3.3.0"]);
     // A project that lists none gets no such warning.
     expect(planInit(project()).warnings.filter((warning) => vendoredNames.some((name) => warning.includes(name)))).toEqual([]);
   });

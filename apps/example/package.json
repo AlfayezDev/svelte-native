@@ -1,15 +1,15 @@
 {
-	"name": "@svelte-native/example",
+	"name": "@expo-svelte/example",
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
-	"description": "Svelte Native showcase: a tour of the library, one route per feature.",
-	"main": ".svelte-native/entry.ts",
+	"description": "Expo Svelte showcase: a tour of the library, one route per feature.",
+	"main": ".expo-svelte/entry.ts",
 	"scripts": {
-		"start": "svelte-native dev",
-		"android": "svelte-native android",
-		"ios": "svelte-native ios",
-		"check-setup": "svelte-native doctor",
+		"start": "expo-svelte dev",
+		"android": "expo-svelte android",
+		"ios": "expo-svelte ios",
+		"check-setup": "expo-svelte doctor",
 		"lint": "eslint .",
 		"typecheck": "svelte-check --tsconfig ./tsconfig.json && tsc -p test",
 		"test": "bun test --timeout 300000 test"
@@ -18,7 +18,7 @@
 		"#lib/*": "./src/lib/*"
 	},
 	"dependencies": {
-		"@alfayez/svelte-native": "workspace:*",
+		"expo-svelte": "workspace:*",
 		"@sveltejs/kit": "3.1.1",
 		"expo": "~57.0.27",
 		"expo-camera": "~57.0.6",

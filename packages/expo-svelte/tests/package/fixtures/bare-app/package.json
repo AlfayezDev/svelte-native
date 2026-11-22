@@ -1,0 +1,6 @@
+{
+  "name": "bare-app",
+  "private": true,
+  "type": "module",
+  "main": ".expo-svelte/entry.ts"
+}

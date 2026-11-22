@@ -21,7 +21,7 @@ You use it in one of two ways:
 
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Tabs, type TabItem } from '@alfayez/svelte-native';
+	import { Tabs, type TabItem } from 'expo-svelte';
 	import homeIcon from '../../../assets/home.png';
 	import inboxIcon from '../../../assets/inbox.png';
 
@@ -56,7 +56,7 @@ Outside a tabs layout, `Tabs` shows the `content` snippet of the selected tab. P
 ```svelte
 <!--- file: src/routes/library/+mobile.svelte --->
 <script lang="ts">
-	import { Screen, Tabs, Text, View } from '@alfayez/svelte-native';
+	import { Screen, Tabs, Text, View } from 'expo-svelte';
 
 	let selected = $state('books');
 </script>

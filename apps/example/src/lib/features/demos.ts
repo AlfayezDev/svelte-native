@@ -1,8 +1,8 @@
 // The demo manifest: for each docs page that has a feature to show, the route of the showcase screen that shows it and how to record it. A screen
 // opened with `?demo` plays its script once (`src/lib/demo.ts`):
 //
-//   adb shell am start -a android.intent.action.VIEW -d "svelte-native://<route>?demo" io.rasheed.sveltenative.example
-//   xcrun simctl openurl booted "svelte-native://<route>?demo"
+//   adb shell am start -a android.intent.action.VIEW -d "expo-svelte://<route>?demo" io.rasheed.sveltenative.example
+//   xcrun simctl openurl booted "expo-svelte://<route>?demo"
 //
 // - `doc` is the page under `docs/`, or `null` for a screen that has a script and no page of its own (yet).
 // - A page that several screens show has one entry for each of them (the native views); a screen that several pages use is in the manifest once per

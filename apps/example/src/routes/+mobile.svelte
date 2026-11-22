@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SafeAreaView, Screen, ScrollView, Text, View, useRouter } from "@alfayez/svelte-native";
+  import { SafeAreaView, Screen, ScrollView, Text, View, useRouter } from "expo-svelte";
   import FeatureRow from "#lib/components/FeatureRow.svelte";
   import { coreFeatures } from "#lib/features/core.ts";
   import { groups, type Feature } from "#lib/features/feature.ts";
@@ -15,7 +15,7 @@
     .filter((section) => section.features.length > 0);
 </script>
 
-<Screen title="Svelte Native" header={{ large: true }}>
+<Screen title="Expo Svelte" header={{ large: true }}>
   <SafeAreaView edges={["left", "right", "bottom"]} style={{ flex: 1 }}>
     <ScrollView contentContainerStyle={{ padding: 20, gap: 24 }}>
       <Text style={text.body}>

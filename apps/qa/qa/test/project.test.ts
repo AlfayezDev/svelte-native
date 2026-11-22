@@ -120,7 +120,7 @@ describe("android/ holds one variant, and only a finished project counts", () =>
 describe("when a generated project has to be made again", () => {
 	test("every input that changes the generated project is on the list, and exists", async () => {
 		const inputs = (await prebuildInputs()).map((path) => path.slice(repoRoot.length + 1));
-		for (const name of ["apps/qa/app.config.ts", "apps/qa/package.json", "apps/qa/react-native.config.js", "apps/qa/qa/smoke-modules.json", "apps/qa/qa/smoke-packages.cjs", "apps/qa/qa/firebase-fake/google-services.json", "packages/svelte-native/dist/node/expo.cjs", "packages/svelte-native/expo-module.config.json"])
+		for (const name of ["apps/qa/app.config.ts", "apps/qa/package.json", "apps/qa/react-native.config.js", "apps/qa/qa/smoke-modules.json", "apps/qa/qa/smoke-packages.cjs", "apps/qa/qa/firebase-fake/google-services.json", "packages/expo-svelte/dist/node/expo.cjs", "packages/expo-svelte/expo-module.config.json"])
 			expect(inputs).toContain(name);
 		// the app's own local modules (the QA ones) are inputs too; the library's six are not local modules and are covered by the package's one config
 		expect(inputs.filter((name) => name.startsWith("apps/qa/modules/"))).toEqual(["apps/qa/modules/svelte-qa-android/expo-module.config.json", "apps/qa/modules/svelte-qa-ios/expo-module.config.json", "apps/qa/modules/view-bench/expo-module.config.json"]);

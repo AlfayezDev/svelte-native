@@ -4,7 +4,7 @@ import { exec, shellQuote } from "../lib/exec.ts";
 import { flagString, parseFlags, requireString } from "../lib/flags.ts";
 import { macFrom, remote, remoteOk } from "../lib/iphone/mac.ts";
 import { currentSource, iosBuildPathOf, writeIosBuild } from "../lib/iphone/session.ts";
-import { outDir, qaDir, repoRoot, svelteNativeCliFromApp } from "../lib/paths.ts";
+import { outDir, qaDir, repoRoot, expoSvelteCliFromApp } from "../lib/paths.ts";
 import { makeIosBundleMap } from "../lib/ios-bundle.ts";
 import { iosPrebuildLines } from "../lib/ios-project.ts";
 import { appVariantOf, variantFlag } from "../lib/variant.ts";
@@ -26,11 +26,11 @@ const defaultSmokeScript = "/tmp/rasheed-ios-smoke.command";
 const productNames = { qa: "RasheedSvelteQA", smoke: "Sveltesmoke" } as const;
 const smokeBundleMarker = "RNFBAppModule";
 // DerivedData is the signed build's own cache on the Mac: `--delete` would wipe it and make every build a full ~6 min rebuild. An app's
-// `dist/` is build output, but the library's `packages/svelte-native/dist/node/` is committed source the Expo plugin, Metro and the CLI
-// load (a bare "dist" pattern left the Mac without it, and prebuild failed to resolve `@alfayez/svelte-native/expo`, 9 Nov 2026).
+// `dist/` is build output, but the library's `packages/expo-svelte/dist/node/` is committed source the Expo plugin, Metro and the CLI
+// load (a bare "dist" pattern left the Mac without it, and prebuild failed to resolve `expo-svelte/expo`, 9 Nov 2026).
 // `.cxx` and `.gradle` are the Android build's native intermediates and caches: the Mac never reads them, and a Gradle build running in the same
 // checkout writes and deletes files in them while rsync walks it, which makes rsync exit 24 ("file has vanished") and the build fail.
-export const macSyncExcludes = ["DerivedData", "node_modules", ".git", "apps/qa/android/", "apps/qa/ios/", "build", ".cxx", ".gradle", "/apps/*/dist/", ".svelte-kit", ".svelte-native", ".rasheed", ".env", ".expo", "*.log"];
+export const macSyncExcludes = ["DerivedData", "node_modules", ".git", "apps/qa/android/", "apps/qa/ios/", "build", ".cxx", ".gradle", "/apps/*/dist/", ".svelte-kit", ".expo-svelte", ".rasheed", ".env", ".expo", "*.log"];
 const excludes = macSyncExcludes;
 const buildWaitMs = 30 * 60_000;
 
@@ -87,7 +87,7 @@ export async function iosBuild(argv: string[]): Promise<void> {
 			`export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH LANG=en_US.UTF-8 CI=1 EXPO_NO_TELEMETRY=1 APP_VARIANT=${appVariantOf[variant]}`,
 			...iosPrebuildLines(variant, "/tmp/native-qa-prebuild.log"),
 			"(cd ios && pod install > /tmp/native-qa-pods.log 2>&1) || { tail -n 20 /tmp/native-qa-pods.log; exit 1; }",
-			`${svelteNativeCliFromApp} sync`,
+			`${expoSvelteCliFromApp} sync`,
 			`rm -f ${shellQuote(done)}`,
 			`open -a Terminal ${shellQuote(script)}`,
 		].join(" && "),
@@ -124,7 +124,7 @@ export async function iosBuild(argv: string[]): Promise<void> {
 	const signature = (await remoteOk(mac, `codesign -dvvv ${shellQuote(app)} 2>&1`)).trim();
 	const cdHash = /^CDHash=([0-9a-f]{40})$/m.exec(signature)?.[1];
 	if (!cdHash) throw new Error(`cannot read the app's CDHash from codesign: ${signature.split("\n").slice(-3).join(" ")}`);
-	await remote(mac, `cd ${shellQuote(`${checkout}/apps/qa`)} && ${svelteNativeCliFromApp} sync > /dev/null 2>&1`);
+	await remote(mac, `cd ${shellQuote(`${checkout}/apps/qa`)} && ${expoSvelteCliFromApp} sync > /dev/null 2>&1`);
 	await writeFile(logFile, `${log.join("\n")}\n`);
 	await writeIosBuild({
 		schema: 1,

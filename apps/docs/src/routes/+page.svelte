@@ -12,7 +12,7 @@
 
 	const sections = $derived(data.areas.flatMap((area) => area.sections));
 	const components = $derived((data.areas.find((area) => area.id === "components")?.sections ?? []).flatMap((section) => section.items.flatMap((item) => ("pages" in item ? item.pages : [item]))));
-	const TITLE = "Svelte Native documentation";
+	const TITLE = "Expo Svelte documentation";
 	const DESCRIPTION = "Write Android and iOS apps as Svelte 5 components that become real native views: a guide to the library, its components and its tools.";
 </script>
 
@@ -22,7 +22,7 @@
 	{#if data.canonical}<link rel="canonical" href={data.canonical} />{/if}
 	<link rel="alternate" type="text/plain" href={resolve("/llms.txt")} title="llms.txt" />
 	<meta property="og:type" content="website" />
-	<meta property="og:site_name" content="Svelte Native" />
+	<meta property="og:site_name" content="Expo Svelte" />
 	<meta property="og:title" content={TITLE} />
 	<meta property="og:description" content={DESCRIPTION} />
 	{#if data.canonical}<meta property="og:url" content={data.canonical} />{/if}
@@ -33,7 +33,7 @@
 	<section class="hero">
 		<div class="hero-text">
 			<h1>Native Android and iOS apps, written in Svelte</h1>
-			<p class="lead">Svelte Native turns Svelte 5 components into real native views, laid out and drawn by the platform. No web view, and no React in your code.</p>
+			<p class="lead">Expo Svelte turns Svelte 5 components into real native views, laid out and drawn by the platform. No web view, and no React in your code.</p>
 			<div class="cta">
 				<a class="button primary" href={resolve("/docs/[slug]", { slug: "creating-a-project" })}>Get started<ArrowRight size={16} /></a>
 				<a class="button" href={resolve("/docs/[slug]", { slug: "introduction" })}>Introduction</a>
@@ -81,7 +81,7 @@
 	</section>
 
 	<footer class="home-footer">
-		<span>Svelte Native</span>
+		<span>Expo Svelte</span>
 		<a href={REPOSITORY} rel="noreferrer">GitHub</a>
 		<a href="{REPOSITORY}/releases" rel="noreferrer">Releases</a>
 		<a href={resolve("/llms.txt")}>llms.txt</a>

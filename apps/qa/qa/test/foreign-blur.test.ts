@@ -33,7 +33,7 @@ async function load(mutations: readonly Mutation[] = []) {
 			name: "foreign-blur",
 			setup(builder) {
 				// The library's foreign entry and the lab's reactive state need React Native and Expo: the checks of the blur call none of them.
-				builder.onResolve({ filter: /^@alfayez\/svelte-native\/foreign$/ }, () => ({ path: "foreign", namespace: "stub" }));
+				builder.onResolve({ filter: /^expo-svelte\/foreign$/ }, () => ({ path: "foreign", namespace: "stub" }));
 				builder.onResolve({ filter: /foreign\.svelte\.ts$/ }, () => ({ path: "lab", namespace: "stub" }));
 				builder.onLoad({ filter: /^foreign$/, namespace: "stub" }, () => ({ contents: "export const dismissDatePicker = () => {}; export const openDatePicker = () => {}; export const captureRef = () => {}; export const releaseCapture = () => {};", loader: "js" }));
 				builder.onLoad({ filter: /^lab$/, namespace: "stub" }, () => ({ contents: "export const libraryLab = {};", loader: "js" }));

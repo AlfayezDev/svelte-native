@@ -24,7 +24,7 @@ import org.json.JSONObject
  * single-pointer scenario also runs once through `adb input` and the counters must agree.
  *
  * It is a module of its own (`SvelteQaTouch`, in the Expo module `svelte-qa-android`), not a function of `SvelteEngine`. The product
- * build leaves it out: `app.config.ts` passes it to the svelte-native plugin's `autolinkingExclude` when `APP_VARIANT=production`,
+ * build leaves it out: `app.config.ts` passes it to the expo-svelte plugin's `autolinkingExclude` when `APP_VARIANT=production`,
  * which writes the exclusion into `settings.gradle`, so the class is not even compiled into that app. Should it be linked, it still
  * refuses unless the app is the QA variant (`io.rasheed.svelteqa`).
  *

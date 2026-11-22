@@ -7,7 +7,7 @@
   import { randomUUID } from "expo-crypto";
   import { SvelteMap, SvelteSet, SvelteDate, SvelteURL } from "svelte/reactivity";
   import { writable, derived } from "svelte/store";
-  import { Text, View, Pressable, useRouter, AnimatedView, createSharedValue, withTiming, withSpring, withRepeat, withSequence, cancelAnimation, ReduceMotion, runOnUISync } from "@alfayez/svelte-native";
+  import { Text, View, Pressable, useRouter, AnimatedView, createSharedValue, withTiming, withSpring, withRepeat, withSequence, cancelAnimation, ReduceMotion, runOnUISync } from "expo-svelte";
   import { nativeLabEnabled, theme } from "#lib/native/state.svelte.ts";
   import { labContext, RuneCounter, runeCounter, screenLab, type RowHandle } from "#lib/native/dev/model.svelte.ts";
   import Binding from "#lib/native/dev/Binding.svelte";
@@ -90,7 +90,7 @@
   });
   onMount(() => {
     if (!nativeLabEnabled) return;
-    const tag = `svelte-native-lab:${randomUUID()}`;
+    const tag = `expo-svelte-lab:${randomUUID()}`;
     let active = true;
     const release = () => { void deactivateKeepAwake(tag).catch((error: unknown) => console.error("[native lab keep awake cleanup]", error)); };
     void activateKeepAwakeAsync(tag).then(() => { if (!active) release(); }).catch((error: unknown) => console.error("[native lab keep awake]", error));

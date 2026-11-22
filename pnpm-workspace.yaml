@@ -40,7 +40,7 @@ overrides:
   "shell-quote@1.8.4": 1.11.0
   "source-map-js@1.2.1": 1.2.2
 patchedDependencies:
-  "@sveltejs/kit@3.1.1": packages/svelte-native/patches/@sveltejs__kit@3.1.1.patch
-  expo-modules-core@57.0.23: packages/svelte-native/patches/expo-modules-core@57.0.23.patch
+  "@sveltejs/kit@3.1.1": packages/expo-svelte/patches/@sveltejs__kit@3.1.1.patch
+  expo-modules-core@57.0.23: packages/expo-svelte/patches/expo-modules-core@57.0.23.patch
   react-native-live-direction@0.1.1: patches/react-native-live-direction@0.1.1.patch
   svelte@5.56.7: patches/svelte@5.56.7.patch

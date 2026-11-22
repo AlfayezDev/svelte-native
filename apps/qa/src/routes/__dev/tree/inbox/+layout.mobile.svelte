@@ -3,7 +3,7 @@
 </script>
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { Stack } from "@alfayez/svelte-native";
+  import { Stack } from "expo-svelte";
 
   /** The inbox pane's stack: large headers for its screens. */
   let { children }: { children: Snippet } = $props();

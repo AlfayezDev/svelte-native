@@ -12,7 +12,7 @@ mock.module("svelte", () => ({ ...realSvelte, onMount: (run: () => unknown) => {
 afterAll(() => { mock.module("svelte", () => realSvelte); });
 const { demoRequested, playDemo, scroller, sleep, typeInto, useDemo } = await import("../src/lib/demo.ts");
 
-const link = (query: string) => new URL(`svelte-native:///layout${query}`);
+const link = (query: string) => new URL(`expo-svelte:///layout${query}`);
 /** Runs `body` and returns what the console logged meanwhile, so a demo's `[demo]` lines are heard and not printed. */
 async function logging(body: () => Promise<void>): Promise<{ log: string[]; error: string[] }> {
   const saved = { log: console.log, error: console.error };

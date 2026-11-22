@@ -2,11 +2,11 @@
 title: Push notifications
 ---
 
-A Svelte Native app can get push notifications three ways. They differ in who delivers a message, where the keys that can send to every user are kept, and how much you build around a send.
+An Expo Svelte app can get push notifications three ways. They differ in who delivers a message, where the keys that can send to every user are kept, and how much you build around a send.
 
 | | [Standalone](#standalone) | [Firebase](#with-react-native-firebase) | [Expo](#with-expo-notifications) |
 | --- | --- | --- | --- |
-| Library in the app | `@alfayez/svelte-native/push`, part of this library | `@react-native-firebase/messaging` | `expo-notifications` |
+| Library in the app | `expo-svelte/push`, part of this library | `@react-native-firebase/messaging` | `expo-notifications` |
 | Your server sends with | `createPush` from this library | `firebase-admin` | `expo-server-sdk` |
 | The path of a message | your server → FCM (Android) or APNs (iOS) | your server → FCM, which hands iOS messages to APNs | your server → Expo's push service → FCM or APNs |
 | The sending keys are kept | on your server | on your server (FCM), and in Firebase (the APNs key) | at Expo, in your EAS project |
@@ -18,13 +18,13 @@ An app has one push library. The three exclude each other: Android delivers to o
 
 **Which one?**
 
-- **Standalone** when nothing should sit between your server and Apple and Google, and you can run a job queue. It is the one Svelte Native is built around: a tap is a link, and a background message never mounts a screen.
+- **Standalone** when nothing should sit between your server and Apple and Google, and you can run a job queue. It is the one Expo Svelte is built around: a tap is a link, and a background message never mounts a screen.
 - **Firebase** when the app uses Firebase already (Analytics, Crashlytics), or you want Firebase's topics and its console's campaigns.
 - **Expo** when you'd rather not handle the providers at all: Expo keeps the keys and talks to Apple and Google, and you send one kind of token from your server. It needs an EAS project.
 
 ## Standalone
 
-`@alfayez/svelte-native/push`. Push is part of `@alfayez/svelte-native`: there is nothing to install. You turn it on in the config, and your server sends straight to Firebase Cloud Messaging (FCM) on Android and the Apple Push Notification service (APNs) on iOS, with your own credentials. There is no relay in between. The library does the device's side: the permission, the token, receiving a message, showing it, a tap on it, and a message that arrives while the app is closed. For your server it has a sender that sends one message to one device and tells you what happened.
+`expo-svelte/push`. Push is part of `expo-svelte`: there is nothing to install. You turn it on in the config, and your server sends straight to Firebase Cloud Messaging (FCM) on Android and the Apple Push Notification service (APNs) on iOS, with your own credentials. There is no relay in between. The library does the device's side: the permission, the token, receiving a message, showing it, a tap on it, and a message that arrives while the app is closed. For your server it has a sender that sends one message to one device and tells you what happened.
 
 > **important** **You need a job queue.** The sender doesn't queue, retry or fan out, so these are yours to run: a queue that sends from a job and not from the user's request, retries with backoff for the answers that ask for one, a table of tokens that you clean up from the answers, and sending to many devices with a concurrency limit. Postgres (with a job table or pg-boss), Redis (BullMQ) or a cloud queue all work. [What your app owns](#what-your-app-owns) has the list and a worked recipe. If you don't want to run this, use [Expo's push service](#with-expo-notifications), which does most of it for you.
 
@@ -53,7 +53,7 @@ export default {
 		android: { package: 'dev.example.myapp' },
 		plugins: [
 			[
-				'@alfayez/svelte-native',
+				'expo-svelte',
 				{
 					capabilities: {
 						push: {
@@ -83,7 +83,7 @@ With push off, `push` still works and does nothing: `push.permission` reads `'de
 
 ### On the device
 
-`push` is in `@alfayez/svelte-native/push`. What the app does with a message depends on where the app is and what the message is:
+`push` is in `expo-svelte/push`. What the app does with a message depends on where the app is and what the message is:
 
 | The message | App in the foreground | App in the background or closed |
 | --- | --- | --- |
@@ -95,9 +95,9 @@ With push off, `push` still works and does nothing: `push.permission` reads `'de
 ```svelte
 <!--- file: src/routes/settings/+mobile.svelte --->
 <script lang="ts">
-	import { Pressable, Screen, Text } from '@alfayez/svelte-native';
-	import { Linking } from '@alfayez/svelte-native/platform';
-	import { push } from '@alfayez/svelte-native/push';
+	import { Pressable, Screen, Text } from 'expo-svelte';
+	import { Linking } from 'expo-svelte/platform';
+	import { push } from 'expo-svelte/push';
 	import { savePushToken } from '#lib/push.remote.ts';
 </script>
 
@@ -159,7 +159,7 @@ Asking at the moment the user turns notifications on, with a button, is kinder t
 ```svelte
 <!--- file: src/routes/+layout.mobile.svelte --->
 <script lang="ts">
-	import { push } from '@alfayez/svelte-native/push';
+	import { push } from 'expo-svelte/push';
 	import { savePushToken } from '#lib/push.remote.ts';
 	import { session } from '#lib/session.svelte.ts';
 
@@ -182,7 +182,7 @@ The app answers the three things a push can do to it with the `push` export of [
 ```ts
 /// file: src/hooks.mobile.ts
 import { page } from '$app/state';
-import type { PushHooks } from '@alfayez/svelte-native/push';
+import type { PushHooks } from 'expo-svelte/push';
 import { syncInbox } from '#lib/inbox.ts';
 import { session } from '#lib/session.svelte.ts';
 
@@ -225,7 +225,7 @@ To react to a message in a screen, for example to refresh a list, listen with `p
 
 ```svelte
 <script lang="ts">
-	import { push } from '@alfayez/svelte-native/push';
+	import { push } from 'expo-svelte/push';
 
 	$effect(() => push.on('message', () => orders.refresh()));
 </script>
@@ -243,11 +243,11 @@ An app that reads `Linking` itself sees a path as `https://app.invalid/orders/42
 
 ### On the server
 
-The sender is in `@alfayez/svelte-native/push/server`. It is built for Node, has no dependencies, and runs nothing on the device, so import it from server code only. Make one `createPush` for the process:
+The sender is in `expo-svelte/push/server`. It is built for Node, has no dependencies, and runs nothing on the device, so import it from server code only. Make one `createPush` for the process:
 
 ```ts
 /// file: src/lib/server/push.ts
-import { createPush } from '@alfayez/svelte-native/push/server';
+import { createPush } from 'expo-svelte/push/server';
 import { env } from '$env/dynamic/private';
 
 export const push = createPush({
@@ -343,7 +343,7 @@ A sketch of the recipe, with a job queue of your choice (Postgres, Redis, a clou
 
 ```ts
 /// file: src/lib/server/push-jobs.ts
-import type { PushSend, PushToken } from '@alfayez/svelte-native/push/server';
+import type { PushSend, PushToken } from 'expo-svelte/push/server';
 import * as db from './db';
 import { push } from './push';
 import { queue } from './queue'; // your queue: add(job, { delay })
@@ -401,9 +401,9 @@ The simulator doesn't deliver a silent push, neither to an app in the background
 
 A device needs a paid Apple Developer team for the entitlement. On Android, FCM needs Google Play services, so an emulator needs a system image with Google Play. A phone with Google Play services works as it is; a phone without them (Huawei's) does not.
 
-`svelte-native doctor` has a push section when the app has push. It checks the package and its version, a second push library, `capabilities.push` in `app.json`, the Google services file (it parses, it holds no secret, and it has a client for your package) and, after a prebuild, the iOS entitlement and background mode. It does not check the signing team: Xcode refuses to sign the entitlement with a Personal Team. `svelte-native doctor --server` checks your server's credentials instead: it reads the variables below, loads the keys, and asks each provider once whether it accepts them. [Command line](cli#the-push-section) has the details.
+`expo-svelte doctor` has a push section when the app has push. It checks the package and its version, a second push library, `capabilities.push` in `app.json`, the Google services file (it parses, it holds no secret, and it has a client for your package) and, after a prebuild, the iOS entitlement and background mode. It does not check the signing team: Xcode refuses to sign the entitlement with a Personal Team. `expo-svelte doctor --server` checks your server's credentials instead: it reads the variables below, loads the keys, and asks each provider once whether it accepts them. [Command line](cli#the-push-section) has the details.
 
-`svelte-native push send` sends one message to one token from the command line, with your server's credentials in `FCM_SERVICE_ACCOUNT`, or `APNS_KEY`, `APNS_KEY_ID` and `APNS_TEAM_ID`. It is for trying a device without writing a server first. The command line also takes the path of the key's file in `FCM_SERVICE_ACCOUNT` and `APNS_KEY`; `createPush` takes the contents only. Its options are in [Command line](cli#push).
+`expo-svelte push send` sends one message to one token from the command line, with your server's credentials in `FCM_SERVICE_ACCOUNT`, or `APNS_KEY`, `APNS_KEY_ID` and `APNS_TEAM_ID`. It is for trying a device without writing a server first. The command line also takes the path of the key's file in `FCM_SERVICE_ACCOUNT` and `APNS_KEY`; `createPush` takes the contents only. Its options are in [Command line](cli#push).
 
 ### Limits
 
@@ -433,7 +433,7 @@ A silent push can start the app in the background. The plugin makes that launch 
 
 ## With React Native Firebase
 
-`@react-native-firebase/messaging`. React Native Firebase uses Firebase Cloud Messaging on both platforms. On iOS, FCM hands each message to APNs with the APNs key you upload to Firebase, so the device's token is an FCM token on both. Your server sends with Google's `firebase-admin`. Its functions are plain JavaScript, so they work in a Svelte Native app; the parts this library does for the standalone package (opening a tap's link, a background launch with no screen) are yours to write, and the code below does them.
+`@react-native-firebase/messaging`. React Native Firebase uses Firebase Cloud Messaging on both platforms. On iOS, FCM hands each message to APNs with the APNs key you upload to Firebase, so the device's token is an FCM token on both. Your server sends with Google's `firebase-admin`. Its functions are plain JavaScript, so they work in an Expo Svelte app; the parts this library does for the standalone package (opening a tap's link, a background launch with no screen) are yours to write, and the code below does them.
 
 > **info** **Still send from a job.** `firebase-admin` doesn't queue either, so send from a job, not from the user's request, and keep the tokens in a table. Firebase lightens the rest: `sendEachForMulticast` sends one message to up to 500 tokens, and topics let Firebase do the fan-out. Delete a token when a send fails with `messaging/registration-token-not-registered`.
 
@@ -457,7 +457,7 @@ export default {
 			infoPlist: { UIBackgroundModes: ['remote-notification'] }
 		},
 		plugins: [
-			'@alfayez/svelte-native',
+			'expo-svelte',
 			'@react-native-firebase/app',
 			'@react-native-firebase/messaging',
 			// Firebase's iOS pods build as static frameworks.
@@ -467,7 +467,7 @@ export default {
 };
 ```
 
-Leave `capabilities.push` out of the `@alfayez/svelte-native` plugin's options. Firebase's plugins don't write the iOS push entitlement or the background mode, so the config sets them: `'aps-environment'` is `'development'` for a build signed for development. Then prebuild and build again.
+Leave `capabilities.push` out of the `expo-svelte` plugin's options. Firebase's plugins don't write the iOS push entitlement or the background mode, so the config sets them: `'aps-environment'` is `'development'` for a build signed for development. Then prebuild and build again.
 
 ### Receiving with Firebase
 
@@ -488,7 +488,7 @@ The rest belongs to the app's first screen: the permission, the token, messages 
 ```ts
 /// file: src/lib/push.ts
 import { goto } from '$app/navigation';
-import { Platform } from '@alfayez/svelte-native/platform';
+import { Platform } from 'expo-svelte/platform';
 import {
 	AuthorizationStatus,
 	getInitialNotification,
@@ -606,7 +606,7 @@ export default {
 		ios: { bundleIdentifier: 'dev.example.myapp' },
 		extra: { eas: { projectId: 'your-eas-project-id' } },
 		plugins: [
-			'@alfayez/svelte-native',
+			'expo-svelte',
 			['expo-notifications', { icon: './assets/notify.png', color: '#0a7f5a', enableBackgroundRemoteNotifications: true }]
 		]
 	}
@@ -636,12 +636,12 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(BACKGROUND, async 
 Notifications.registerTaskAsync(BACKGROUND);
 ```
 
-The permission, the token and taps go in the app, as with Firebase. `useLastNotificationResponse` is a React hook and doesn't run in Svelte Native; `getLastNotificationResponse()` gives the same tap:
+The permission, the token and taps go in the app, as with Firebase. `useLastNotificationResponse` is a React hook and doesn't run in Expo Svelte; `getLastNotificationResponse()` gives the same tap:
 
 ```ts
 /// file: src/lib/push.ts
 import { goto } from '$app/navigation';
-import { Platform } from '@alfayez/svelte-native/platform';
+import { Platform } from 'expo-svelte/platform';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { savePushToken } from '#lib/push.remote.ts';

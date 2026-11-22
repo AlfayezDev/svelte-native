@@ -9,7 +9,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { build, transform } from "esbuild";
 import { compile, compileModule } from "svelte/compiler";
 import { htmlCheckNames } from "../../src/lib/native/dev/html-checks.ts";
-import { platformDir, svelteNativeCli } from "../lib/paths.ts";
+import { platformDir, expoSvelteCli } from "../lib/paths.ts";
 
 /**
  * The HTML checks of the native checks lab run on the host against the real pieces: the QA app's class table, the HTML lowering, the renderer, the Fabric host (`fabric/host.ts`, which draws the text, lays out
@@ -17,7 +17,7 @@ import { platformDir, svelteNativeCli } from "../lib/paths.ts";
  * Fabric binding (the package's own harness, `tests/support/html-harness.ts`, whose `fake` the host builds into). What this holds is that each check reads the thing its name says: it passes on the real host and fails on
  * the host with that one thing broken, by a change to the library's source as the bundle reads it.
  */
-const library = resolve(platformDir, "../../packages/svelte-native");
+const library = resolve(platformDir, "../../packages/expo-svelte");
 const made: string[] = [];
 afterAll(() => { for (const directory of made) rmSync(directory, { recursive: true, force: true }); });
 
@@ -30,8 +30,8 @@ function builtTable(): unknown {
 	symlinkSync(dirname(createRequire(import.meta.url).resolve("tailwindcss/package.json")), join(root, "node_modules/tailwindcss"));
 	copyFileSync(join(platformDir, "src/global.css"), join(root, "src/global.css"));
 	for (const file of ["HtmlScreen.svelte", "html-checks.ts", "html-lab.ts"]) copyFileSync(join(platformDir, "src/lib/native/dev", file), join(root, "src/lib", file));
-	const built = spawnSync(process.execPath, [svelteNativeCli, "css", "src/global.css", "--variant", "qa", "--json"], { cwd: root, encoding: "utf8" });
-	if (built.status !== 0) throw new Error(`svelte-native css failed: ${built.stderr.slice(0, 400)}`);
+	const built = spawnSync(process.execPath, [expoSvelteCli, "css", "src/global.css", "--variant", "qa", "--json"], { cwd: root, encoding: "utf8" });
+	if (built.status !== 0) throw new Error(`expo-svelte css failed: ${built.stderr.slice(0, 400)}`);
 	return JSON.parse(readFileSync(JSON.parse(built.stdout).file, "utf8").replace(/^[\s\S]*?export default /, "").replace(/\s+as typeof Table;\s*$/, "").replace(/,(\s*[}\]])/g, "$1"));
 }
 
@@ -66,7 +66,7 @@ const platform = (reanimated: Record<string, string>): Record<string, string> =>
 	"react-native/Libraries/Utilities/Appearance": "export const getColorScheme = () => 'light'; export const addChangeListener = () => ({ remove() {} });",
 	"react-native/Libraries/Utilities/PixelRatio": "export default { get: () => 2, roundToNearestPixel: (value) => Math.round(value * 2) / 2 };",
 	"react-native/Libraries/Utilities/Dimensions": "export default { get: () => ({ width: 400, height: 800 }), addEventListener: () => ({ remove() {} }) };",
-	"@alfayez/svelte-native": "export const Text = null; export const View = null;",
+	"expo-svelte": "export const Text = null; export const View = null;",
 });
 
 async function load(table: unknown, mutations: readonly Mutation[] = []): Promise<{ bundle: Bundle; harness: Harness }> {
@@ -107,14 +107,14 @@ async function load(table: unknown, mutations: readonly Mutation[] = []): Promis
 					return { contents, loader: "ts" };
 				});
 				// The packages the library carries are imported as `#vendor/<name>` by its own sources, and by name by the rest: the stand-ins are written for the names. Gesture handler is the one that is real.
-				builder.onResolve({ filter: /^(react-native|expo-modules-core|expo-constants$|@alfayez\/svelte-native$|#vendor\/)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
+				builder.onResolve({ filter: /^(react-native|expo-modules-core|expo-constants$|expo-svelte$|#vendor\/)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
 				builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? stubs[args.path.replace(/^#vendor\//, "")] ?? "export {};", loader: "js" }));
 				builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: join(library, "tests/support/view-configs-stub.ts") }));
-				builder.onResolve({ filter: /^@alfayez\/svelte-native\/classes-table$/ }, (args) => ({ path: args.path, namespace: "classes-table" }));
+				builder.onResolve({ filter: /^expo-svelte\/classes-table$/ }, (args) => ({ path: args.path, namespace: "classes-table" }));
 				builder.onLoad({ filter: /.*/, namespace: "classes-table" }, () => ({ contents: `export default ${JSON.stringify(table)};`, loader: "js" }));
-				builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));
-				builder.onResolve({ filter: /^@alfayez\/svelte-native\/router$/ }, () => ({ path: join(library, "src/router.svelte.ts") }));
-				builder.onResolve({ filter: /^@alfayez\/svelte-native\/core$/ }, () => ({ path: "core", namespace: "package" }));
+				builder.onResolve({ filter: /^expo-svelte\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));
+				builder.onResolve({ filter: /^expo-svelte\/router$/ }, () => ({ path: join(library, "src/router.svelte.ts") }));
+				builder.onResolve({ filter: /^expo-svelte\/core$/ }, () => ({ path: "core", namespace: "package" }));
 				builder.onLoad({ filter: /.*/, namespace: "package" }, () => ({
 					contents: components.map((name) => `export { default as ${name} } from ${JSON.stringify(join(library, `src/components/${name}.svelte`))};`).join("\n"),
 					loader: "js", resolveDir: library,

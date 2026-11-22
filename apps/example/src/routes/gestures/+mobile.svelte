@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Text, AnimatedView, createSharedValue, runOnJS, withSpring, withTiming, Gesture } from "@alfayez/svelte-native";
+  import { Text, AnimatedView, createSharedValue, runOnJS, withSpring, withTiming, Gesture } from "expo-svelte";
   import Button from "#lib/components/Button.svelte";
   import SwipeRow from "#lib/components/native/SwipeRow.svelte";
   import Page from "#lib/components/Page.svelte";

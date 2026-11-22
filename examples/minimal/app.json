@@ -1,11 +1,11 @@
 {
 	"expo": {
-		"name": "Svelte Native Minimal",
-		"slug": "svelte-native-minimal",
-		"scheme": "svelte-native-minimal",
+		"name": "Expo Svelte Minimal",
+		"slug": "expo-svelte-minimal",
+		"scheme": "expo-svelte-minimal",
 		"version": "1.0.0",
 		"android": { "package": "dev.example.sveltenativeminimal" },
 		"ios": { "bundleIdentifier": "dev.example.sveltenativeminimal" },
-		"plugins": ["@alfayez/svelte-native"]
+		"plugins": ["expo-svelte"]
 	}
 }

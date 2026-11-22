@@ -5,7 +5,7 @@ import { copy } from "../lib/copy.ts";
 describe("the message catalog the cases name their words from", () => {
 	test("a text that differs by language is both, and one that does not is the plain string", () => {
 		expect(copy("common.close")).toEqual({ en: "Close", ar: "إغلاق" });
-		expect(copy("home.title")).toBe("Svelte Native");
+		expect(copy("home.title")).toBe("Expo Svelte");
 		expect(copy("common.english")).toBe("English");
 	});
 

@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- every library is required inside its own check: nothing of the smoke test is evaluated until it runs, and only the smoke app links the libraries */
-import { nativeModule, turboModule } from "@alfayez/svelte-native/platform";
+import { nativeModule, turboModule } from "expo-svelte/platform";
 import { ascii, decodeBase64, encodeBase64, hex, looksRandom } from "./smoke-bytes.ts";
 import { skipName, type Os, type SmokePath } from "./smoke-log.ts";
 import { hmsNativeModules, hmsOutcome } from "./smoke-rules.ts";
 
 /**
  * The 36 checks of the native module smoke test (SPEC.md, "Native modules (smoke test)"): one core call for each native library the
- * production app uses, made from Svelte Native without React. Each check requires its library when it runs, calls it once, and
+ * production app uses, made from Expo Svelte without React. Each check requires its library when it runs, calls it once, and
  * reports through `smoke.ts` `ok`, `fail` or `skip` with the path it took: `js` (the library's own JavaScript API), `direct` (its
  * TurboModule or NativeModule by name, when its JavaScript needs React or reaches another module than the one under test). Nothing
  * here asks for a permission, prompts, or touches the network: permission checks read the state, Firebase's collection and token
@@ -58,7 +58,7 @@ export const checks: Check[] = [
 		path: "js",
 		run: () => {
 			// By its name, as an app's own code would import it: Metro resolves it to the library's copy (the library carries MMKV, VENDORING.md), which is what the check is for. The types are the library's re-export.
-			const { createMMKV } = require("react-native-mmkv") as typeof import("@alfayez/svelte-native/mmkv");
+			const { createMMKV } = require("react-native-mmkv") as typeof import("expo-svelte/mmkv");
 			const storage = createMMKV({ id: "svelte-smoke" });
 			storage.set("key", "value");
 			const read = storage.getString("key");
@@ -153,7 +153,7 @@ export const checks: Check[] = [
 		run: () => {
 			// The library's copy too, by the name Metro resolves.
 			const base64 = require("react-native-quick-base64") as { fromByteArray(bytes: Uint8Array): string; toByteArray(text: string): Uint8Array; atob(text: string): string; btoa(text: string): string };
-			const text = "Svelte Native";
+			const text = "Expo Svelte";
 			const encoded = base64.fromByteArray(ascii(text));
 			const decoded = String.fromCharCode(...base64.toByteArray(encoded));
 			expect(encoded === "U3ZlbHRlIE5hdGl2ZQ==" && decoded === text && base64.atob(base64.btoa(text)) === text, `encoded ${encoded}, decoded ${decoded}`);
@@ -363,7 +363,7 @@ export const checks: Check[] = [
 			}>("RNSentry");
 			const initialized = await sentry.initNativeSdk({ dsn: dummyDsn, enabled: false, enableAutoSessionTracking: false, sendClientReports: false, enableNativeCrashHandling: false });
 			const release = await sentry.fetchNativeRelease();
-			const event = JSON.stringify({ message: "Svelte Native smoke test", level: "info" });
+			const event = JSON.stringify({ message: "Expo Svelte smoke test", level: "info" });
 			const header = JSON.stringify({ event_id: "00000000000000000000000000000000", sent_at: new Date(0).toISOString() });
 			const envelope = `${header}\n${JSON.stringify({ type: "event", length: event.length })}\n${event}\n`;
 			const captured = await sentry.captureEnvelope(encodeBase64(ascii(envelope)), { hardCrashed: false });

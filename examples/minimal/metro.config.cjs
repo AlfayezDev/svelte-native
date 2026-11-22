@@ -1,4 +1,4 @@
 const { getDefaultConfig } = require("expo/metro-config");
-const { withSvelteNative } = require("@alfayez/svelte-native/metro");
+const { withExpoSvelte } = require("expo-svelte/metro");
 
-module.exports = withSvelteNative(getDefaultConfig(__dirname));
+module.exports = withExpoSvelte(getDefaultConfig(__dirname));

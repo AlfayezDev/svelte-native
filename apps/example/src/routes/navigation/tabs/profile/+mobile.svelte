@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SafeAreaView, Screen, Text, View } from "@alfayez/svelte-native";
+  import { SafeAreaView, Screen, Text, View } from "expo-svelte";
   import { text } from "#lib/theme.svelte.ts";
 
   // The second tab, with a plain title.

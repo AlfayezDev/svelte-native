@@ -12,7 +12,7 @@ Runes (`$state`, `$derived`, `$effect`, `$props`, `$bindable`), snippets, `{#if}
 
 A native screen is built from components, not HTML elements:
 
-| On the web | In Svelte Native |
+| On the web | In Expo Svelte |
 | --- | --- |
 | `<div>` | [`View`](view) |
 | `<p>`, `<span>`, `<h1>` | [`Text`](text) |
@@ -27,7 +27,7 @@ A native screen is built from components, not HTML elements:
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Pressable, Text, TextInput, View } from '@alfayez/svelte-native';
+	import { Pressable, Text, TextInput, View } from 'expo-svelte';
 
 	let name = $state('');
 	let greeting = $state('');

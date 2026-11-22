@@ -8,7 +8,7 @@ import { productApplicationId, qaApplicationId, smokeApplicationId } from "./src
 // smoke test (qa/smoke-modules.json; SPEC.md, "Native modules (smoke test)"). `smokeOnlyPackages` are the libraries the product does not
 // have: the product and the QA app exclude them from both autolinkers (and from React Native's, in react-native.config.js); only the
 // smoke app links them, and only it gets the config plugins in `smokePlugins`, the fake Firebase files and the Huawei repository.
-// The packages the library carries itself (`packages/svelte-native/vendor/`: react-native-quick-crypto and react-native-quick-base64, which the device's `crypto` is made of, react-native-mmkv and
+// The packages the library carries itself (`packages/expo-svelte/vendor/`: react-native-quick-crypto and react-native-quick-base64, which the device's `crypto` is made of, react-native-mmkv and
 // react-native-nitro-modules, and hermes-intl) are not in that list: no app lists them, the library's autolinking links its copies in every app, and the smoke test still checks them (`shared` in
 // smoke-modules.json). The production app's `["react-native-quick-crypto", { sodiumEnabled: true }]` is the library plugin's own `sodiumEnabled` option, set in the smoke variant below.
 const { smokeOnlyPackages } = createRequire(import.meta.url)("./qa/smoke-packages.cjs") as { smokeOnlyPackages: string[] };
@@ -42,13 +42,13 @@ const smokePlugins: NonNullable<ExpoConfig["plugins"]> = !smoke ? [] : [
   // `com.huawei.hms:location` from Huawei's repository, which only the production app's Huawei plugin (not used here) adds to the project.
   ["expo-build-properties", { ios: { useFrameworks: "static" }, android: { extraMavenRepos: [{ url: "https://developer.huawei.com/repo/" }] } }],
 ];
-// The library's own native modules (the engine, the updates module and the four iOS modules) are not local modules: they come from `node_modules/@alfayez/svelte-native`, which
+// The library's own native modules (the engine, the updates module and the four iOS modules) are not local modules: they come from `node_modules/expo-svelte`, which
 // links them with its `expo-module.config.json`, and the product ships all of them. Local Expo modules (directories of `modules/`) that exist for the QA lab and must not ship: the in-app touch injector (Android), the QA
 // inspection and gesture trace module (iOS) and the view-creation bench (Android). The product build leaves them out of autolinking
-// (the svelte-native plugin writes the names into settings.gradle and the Podfile), so their classes are not compiled into the app.
+// (the expo-svelte plugin writes the names into settings.gradle and the Podfile), so their classes are not compiled into the app.
 // `qa/test/product-modules.test.ts` resolves the module list with this exclusion.
 const qaOnlyModules = ["svelte-qa-android", "svelte-qa-ios", "view-bench"];
-// What the svelte-native plugin leaves out of both autolinkers, one list for both reasons: the product has neither the smoke test's libraries
+// What the expo-svelte plugin leaves out of both autolinkers, one list for both reasons: the product has neither the smoke test's libraries
 // nor the QA modules; the QA app has the QA modules but not the libraries; the smoke app is the QA app plus the libraries, so it excludes none
 // of them (its QA modules stay). `qa/test/product-modules.test.ts` and `qa/test/smoke.test.ts` resolve the module list with this.
 const autolinkingExclude = smoke ? [] : production ? [...smokeOnlyPackages, ...qaOnlyModules] : smokeOnlyPackages;
@@ -56,13 +56,13 @@ const autolinkingExclude = smoke ? [] : production ? [...smokeOnlyPackages, ...q
 // evaluate this file without it: they publish and run without a channel, and the app does not check for updates.
 const channel = process.env.UPDATES_CHANNEL;
 // The SvelteKit server the app's remote functions (`*.remote.ts`) call, which the runtime reads from the config embedded in the build
-// (`extra.svelteNative.remote`; packages/svelte-native/README.md, "Remote functions"). The build has none unless the environment names
+// (`extra.expoSvelte.remote`; packages/expo-svelte/README.md, "Remote functions"). The build has none unless the environment names
 // one, and then a remote function throws when it is called. The shell or a build profile (eas.json `env`) sets it: the QA app points at a
-// development server with `SVELTE_NATIVE_REMOTE_ORIGIN=http://localhost:3000` (an Android device reaches the PC through
+// development server with `EXPO_SVELTE_REMOTE_ORIGIN=http://localhost:3000` (an Android device reaches the PC through
 // `adb reverse tcp:3000 tcp:3000`), and an `http:` origin also lets the build use plain HTTP to that host. The product takes `https:` only.
-const remoteOrigin = process.env.SVELTE_NATIVE_REMOTE_ORIGIN;
-if (production && remoteOrigin && !remoteOrigin.startsWith("https://")) throw new Error(`SVELTE_NATIVE_REMOTE_ORIGIN must be an https: origin in the production app, not ${remoteOrigin}`);
-const remote = remoteOrigin ? { origin: remoteOrigin, ...(process.env.SVELTE_NATIVE_REMOTE_BASE ? { base: process.env.SVELTE_NATIVE_REMOTE_BASE } : {}) } : undefined;
+const remoteOrigin = process.env.EXPO_SVELTE_REMOTE_ORIGIN;
+if (production && remoteOrigin && !remoteOrigin.startsWith("https://")) throw new Error(`EXPO_SVELTE_REMOTE_ORIGIN must be an https: origin in the production app, not ${remoteOrigin}`);
+const remote = remoteOrigin ? { origin: remoteOrigin, ...(process.env.EXPO_SVELTE_REMOTE_BASE ? { base: process.env.EXPO_SVELTE_REMOTE_BASE } : {}) } : undefined;
 export default {
   name: production ? "Svelte QA product" : smoke ? "Svelte smoke" : "Rasheed Svelte QA",
   owner: "alfayez",
@@ -93,7 +93,7 @@ export default {
     },
   },
   plugins: [
-    ["@alfayez/svelte-native", {
+    ["expo-svelte", {
       variant,
       androidProfileable: !production,
       // libsodium for `crypto`, as the production app has it (the option quick-crypto's own plugin took; the smoke test's quick-crypto check runs against it).
@@ -101,7 +101,7 @@ export default {
       autolinkingExclude,
       ...(remote ? { remote } : {}),
       androidFeatureFlags: { disableViewPreallocationAndroid: true, enablePreparedTextLayout: true },
-      // The optional native view libraries the library carries (packages/svelte-native/vendor/): the foreign lab exercises every one of them, so the QA app turns them all on (the app's package.json lists none).
+      // The optional native view libraries the library carries (packages/expo-svelte/vendor/): the foreign lab exercises every one of them, so the QA app turns them all on (the app's package.json lists none).
       // The Maps SDK throws when the manifest has no key. Production builds take theirs from the environment (an EAS secret); the QA variant falls back to a placeholder, which mounts the map and loads no tiles.
       libraries: {
         "expo-image": true,
@@ -121,7 +121,7 @@ export default {
         "react-native-animateable-text": true,
       },
       // Foreign views (SPEC.md, "Foreign views"): the packages' view managers are created when a component is first mounted,
-      // not when the host starts. `packages/svelte-native/tests/upstream/foreign-view-configs.test.ts` checks the names against the packages' sources.
+      // not when the host starts. `packages/expo-svelte/tests/upstream/foreign-view-configs.test.ts` checks the names against the packages' sources.
       androidOnDemandViewManagers: {
         "com.rnmaps.maps.MapsPackage": ["RNMapsMapView", "RNMapsMarker", "RNMapsCallout", "RNMapsGooglePolygon", "RNMapsPolyline", "RNMapsCircle", "RNMapsOverlay", "RNMapsUrlTile", "RNMapsWMSTile"],
         "com.reactnativecommunity.webview.RNCWebViewPackage": ["RNCWebView"],

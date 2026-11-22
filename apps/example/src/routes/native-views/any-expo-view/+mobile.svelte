@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Text } from "@alfayez/svelte-native";
-  import { defineExpoView, type ExpoViewHandle } from "@alfayez/svelte-native/foreign";
+  import { Text } from "expo-svelte";
+  import { defineExpoView, type ExpoViewHandle } from "expo-svelte/foreign";
   import type { CameraNativeProps, CameraViewRef } from "expo-camera";
   import CameraManager from "expo-camera/build/ExpoCameraManager";
   import resolveAssetSource from "react-native/Libraries/Image/resolveAssetSource";
@@ -16,7 +16,7 @@
   // `flashMode` and `autoFocus`, not the React component's `flash` and `autofocus`), an `on...` prop is an event called with `{ nativeEvent }`, and
   // `ref` gives the functions the module defines for the view. The types come from the packages and nothing of them runs, so no React is loaded.
   const CameraView = defineExpoView<CameraNativeProps, CameraViewRef>("ExpoCamera");
-  // expo-image is one of the libraries Svelte Native carries (turned on in app.config.ts, not installed), so its types are not imported here: the props the screen passes are typed by hand.
+  // expo-image is one of the libraries Expo Svelte carries (turned on in app.config.ts, not installed), so its types are not imported here: the props the screen passes are typed by hand.
   // The native view sends `{ nativeEvent }`, where the library's React component calls its handlers with the data.
   type NativeImageProps = {
     source: unknown[];
@@ -84,7 +84,7 @@
 </script>
 
 <Page title="Any Expo view" scrollRef={view.ref} intro="These views are mounted by name, with no wrapper written for them: defineExpoView reads the native module's view at run time and gives a component typed by the library's own types.">
-  <Section title="expo-camera, no wrapper" note="svelte-native has no component for expo-camera. The preview is the ExpoCamera view; Take a picture calls the view's takePicture through ref.">
+  <Section title="expo-camera, no wrapper" note="expo-svelte has no component for expo-camera. The preview is the ExpoCamera view; Take a picture calls the view's takePicture through ref.">
     <Text style={text.caption}>{`Camera permission: ${permission}`}</Text>
     {#if permission === "granted"}
       <!-- expo-camera's React component always sends barcodeScannerEnabled; on Android that prop is what starts the camera, so it is given here too. -->

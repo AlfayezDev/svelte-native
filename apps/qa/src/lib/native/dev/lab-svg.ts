@@ -1,6 +1,6 @@
 /**
  * The six SVG documents the foreign-views lab draws with `SvgXml` (SPEC.md, "react-native-svg"): icons of paths, a gradient card with a clip path, text with
- * spans, a symbol drawn by `use`, a view box with transforms, and a mask. The same documents `packages/svelte-native/tests/foreign/svg/xml.test.ts` compares with the
+ * spans, a symbol drawn by `use`, a view box with transforms, and a mask. The same documents `packages/expo-svelte/tests/foreign/svg/xml.test.ts` compares with the
  * library's own parser and elements.
  */
 export const labSvgIcons: Record<string, string> = {

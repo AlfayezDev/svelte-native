@@ -18,8 +18,8 @@ import {
 	gradleLock,
 	platformDir,
 	qaDir,
-	svelteNativeCli,
-	svelteNativeDir,
+	expoSvelteCli,
+	expoSvelteDir,
 } from "../lib/paths.ts";
 import { prebuildProject, selectVariantProject, staleReason } from "../lib/project.ts";
 import { writeBuild } from "../lib/runs.ts";
@@ -66,8 +66,8 @@ export async function prebuildInputs(): Promise<string[]> {
 		join(platformDir, "qa/smoke-modules.json"),
 		join(platformDir, "qa/smoke-packages.cjs"),
 		join(platformDir, "qa/firebase-fake/google-services.json"),
-		join(svelteNativeDir, "dist/node/expo.cjs"),
-		join(svelteNativeDir, "expo-module.config.json"),
+		join(expoSvelteDir, "dist/node/expo.cjs"),
+		join(expoSvelteDir, "expo-module.config.json"),
 	];
 	// Sorted: readdir's order is the filesystem's (it differed between this machine and GitHub's runners).
 	for (const module of (await readdir(join(platformDir, "modules"))).sort())
@@ -161,7 +161,7 @@ export async function build(argv: string[]): Promise<void> {
 	const started = Date.now();
 	console.log(`building the ${variant} app (${packageOf[variant]})${variant === "production" ? " for the product boot check (native-qa product); never for a phone" : ""}`);
 
-	await step("svelte-native sync", process.execPath, [svelteNativeCli, "sync"], platformDir, logPath, env);
+	await step("expo-svelte sync", process.execPath, [expoSvelteCli, "sync"], platformDir, logPath, env);
 	const switched = await selectVariantProject(variant, androidDir);
 	const reason = values.prebuild ? "--prebuild" : (switched ?? (await prebuildReason(channel)));
 	if (reason) {

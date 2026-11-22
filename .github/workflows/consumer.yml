@@ -5,7 +5,7 @@ name: Consumer
 # doctor and sync, bundles with Metro, runs expo prebuild and builds a release APK with Gradle. The two modes are two jobs, so each has a
 # runner and a disk of its own. About 25 to 40 minutes a job on a hosted runner (a Gradle build from nothing; the cache shortens the next).
 # The third mode, starter, is the path of the guide (docs/10-getting-started/20-creating-a-project.md) from a SvelteKit project: sv create, pnpm add of this very
-# checkout, svelte-native init, init again (no change), pnpm check, the web build, then the same Metro, prebuild and Gradle stages.
+# checkout, expo-svelte init, init again (no change), pnpm check, the web build, then the same Metro, prebuild and Gradle stages.
 # What it checks and how to read a failure: README.md, "CI".
 
 on:
@@ -65,7 +65,7 @@ jobs:
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       # Node 24 LTS in all three modes, not the repository's Node (package.json, 25.0.0): the jobs build apps, and an app is held to the range a fresh install accepts
-      # (`svelte-native doctor`: 22.17 or newer, 24.3 or newer, 26 or newer; Node 25 is refused, docs/60-appendix/20-troubleshooting.md). 24 is the LTS a person following the guide most
+      # (`expo-svelte doctor`: 22.17 or newer, 24.3 or newer, 26 or newer; Node 25 is refused, docs/60-appendix/20-troubleshooting.md). 24 is the LTS a person following the guide most
       # likely has. The doctor stage of the tarball and git modes would fail on Node 25.
       - uses: actions/setup-node@v7
         with:
@@ -91,7 +91,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: consumer-gradle-${{ runner.os }}-${{ hashFiles('packages/svelte-native/package.json', 'examples/minimal/package.json', 'packages/svelte-native/native/**/build.gradle') }}
+          key: consumer-gradle-${{ runner.os }}-${{ hashFiles('packages/expo-svelte/package.json', 'examples/minimal/package.json', 'packages/expo-svelte/native/**/build.gradle') }}
           restore-keys: |
             consumer-gradle-${{ runner.os }}-
 

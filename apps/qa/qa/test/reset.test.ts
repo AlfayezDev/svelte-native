@@ -102,7 +102,7 @@ describe("the app-level reset, which a phone gets instead", () => {
 		expect(resetMode("data")).toBe("data");
 		expect(() => resetMode("wipe")).toThrow("--reset must be app or data");
 	});
-	test("the setting the harness sets is the one the compiled app code reads (packages/svelte-native/tests/native-host/updates-store.test.ts runs the Kotlin and pins the same name)", () => {
+	test("the setting the harness sets is the one the compiled app code reads (packages/expo-svelte/tests/native-host/updates-store.test.ts runs the Kotlin and pins the same name)", () => {
 		expect(qaResetSetting).toBe("svelte_qa_reset_updates");
 	});
 });

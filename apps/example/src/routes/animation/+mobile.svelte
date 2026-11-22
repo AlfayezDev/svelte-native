@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Switch, Text, View, AnimatedView, createSharedValue, withRepeat, withSpring, withTiming } from "@alfayez/svelte-native";
+  import { Switch, Text, View, AnimatedView, createSharedValue, withRepeat, withSpring, withTiming } from "expo-svelte";
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";

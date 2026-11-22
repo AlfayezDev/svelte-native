@@ -3,12 +3,12 @@ title: SVG
 video: svg
 ---
 
-`@alfayez/svelte-native` draws vector graphics with [react-native-svg](https://github.com/software-mansion/react-native-svg), as Svelte components. The elements and their props are the ones you know from SVG on the web, written in camelCase (`strokeWidth`, `stopColor`).
+`expo-svelte` draws vector graphics with [react-native-svg](https://github.com/software-mansion/react-native-svg), as Svelte components. The elements and their props are the ones you know from SVG on the web, written in camelCase (`strokeWidth`, `stopColor`).
 
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Circle, Defs, Rect, Screen, Stop, Svg, SvgLinearGradient, SvgText } from '@alfayez/svelte-native';
+	import { Circle, Defs, Rect, Screen, Stop, Svg, SvgLinearGradient, SvgText } from 'expo-svelte';
 </script>
 
 <Screen title="SVG">
@@ -26,7 +26,7 @@ video: svg
 </Screen>
 ```
 
-Svelte Native carries react-native-svg (version 15.15.4) itself, so every app has it and none installs it: it is not a dependency of your app, and `svelte-native doctor` checks the copy. Unlike the other [native views](native-views), it needs no separate install.
+Expo Svelte carries react-native-svg (version 15.15.4) itself, so every app has it and none installs it: it is not a dependency of your app, and `expo-svelte doctor` checks the copy. Unlike the other [native views](native-views), it needs no separate install.
 
 ## Elements
 
@@ -40,7 +40,7 @@ Svelte Native carries react-native-svg (version 15.15.4) itself, so every app ha
 | Filters | `Filter`, `FeBlend`, `FeColorMatrix`, `FeComposite`, `FeDropShadow`, `FeFlood`, `FeGaussianBlur`, `FeMerge`, `FeMergeNode`, `FeOffset` |
 | Documents | `SvgXml`, `SvgUri` |
 
-react-native-svg calls its text and image elements `Text` and `Image`, which are the names of the [`Text`](text) and [`Image`](image) views. Here they are `SvgText` and `SvgImage`. Two more get an `Svg` prefix because [`@alfayez/svelte-native/foreign`](native-views) has components of the same names (expo-linear-gradient's `LinearGradient` and the map's `Marker`): react-native-svg's are `SvgLinearGradient` and `SvgMarker`. Every other element keeps its name.
+react-native-svg calls its text and image elements `Text` and `Image`, which are the names of the [`Text`](text) and [`Image`](image) views. Here they are `SvgText` and `SvgImage`. Two more get an `Svg` prefix because [`expo-svelte/foreign`](native-views) has components of the same names (expo-linear-gradient's `LinearGradient` and the map's `Marker`): react-native-svg's are `SvgLinearGradient` and `SvgMarker`. Every other element keeps its name.
 
 Inside a `Text` or `TextPath`, a string is a text span of its own. Whitespace between elements counts as text, as in HTML.
 
@@ -50,7 +50,7 @@ Inside a `Text` or `TextPath`, a string is a text span of its own. Whitespace be
 
 ```svelte
 <script lang="ts">
-	import { SvgXml } from '@alfayez/svelte-native';
+	import { SvgXml } from 'expo-svelte';
 
 	const check = `<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" fill="none" stroke="#191b1e" stroke-width="2"/></svg>`;
 </script>
@@ -66,7 +66,7 @@ An element's `ref` gets a handle with the library's geometry functions: `getBBox
 
 ```svelte
 <script lang="ts">
-	import { Path, Svg, type SvgHandle } from '@alfayez/svelte-native';
+	import { Path, Svg, type SvgHandle } from 'expo-svelte';
 
 	let length = $state(0);
 </script>
@@ -82,7 +82,7 @@ An element's `ref` gets a handle with the library's geometry functions: `getBBox
 
 ```svelte
 <script lang="ts">
-	import { Circle, Svg, createSharedValue, withRepeat, withTiming } from '@alfayez/svelte-native';
+	import { Circle, Svg, createSharedValue, withRepeat, withTiming } from 'expo-svelte';
 
 	const radius = createSharedValue(6);
 	radius.value = withRepeat(withTiming(12, { duration: 800 }), -1, true);

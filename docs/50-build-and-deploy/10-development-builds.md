@@ -8,7 +8,7 @@ A web app runs in a browser that already exists. A native app has to be built: c
 
 While you develop, your app is a _debug build_. It doesn't contain your JavaScript: it asks the development server, Metro, for it each time it starts. That is why a change to a Svelte file shows up without a rebuild.
 
-You build your own app because Svelte Native has native code of its own. The Expo Go app can only load the native code it was built with, so it can't run a Svelte Native app.
+You build your own app because Expo Svelte has native code of its own. The Expo Go app can only load the native code it was built with, so it can't run an Expo Svelte app.
 
 ## The daily loop
 
@@ -41,7 +41,7 @@ When you save:
 Your project has no hand-written Android or iOS project. The `android/` and `ios/` folders are generated from your configuration by `expo prebuild`, which Expo calls _Continuous Native Generation_. The inputs are:
 
 - `app.json` (or `app.config.ts`): the app's name, identifiers, icon, splash screen, permissions
-- the config plugins listed in it, Svelte Native's among them
+- the config plugins listed in it, Expo Svelte's among them
 - the packages you installed that have native code
 
 The folders are build output, like `.svelte-kit`, and git ignores them. To change the native project, change one of the inputs and generate it again. Edits made inside `android/` or `ios/` are lost the next time.
@@ -61,7 +61,7 @@ Run it after you:
 
 - add or remove a package with native code, such as `npx expo install expo-camera`
 - change a config plugin or its options, or the native parts of `app.json`: identifiers, permissions, icon, splash screen, `scheme`
-- upgrade `@alfayez/svelte-native`, whose plugin writes into the native project
+- upgrade `expo-svelte`, whose plugin writes into the native project
 
 You don't need it for:
 
@@ -71,4 +71,4 @@ You don't need it for:
 
 ## Checking the setup
 
-`pnpm check-setup` runs [`svelte-native doctor`](cli), which checks the versions, the patches and the configuration, and prints how to fix what is wrong. Run it after an upgrade, or when a build fails in a way you don't understand.
+`pnpm check-setup` runs [`expo-svelte doctor`](cli), which checks the versions, the patches and the configuration, and prints how to fix what is wrong. Run it after an upgrade, or when a build fails in a way you don't understand.

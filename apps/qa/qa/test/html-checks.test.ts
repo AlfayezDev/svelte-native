@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, describe, expect, test } from "bun:test";
 import { builtOf, cardSize, expectations, find, htmlCheckNames, isBlank, members, sky100, sky900, textOf, type Built, type HtmlNode, type MemberRead } from "../../src/lib/native/dev/html-checks.ts";
-import { platformDir, svelteNativeCli } from "../lib/paths.ts";
+import { platformDir, expoSvelteCli } from "../lib/paths.ts";
 
 /**
  * What the HTML checks of the native checks lab expect (`src/lib/native/dev/html-checks.ts`): the expectations are held against readings that are right and readings that are wrong, the values they name against
@@ -135,8 +135,8 @@ describe("the values the checks name are the ones the build wrote", () => {
 		symlinkSync(dirname(createRequire(import.meta.url).resolve("tailwindcss/package.json")), join(root, "node_modules/tailwindcss"));
 		copyFileSync(join(platformDir, "src/global.css"), join(root, "src/global.css"));
 		copyFileSync(join(platformDir, "src/lib/native/dev/HtmlScreen.svelte"), join(root, "src/lib/HtmlScreen.svelte"));
-		const result = spawnSync(process.execPath, [svelteNativeCli, "css", "src/global.css", "--variant", "qa", "--json"], { cwd: root, encoding: "utf8" });
-		if (result.status !== 0) throw new Error(`svelte-native css failed: ${result.stderr.slice(0, 400)}`);
+		const result = spawnSync(process.execPath, [expoSvelteCli, "css", "src/global.css", "--variant", "qa", "--json"], { cwd: root, encoding: "utf8" });
+		if (result.status !== 0) throw new Error(`expo-svelte css failed: ${result.stderr.slice(0, 400)}`);
 		const { file } = JSON.parse(result.stdout) as { file: string };
 		const { default: table } = (await import(pathToFileURL(file).href)) as { default: { classes: Record<string, { style: Record<string, unknown> }[]> } };
 		expect(table.classes["text-lg"]?.[0]?.style.fontSize).toBe(cardSize);

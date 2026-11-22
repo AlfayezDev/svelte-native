@@ -57,8 +57,8 @@ describe("the feature registries", () => {
 });
 
 describe("the screens", () => {
-  /** The library's entries an app is meant to import (`packages/svelte-native/README.md`): not `/app`, `/core` or `/renderer`, which are its inside. */
-  const publicEntries = ["@alfayez/svelte-native", "@alfayez/svelte-native/router", "@alfayez/svelte-native/foreign", "@alfayez/svelte-native/updates", "@alfayez/svelte-native/remote", "@alfayez/svelte-native/platform"];
+  /** The library's entries an app is meant to import (`packages/expo-svelte/README.md`): not `/app`, `/core` or `/renderer`, which are its inside. */
+  const publicEntries = ["expo-svelte", "expo-svelte/router", "expo-svelte/foreign", "expo-svelte/updates", "expo-svelte/remote", "expo-svelte/platform"];
   const sourceFiles = (): string[] => readdirSync(join(app, "src"), { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile() && /\.(?:svelte|ts)$/.test(entry.name))
     .map((entry) => join(entry.parentPath, entry.name));
@@ -74,8 +74,8 @@ describe("the screens", () => {
       const specifiers = [...source.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)].map((match) => match[1] ?? "");
       for (const specifier of specifiers) {
         const where = `${file.slice(app.length + 1)}: ${specifier}`;
-        if (specifier.startsWith("@alfayez/svelte-native")) expect([where, publicEntries.includes(specifier)]).toEqual([where, true]);
-        expect([where, /apps\/qa|__dev|packages\/svelte-native/.test(specifier)]).toEqual([where, false]);
+        if (specifier.startsWith("expo-svelte")) expect([where, publicEntries.includes(specifier)]).toEqual([where, true]);
+        expect([where, /apps\/qa|__dev|packages\/expo-svelte/.test(specifier)]).toEqual([where, false]);
       }
     }
   });

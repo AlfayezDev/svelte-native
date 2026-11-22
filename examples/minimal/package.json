@@ -1,18 +1,18 @@
 {
-	"name": "svelte-native-minimal",
+	"name": "expo-svelte-minimal",
 	"version": "1.0.0",
 	"private": true,
-	"description": "The smallest Svelte Native app: a root layout, a home screen and a second screen pushed on top of it.",
-	"main": ".svelte-native/entry.ts",
+	"description": "The smallest Expo Svelte app: a root layout, a home screen and a second screen pushed on top of it.",
+	"main": ".expo-svelte/entry.ts",
 	"scripts": {
-		"check-setup": "svelte-native doctor",
-		"sync": "svelte-native sync",
-		"dev": "svelte-native dev",
-		"android": "svelte-native android",
-		"ios": "svelte-native ios"
+		"check-setup": "expo-svelte doctor",
+		"sync": "expo-svelte sync",
+		"dev": "expo-svelte dev",
+		"android": "expo-svelte android",
+		"ios": "expo-svelte ios"
 	},
 	"dependencies": {
-		"@alfayez/svelte-native": "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native",
+		"expo-svelte": "0.4.0-rc.10",
 		"@sveltejs/kit": "3.1.1",
 		"expo": "57.0.30",
 		"expo-constants": "57.0.22",

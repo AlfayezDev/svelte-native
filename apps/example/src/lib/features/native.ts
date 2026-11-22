@@ -2,7 +2,7 @@ import type { Feature } from "./feature.ts";
 
 /** The features that show native views, motion and touch. Add one here and a folder of the same name under `src/routes`. */
 export const nativeFeatures: Feature[] = [
-  // Native views: the library's wrappers of other native libraries, one screen each (`@alfayez/svelte-native/foreign`, and the SVG components of `@alfayez/svelte-native`), and `ExpoView` for an Expo library with none.
+  // Native views: the library's wrappers of other native libraries, one screen each (`expo-svelte/foreign`, and the SVG components of `expo-svelte`), and `ExpoView` for an Expo library with none.
   { group: "Native views", route: "/native-views/image", title: "Image (expo-image)", summary: "Fit, blurhash placeholder and fade-in" },
   { group: "Native views", route: "/native-views/blur", title: "Blur", summary: "The built-in BlurView: blur whatever is behind a view" },
   { group: "Native views", route: "/native-views/linear-gradient", title: "Linear gradient", summary: "expo-linear-gradient: colours, direction, children" },

@@ -3,6 +3,15 @@
   "version": "0.4.0-rc.10",
   "type": "module",
   "license": "MIT",
+  "homepage": "https://expo-svelte.alfayez.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AlfayezDev/svelte-native.git",
+    "directory": "packages/expo-svelte"
+  },
+  "bugs": {
+    "url": "https://github.com/AlfayezDev/svelte-native/issues"
+  },
   "publishConfig": {
     "access": "public",
     "tag": "next"

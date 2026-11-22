@@ -162,7 +162,7 @@ index eec38de858ec307cbec442dd12540018396c1ee2..2e3ef205012505e6e60b0ddbad8c91a0
        },
        legacyEventEmitter,
 diff --git a/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt b/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt
-index d1e5b3952b08accb1dee87aeb5819f5427c1f325..84f50585bcfd77d01ee077c851a01d51b9174060 100644
+index d1e5b3952b08accb1dee87aeb5819f5427c1f325..97a68b2cb7ab0c9ebcb867bfd43ab6eb7987854a 100644
 --- a/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt
 +++ b/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt
 @@ -9,16 +9,45 @@ import kotlinx.coroutines.CoroutineName
@@ -383,7 +383,7 @@ index d1e5b3952b08accb1dee87aeb5819f5427c1f325..84f50585bcfd77d01ee077c851a01d51
      registry.clear()
      logger.info("✅ ModuleRegistry was destroyed")
    }
-@@ -190,4 +327,118 @@ class ModuleRegistry(
+@@ -190,4 +327,116 @@ class ModuleRegistry(
        moduleHolder.post(eventName)
      }
    }
@@ -439,10 +439,10 @@ index d1e5b3952b08accb1dee87aeb5819f5427c1f325..84f50585bcfd77d01ee077c851a01d51
 +     * `ExpoVideo`, `ExpoBlur`, `ConicGradient`, `ExpoImage` and `ExpoLinearGradient` are the exceptions: they have views, which the
 +     * engine builds on demand (ExpoViews.kt in modules/svelte-engine), and none of them acts on a foreground, background or
 +     * intent round (`ExpoVideo`'s hooks act on later transitions only).
-+     * Anything not listed (dev menu, other custom modules...) stays eager.
++     * Anything not listed (dev menu, other custom modules...) stays eager. Modules written with Expo Modules API 2.0 (`@ExpoModule`: `expo-application`
++     * and `expo-crypto` since SDK 58) are not in this registry at all: Expo installs them on its own runtime when the app context is created.
 +     */
 +    private val LAZY_MODULE_NAMES = mapOf(
-+      "expo.modules.application.ApplicationModule" to "ExpoApplication",
 +      "expo.modules.blur.BlurModule" to "ExpoBlur",
 +      "expo.modules.conicgradient.ConicGradientModule" to "ConicGradient",
 +      "expo.modules.image.ExpoImageModule" to "ExpoImage",
@@ -450,7 +450,6 @@ index d1e5b3952b08accb1dee87aeb5819f5427c1f325..84f50585bcfd77d01ee077c851a01d51
 +      "expo.modules.asset.AssetModule" to "ExpoAsset",
 +      "expo.modules.constants.ConstantsModule" to "ExponentConstants",
 +      "expo.modules.fetch.ExpoFetchModule" to "ExpoFetchModule",
-+      "expo.modules.crypto.CryptoModule" to "ExpoCrypto",
 +      "expo.modules.crypto.aes.AesCryptoModule" to "ExpoCryptoAES",
 +      "expo.modules.filesystem.FileSystemModule" to "FileSystem",
 +      "expo.modules.filesystem.legacy.FileSystemLegacyModule" to "ExponentFileSystem",
@@ -492,7 +491,6 @@ index d1e5b3952b08accb1dee87aeb5819f5427c1f325..84f50585bcfd77d01ee077c851a01d51
 +      "ExpoModulesCoreJSLogger",
 +      "ExponentConstants",
 +      "ExpoSecureStore",
-+      "ExpoApplication",
 +      "SvelteUpdates",
 +      "SvelteEngine",
 +      "ExpoSplashScreen",

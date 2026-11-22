@@ -2191,7 +2191,7 @@ The Android and iOS columns are the results each check is written to give, from 
 | module | package (installed; specifier) | path | call | Android (expected) | iOS (expected) | needed, and notes |
 |---|---|---|---|---|---|---|
 | `async-storage` | `@react-native-async-storage/async-storage` 2.2.0 | js | `setItem`, `getItem`, `removeItem` of one key | ok | ok | nothing |
-| `mmkv` | `react-native-mmkv` 4.3.1 | js | `createMMKV`, `set`, `getString`, `remove` | ok | ok | a Nitro hybrid object; needs `react-native-nitro-modules` |
+| `mmkv` | `react-native-mmkv` 4.3.2 | js | `createMMKV`, `set`, `getString`, `remove` | ok | ok | a Nitro hybrid object; needs `react-native-nitro-modules` |
 | `secure-store` | `expo-secure-store` 57.0.4 (shared) | js | `setItemAsync`, `getItemAsync`, `deleteItemAsync` | ok | ok | already in the product |
 | `netinfo` | `@react-native-community/netinfo` 12.0.1 | js | `configure({ reachabilityShouldRun: () => false })`, `fetch()` | ok | ok | the default configuration probes `clients3.google.com` with a `fetch`; off, `fetch()` reads only the platform's connection state |
 | `device-info` | `react-native-device-info` 15.0.2 | js | `getVersion`, `getModel`, `getBundleId`, `getDeviceName` | ok | ok | nothing |

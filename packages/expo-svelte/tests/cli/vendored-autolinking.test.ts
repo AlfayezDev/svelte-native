@@ -199,8 +199,8 @@ describe("linkVendored", () => {
   });
 
   test("the refusal is said the same way by the plugin, the doctor and the command: the library includes it, remove it from the app's dependencies", () => {
-    expect(collisionMessage(["react-native-mmkv"])).toStartWith("expo-svelte includes react-native-mmkv 4.3.1; remove it from the app's dependencies (package.json)");
-    expect(collisionMessage(["react-native-nitro-modules", "react-native-mmkv"])).toContain("includes react-native-nitro-modules 0.35.10 and react-native-mmkv 4.3.1; remove them from");
+    expect(collisionMessage(["react-native-mmkv"])).toStartWith("expo-svelte includes react-native-mmkv 4.3.2; remove it from the app's dependencies (package.json)");
+    expect(collisionMessage(["react-native-nitro-modules", "react-native-mmkv"])).toContain("includes react-native-nitro-modules 0.35.10 and react-native-mmkv 4.3.2; remove them from");
     expect(collisionMessage(["react-native-reanimated"])).toStartWith("expo-svelte includes react-native-reanimated 4.7.1; remove it from the app's dependencies (package.json) and any `patchedDependencies` entry for it (pnpm stops on a patch of a package it no longer installs), reinstall, and prebuild again.");
   });
 
@@ -227,7 +227,7 @@ describe("linkVendored", () => {
 
 describe("what the app lists", () => {
   test("declaredVendored reads dependencies, devDependencies and optionalDependencies, and only the vendored names", () => {
-    const project = createProject({ "package.json": JSON.stringify({ dependencies: { "react-native-mmkv": "4.3.1", react: "*" }, devDependencies: { "react-native-nitro-modules": "*" }, optionalDependencies: { "react-native-mmkv-storage": "*" } }) }, "vendored-declared-");
+    const project = createProject({ "package.json": JSON.stringify({ dependencies: { "react-native-mmkv": "4.3.2", react: "*" }, devDependencies: { "react-native-nitro-modules": "*" }, optionalDependencies: { "react-native-mmkv-storage": "*" } }) }, "vendored-declared-");
     projects.push(project);
     expect(declaredVendored(project.directory).sort()).toEqual(["react-native-mmkv", "react-native-nitro-modules"]);
     expect(declaredVendored(join(project.directory, "nowhere"))).toEqual([]);
@@ -237,8 +237,8 @@ describe("what the app lists", () => {
   });
 
   test("the config plugin's check stops the prebuild with the message, for an app that lists one, and lets another through", () => {
-    expect(() => assertNoVendoredOriginals(app({ "react-native-mmkv": "4.3.1" }))).toThrow(collisionMessage(["react-native-mmkv"]));
-    expect(() => assertNoVendoredOriginals(app({ "react-native-nitro-modules": "0.35.10", "react-native-mmkv": "4.3.1" }))).toThrow("includes react-native-nitro-modules 0.35.10 and react-native-mmkv 4.3.1");
+    expect(() => assertNoVendoredOriginals(app({ "react-native-mmkv": "4.3.2" }))).toThrow(collisionMessage(["react-native-mmkv"]));
+    expect(() => assertNoVendoredOriginals(app({ "react-native-nitro-modules": "0.35.10", "react-native-mmkv": "4.3.2" }))).toThrow("includes react-native-nitro-modules 0.35.10 and react-native-mmkv 4.3.2");
     expect(() => assertNoVendoredOriginals(app({ "react-native-get-random-values": "2.0.0", "react-native-mmkv-storage": "1.0.0" }))).not.toThrow();
   });
 });
@@ -309,7 +309,7 @@ describe("the commands", () => {
       });
 
       test("an app that lists an original is refused by both: exit status 1, the message on standard error, no config on standard output", () => {
-        const root = app({ "react-native-mmkv": "4.3.1" });
+        const root = app({ "react-native-mmkv": "4.3.2" });
         for (const command of ["android-autolinking", "ios-autolinking"] as const) {
           const platform = command === "android-autolinking" ? "android" : "ios";
           const result = run(cli, command, ...printing({ root, dependencies: { "react-native-mmkv": installed("react-native-mmkv", platform, "/app/node_modules/react-native-mmkv") } }));
@@ -343,7 +343,7 @@ describe("the config plugin", () => {
 
   test("the prebuild of either platform stops for an app that lists a vendored package, before it writes anything", async () => {
     for (const platform of ["android", "ios"] as const) {
-      const root = app({ "react-native-mmkv": "4.3.1" });
+      const root = app({ "react-native-mmkv": "4.3.2" });
       let refused: unknown;
       try { await prebuild(root, platform); } catch (error) { refused = error; }
       expect([platform, (refused as Error | undefined)?.message]).toEqual([platform, collisionMessage(["react-native-mmkv"])]);

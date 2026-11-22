@@ -230,7 +230,7 @@ describe("the packages the library carries", () => {
       expect(failed(checks)).toHaveLength(1);
     }
     // In devDependencies too: the build links what the config command finds, wherever package.json lists it.
-    const { checks } = check({ files: { "package.json": JSON.stringify({ name: "fake-app", dependencies: { [library.name]: "*" }, devDependencies: { "react-native-mmkv": "4.3.1" } }) } });
+    const { checks } = check({ files: { "package.json": JSON.stringify({ name: "fake-app", dependencies: { [library.name]: "*" }, devDependencies: { "react-native-mmkv": "4.3.2" } }) } });
     expect(find(checks, "react-native-mmkv is a dependency of the app")?.status).toBe("fail");
   });
 

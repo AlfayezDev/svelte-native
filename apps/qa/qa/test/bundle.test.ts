@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { platformDir, expoSvelteCli } from "../lib/paths.ts";
+import { sourcesOfMap, type RawSourceMap } from "../lib/source-map.ts";
 
 /**
  * The JavaScript bundle of each app (packages/expo-svelte/native/svelte-core/SPEC.md, "Native modules (smoke test)" and "What the product contains: no development lab (JavaScript)"). The smoke test's libraries are in the smoke app only,
@@ -100,7 +101,7 @@ function bundle(variant: string, syncedFirst: readonly string[] = []): Bundle {
 	);
 	if (done.status !== 0) throw new Error(`export:embed (${variant || "qa"}) failed: ${(done.stderr || done.stdout).slice(-600)}`);
 	// The source map lists the modules of the bundle, as paths from the repository root (`/apps/qa/src/…`).
-	const { sources } = JSON.parse(readFileSync(sourceMap, "utf8")) as { sources: string[] };
+	const sources = sourcesOfMap(JSON.parse(readFileSync(sourceMap, "utf8")) as RawSourceMap);
 	return { text: readFileSync(output, "utf8"), bytes: statSync(output).size, modules: sources.map((source) => source.replace(/^\//, "")) };
 }
 

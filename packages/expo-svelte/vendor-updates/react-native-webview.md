@@ -1,6 +1,6 @@
 # react-native-webview
 
-- **Current**: 13.16.1
+- **Current**: 14.0.1
 - **Linked**: when the app turns it on (`libraries`)
 - **Upstream**: https://github.com/react-native-webview/react-native-webview
 - **Copy**: `vendor/react-native-webview/` (its `VENDOR.md` has the tarball's integrity, what was left out and the patches)
@@ -32,6 +32,7 @@ None. The copy leaves out `macos`, `windows` and `src/__tests__`.
 
 - Permission handling for pages (camera, microphone, geolocation requests): a new default that grants or asks is a privacy change.
 - Expo's own `@expo/dom-webview`, which `expo` brings, is separate and not this package.
+- 14: the iOS prop `removeIosKeyboardObserver` (in the view config), no `isFileUploadSupported` in the module any more, Android `minSdkVersion` 24, the legacy `openFileChooser` overrides removed.
 
 ## Native dependencies downloaded at build time
 

@@ -1,8 +1,8 @@
 diff --git a/apple/RNGestureHandlerManager.h b/apple/RNGestureHandlerManager.h
-index d9cf93d3657ee8187ca0554fceb59259484ae0cb..5269edcc8d5623750a3755e8e8b57e3a661a06bb 100644
+index e77ef4118b093b5590abfcf4752114c878f15a53..625f83e7b783374ac7ac33ce2934c696a81a672f 100644
 --- a/apple/RNGestureHandlerManager.h
 +++ b/apple/RNGestureHandlerManager.h
-@@ -33,6 +33,14 @@
+@@ -44,6 +44,14 @@
  
  - (void)dropAllGestureHandlers;
  
@@ -11,21 +11,21 @@ index d9cf93d3657ee8187ca0554fceb59259484ae0cb..5269edcc8d5623750a3755e8e8b57e3a
 +
 +/// Gives `view`, which holds React Native's touch handler (or sits under a view that does), the root recognizer when a handler is
 +/// attached below it and the walk of `attachGestureHandler` could not reach one at that time: a screen that joins its window after
-+/// its handlers attached. The recognizer is registered here as any other, so `handleSetJSResponder:` and the activation callback reach it.
++/// its handlers attached. The recognizer is registered here as any other, so the activation callback reaches it.
 +- (void)registerRootViewGestureRecognizerIfAttachedBelow:(nonnull RNGHUIView *)view;
 +
- - (void)handleSetJSResponder:(nonnull NSNumber *)viewTag blockNativeResponder:(BOOL)blockNativeResponder;
+ - (nullable RNGestureHandler *)handlerWithTag:(nonnull NSNumber *)handlerTag;
  
- - (void)handleClearJSResponder;
+ - (nullable RNGHUIView *)viewForReactTag:(nonnull NSNumber *)reactTag;
 diff --git a/apple/RNGestureHandlerManager.mm b/apple/RNGestureHandlerManager.mm
-index d9799b31cb862742395a97fd990b11dfaff44069..40e8fdb9427325eb48d4f9e691bea9b8aed6d925 100644
+index ba06fea99f02b63daaf35211d605e200da72fa9f..4e5433aced524f91c6761670037bd713813094c4 100644
 --- a/apple/RNGestureHandlerManager.mm
 +++ b/apple/RNGestureHandlerManager.mm
-@@ -43,6 +43,20 @@
+@@ -39,6 +39,20 @@
  
  constexpr int NEW_ARCH_NUMBER_OF_ATTACH_RETRIES = 25;
  
-+#if defined(RCT_NEW_ARCH_ENABLED) && !TARGET_OS_OSX
++#if !TARGET_OS_OSX
 +// A view that holds React Native's touch handler is where the root recognizer goes, wherever the view is: a sheet or a modal
 +// that an app presents itself holds its own touch handler outside every surface view.
 +static BOOL RNGHViewHasSurfaceTouchHandler(RNGHUIView *view)
@@ -42,9 +42,9 @@ index d9799b31cb862742395a97fd990b11dfaff44069..40e8fdb9427325eb48d4f9e691bea9b8
  @interface RNGestureHandlerManager () <RNGestureHandlerEventEmitter, RNRootViewGestureRecognizerDelegate>
  
  @end
-@@ -86,8 +100,17 @@ constexpr int NEW_ARCH_NUMBER_OF_ATTACH_RETRIES = 25;
+@@ -70,8 +84,17 @@ constexpr int NEW_ARCH_NUMBER_OF_ATTACH_RETRIES = 25;
+   return self;
  }
- #endif // RCT_NEW_ARCH_ENABLED
  
 +// The manager of the running module, for code outside the library that has to ask it something (see `registerRootViewGestureRecognizerIfAttachedBelow:`).
 +static __weak RNGestureHandlerManager *RNGHCurrentManager;
@@ -60,17 +60,16 @@ index d9799b31cb862742395a97fd990b11dfaff44069..40e8fdb9427325eb48d4f9e691bea9b8
    _registry = [RNGestureHandlerRegistry new];
    _rootViewGestureRecognizers = [NSHashTable hashTableWithOptions:NSPointerFunctionsWeakMemory];
    _attachRetryCounter = [[NSMutableDictionary alloc] init];
-@@ -288,7 +311,8 @@ constexpr int NEW_ARCH_NUMBER_OF_ATTACH_RETRIES = 25;
+@@ -316,7 +339,7 @@ static BOOL RNGHIsScreensTouchHandlerHost(RNGHUIView *view)
+     touchHandlerView = [childView reactViewController].view;
    } else {
-     while (
-         touchHandlerView != nil && ![touchHandlerView isKindOfClass:[RCTSurfaceView class]] &&
--        (fullWindowOverlayContainerClass == nil || ![touchHandlerView isKindOfClass:fullWindowOverlayContainerClass])) {
-+        (fullWindowOverlayContainerClass == nil || ![touchHandlerView isKindOfClass:fullWindowOverlayContainerClass]) &&
-+        !RNGHViewHasSurfaceTouchHandler(touchHandlerView)) {
+     while (touchHandlerView != nil && ![touchHandlerView isKindOfClass:[RCTSurfaceView class]] &&
+-           !RNGHIsScreensTouchHandlerHost(touchHandlerView)) {
++           !RNGHIsScreensTouchHandlerHost(touchHandlerView) && !RNGHViewHasSurfaceTouchHandler(touchHandlerView)) {
        touchHandlerView = touchHandlerView.superview;
      }
    }
-@@ -345,6 +369,18 @@ constexpr int NEW_ARCH_NUMBER_OF_ATTACH_RETRIES = 25;
+@@ -359,6 +382,22 @@ static BOOL RNGHIsScreensTouchHandlerHost(RNGHUIView *view)
    [_rootViewGestureRecognizers addObject:recognizer];
  }
  
@@ -78,10 +77,14 @@ index d9799b31cb862742395a97fd990b11dfaff44069..40e8fdb9427325eb48d4f9e691bea9b8
 +{
 +  // Only a view with a handler attached below it needs the root recognizer; a screen that joins its window with none (every screen of an app
 +  // that has no gesture) costs a loop over the handlers there are.
-+  for (RNGestureHandler *handler in _registry.handlers.objectEnumerator) {
-+    if ([handler.recognizer.view isDescendantOfView:view]) {
-+      [self registerViewWithGestureRecognizerAttachedIfNeeded:view];
-+      return;
++  NSDictionary *handlers = _registry.handlers;
++
++  @synchronized(handlers) {
++    for (RNGestureHandler *handler in handlers.objectEnumerator) {
++      if ([handler.recognizer.view isDescendantOfView:view]) {
++        [self registerViewWithGestureRecognizerAttachedIfNeeded:view];
++        return;
++      }
 +    }
 +  }
 +}

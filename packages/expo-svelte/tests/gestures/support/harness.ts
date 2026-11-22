@@ -17,6 +17,8 @@ export type World = {
   calls: NativeCall[];
   /** Everything else that happened, in order: `completeRoot`, `enableGestures`, listener subscriptions. */
   log: string[];
+  /** What `installUIRuntimeBindings` found in `__RNGH_UI_WORKLET_RUNTIME_HOLDER`, one entry per call. */
+  uiBindings: unknown[];
   roots: Record<number, FakeNode[]>;
   listeners: Map<string, ((event: object) => void)[]>;
   /** What `SvelteEngine.enableGestures()` returns; `undefined` stands for the engine module being absent (iOS). */
@@ -37,7 +39,8 @@ const record = (name) => (...args) => { W().calls.push(JSON.parse(JSON.stringify
 export const get = () => null;
 export const getEnforcing = (name) => {
   if (name !== 'RNGestureHandlerModule') throw new Error('unexpected native module ' + name);
-  return { createGestureHandler: record('createGestureHandler'), attachGestureHandler: record('attachGestureHandler'), updateGestureHandler: record('updateGestureHandler'), dropGestureHandler: record('dropGestureHandler'), flushOperations: record('flushOperations'), handleSetJSResponder: record('handleSetJSResponder'), handleClearJSResponder: record('handleClearJSResponder') };
+  // RNGH 3's module: no `updateGestureHandler` and no JS-responder calls. `installUIRuntimeBindings` is not a call of the detector (RNGH makes it when Reanimated loads), so it is kept apart from `calls` and `log`.
+  return { createGestureHandler: record('createGestureHandler'), attachGestureHandler: record('attachGestureHandler'), setGestureHandlerConfig: record('setGestureHandlerConfig'), configureRelations: record('configureRelations'), dropGestureHandler: record('dropGestureHandler'), flushOperations: record('flushOperations'), installUIRuntimeBindings: () => { (W().uiBindings ??= []).push(JSON.parse(JSON.stringify(globalThis.__RNGH_UI_WORKLET_RUNTIME_HOLDER ?? null))); return true; } };
 };`;
 const emitterSource = `
 export default {
@@ -72,7 +75,7 @@ function installWorld(os: World["os"]): void {
   const log: string[] = [];
   const host = createHost({ calls: log, describe: (call) => (call.op === "completeRoot" ? "completeRoot" : undefined) });
   const world: World = {
-    calls: [], log, roots: host.roots, listeners: new Map(),
+    calls: [], log, uiBindings: [], roots: host.roots, listeners: new Map(),
     engine: { install: () => false, enableGestures: () => { log.push("enableGestures"); return true; } },
     os,
     get dispatch() { return host.handler ?? null; },
@@ -111,7 +114,7 @@ export type Loaded = {
   probe: {
     receiverSize(): { stateManagers: number; lastUpdates: number };
     /** The numbers `src/gestures/animated.ts` copies, by RNGH's names; the module is evaluated by this call and not before. */
-    copiedConstants(): Promise<{ State: Record<string, number>; TouchEventType: Record<string, number>; CALLBACK_TYPE: Record<string, number> }>;
+    copiedConstants(): Promise<{ State: Record<string, number>; TouchEventType: Record<string, number>; CallbackType: Record<string, number> }>;
     MountRegistry: typeof import("../../../src/gestures/rngh.js").MountRegistry;
     findHandler: typeof import("../../../src/gestures/rngh.js").findHandler;
     findHandlerByTestID(testID: string): { handlerTag: number } | null;

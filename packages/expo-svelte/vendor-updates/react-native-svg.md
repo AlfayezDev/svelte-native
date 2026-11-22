@@ -1,6 +1,6 @@
 # react-native-svg
 
-- **Current**: 15.15.4
+- **Current**: 15.16.0
 - **Linked**: every app
 - **Upstream**: https://github.com/react-native-community/react-native-svg
 - **Copy**: `vendor/react-native-svg/` (its `VENDOR.md` has the tarball's integrity, what was left out and the patches)
@@ -31,6 +31,7 @@ None.
 ## What to look at in its source
 
 - New or renamed native components and props.
+- 15.16 imports `codegenNativeComponent` from `react-native` (the Metro shim of `src/fabric/react-native-lite.ts` exports it), drops its `warn-once` dependency and `Touchable`, and adds the TurboModule `RNSVGSoundModule` (`playTouchSound`, `AudioManager.FX_KEY_CLICK`, behind `onPress` of a touchable element).
 
 ## Native dependencies downloaded at build time
 

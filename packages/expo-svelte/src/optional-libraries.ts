@@ -14,22 +14,22 @@ const expo = "expo" as const;
 
 export const optionalLibraries: readonly VendoredPackage[] = [
   // Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module, so they have no `android` or `ios` entry here.
-  { name: "expo-blur", version: "57.0.3", optional: { kind: expo } },
+  { name: "expo-blur", version: "58.0.6", optional: { kind: expo } },
   { name: "expo-conic-gradient", version: "0.2.1", optional: { kind: expo } },
-  { name: "expo-image", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
-  { name: "expo-linear-gradient", version: "57.0.2", optional: { kind: expo } },
-  { name: "expo-video", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+  { name: "expo-image", version: "58.0.18", optional: { kind: expo, plugin: "app.plugin.js" } },
+  { name: "expo-linear-gradient", version: "58.0.4", optional: { kind: expo } },
+  { name: "expo-video", version: "58.0.14", optional: { kind: expo, plugin: "app.plugin.js" } },
   // React Native packages: an entry of the autolinking config for each platform.
   {
     name: "@react-native-community/datetimepicker",
-    version: "9.1.0",
+    version: "9.2.1",
     android: { packageImportPath: "import com.reactcommunity.rndatetimepicker.RNDateTimePickerPackage;", packageInstance: "new RNDateTimePickerPackage()" },
     ios: { podspec: "RNDateTimePicker.podspec" },
     optional: { kind: react, plugin: "app.plugin.js" },
   },
   {
     name: "lottie-react-native",
-    version: "7.3.8",
+    version: "7.5.0",
     android: { packageImportPath: "import com.airbnb.android.react.lottie.LottiePackage;", packageInstance: "new LottiePackage()", componentDescriptors: ["LottieAnimationViewComponentDescriptor"] },
     ios: { podspec: "lottie-react-native.podspec" },
     optional: { kind: react },
@@ -63,7 +63,7 @@ export const optionalLibraries: readonly VendoredPackage[] = [
   },
   {
     name: "react-native-maps",
-    version: "1.27.2",
+    version: "1.29.11",
     android: {
       packageImportPath: "import com.rnmaps.maps.MapsPackage;",
       packageInstance: "new MapsPackage()",
@@ -101,14 +101,14 @@ export const optionalLibraries: readonly VendoredPackage[] = [
   },
   {
     name: "react-native-view-shot",
-    version: "5.1.0",
+    version: "6.1.1",
     android: { packageImportPath: "import fr.greweb.reactnativeviewshot.RNViewShotPackage;", packageInstance: "new RNViewShotPackage()" },
     ios: { podspec: "react-native-view-shot.podspec" },
     optional: { kind: react },
   },
   {
     name: "react-native-webview",
-    version: "13.16.1",
+    version: "14.0.1",
     android: { packageImportPath: "import com.reactnativecommunity.webview.RNCWebViewPackage;", packageInstance: "new RNCWebViewPackage()", componentDescriptors: ["RNCWebViewComponentDescriptor"] },
     ios: { podspec: "react-native-webview.podspec" },
     optional: { kind: react },

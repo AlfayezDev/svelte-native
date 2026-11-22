@@ -26,6 +26,14 @@ internal interface GestureRoot {
   /** A native view took the touch lock: every handler is cancelled. */
   fun requestDisallowInterceptTouchEvent()
 
+  /**
+   * The children are about to get the event the handlers did not take (gesture handler 3's root view does the same around `super.dispatchTouchEvent`): a touch lock
+   * a native view asks for during it is told apart from one asked for outside, and [onNativeDispatchEnd] cancels the handlers that opted into surviving only a lock that is not a grab.
+   */
+  fun onNativeDispatchStart()
+
+  fun onNativeDispatchEnd(ev: MotionEvent)
+
   fun tearDown()
 }
 
@@ -256,7 +264,8 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
       if (intercept) { arbiter.handlerTookOver(); return true }
     }
     // Let Android dispatch continue so scroll views can scroll; the gesture is ours either way.
-    super.dispatchTouchEvent(ev)
+    gestureRoot?.onNativeDispatchStart()
+    try { super.dispatchTouchEvent(ev) } finally { gestureRoot?.onNativeDispatchEnd(ev) }
     return true
   }
 
@@ -330,7 +339,7 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
   /** Hover events (a stylus or mouse) are the library's to read, as in its own root view; the engine has no use for them. */
   override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
     val gestureRoot = gestures
-    if (gestureRoot != null && isHover(ev.actionMasked) && gestureRoot.dispatchTouchEvent(ev)) return true
+    if (gestureRoot != null && (isHover(ev.actionMasked) || isButton(ev.actionMasked)) && gestureRoot.dispatchTouchEvent(ev)) return true
     return super.dispatchGenericMotionEvent(ev)
   }
 
@@ -369,6 +378,9 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
 
   private fun isHover(action: Int) =
     action == MotionEvent.ACTION_HOVER_MOVE || action == MotionEvent.ACTION_HOVER_ENTER || action == MotionEvent.ACTION_HOVER_EXIT
+
+  /** A mouse button went down or up: gesture handler 3's root view reads these too (`isButtonAction`), for the hover and mouse handlers. */
+  private fun isButton(action: Int) = action == MotionEvent.ACTION_BUTTON_PRESS || action == MotionEvent.ACTION_BUTTON_RELEASE
 
   private fun tagOf(view: View): Int = (view as? EngineNode)?.node?.tag ?: 0
 

@@ -270,7 +270,7 @@ A library that is on is linked on Android and iOS and bundled by Metro; one that
 | react-native-pdf, react-native-view-shot | `Pdf`; `captureRef`, `ViewShot` |
 | react-native-webview, react-native-maps | `WebView`; `MapView`, `Marker` |
 | react-native-fast-shadow, react-native-animateable-text | `ShadowedView`, `shadowStyle`; `AnimateableText` |
-| react-native-svg 15.15.4 (the library carries it; the main entry exports them, not `/foreign`) | `Svg`, shapes, `SvgText`, gradients, filters, `SvgXml`, `SvgUri` (36 components) |
+| react-native-svg 15.16.0 (the library carries it; the main entry exports them, not `/foreign`) | `Svg`, shapes, `SvgText`, gradients, filters, `SvgXml`, `SvgUri` (36 components) |
 
 The library has its own blur, `BlurView`, which needs no package (a native module of the library, `native/svelte-core`): `intensity` and `tint`, children on top. The main entry exports it; `/foreign` does too. `ExpoBlurView` is expo-blur's.
 | any other Expo module's view | `ExpoView`, `defineExpoView` mount it by the module's name, with the module's own props |

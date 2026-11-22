@@ -13,7 +13,8 @@
    * The native image view of `expo-image` (`ExpoImage`) as a Svelte component, with the props and events of that
    * package's `Image`: `source` as a URL, an `{ uri, headers, cacheKey }` object, a `require`d asset, a list of those or a
    * blurhash or thumbhash; `contentFit`, `contentPosition`, `transition`, `placeholder`, `tintColor`, `cachePolicy`,
-   * `priority`, `recyclingKey`, `blurRadius`, `autoplay`, `allowDownscaling`, `decodeFormat` and the iOS-only ones. The
+   * `priority`, `recyclingKey`, `blurRadius`, `autoplay`, `allowDownscaling`, `decodeFormat`, `svgVariables` (the values of the SVG's CSS custom
+   * properties; numbers are sent as text) and the iOS-only ones. The
    * deprecated React Native props (`resizeMode`, `fadeDuration`, `defaultSource`, `alt`) still map to the current ones.
    * Not ported: the static methods (`prefetch`, `loadAsync`, the cache functions) and the view's own functions
    * (`startAnimating`, `stopAnimating`, `lockResourceAsync`, `unlockResourceAsync`, `reloadAsync`), which are reachable through the

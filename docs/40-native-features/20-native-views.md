@@ -112,6 +112,7 @@ An image with `expo-image`'s extras: a placeholder (a blurhash or thumbhash), a 
 | `contentFit` | `cover`, `contain`, `fill`, `none` or `scale-down`. |
 | `contentPosition`, `transition`, `tintColor`, `blurRadius` | Placement, a fade in milliseconds, a tint, a blur. |
 | `cachePolicy`, `priority`, `recyclingKey` | `none`, `disk`, `memory` or `memory-disk`; the load priority; a key for views that are reused in a list. |
+| `svgVariables` | For an SVG source that uses `var(--name, fallback)`: the values of its custom properties, `{ '--roof': '#e33', '--stroke-width': 2 }` (a number is sent as text). |
 | `onLoadStart`, `onProgress`, `onLoad`, `onError`, `onLoadEnd`, `onDisplay` | Called with the payload itself: `onLoad({ cacheType, source })`, `onError({ error })`. |
 
 The library's static functions (`prefetch`, the cache functions) are reached through its native module, `requireNativeModule('ExpoImage')`.
@@ -149,6 +150,8 @@ The library's static functions (`prefetch`, the cache functions) are reached thr
 | `blurReductionFactor` | Android: the number the intensity is divided by, so that a value looks alike on both platforms. Default 4. |
 
 The views inside a `BlurTargetView` draw and lay out as usual, but they don't receive touches. On iOS, `BlurTargetView` is a plain `View`.
+
+The corner radii of the `ExpoBlurView`'s `style` (`borderRadius` and the per-corner ones) clip the blur itself, as in `expo-blur` 58: a rounded blur needs no extra wrapper view.
 
 ### LinearGradient
 
@@ -438,7 +441,7 @@ Draws views into an image. `ViewShot` is a `View` whose `ref` handle has `captur
 
 | Option | Description |
 | --- | --- |
-| `format` | `png` (the default) or `jpg`; on Android also `webm`. |
+| `format` | `png` (the default) or `jpg`; on Android also `webp` (`webm`, its old name, still works and warns). |
 | `quality` | 0 to 1, for `jpg`. |
 | `result` | `tmpfile` (the default: a file that lasts until the app exits), `base64` or `data-uri`. |
 | `width`, `height` | The image size: pixels on Android, points on iOS (drawn at the screen's scale). |
@@ -542,8 +545,8 @@ On Android, React Native can drop an event of a native view when JavaScript is b
 
 | Library | Version |
 | --- | --- |
-| `lottie-react-native` | 7.3.8 |
-| `react-native-maps` | 1.27.2 |
+| `lottie-react-native` | 7.5.0 |
+| `react-native-maps` | 1.29.11 |
 | `react-native-pdf` | 7.0.3 |
 | `react-native-video` | 6.19.3 |
 

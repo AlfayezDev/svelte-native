@@ -159,7 +159,7 @@ describe("the packages the library carries", () => {
     const patched = ["react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"];
     /** The files of each copy that the doctor's check reads (`shapes.ts`). */
     const shapeFiles: Record<string, string[]> = {
-      "react-native-gesture-handler": ["apple/RNGestureHandlerManager.h", "apple/RNGestureHandlerManager.mm"],
+      "react-native-gesture-handler": ["apple/RNGestureHandlerManager.h", "apple/RNGestureHandlerManager.mm", "scripts/gesture_handler_utils.rb"],
       "react-native-reanimated": [
         "android/src/main/java/com/swmansion/reanimated/SvelteEngineHook.kt", "android/src/main/java/com/swmansion/reanimated/NativeProxy.kt", "android/src/main/cpp/reanimated/android/NativeProxy.cpp",
         "android/src/main/cpp/reanimated/android/NativeProxy.h", "scripts/validate-worklets-version.js", "src/featureFlags/staticFlags.json",
@@ -190,6 +190,7 @@ describe("the packages the library carries", () => {
     }
     const cases: [string, string, string, string, string][] = [
       ["react-native-gesture-handler", "apple/RNGestureHandlerManager.mm", "registerRootViewGestureRecognizerIfAttachedBelow", "x", "RNGestureHandlerManager.mm"],
+      ["react-native-gesture-handler", "scripts/gesture_handler_utils.rb", "File.expand_path('../../react-native-worklets', __dir__)", "File.expand_path('../../react-native-svg', __dir__)", "does not look for the Worklets copy beside the package"],
       ["react-native-reanimated", "src/featureFlags/staticFlags.json", '"ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true', '"ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": false', "synchronous Android update off"],
       ["react-native-reanimated", "scripts/validate-worklets-version.js", "../../react-native-worklets/package.json", "react-native-worklets/package.json", "still looks for react-native-worklets by name"],
       ["react-native-worklets", "src/runLoop/uiRuntime/requestAnimationFrame.ts", "let frameRequested = false;", "", "does not request a native frame on demand"],

@@ -65,13 +65,13 @@ test("needsToReattach: a different count, handlerName or thread, as RNGH decides
 });
 
 test("the constants the UI worklet copies are RNGH's, every one of them", async () => {
-  // `State`, `TouchEventType` and `CALLBACK_TYPE` of `src/gestures/rngh.js` are RNGH's own modules, so comparing them with the
+  // `State`, `TouchEventType` and `CallbackType` of `src/gestures/rngh.js` are RNGH's own modules, so comparing them with the
   // oracle's would compare RNGH with itself. The copies are the numbers in `animated.ts`: the worklet reads those.
   const { probe } = await load({ fixture: "gesture-fixture.svelte" });
   const copies = await probe.copiedConstants();
   expect(copies.State).toEqual(oracle().State);
   expect(copies.TouchEventType).toEqual(oracle().TouchEventType);
-  expect(copies.CALLBACK_TYPE).toEqual(oracle().CALLBACK_TYPE);
+  expect(copies.CallbackType).toEqual(oracle().CallbackType);
   // ... and the three objects hold every numeric constant the file declares: a constant added to the worklet and left out of them is a miss.
   const source = await readFile(src("gestures/animated.ts"), "utf8");
   const declared = [...source.matchAll(/^const ([A-Z_]+) = (\d+);$/gm)].map(([, name, value]) => `${name}=${value}`);

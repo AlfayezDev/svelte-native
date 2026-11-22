@@ -249,7 +249,7 @@ function detach(record: GestureRecord): void {
 }
 
 // A handler's relations name other handlers by tag, and every gesture of a commit has its tag only after its own attach, so what
-// goes into `updateGestureHandler` waits for the whole commit: one deferred batch (RNGH's `ghQueueMicrotask`) per burst of changes.
+// goes into `configureRelations` waits for the whole commit: one deferred batch (RNGH's `ghQueueMicrotask`) per burst of changes.
 const batch: GestureRecord[] = [];
 let scheduled = false;
 function schedule(): void {
@@ -271,7 +271,7 @@ function runBatch(): void {
   if (failure !== undefined) throw failure;
 }
 
-/** The deferred half of `attachHandlers` and `updateHandlers`: relations resolved, config sent. */
+/** The deferred half of `attachHandlers` and `updateHandlers`: config sent, relations resolved and sent. */
 function step(record: GestureRecord): void {
   record.queued = false;
   if (!record.mounted) return;
@@ -290,7 +290,9 @@ function step(record: GestureRecord): void {
       handler.config = source.config;
       handler.handlers = source.handlers;
     }
-    native.updateGestureHandler(handler.handlerTag, filterConfig(handler.config, ALLOWED_PROPS, extractGestureRelations(handler)));
+    // RNGH 3 sends the config and the relations of a handler as two calls, in this order.
+    native.setGestureHandlerConfig(handler.handlerTag, filterConfig(handler.config, ALLOWED_PROPS));
+    native.configureRelations(handler.handlerTag, extractGestureRelations(handler));
     if (source) registerHandler(handler.handlerTag, handler, handler.config.testId);
   }
   if (record.ui && shareAgain) shareHandlers(record.ui, attached);

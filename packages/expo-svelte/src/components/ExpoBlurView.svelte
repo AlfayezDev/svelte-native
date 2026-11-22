@@ -4,6 +4,8 @@
   import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { expoViewName } from "../fabric/foreign.ts";
+  import { Platform } from "../fabric/deps-rn.ts";
+  import { androidBlurBorderRadii, blurRadiusStyle } from "../fabric/foreign-blur.ts";
   import View from "./View.svelte";
   import type { ViewProps } from "react-native";
 
@@ -16,6 +18,9 @@
    * content to blur goes in a `BlurTargetView` and `blurTarget` is its `ref` (the native view finds the target by its tag; the tag
    * reaches it with the first update after both views exist). The views inside a `BlurTargetView` are mounted by React Native
    * (the target is a foreign view): they draw and lay out as usual and take no JavaScript touch or responder events.
+   *
+   * The container's corner radii (and `overflow: "hidden"`) go to the native blur view too, as `expo-blur` 58 does, and on Android as its `borderRadii`: the blur is clipped to
+   * the container's corners.
    */
   let { tint = "default", intensity = 50, blurReductionFactor = 4, blurMethod, experimentalBlurMethod, blurTarget, style, children, ref, ...attributes }: Omit<ViewProps, "children"> & {
     tint?: string;
@@ -34,8 +39,10 @@
   const component = expoViewName("ExpoBlur", "ExpoBlurView");
   const blurTargetId = $derived(typeof blurTarget === "number" ? blurTarget : blurTarget?.tag);
   const fill = { position: "absolute", left: 0, top: 0, right: 0, bottom: 0 } as const;
+  const radius = $derived(blurRadiusStyle(style));
+  const radii = $derived(radius && Platform.OS === "android" ? { borderRadii: androidBlurBorderRadii(radius) } : null);
 </script>
 <View {...attributes} style={[{ backgroundColor: "transparent" }, style]} {ref}>
-  <native-foreign {component} nativeProps={resolveProps({ blurTargetId, tint, intensity, blurReductionFactor, blurMethod: blurMethod ?? experimentalBlurMethod ?? "none", style: fill })}></native-foreign>
+  <native-foreign {component} nativeProps={resolveProps({ ...radii, blurTargetId, tint, intensity, blurReductionFactor, blurMethod: blurMethod ?? experimentalBlurMethod ?? "none", style: radius ? [fill, radius] : fill })}></native-foreign>
   {@render children?.()}
 </View>

@@ -7,7 +7,7 @@ import kotlin.system.exitProcess
  * Plain-JVM check of the accessibility props on the Kotlin side, without a device:
  * 1. the production decoder (`A11yRecords`) on the streams A11yWireTest.cpp verified, so both halves of the wire meet on the same bytes;
  * 2. the decisions of `A11yRules` (content description, range, action ids, which role a prop stands for);
- * 3. the tables of `A11yRules` against React Native 0.86's own sources (`ReactAccessibilityDelegate.kt`, `BaseViewManager.java`,
+ * 3. the tables of `A11yRules` against React Native 0.88's own sources (`ReactAccessibilityDelegate.kt`, `BaseViewManager.java`,
  *    `AccessibilityPrimitives.h`), read from `node_modules`, so an upgrade that changes a role, an action id or the `Role` enum fails here.
  * Usage: A11yRulesCheck <fixture> <ReactAccessibilityDelegate.kt> <BaseViewManager.java> <AccessibilityPrimitives.h>   (src/test/run.sh)
  */

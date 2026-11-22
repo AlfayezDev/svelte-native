@@ -1,7 +1,7 @@
 import { expect, spyOn, test } from "bun:test";
 import { createHarness, expoViewConfigs, find, settle } from "./support/harness.ts";
 import { loadLibrary } from "./support/library.ts";
-import { expoImageHandlers, expoImageProps, resolveContentFit, resolveContentPosition, resolveSfEffect, resolveSource, resolveSources, resolveTransition } from "../../src/fabric/foreign-image.ts";
+import { expoImageHandlers, expoImageProps, resolveContentFit, resolveContentPosition, resolveSfEffect, resolveSvgVariables, resolveSource, resolveSources, resolveTransition } from "../../src/fabric/foreign-image.ts";
 
 /**
  * expo-image (SPEC.md, "Foreign views"): the Svelte component mounts the module's `ExpoImage` view by the name the Expo
@@ -76,9 +76,9 @@ type Library = {
 const library = () => loadLibrary<Library>({
   entry: `export * from "expo-image/src/utils/resolveSources.tsx"; export { resolveContentFit, resolveContentPosition, resolveTransition } from "expo-image/src/utils.ts";`,
   stubs: [
-    ["expo", "export class SharedRef {}"],
-    ["expo-modules-core", "export const Platform = { OS: 'android' };"],
-    ["react-native/Libraries/Image/resolveAssetSource", "export default (n) => ({ uri: 'asset:/' + n, width: 1, height: 1, scale: 1 });"],
+    // expo-image 58 takes `Platform` and `SharedRef` from `expo`, and `Image.resolveAssetSource` from `react-native` (it was the deep import `react-native/Libraries/Image/resolveAssetSource`).
+    ["expo", "export class SharedRef {}; export const Platform = { OS: 'android' };"],
+    ["react-native", "export const Image = { resolveAssetSource: (n) => ({ uri: 'asset:/' + n, width: 1, height: 1, scale: 1 }) };"],
   ],
 });
 const asset = (number: number) => ({ uri: `asset:/${number}`, width: 1, height: 1, scale: 1 });
@@ -154,4 +154,22 @@ test("the native event handlers: load, progress and error always, display only w
   handlers.onLoad?.({ nativeEvent: {} });
   handlers.onDisplay?.({ nativeEvent: {} });
   expect(log).toEqual(["load", "end", "display"]);
+});
+
+test("svgVariables are sent as text (expo-image 58's resolveSvgVariables), a key that is not a custom property is reported, and nothing is sent when there are none", () => {
+  expect(resolveSvgVariables(undefined)).toBeNull();
+  expect(resolveSvgVariables(null)).toBeNull();
+  expect(resolveSvgVariables({ "--roof": "#ee3333", "--stroke-width": 2, "--opacity": 0.5 })).toEqual({ "--roof": "#ee3333", "--stroke-width": "2", "--opacity": "0.5" });
+  const warn = spyOn(console, "warn").mockImplementation(() => {});
+  (globalThis as { __DEV__?: boolean }).__DEV__ = true;
+  try {
+    expect(resolveSvgVariables({ roof: "red" })).toEqual({ roof: "red" });
+    expect(warn.mock.calls.map((args) => args[0])).toEqual(['The `svgVariables` key "roof" is not a CSS custom property and will be ignored. Custom properties start with two dashes, so use "--roof" if that is what the SVG declares.']);
+  } finally {
+    warn.mockRestore();
+    delete (globalThis as { __DEV__?: boolean }).__DEV__;
+  }
+  const props = expoImageProps({ source: "https://example.com/a.svg", svgVariables: { "--wall": 1 }, transition: { duration: 100, skipOnCacheHit: "memory" } }, () => null, "android");
+  expect(props.svgVariables).toEqual({ "--wall": "1" });
+  expect(props.transition).toEqual({ duration: 100, skipOnCacheHit: "memory" });
 });

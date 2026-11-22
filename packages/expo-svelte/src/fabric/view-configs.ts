@@ -234,7 +234,7 @@ export type Kind = {
  * a `legacy` kind on iOS, whose view manager only emits an event it was given a handler prop for (`Kind.legacy`).
  */
 const foreignKinds: Record<string, Kind> = {
-  // react-native-webview 13.16
+  // react-native-webview 14.0
   RNCWebView: {
     plain: `
       allowFileAccess allowFileAccessFromFileURLs allowUniversalAccessFromFileURLs allowingReadAccessToURL
@@ -250,7 +250,7 @@ const foreignKinds: Record<string, Kind> = {
       lackPermissionToDownloadMessage limitsNavigationsToAppBoundDomains mediaCapturePermissionGrantType
       mediaPlaybackRequiresUserAction menuItems messagingEnabled messagingModuleName minimumFontSize mixedContentMode
       nestedScrollEnabled newSource overScrollMode pagingEnabled paymentRequestEnabled pullToRefreshEnabled
-      refreshControlLightMode saveFormDataDisabled scalesPageToFit scrollEnabled setBuiltInZoomControls
+      refreshControlLightMode removeIosKeyboardObserver saveFormDataDisabled scalesPageToFit scrollEnabled setBuiltInZoomControls
       setDisplayZoomControls setSupportMultipleWindows sharedCookiesEnabled showsHorizontalScrollIndicator
       showsVerticalScrollIndicator suppressMenuItems textInteractionEnabled textZoom thirdPartyCookiesEnabled
       useSharedProcessPool userAgent webviewDebuggingEnabled
@@ -261,7 +261,7 @@ const foreignKinds: Record<string, Kind> = {
       topOpenWindow topRenderProcessGone topScroll topShouldStartLoadWithRequest
     `,
   },
-  // react-native-maps 1.27
+  // react-native-maps 1.29
   RNMapsMapView: {
     plain: `
       appleLogoInsets cacheEnabled camera cameraZoomRange compassOffset customMapStyleString followsUserLocation googleMapId
@@ -283,7 +283,7 @@ const foreignKinds: Record<string, Kind> = {
   },
   RNMapsMarker: {
     plain: `
-      anchor calloutAnchor calloutOffset centerOffset coordinate description displayPriority draggable identifier
+      anchor calloutAnchor calloutOffset centerOffset coordinate description displayPriority draggable flat identifier
       isPreselected opacity subtitleVisibility title titleVisibility tracksViewChanges useLegacyPinView
     `,
     colors: "pinColor",
@@ -319,10 +319,10 @@ const foreignKinds: Record<string, Kind> = {
     colors: "accentColor textColor",
     events: "topChange topPickerDismiss",
   },
-  // lottie-react-native 7.3
+  // lottie-react-native 7.5
   LottieAnimationView: {
     plain: `
-      autoPlay cacheComposition dummy enableMergePathsAndroidForKitKatAndAbove enableSafeModeAndroid
+      applyOpacityToLayersAndroid autoPlay cacheComposition dummy enableMergePathsAndroidForKitKatAndAbove enableSafeModeAndroid
       hardwareAccelerationAndroid imageAssetsFolder loop progress renderMode resizeMode sourceDotLottieURI sourceJson
       sourceName sourceURL speed textFiltersAndroid textFiltersIOS
     `,

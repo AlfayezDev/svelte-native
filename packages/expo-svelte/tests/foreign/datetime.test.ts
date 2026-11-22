@@ -95,6 +95,7 @@ test("openDatePicker opens the library's dialog for the mode and answers with th
   // Invalid options reject before the dialog is asked.
   await expect(datetime.openDatePicker({ value: "2026" as never })).rejects.toThrow("`value` must be an instance of Date");
   await expect(datetime.openDatePicker({ value, minimumDate: maximumDate, maximumDate: minimumDate })).rejects.toThrow("is after maximumDate");
+  await expect(datetime.openDatePicker({ value, timeZoneName: "UTC", timeZoneOffsetInMinutes: 60 })).rejects.toThrow("cannot be specified at the same time");
 });
 
 test("the iOS display falls back to the wheels before iOS 14, and the zone options exclude each other", async () => {

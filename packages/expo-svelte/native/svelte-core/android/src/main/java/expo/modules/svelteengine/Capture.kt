@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicReference
  * own (a foreign view's frame, what is inside a foreign view, an unknown tag) answers null, so the library's module draws it, with
  * every option. The view is looked up first and the options are judged only for an engine view ([CaptureRules.plan]).
  *
- * Supported: the formats `png`, `jpg` and `webm`; the results `tmpfile`, `base64` and `data-uri`; `width` and `height` (both),
+ * Supported: the formats `png`, `jpg`, `webp` and `webm` (view-shot 6's deprecated name for `webp`); the results `tmpfile`, `base64` and `data-uri`; `width` and `height` (both),
  * `quality`, `fileName`, `handleGLSurfaceViewOnAndroid`. Rejected, for an engine view: the `raw` format, the `zip-base64` result
  * and `snapshotContentContainer`.
  *
@@ -152,7 +152,7 @@ object Capture {
         scaled = sized
         val compress = when (format) {
           "jpg" -> Bitmap.CompressFormat.JPEG
-          "webm" -> WEBP
+          "webp", "webm" -> WEBP
           else -> Bitmap.CompressFormat.PNG
         }
         val percent = (100.0 * quality).toInt()
@@ -165,7 +165,7 @@ object Capture {
           else -> {
             val bytes = ByteArrayOutputStream().also { sized.compress(compress, percent, it) }.toByteArray()
             val encoded = Base64.encodeToString(bytes, Base64.NO_WRAP)
-            promise.resolve(if (result == "data-uri") "data:image/${if (format == "jpg") "jpeg" else format};base64,$encoded" else encoded)
+            promise.resolve(if (result == "data-uri") "data:image/${mime(format)};base64,$encoded" else encoded)
           }
         }
       } catch (error: Throwable) {
@@ -177,6 +177,13 @@ object Capture {
         gpu?.release()
       }
     }
+  }
+
+  /** The subtype of a `data:image/...` URI, as view-shot 6 writes it: `jpg` is `jpeg` and its deprecated `webm` is `webp`. */
+  private fun mime(format: String): String = when (format) {
+    "jpg" -> "jpeg"
+    "webm" -> "webp"
+    else -> format
   }
 
   /** `View.draw` into a software canvas, then the library's walk over the `TextureView`s below the view. Main thread; the bitmap is the caller's, and recycled here when the draw fails. */

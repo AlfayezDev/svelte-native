@@ -21,7 +21,7 @@ export type AnimLog = {
   onWrite?: (mutable: { value: unknown }, next: unknown) => void;
   /** Every `new WorkletEventHandler`: the registrations a detector made, in order. */
   eventHandlers?: FakeEventHandler[];
-  /** `setGestureState(tag, state)` calls. */
+  /** The `(tag, state)` calls of the fake `_setGestureStateSync` the gesture tests install on the global object (RNGH 3's UI-runtime function). */
   gestureStates?: [tag: number, state: number][];
   /** A test sets it to make `makeMutable` throw, as Reanimated does when it cannot make a shared value. */
   failMutable?: boolean;
@@ -60,7 +60,7 @@ export const reanimatedStubs: Record<string, string> = {
   "react-native-reanimated/src/common/style/processors/colors": "export const processColorsInProps = () => {};",
   "react-native-reanimated/src/animationBuilder": "export const maybeBuild = (c) => (typeof c?.build === 'function' ? c.build() : c);",
   "react-native-reanimated/src/UpdateLayoutAnimations": `${head} export const updateLayoutAnimations = (viewTag, type, config) => { (A.layoutConfigs ??= []).push({ viewTag, type, config }); };`,
-  "react-native-worklets": "export const makeShareable = (value) => value; export const runOnJS = (fn) => fn; export const scheduleOnRN = (fn, ...args) => fn(...args);",
+  "react-native-worklets": "export const makeShareable = (value) => value; export const runOnJS = (fn) => fn; export const scheduleOnRN = (fn, ...args) => fn(...args); export const getUIRuntimeHolder = () => ({ uiRuntimeHolder: true });",
   "react-native-reanimated/src/WorkletEventHandler": `${head}
     export class WorkletEventHandler {
       constructor(worklet, eventNames) { this.worklet = worklet; this.eventNames = eventNames; this.tags = new Set(); this.log = [['new', eventNames]]; (A.eventHandlers ??= []).push(this); }

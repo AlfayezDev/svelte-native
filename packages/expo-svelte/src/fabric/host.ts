@@ -1338,25 +1338,14 @@ function userHandler(node: NativeNode, name: string): ((...args: unknown[]) => u
   if (raw) for (const listener of raw) return listener;
   return stateOf(node)?.handlers[name] as never;
 }
-/** RNGH's TurboModule, for the responder hooks below (the gesture host is loaded when they call it). */
-function nativeGestureModule() {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return (require("../gestures/native.ts") as typeof import("../gestures/native.ts")).nativeModule();
-}
 const responder = createResponder<NativeNode>({
   parent: (node) => node.parent,
   handler: userHandler,
   pressability: pressabilityFor,
-  // A responder that blocks the native ones (its `onResponderGrant` answered true): react-native-gesture-handler hears of it through React
-  // Native's `UIManager.setJSResponder`, which it patches and this host does not have, so the host tells its module. Only once the gesture host
-  // is loaded: an app with no gesture never touches the module.
-  blockNativeResponder: (node) => {
-    const own = stateOf(node);
-    if (gestures && own) nativeGestureModule().handleSetJSResponder(own.tag, true);
-  },
-  releaseNativeResponder: () => {
-    if (gestures) nativeGestureModule().handleClearJSResponder();
-  },
+  // `blockNativeResponder` and `releaseNativeResponder` are not wired: RNGH 2 heard of a responder that blocks the native ones (its `onResponderGrant`
+  // answered true) through React Native's `UIManager.setJSResponder`, which it patched into `handleSetJSResponder` of its module. RNGH 3 has no such
+  // call (its module lost both, and its recognisers are cancelled by a handler's `cancelsJSResponder`, which the other direction needs no call for), so
+  // a responder that answers true no longer holds RNGH's handlers back.
   // A node that was removed from the tree while it held the gesture (a link whose paragraph re-rendered without it, a screen that was popped) is no responder any more.
   mounted: isLive,
   abandon: (node) => {

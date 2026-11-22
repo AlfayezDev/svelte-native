@@ -26,7 +26,7 @@ video: svg
 </Screen>
 ```
 
-Expo Svelte carries react-native-svg (version 15.15.4) itself, so every app has it and none installs it: it is not a dependency of your app, and `expo-svelte doctor` checks the copy. Unlike the other [native views](native-views), it needs no separate install.
+Expo Svelte carries react-native-svg (version 15.16.0) itself, so every app has it and none installs it: it is not a dependency of your app, and `expo-svelte doctor` checks the copy. Unlike the other [native views](native-views), it needs no separate install.
 
 ## Elements
 

@@ -167,18 +167,19 @@ export type PushSettings = {
  */
 export declare function pushSettings(push: unknown, appPackage: string | undefined, projectRoot: string): PushSettings;
 /**
- * `AppDelegate.swift` without what `applyPushAppDelegate` wrote (the wrapper of the template's call, and the import of the module that holds it): the template's own text again. A file that has
+ * `AppDelegate.swift` without what `applyPushAppDelegate` wrote (the block in `didFinishLaunching`, and the import of the module that holds it): the template's own text again. A file that has
  * none of it is returned as it is, so this is the whole of what an app that turned push off needs, and the first half of `applyPushAppDelegate`.
  */
 export declare function removePushAppDelegate(contents: string): string;
 /**
- * `AppDelegate.swift` (iOS) for an app with push: rule 2 of PUSH.md, a push that wakes the app mounts no screen. Expo's template starts React Native's surface in
- * `application(_:didFinishLaunchingWithOptions:)`, which mounts the first screen, and iOS also runs that method when it launches the app in the background for a silent push,
- * where nobody can see the screen. The template's `factory.startReactNative(...)` call is wrapped in `SveltePushBackgroundLaunch.start` (SvelteCore, the library's pod),
- * which makes the same call in the same place in every launch the user makes, and in a launch in the background starts only the React host (`initializeReactHost`, which
- * is what the first `startReactNative` would have done before it made the surface) and makes the call at the first `didBecomeActive`. JavaScript, `init` and the push hooks
- * run meanwhile. The template's call is not touched, only wrapped, so that taking the wrapper away gives the template back: the patch is idempotent, and a prebuild replaces
- * what an older version wrote. Throws when the template has no such call, since a build that lost this silently would mount a screen in the background.
+ * `AppDelegate.swift` (iOS) for an app with push: rule 2 of PUSH.md, a push that wakes the app mounts no screen. Expo SDK 58's template starts React Native from the scene
+ * (`SceneDelegate`, `ExpoAppSceneDelegate`: the window and the surface are made when UIKit connects a scene, which it does for a launch the user makes and not for the one iOS makes in
+ * the background for a silent push), so the `AppDelegate` starts nothing and a launch in the background would run no JavaScript: no `init`, no push hook. The block this adds to
+ * `application(_:didFinishLaunchingWithOptions:)`, before it returns, starts the React host and no surface in a launch in the background (`SveltePushBackgroundLaunch.start`, SvelteCore,
+ * the library's pod: `initializeReactHost`, which is what the first `startReactNative` does before it makes the surface), so that JavaScript, `init` and the push hooks run. When the user opens
+ * the app UIKit connects the scene, which makes the surface by the template's own call, and React Native's root view factory reuses the host that is already running
+ * (`createReactHostIfNeeded`). Nothing of the template is changed: the block only adds, so taking it away gives the template back, the patch is idempotent, and a prebuild replaces what an
+ * older version wrote. Throws when the template has no such place, since a build that lost this silently would run no JavaScript for a push in the background.
  */
 export declare function applyPushAppDelegate(contents: string): string;
 /**

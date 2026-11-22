@@ -4,7 +4,7 @@
  * React Native encodes props for Fabric from a view config's `validAttributes` (which keys are native props and how a
  * value is converted) through `ReactNativeAttributePayload`. Loading that module and the native components that register
  * the configs costs about 50 ms of boot, so the host's own view names carry the tables below, equal to what React Native
- * 0.86 registers on Android and iOS (`tests/renderer/view-configs.test.ts` compares them with React Native's own modules). A name
+ * 0.88 registers on Android and iOS (`tests/renderer/view-configs.test.ts` compares them with React Native's own modules). A name
  * outside the tables, from a third-party native component, takes React Native's registry and payload code, required on
  * first use.
  *

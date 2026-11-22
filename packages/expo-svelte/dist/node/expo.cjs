@@ -42,6 +42,7 @@ __export(expo_exports, {
   applyPodfileAutolinkingExclude: () => applyPodfileAutolinkingExclude,
   applyPodfileSodium: () => applyPodfileSodium,
   applyPodfileVendoredLinking: () => applyPodfileVendoredLinking,
+  applySceneDelegate: () => applySceneDelegate,
   assertNoVendoredOriginals: () => assertNoVendoredOriginals,
   baselineProfile: () => baselineProfile,
   default: () => expo_default,
@@ -690,31 +691,36 @@ function pushSettings(push, appPackage, projectRoot) {
   if (ios) settings.ios = ios;
   return settings;
 }
-var holdBegin = "    // Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
-var holdOpen = "      surface: { [self] in";
-var holdClose = "      })";
-var holdEnd = "    // Svelte native: end of the first screen of a launch in the background";
-var holdImportComment = "// Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
+var holdBegin = "    // Svelte native: push, a launch in the background starts the React host and no screen (generated, do not edit)";
+var holdEnd = "    // Svelte native: end of the launch in the background";
+var oldHoldBegin = "    // Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
+var oldHoldOpen = "      surface: { [self] in";
+var oldHoldClose = "      })";
+var oldHoldEnd = "    // Svelte native: end of the first screen of a launch in the background";
+var holdImportComment = "// Svelte native: push, a launch in the background starts the React host and no screen (generated, do not edit)";
 var holdImport = `internal import SvelteCore ${holdImportComment}`;
+var oldHoldImportComment = "// Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
 var escapeText = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-var holdHead = new RegExp(`\\n${escapeText(holdBegin)}\\n[\\s\\S]*?${escapeText(holdOpen)}(?=\\n)`);
-var holdTail = new RegExp(`\\n${escapeText(holdClose)}\\n${escapeText(holdEnd)}(?=\\n)`);
-var holdImportLine = new RegExp(`^internal import (?:SvelteCore|SveltePush) ${escapeText(holdImportComment)}\\n`, "m");
+var holdBlock = new RegExp(`\\n${escapeText(holdBegin)}\\n[\\s\\S]*?${escapeText(holdEnd)}\\n(?=\\n)`);
+var oldHoldHead = new RegExp(`\\n${escapeText(oldHoldBegin)}\\n[\\s\\S]*?${escapeText(oldHoldOpen)}(?=\\n)`);
+var oldHoldTail = new RegExp(`\\n${escapeText(oldHoldClose)}\\n${escapeText(oldHoldEnd)}(?=\\n)`);
+var holdImportLine = new RegExp(`^internal import (?:SvelteCore|SveltePush) (?:${escapeText(holdImportComment)}|${escapeText(oldHoldImportComment)})\\n`, "m");
 function removePushAppDelegate(contents) {
-  return contents.replace(holdHead, "").replace(holdTail, "").replace(holdImportLine, "");
+  return contents.replace(holdBlock, "").replace(oldHoldHead, "").replace(oldHoldTail, "").replace(holdImportLine, "");
 }
 function applyPushAppDelegate(contents) {
   const stripped = removePushAppDelegate(contents);
   const imports = [...stripped.matchAll(/^(?:(?:internal|public|package|private|fileprivate) |@_exported |@preconcurrency )*import [\w.]+[ \t]*$/gm)];
   const lastImport = imports.at(-1);
-  const call = /^[ \t]*factory\.startReactNative\([^)]*\)[ \t]*$/m.exec(stripped);
   const launching = /_ application: UIApplication,\s*didFinishLaunchingWithOptions launchOptions: \[UIApplication\.LaunchOptionsKey: Any\]\?/.test(stripped);
-  if (!lastImport || !call || !launching || !/withModuleName: "[^"]+",\s*in: window,\s*launchOptions: launchOptions\)/.test(call[0])) {
+  const factory = /^[ \t]*let factory = ExpoReactNativeFactory\(delegate: \w+\)[ \t]*$/m.test(stripped);
+  const last = /^[ \t]*return super\.application\(application, didFinishLaunchingWithOptions: launchOptions\)[ \t]*$/m.exec(stripped);
+  if (!lastImport || !launching || !factory || !last) {
     throw new Error(
-      "Svelte native could not find the imports and `factory.startReactNative(withModuleName: …, in: window, launchOptions: launchOptions)` in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift. Push needs the call to keep a launch in the background (a silent push) from mounting the first screen."
+      "Svelte native could not find the imports, `let factory = ExpoReactNativeFactory(delegate: …)` and `return super.application(application, didFinishLaunchingWithOptions: launchOptions)` in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift. Push needs them to start the React host in a launch in the background (a silent push)."
     );
   }
-  const head = [
+  const block = [
     holdBegin,
     "    SveltePushBackgroundLaunch.start(",
     "      application,",
@@ -725,15 +731,14 @@ function applyPushAppDelegate(contents) {
     "          launchOptions: launchOptions,",
     "          bundleConfiguration: factory.bundleConfiguration,",
     "          devMenuConfiguration: factory.devMenuConfiguration ?? RCTDevMenuConfiguration.default())",
-    "      },",
-    holdOpen,
+    "      })",
+    holdEnd,
+    "",
     ""
   ].join("\n");
-  const tail = ["", holdClose, holdEnd].join("\n");
-  const callEnd = call.index + call[0].length;
   const importEnd = lastImport.index + lastImport[0].length;
   return `${stripped.slice(0, importEnd)}
-${holdImport}${stripped.slice(importEnd, call.index)}${head}${call[0]}${tail}${stripped.slice(callEnd)}`;
+${holdImport}${stripped.slice(importEnd, last.index)}${block}${stripped.slice(last.index)}`;
 }
 function withPushIos(config, mode) {
   const existing = config.ios?.entitlements?.[apsEnvironmentEntitlement];
@@ -1395,6 +1400,8 @@ var delegateBegin = "  // Svelte native: navigation state restoration (generated
 var delegateEnd = "  // Svelte native: end of navigation state restoration";
 var delegateImport = "internal import SvelteCore // Svelte native: navigation state restoration (generated, do not edit)";
 var delegateImportLine = /^internal import \w+ \/\/ Svelte native: navigation state restoration \(generated, do not edit\)\n/m;
+var sceneUiKitImport = "import UIKit // Svelte native: navigation state restoration (generated, do not edit)";
+var sceneImportLines = /^(?:internal )?import \w+ \/\/ Svelte native: navigation state restoration \(generated, do not edit\)\n/gm;
 var gradleBegin = "// Svelte native: headless autolinking excludes (generated, do not edit)";
 var gradleEnd = "// Svelte native: end of headless autolinking excludes";
 var libraryPackage = "expo-svelte";
@@ -1459,7 +1466,7 @@ function applyHeadlessApplication(contents, onDemand = {}) {
   ].join("\n");
   const start = [
     startBegin,
-    "    // Expo modules register lazily on first use (patched expo-modules-core; see patches/expo-modules-core@57.0.23.patch).",
+    "    // Expo modules register lazily on first use (patched expo-modules-core; see patches/expo-modules-core@58.1.0.patch).",
     '    System.setProperty("expo.modules.lazy", "true")',
     "    // The patch's prewarm thread (app context and boot-time modules built off the pool thread) stays off until a phone A/B and a cold-start soak clear it.",
     '    System.setProperty("expo.modules.prewarm", "false")',
@@ -1569,6 +1576,31 @@ function applyAppDelegate(contents) {
   return `${stripped.slice(0, importEnd)}
 ${delegateImport}${stripped.slice(importEnd, propertyEnd)}
 ${block}${stripped.slice(propertyEnd)}`;
+}
+function applySceneDelegate(contents) {
+  const stripped = contents.replace(blockPattern(delegateBegin, delegateEnd), "").replace(sceneImportLines, "");
+  const imports = [...stripped.matchAll(/^(?:(?:internal|public|package|private|fileprivate) |@_exported |@preconcurrency )*import [\w.]+[ \t]*$/gm)];
+  const lastImport = imports.at(-1);
+  const declaration = /^[ \t]*(?:(?:public|open|final|internal) )*class \w+[ \t]*:[ \t]*ExpoAppSceneDelegate\b[^{\n]*\{[ \t]*$/m.exec(stripped);
+  if (!lastImport || !declaration) throw new Error("Svelte native could not find the imports and `class SceneDelegate: ExpoAppSceneDelegate` in SceneDelegate.swift");
+  const block = [
+    delegateBegin,
+    "  func stateRestorationActivity(for scene: UIScene) -> NSUserActivity? {",
+    "    SvelteNavigationRestoration.stateRestorationActivity()",
+    "  }",
+    "",
+    "  override func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {",
+    "    SvelteNavigationRestoration.sceneWillConnect(session.stateRestorationActivity)",
+    "    super.scene(scene, willConnectTo: session, options: connectionOptions)",
+    "  }",
+    delegateEnd
+  ].join("\n");
+  const declarationEnd = declaration.index + declaration[0].length;
+  const importEnd = lastImport.index + lastImport[0].length;
+  return `${stripped.slice(0, importEnd)}
+${delegateImport}
+${sceneUiKitImport}${stripped.slice(importEnd, declarationEnd)}
+${block}${stripped.slice(declarationEnd)}`;
 }
 var communityCall = "expoSvelteConfigCommand + expoSvelteCommunityCommand, expoSvelteAppRoot.asFile, expoSvelteLockFiles";
 function applyHeadlessSettings(contents, extra = [], links) {
@@ -1874,6 +1906,16 @@ var withExpoSvelte = (config, options) => {
     config2.modResults.contents = applyAppDelegate(config2.modResults.contents);
     return config2;
   });
+  config = (0, import_config_plugins3.withDangerousMod)(config, ["ios", async (config2) => {
+    const root = config2.modRequest.platformProjectRoot;
+    const folders = (await (0, import_promises2.readdir)(root, { withFileTypes: true }).catch(() => [])).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+    for (const folder of folders) {
+      const file = (0, import_node_path8.join)(root, folder, "SceneDelegate.swift");
+      const contents = await (0, import_promises2.readFile)(file, "utf8").catch(() => void 0);
+      if (contents !== void 0) await (0, import_promises2.writeFile)(file, applySceneDelegate(contents));
+    }
+    return config2;
+  }]);
   config = (0, import_config_plugins3.withMainApplication)(config, (config2) => {
     if (config2.modResults.language !== "kt") throw new Error("Svelte native requires Expo's Kotlin MainApplication");
     config2.modResults.contents = applyHeadlessApplication(applyFeatureFlags(config2.modResults.contents, androidFeatureFlagsFor(options)), onDemandForLibraries(options?.androidOnDemandViewManagers, links.enabled));
@@ -1914,6 +1956,7 @@ function baselineProfile() {
   applyPodfileAutolinkingExclude,
   applyPodfileSodium,
   applyPodfileVendoredLinking,
+  applySceneDelegate,
   assertNoVendoredOriginals,
   baselineProfile,
   defaultAndroidFeatureFlags,

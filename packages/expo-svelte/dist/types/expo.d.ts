@@ -120,6 +120,14 @@ export declare function applyMainActivity(contents: string): string;
  */
 export declare function applyAppDelegate(contents: string): string;
 /**
+ * `SceneDelegate.swift` (iOS, Expo SDK 58): the template starts React Native from a `UIWindowSceneDelegate` (`ExpoAppSceneDelegate`, which iOS 27 requires of every app), and UIKit does not call the
+ * application delegate's four state restoration callbacks (`applyAppDelegate`) of an app that has scenes. The same signal is the scene's: `stateRestorationActivity(for:)` is asked when the app
+ * enters the background, and the session the system connects at the next launch has that activity only if the system kept the state (it deletes it for an app the user swiped away). The
+ * scene's `willConnectTo` notes it before `ExpoAppSceneDelegate` starts React Native, which is when JavaScript can ask (`SvelteNavigationRestoration`, `native/svelte-core/ios/navigation`).
+ * A project whose template has no `SceneDelegate.swift` keeps `applyAppDelegate`'s callbacks alone. Idempotent.
+ */
+export declare function applySceneDelegate(contents: string): string;
+/**
  * `settings.gradle`: excludes packages from Expo and React Native autolinking, the headless ones and `extra`, and runs React Native's config command
  * through the library's `android-autolinking` (`autolinking.ts`: the packages the library carries are linked from its directory, and the Nitro modules' native libraries load
  * after the start). With `EXPO_USE_COMMUNITY_AUTOLINKING=1` the community CLI's command goes through it too: the copies are in no app's `package.json`, so the community CLI alone

@@ -214,7 +214,8 @@ function patternOf(path: string) {
       const rest = !optional && name.startsWith("...");
       names.push({ name: parameterName(name), rest });
       // A rest parameter takes zero or more segments, as in SvelteKit: `/files/[...path]` matches `/files`, and `/a/[...rest]/z` matches `/a/z`.
-      return optional ? "(?:/([^/]+))?" : rest ? "(?:/(.*))?" : "/([^/]+)";
+      // (`[^]`, not `.`: the pathname is decoded, so a rest can hold a line break, `%0A`.)
+      return optional ? "(?:/([^/]+))?" : rest ? "(?:/([^]*))?" : "/([^/]+)";
     }
     return `/${staticPattern(part)}`;
   }).join("");
@@ -254,8 +255,8 @@ export function matchPath(path: string, pathname: string): Record<string, string
   }
 }
 
-/** A static route segment as a URL's pathname writes it: `café` is `caf%C3%A9`, as the pathname of a resolved href has it. */
-const staticHref = (part: string): string => encodeURI(part.normalize()).replace(/\?/g, "%3F").replace(/#/g, "%23");
+/** A static route segment as a URL's pathname writes it (`café` is `caf%C3%A9`, `a|b` stays), so it compares equal to the pathname of a resolved href. */
+const staticHref = (part: string): string => new URL(`/${part.normalize().replace(/[%?#]/g, encodeURIComponent)}`, BASE).pathname.slice(1);
 
 /** The path of a route with its parameters in place: `/[slug]/inbox` with `{ slug: "acme" }` is `/acme/inbox`. */
 export function fillPath(path: string, params: Readonly<Record<string, string>>): string {

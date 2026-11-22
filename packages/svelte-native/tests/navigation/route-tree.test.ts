@@ -377,6 +377,9 @@ describe("static segments that are not ASCII", () => {
     expect(matchPath("/item/[slug]", "/item/a%2Fb%25")).toEqual({ slug: "a/b%" });
     expect(matchPath("/50%", "/50%25")).toEqual({});
     expect(matchPath("/item/[slug]", "/item/%E2")).toBeNull();
+    expect(matchPath("/docs/[...rest]", "/docs/a%0Ab")).toEqual({ rest: "a\nb" });
+    expect(fillPath("/a|b", {})).toBe(new URL("https://example.com/a|b").pathname);
+    expect(fillPath("/50%/[id]", { id: "x" })).toBe("/50%25/x");
     // A filled path is written as a URL's pathname writes it, so it compares equal to the href of the same screen.
     expect(fillPath("/café/[slug]", { slug: "a b" })).toBe("/caf%C3%A9/a%20b");
     expect(fillPath("/العربية", {})).toBe(new URL("https://example.com/العربية").pathname);

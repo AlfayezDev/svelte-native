@@ -25,7 +25,7 @@ const WINDOWS_1252: Readonly<Record<number, number>> = {
 
 /** The character a numeric reference names: none, a surrogate and a number past Unicode are U+FFFD. */
 function numericText(code: number): string {
-  if (code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return "�";
+  if (code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return "\ufffd";
   return String.fromCodePoint(WINDOWS_1252[code] ?? code);
 }
 
@@ -49,8 +49,12 @@ export function decodeEntities(text: string): string {
   });
 }
 
-/** The text of an HTML fragment: scripts and styles go, `<br>` and the end of a paragraph, block or list item is a new line, then the tags go and the references are decoded. */
+/**
+ * The text of an HTML fragment: scripts and styles go, `<br>` and the end of a paragraph, block or list item is a new line, then the tags go and the references are decoded
+ * (`&nbsp;` as a plain space).
+ */
 export function htmlText(html: string): string {
   const text = html.replace(/<(script|style)[\s\S]*?<\/\1>/gi, "").replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|li|h[1-6])>/gi, "\n").replace(/<[^>]*>/g, "");
-  return decodeEntities(text).trim();
+  // A no-break space is a space in the plain text, as a browser copies it.
+  return decodeEntities(text).replace(/\u00a0/g, " ").trim();
 }

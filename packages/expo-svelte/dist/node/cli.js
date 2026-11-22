@@ -606,6 +606,12 @@ function lottieProblems(read2) {
   return [...android, ...ios];
 }
 function rnghProblems(read2) {
+  return [
+    ...inFile(read2, "scripts/gesture_handler_utils.rb", [["does not look for the Worklets copy beside the package", has(rnghWorkletsLookup)]], true),
+    ...rnghManagerProblems(read2)
+  ];
+}
+function rnghManagerProblems(read2) {
   return Object.entries(rnghAdditions).flatMap(([path, lines]) => inFile(read2, path, [
     ...lines.map((line) => [`does not have \`${line.split("\n")[0]}\``, has(line)]),
     ...path.endsWith(".mm") ? [
@@ -678,7 +684,7 @@ function riveProblems(read2) {
     ["the view's events are not sent through the event dispatcher", (code) => code.includes("getEventDispatcherForReactTag")]
   ]);
 }
-var stripComments, neverCoalescesPattern, neverCoalesces, has, count, mapsStreamEvents, rnghAdditions, rnghUses, rnghRegistration, strings, moduleRegistryPath;
+var stripComments, neverCoalescesPattern, neverCoalesces, has, count, mapsStreamEvents, rnghAdditions, rnghUses, rnghRegistration, rnghWorkletsLookup, strings, moduleRegistryPath;
 var init_shapes = __esm({
   "src/doctor/shapes.ts"() {
     "use strict";
@@ -694,6 +700,7 @@ var init_shapes = __esm({
     };
     rnghUses = ["RNGHViewHasSurfaceTouchHandler(touchHandlerView)"];
     rnghRegistration = /\[self registerViewWithGestureRecognizerAttachedIfNeeded:view\];/;
+    rnghWorkletsLookup = "File.expand_path('../../react-native-worklets', __dir__)";
     strings = (text3) => [...text3.matchAll(/"([^"]+)"/g)].map((match) => match[1] ?? "");
     moduleRegistryPath = "android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt";
   }
@@ -721,7 +728,7 @@ var init_patches = __esm({
       { package: "@sveltejs/kit", does: "SvelteKit leaves the `+mobile.svelte` files of a route directory alone", inspect: kitProblems },
       { package: "expo-modules-core", via: "expo", does: "Expo modules register lazily and the common ones are prewarmed (Android start)", inspect: expoModulesCoreProblems },
       { package: "lottie-react-native", vendored: true, does: "Lottie's events are delivered one by one (Android) and a load or failure before the emitter exists is kept (iOS)", inspect: lottieProblems },
-      { package: "react-native-gesture-handler", vendored: true, does: "the root gesture recognizer can be registered for the screens the library presents (iOS)", inspect: rnghProblems },
+      { package: "react-native-gesture-handler", vendored: true, does: "the root gesture recognizer can be registered for the screens the library presents, and the podspec finds the Worklets copy beside it (iOS)", inspect: rnghProblems },
       { package: "react-native-maps", vendored: true, does: "the map's discrete events are delivered one by one, its streams still coalesce (Android); its iOS plugin points the Podfile at the library's copy", inspect: mapsProblems },
       { package: "react-native-pdf", vendored: true, does: "the pdf view's one event, which carries every message, no longer coalesces, and react-native is found from the app's directory (Android)", inspect: pdfProblems },
       { package: "react-native-reanimated", vendored: true, does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, and Worklets is the copy beside it", inspect: reanimatedProblems },
@@ -850,22 +857,22 @@ var init_optional_libraries = __esm({
     expo = "expo";
     optionalLibraries = [
       // Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module, so they have no `android` or `ios` entry here.
-      { name: "expo-blur", version: "57.0.3", optional: { kind: expo } },
+      { name: "expo-blur", version: "58.0.6", optional: { kind: expo } },
       { name: "expo-conic-gradient", version: "0.2.1", optional: { kind: expo } },
-      { name: "expo-image", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
-      { name: "expo-linear-gradient", version: "57.0.2", optional: { kind: expo } },
-      { name: "expo-video", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+      { name: "expo-image", version: "58.0.18", optional: { kind: expo, plugin: "app.plugin.js" } },
+      { name: "expo-linear-gradient", version: "58.0.4", optional: { kind: expo } },
+      { name: "expo-video", version: "58.0.14", optional: { kind: expo, plugin: "app.plugin.js" } },
       // React Native packages: an entry of the autolinking config for each platform.
       {
         name: "@react-native-community/datetimepicker",
-        version: "9.1.0",
+        version: "9.2.1",
         android: { packageImportPath: "import com.reactcommunity.rndatetimepicker.RNDateTimePickerPackage;", packageInstance: "new RNDateTimePickerPackage()" },
         ios: { podspec: "RNDateTimePicker.podspec" },
         optional: { kind: react, plugin: "app.plugin.js" }
       },
       {
         name: "lottie-react-native",
-        version: "7.3.8",
+        version: "7.5.0",
         android: { packageImportPath: "import com.airbnb.android.react.lottie.LottiePackage;", packageInstance: "new LottiePackage()", componentDescriptors: ["LottieAnimationViewComponentDescriptor"] },
         ios: { podspec: "lottie-react-native.podspec" },
         optional: { kind: react }
@@ -899,7 +906,7 @@ var init_optional_libraries = __esm({
       },
       {
         name: "react-native-maps",
-        version: "1.27.2",
+        version: "1.29.11",
         android: {
           packageImportPath: "import com.rnmaps.maps.MapsPackage;",
           packageInstance: "new MapsPackage()",
@@ -937,14 +944,14 @@ var init_optional_libraries = __esm({
       },
       {
         name: "react-native-view-shot",
-        version: "5.1.0",
+        version: "6.1.1",
         android: { packageImportPath: "import fr.greweb.reactnativeviewshot.RNViewShotPackage;", packageInstance: "new RNViewShotPackage()" },
         ios: { podspec: "react-native-view-shot.podspec" },
         optional: { kind: react }
       },
       {
         name: "react-native-webview",
-        version: "13.16.1",
+        version: "14.0.1",
         android: { packageImportPath: "import com.reactnativecommunity.webview.RNCWebViewPackage;", packageInstance: "new RNCWebViewPackage()", componentDescriptors: ["RNCWebViewComponentDescriptor"] },
         ios: { podspec: "react-native-webview.podspec" },
         optional: { kind: react }
@@ -1096,26 +1103,33 @@ var init_vendored = __esm({
       },
       {
         name: "react-native-gesture-handler",
-        version: "2.32.0",
-        // The two components of its codegen (`RNGestureHandlerButton`, `RNGestureHandlerRootView`); `libraryName` is `codegenConfig.name`.
-        android: { packageImportPath: "import com.swmansion.gesturehandler.RNGestureHandlerPackage;", packageInstance: "new RNGestureHandlerPackage()", componentDescriptors: ["RNGestureHandlerButtonComponentDescriptor", "RNGestureHandlerRootViewComponentDescriptor"] },
+        version: "3.3.0",
+        // The one component descriptor and the CMake file its `react-native.config.js` names (`RNGestureHandlerDetector`: the shadow node of `shared/shadowNodes`, and `android/CMakeLists.txt`
+        // builds it with the codegen's); the button and the root view are the codegen's alone and need no registration. `libraryName` is `codegenConfig.name`.
+        android: { packageImportPath: "import com.swmansion.gesturehandler.RNGestureHandlerPackage;", packageInstance: "new RNGestureHandlerPackage()", componentDescriptors: ["RNGestureHandlerDetectorComponentDescriptor"], cmakeListsPath: "android/CMakeLists.txt" },
         ios: { podspec: "RNGestureHandler.podspec" }
       },
       {
         name: "react-native-worklets",
-        version: "0.10.1",
+        version: "0.13.0",
         android: { packageImportPath: "import com.swmansion.worklets.WorkletsPackage;", packageInstance: "new WorkletsPackage()" },
         ios: { podspec: "RNWorklets.podspec" }
       },
       {
         name: "react-native-reanimated",
-        version: "4.5.1",
-        android: { packageImportPath: "import com.swmansion.reanimated.ReanimatedPackage;", packageInstance: "new ReanimatedPackage()" },
+        version: "4.7.1",
+        // The one component of its `react-native.config.js` (the shared-transition boundary) and its codegen CMake file, which is in the sources and not below `android/build/` (a test reads both from the copy).
+        android: {
+          packageImportPath: "import com.swmansion.reanimated.ReanimatedPackage;",
+          packageInstance: "new ReanimatedPackage()",
+          componentDescriptors: ["REASharedTransitionBoundaryComponentDescriptor"],
+          cmakeListsPath: "Common/NativeView/CMakeLists.txt"
+        },
         ios: { podspec: "RNReanimated.podspec" }
       },
       {
         name: "react-native-svg",
-        version: "15.15.4",
+        version: "15.16.0",
         // The 29 components of its `react-native.config.js`, and its codegen CMake file, which is in the sources and not below `android/build/` (a test reads both from the copy).
         android: {
           packageImportPath: "import com.horcrux.svg.SvgPackage;",
@@ -1745,10 +1759,10 @@ var init_init_app = __esm({
     init_svelte_build();
     init_vendored();
     appDependencies = {
-      expo: "57.0.30",
-      "expo-constants": "57.0.22",
-      react: "19.2.7",
-      "react-native": "0.86.3"
+      expo: "58.0.26",
+      "expo-constants": "58.0.16",
+      react: "19.3.0",
+      "react-native": "0.88.1"
     };
     alwaysPatched = ["expo-modules-core"];
     plugin = "expo-svelte";

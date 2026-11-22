@@ -23,6 +23,8 @@ export type ImageTransition = {
     duration?: number;
     timing?: "ease-in-out" | "ease-in" | "ease-out" | "linear";
     effect?: string | null;
+    /** Skips the transition when an image first appears from a cache hit (expo-image 58): `memory` for the in-memory cache, `all` for any cache hit. */
+    skipOnCacheHit?: "none" | "memory" | "all" | null;
 };
 export type SFSymbolEffect = string | {
     effect: string;
@@ -57,6 +59,11 @@ export declare function resolveTransition(transition?: ImageTransition | number 
 export declare function resolveSfEffect(effect: SFSymbolEffect | readonly SFSymbolEffect[] | null | undefined): {
     effect: string;
 }[] | null;
+/**
+ * `svgVariables` as the native view takes them (`resolveSvgVariables` of expo-image 58's `Image.tsx`): the values of the SVG's CSS custom properties, numbers as strings. A key
+ * that does not start with two dashes is not a custom property and is ignored by the native side, which a development build says.
+ */
+export declare function resolveSvgVariables(svgVariables: Record<string, string | number> | null | undefined): Record<string, string> | null;
 /** What the Svelte component takes: expo-image's `ImageProps`, with the props a plain `View` takes next to them. */
 export type ExpoImageProps = {
     style?: unknown;
@@ -71,6 +78,8 @@ export type ExpoImageProps = {
     loadingIndicatorSource?: ImageSource | null;
     sfEffect?: SFSymbolEffect | readonly SFSymbolEffect[] | null;
     tintColor?: string | null;
+    /** Values of the CSS custom properties an SVG source refers to with `var()`; numbers are given as text. */
+    svgVariables?: Record<string, string | number> | null;
     accessibilityLabel?: string;
     alt?: string;
     [prop: string]: unknown;

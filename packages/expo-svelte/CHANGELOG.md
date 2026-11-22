@@ -12,6 +12,7 @@ Notable changes to `expo-svelte` (named `@alfayez/svelte-native` up to 0.4.0-rc.
 
 - On Android, a pop that plays during the first 70 ms of a push (the screen below still fading out) no longer blanks the screen below. It was taken to nothing and faded back in only after 35 % of the way back, so for about 70 ms the screen showed nothing but its background; it now comes back to whole from where the push had faded it.
 - On Android a `TextInput` (and an `<input>` or `<textarea>`, which are one) sends `onContentSizeChange` and `onScroll` as React Native's does. `onContentSizeChange` gets `event.nativeEvent.contentSize` (`{ width, height }`, in dp) when the field first lays out and whenever an edit or a layout changes it, single-line or multiline, so a composer that grows with its text takes its height from the callback on both platforms. `onScroll` gets `contentOffset` and `layoutMeasurement` when the text scrolls inside the field (the caret scrolls into view, the user drags). Neither is sent unless the field has the handler. Before, the Android engine sent neither, and `onLayout` was the only way to follow the size (#89).
+- A remote form's `submit()` that the server accepts after the form was reset no longer resets it again: a draft typed after the reset (an editor closed and opened again while the older request was out) stays. A submission accepted with no reset in between starts the form again, as before (#103).
 
 ## 0.4.0-rc.10 - 2026-11-22
 

@@ -544,6 +544,26 @@ describe("a submission that fails", () => {
     expect(await form.submit()).toBe(true);
     expect([form.error, form.result]).toEqual([undefined, "ok"]);
   });
+  test("a submission accepted after the form was reset and edited again leaves the new draft; one accepted with no reset in between resets the form (#103)", async () => {
+    const accepted = () => Response.json({ type: "result", data: "[{\"_\":1},{\"issues\":2,\"result\":3},[],\"ok\"]" });
+    let release = () => {};
+    let received = 0;
+    m.configureRemote({ origin: "https://a.example", fetch: async () => { received++; await new Promise<void>((done) => { release = done; }); return accepted(); } });
+    const form = m.form("h/draft");
+    form.fields.note.as("text", "ready").onChangeText("older draft");
+    const older = form.submit();
+    while (received === 0) await new Promise((done) => setTimeout(done, 1));
+    // The editor is discarded and opened again on the same form while the older request is out, and a new draft is typed.
+    form.reset();
+    form.fields.note.as("text", "ready").onChangeText("new draft");
+    release();
+    expect(await older).toBe(true);
+    expect([form.fields.note.value(), form.fields.note.as("text", "ready").value]).toEqual(["new draft", "new draft"]);
+    // With no reset while it was out, an accepted submission starts the form again, as before.
+    m.configureRemote({ origin: "https://a.example", fetch: async () => accepted() });
+    expect(await form.submit()).toBe(true);
+    expect(form.fields.note.as("text", "ready").value).toBe("ready");
+  });
   test("an enhance callback that throws is handled the same way", async () => {
     const hits: string[] = [];
     m.configureRemote({ origin: "https://a.example", handleError: ({ kind }: any) => { hits.push(kind); } });

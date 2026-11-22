@@ -1,8 +1,9 @@
 name: Release
 
-# A tag `v<version>` makes a GitHub Release: the CI checks run first (ci.yml), then the release is created with the CHANGELOG section of
-# the version as its notes and the `pnpm pack` tarball of packages/expo-svelte attached: the tarball that is published to npm, where apps
-# install it from (pnpm add expo-svelte@next).
+# A tag `v<version>` makes a release: the CI checks run first (ci.yml), then the GitHub Release is created with the CHANGELOG section of
+# the version as its notes and the `pnpm pack` tarball of packages/expo-svelte attached, and that same tarball is published to npm, where
+# apps install it from (pnpm add expo-svelte@next). npm trusts this workflow (trusted publishing, OIDC): no token is stored anywhere, and
+# npm adds a provenance statement that links the package to this run.
 # The steps for the person who releases: README.md, "Release".
 
 on:
@@ -26,6 +27,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: write
+      id-token: write # npm trusted publishing
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -81,3 +83,21 @@ jobs:
             gh release create "$TAG" "$RUNNER_TEMP"/assets/* --verify-tag "${flags[@]}"
           fi
           gh release view "$TAG" --json url,isPrerelease,assets --jq '"\(.url) prerelease=\(.isPrerelease) assets=\([.assets[].name] | join(","))"'
+
+      # The package's npm settings name this repository and this workflow as its trusted publisher (README.md, "Release"); npm 11.5.1 or newer
+      # exchanges the run's OIDC token for a publish. A pre-release goes to the `next` tag and a release to `latest`. A re-run for a version npm
+      # already has publishes nothing.
+      - name: Publish to npm
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          npm --version
+          if [ "$(npm view "expo-svelte@$VERSION" version 2>/dev/null || true)" = "$VERSION" ]; then
+            echo "expo-svelte@$VERSION is on npm already"
+            exit 0
+          fi
+          tag=latest
+          case "$VERSION" in *-*) tag=next ;; esac
+          npm publish "$RUNNER_TEMP/assets/expo-svelte-$VERSION.tgz" --tag "$tag" --access public
+          npm view "expo-svelte@$VERSION" version dist.shasum

@@ -278,8 +278,8 @@ export async function updates(argv: string[]): Promise<void> {
 			if (requested.code !== 0) throw new Error(`could not set the reset flag: ${(requested.stderr || requested.stdout).trim()}`);
 		}
 
-		// No `svelte-native sync` before publishing: `eas update` bundles through Metro, which writes the route table of the QA app
-		// (`.svelte-native/routes.qa.ts`) when its config loads, and the entry when it is missing (a build ran `sync` already).
+		// No `expo-svelte sync` before publishing: `eas update` bundles through Metro, which writes the route table of the QA app
+		// (`.expo-svelte/routes.qa.ts`) when its config loads, and the entry when it is missing (a build ran `sync` already).
 
 		const doPublish = async (kind: UpdateKind, fault: BadFault | null): Promise<PublishedUpdate> => {
 			const marker = `${runTag}-${kind}${fault ? `-${fault}` : ""}`;

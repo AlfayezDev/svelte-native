@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ActivityIndicator, Image, Modal, Pressable, ScrollView, Text, View } from "@alfayez/svelte-native";
+  import { ActivityIndicator, Image, Modal, Pressable, ScrollView, Text, View } from "expo-svelte";
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";

@@ -37,11 +37,11 @@ SvelteKit declares the rest of the module, so an import of one of them type-chec
 | Function | What it says |
 | --- | --- |
 | `beforeNavigate`, `afterNavigate`, `onNavigate` | the router has no navigation hooks. To follow the screen, read `page.url` in an `$effect`. |
-| `invalidate`, `invalidateAll`, `refreshAll`, `preloadData` | a screen has no `load` function to run again. `refreshAll` of `@alfayez/svelte-native/remote` refetches the queries of remote functions. |
+| `invalidate`, `invalidateAll`, `refreshAll`, `preloadData` | a screen has no `load` function to run again. `refreshAll` of `expo-svelte/remote` refetches the queries of remote functions. |
 | `pushState`, `replaceState` | shallow routing needs `page.state`, which the device doesn't have. |
 | `snapshot` | screens aren't restored from a history. The router saves its stacks itself ([Navigation state](routing#navigation-state)). |
 
-The error reads `` `beforeNavigate` is not available on the device yet (svelte-native) `` and then why. It is thrown when the function is called. `beforeNavigate`, `afterNavigate`, `onNavigate` and `snapshot` are called while a component initialises, so a screen that calls one fails to render with that message.
+The error reads `` `beforeNavigate` is not available on the device yet (expo-svelte) `` and then why. It is thrown when the function is called. `beforeNavigate`, `afterNavigate`, `onNavigate` and `snapshot` are called while a component initialises, so a screen that calls one fails to render with that message.
 
 ## Page state
 
@@ -90,7 +90,7 @@ On the web there is one page at a time, so every component can read its own data
 ```svelte
 <script lang="ts">
 	import { updated } from '$app/state';
-	import { reloadAsync } from '@alfayez/svelte-native/updates';
+	import { reloadAsync } from 'expo-svelte/updates';
 </script>
 
 {#if updated.current}
@@ -136,7 +136,7 @@ On the web there is one page at a time, so every component can read its own data
 </ul>
 ```
 
-The web side is the Vite plugin: `svelteNative()` in `vite.config.ts` answers an import of `$app/env` (or `$app/environment`) with SvelteKit's own module plus `export const mobile = false`, in `vite dev`, in the client build and in the server build. Where the bundler can see the constant, as it does in a production build, the branch for the other platform is left out of the bundle. The flag does not take out an `import` that the other platform can't resolve. A file that imports a native library is a `+mobile.svelte` file, or is imported only by one: the web build leaves those out, and they need no flag.
+The web side is the Vite plugin: `expoSvelte()` in `vite.config.ts` answers an import of `$app/env` (or `$app/environment`) with SvelteKit's own module plus `export const mobile = false`, in `vite dev`, in the client build and in the server build. Where the bundler can see the constant, as it does in a production build, the branch for the other platform is left out of the bundle. The flag does not take out an `import` that the other platform can't resolve. A file that imports a native library is a `+mobile.svelte` file, or is imported only by one: the web build leaves those out, and they need no flag.
 
 `browser` is `false` on the device even though Svelte's runtime believes it runs in a browser (it reads `esm-env`, which stays as it is): a library that guards the DOM with `if (browser)` then skips it.
 

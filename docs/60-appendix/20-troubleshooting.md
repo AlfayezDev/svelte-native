@@ -7,7 +7,7 @@ Most problems in the first hour are one of a few. Start with the doctor: it find
 ## Run the doctor
 
 ```sh
-pnpm exec svelte-native doctor
+pnpm exec expo-svelte doctor
 ```
 
 `doctor` reads your project and prints one line per check, with the fix under each failure. It changes nothing. Use `pnpm exec`: a plain `pnpm doctor` is pnpm's own command. The failures you are most likely to see:
@@ -15,25 +15,10 @@ pnpm exec svelte-native doctor
 | It says | Do this |
 | --- | --- |
 | `node 25.0.0 does not satisfy ^22.17.0 \|\| ^24.3.0 \|\| >=26.0.0` | Switch to Node 24 LTS (24.3 or newer), Node 22.17 or newer, or Node 26 or newer. See [below](#pnpm-stops-during-install) for why not Node 25. |
-| `svelte … is the stock Svelte: it has no ./renderer export` | You have the registry's Svelte. Run `pnpm exec svelte-native init`, which installs the build Svelte Native needs. |
+| `svelte … is the stock Svelte: it has no ./renderer export` | You have the registry's Svelte. Run `pnpm exec expo-svelte init`, which installs the build Expo Svelte needs. |
 | `react 19.2.6 does not satisfy 19.2.7`, or another version | Install the exact version it names. Each patch is made for one version. |
-| `… is not applied` | Run `pnpm exec svelte-native init` again, which copies the current patches, then `pnpm install`. |
-| `metro.config.cjs does not mention withSvelteNative` | Wrap your Metro config in `withSvelteNative` ([Configuration](configuration#metroconfigcjs)). |
-
-## pnpm cannot read the repository
-
-```
-ERR_PNPM_GIT_RESOLVE_FAILED
-… git ls-remote failed: fatal: could not read Username for 'https://github.com': terminal prompts disabled
-```
-
-The repository is private, and pnpm fetches GitHub dependencies over HTTPS even when you give it an SSH address. Tell git to use SSH for this account, once:
-
-```sh
-git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.com/AlfayezDev/"
-```
-
-Later installs need the same setting: without it, `pnpm install` fails with `ERR_PNPM_GIT_FETCH_FAILED`. If it still fails, check that `ssh -T git@github.com` greets you by name. If it doesn't, your SSH key isn't on your GitHub account, or you don't have access to the repository yet.
+| `… is not applied` | Run `pnpm exec expo-svelte init` again, which copies the current patches, then `pnpm install`. |
+| `metro.config.cjs does not mention withExpoSvelte` | Wrap your Metro config in `withExpoSvelte` ([Configuration](configuration#metroconfigcjs)). |
 
 ## pnpm stops during install
 
@@ -43,7 +28,7 @@ Later installs need the same setting: without it, `pnpm install` fails with `ERR
 Unsupported engine for @react-native/babel-plugin-codegen@0.88.1: wanted: {"node":"^22.13.0 || ^24.3.0 || >= 26.0.0"} (current: {"node":"25.0.0"})
 ```
 
-You are on Node 25. A fresh install takes React Native tools whose newest versions exclude Node 25, and the project created by `sv` tells pnpm to stop on that. It happens at the first `pnpm add`, before `svelte-native init` can pin those tools, so `init` can't prevent it. Switch to Node 24 LTS (24.3 or newer; `mise use node@24`, `nvm install 24`, or the installer from nodejs.org), Node 22.17 or newer, or Node 26 or newer, and run `pnpm add` again.
+You are on Node 25. A fresh install takes React Native tools whose newest versions exclude Node 25, and the project created by `sv` tells pnpm to stop on that. It happens at the first `pnpm add`, before `expo-svelte init` can pin those tools, so `init` can't prevent it. Switch to Node 24 LTS (24.3 or newer; `mise use node@24`, `nvm install 24`, or the installer from nodejs.org), Node 22.17 or newer, or Node 26 or newer, and run `pnpm add` again.
 
 On Node 22 before 22.17, the package named is `@sveltejs/kit`. The fix is the same.
 
@@ -66,7 +51,7 @@ Declaring the patches changes the lockfile, and with `CI=1` pnpm refuses an inst
 
 ### Peer dependency warnings
 
-pnpm reports `svelte` as an unmet peer. That's expected: the Svelte build Svelte Native needs is installed from a URL, outside the range the registry's packages ask for. It doesn't stop anything.
+pnpm reports `svelte` as an unmet peer. That's expected: the Svelte build Expo Svelte needs is installed from a URL, outside the range the registry's packages ask for. It doesn't stop anything.
 
 ## init leaves something for you
 
@@ -75,7 +60,7 @@ pnpm reports `svelte` as an unmet peer. That's expected: the Svelte build Svelte
 It leaves a file alone, prints the change for you to make, and exits with status 1 when:
 
 - `vite.config.ts` doesn't look like the one `sv` writes. Make the change it prints: [Configuration](configuration#viteconfigts) shows the result.
-- `metro.config.cjs` exists and doesn't use `withSvelteNative`. Wrap the config you export.
+- `metro.config.cjs` exists and doesn't use `withExpoSvelte`. Wrap the config you export.
 - The app is configured in `app.config.ts`, or `pnpm-workspace.yaml` uses the inline style (`allowBuilds: { esbuild: true }`).
 
 A warning about `"main"`, a script or a patch means `init` kept what you had. `--force` replaces the `"main"`.
@@ -96,7 +81,7 @@ A release build doesn't use Metro. If you see this on one, it was built without 
 
 ## Expo asks to install @types/react
 
-_It looks like you're trying to use TypeScript but don't have the required dependencies installed._ This is Expo's TypeScript setup, which is for React apps. Svelte Native's commands (`pnpm android`, `pnpm ios`, `pnpm native`) turn it off, so the question only comes up when you run Expo yourself (`pnpm exec expo start`) or with Svelte Native 0.4.0-rc.9 or older. Answering no stops the command. Either answer yes, which adds `@types/react` to your dev dependencies, or skip the question with `EXPO_NO_TYPESCRIPT_SETUP=1`.
+_It looks like you're trying to use TypeScript but don't have the required dependencies installed._ This is Expo's TypeScript setup, which is for React apps. Expo Svelte's commands (`pnpm android`, `pnpm ios`, `pnpm native`) turn it off, so the question only comes up when you run Expo yourself (`pnpm exec expo start`) or with Expo Svelte 0.4.0-rc.9 or older. Answering no stops the command. Either answer yes, which adds `@types/react` to your dev dependencies, or skip the question with `EXPO_NO_TYPESCRIPT_SETUP=1`.
 
 ## The Android build fails
 
@@ -123,4 +108,4 @@ A build that runs and logs `[Svelte push] push is not part of this app's build` 
 
 ## Still stuck?
 
-[Open an issue](https://github.com/AlfayezDev/svelte-native/issues/new?template=bug.yml). The form asks for what makes it quick to fix: the output of `pnpm exec svelte-native doctor`, the library version, your device and the log. On Android, `adb logcat -d` right after the problem has the log.
+[Open an issue](https://github.com/AlfayezDev/svelte-native/issues/new?template=bug.yml). The form asks for what makes it quick to fix: the output of `pnpm exec expo-svelte doctor`, the library version, your device and the log. On Android, `adb logcat -d` right after the problem has the log.

@@ -25,7 +25,7 @@ function bundle(platform: "android" | "ios"): Bundle {
   const env = { ...process.env, CI: "1", EXPO_NO_TELEMETRY: "1", NODE_ENV: "production", TMPDIR: cache };
   const done = spawnSync(
     "pnpm",
-    ["exec", "expo", "export:embed", "--platform", platform, "--dev", "false", "--minify", "false", "--reset-cache", "--entry-file", ".svelte-native/entry.ts", "--bundle-output", output, "--sourcemap-output", sourceMap, "--assets-dest", join(directory, "assets")],
+    ["exec", "expo", "export:embed", "--platform", platform, "--dev", "false", "--minify", "false", "--reset-cache", "--entry-file", ".expo-svelte/entry.ts", "--bundle-output", output, "--sourcemap-output", sourceMap, "--assets-dest", join(directory, "assets")],
     { cwd: app, env, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
   );
   if (done.status !== 0) throw new Error(`export:embed (${platform}) failed: ${(done.stderr || done.stdout).slice(-800)}`);
@@ -45,13 +45,13 @@ for (const platform of ["android", "ios"] as const) {
       console.log(`[example bundle] ${platform}: ${bytes} bytes in ${modules.length} modules`);
       expect(bytes).toBeGreaterThan(100_000);
       expect(routeModules().filter((module) => !modules.includes(module))).toEqual([]);
-      expect(modules.filter((module) => /^apps\/qa\/|^packages\/svelte-native\/tests\//.test(module))).toEqual([]);
+      expect(modules.filter((module) => /^apps\/qa\/|^packages\/expo-svelte\/tests\//.test(module))).toEqual([]);
       // The lowering of HTML and the converter of `style="..."` (the `css/` compiler: `dist/node/transformer.cjs` and `lower.js` carry about 90 kB of it) run in Node, when Metro transforms a file: the app's JavaScript does not hold them.
-      expect(modules.filter((module) => /packages\/svelte-native\/src\/(?:lower|lower-html|transformer|css\/(?:inline|convert|properties|parse|values|color))\.ts$/.test(module))).toEqual([]);
+      expect(modules.filter((module) => /packages\/expo-svelte\/src\/(?:lower|lower-html|transformer|css\/(?:inline|convert|properties|parse|values|color))\.ts$/.test(module))).toEqual([]);
       // The list of style keys the development warning of `html-style.ts` checks names against is loaded only when `__DEV__` is true: a release build leaves it out.
-      expect(modules.filter((module) => /packages\/svelte-native\/src\/html-style(?:-known)?\.ts$/.test(module)).map((module) => module.split("/").pop())).toEqual(["html-style.ts"]);
+      expect(modules.filter((module) => /packages\/expo-svelte\/src\/html-style(?:-known)?\.ts$/.test(module)).map((module) => module.split("/").pop())).toEqual(["html-style.ts"]);
       // The /sveltekit screen's imports of `$app/navigation`, `$app/state`, `$app/env` and `$app/paths` are the library's files for the device, and SvelteKit's own implementation of them is not in the bundle (the remote functions stub imports other parts of SvelteKit's client).
-      expect(["navigation", "state", "env", "paths"].filter((file) => !modules.includes(`packages/svelte-native/src/kit/${file}.ts`))).toEqual([]);
+      expect(["navigation", "state", "env", "paths"].filter((file) => !modules.includes(`packages/expo-svelte/src/kit/${file}.ts`))).toEqual([]);
       expect(modules.filter((module) => /node_modules\/@sveltejs\/kit\/src\/runtime\/app\/(?:navigation|state|env|environment|paths)\//.test(module))).toEqual([]);
       // No React renderer: the library renders Svelte to Fabric directly. (React itself is there: some of React Native's modules import it.)
       expect(modules.filter((module) => /react-dom|react-reconciler|\/scheduler\//.test(module))).toEqual([]);
@@ -65,15 +65,15 @@ for (const platform of ["android", "ios"] as const) {
       // the bundle. They, quick-crypto's base64 module and the Nitro runtime are the library's own copies (`vendor/`, VENDORING.md), whoever imports them, and the app has no original of any: not even
       // `react-native-quick-base64`, which a package manager installs for the Buffer package's dependency on it.
       for (const name of ["react-native-quick-crypto", "react-native-quick-base64", "hermes-intl", "react-native-mmkv", "react-native-nitro-modules", "react-native-gesture-handler", "react-native-worklets", "react-native-reanimated", "react-native-svg"]) {
-        expect([name, modules.some((module) => module.includes(`packages/svelte-native/vendor/${name}/`))]).toEqual([name, true]);
+        expect([name, modules.some((module) => module.includes(`packages/expo-svelte/vendor/${name}/`))]).toEqual([name, true]);
         expect([name, modules.filter((module) => module.includes(`node_modules/${name}/`))]).toEqual([name, []]);
       }
       // The native view libraries are the library's own copies, turned on in `libraries` of app.config.ts, and this app installs none of them. The components mount their native views by name and import
       // none of their JavaScript, so no copy is in the bundle either; `createVideoPlayer` requires expo-video by name, and the app did not turn that one on (no screen uses it), so the name is the
       // stub that says how to turn it on, a few lines, and not the package.
       const views = ["expo-image", "expo-blur", "expo-linear-gradient", "expo-conic-gradient", "expo-video", "react-native-video", "lottie-react-native", "rive-react-native", "@react-native-community/datetimepicker", "react-native-pdf", "react-native-blob-util", "react-native-webview", "react-native-maps", "react-native-view-shot", "react-native-fast-shadow", "react-native-animateable-text"];
-      expect(modules.filter((module) => views.some((name) => module.includes(`node_modules/${name}/`) || module.includes(`packages/svelte-native/vendor/${name}/`)))).toEqual([]);
-      expect(modules.filter((module) => /\.svelte-native\/stubs\/app\//.test(module)).map((module) => module.split("/").pop()).sort()).toEqual(["_core.js", "expo-video.js"]);
+      expect(modules.filter((module) => views.some((name) => module.includes(`node_modules/${name}/`) || module.includes(`packages/expo-svelte/vendor/${name}/`)))).toEqual([]);
+      expect(modules.filter((module) => /\.expo-svelte\/stubs\/app\//.test(module)).map((module) => module.split("/").pop()).sort()).toEqual(["_core.js", "expo-video.js"]);
       // The worklets of the copies and of the app went through the Worklets Babel plugin: the babel preset adds the copy's (the transformer makes `react-native-worklets/plugin` resolve to it), and the app has no package of that name to add.
       expect(text.match(/__workletHash/g)?.length ?? 0).toBeGreaterThan(50);
       expect(modules.some((module) => /node_modules\/react-native\/index\.js$/.test(module))).toBe(false);

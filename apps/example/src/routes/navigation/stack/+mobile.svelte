@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SafeAreaView, Screen, ScrollView, Text, View, useRouter } from "@alfayez/svelte-native";
+  import { SafeAreaView, Screen, ScrollView, Text, View, useRouter } from "expo-svelte";
   import Button from "#lib/components/Button.svelte";
   import Section from "#lib/components/Section.svelte";
   import { useDemo } from "#lib/demo.ts";

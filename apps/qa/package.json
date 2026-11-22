@@ -1,5 +1,5 @@
 {
-	"name": "@svelte-native/qa",
+	"name": "@expo-svelte/qa",
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
@@ -9,10 +9,10 @@
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
 		"typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && svelte-check --tsconfig ./tsconfig.native.json",
-		"native": "APP_VARIANT=${APP_VARIANT:-qa} svelte-native dev",
+		"native": "APP_VARIANT=${APP_VARIANT:-qa} expo-svelte dev",
 		"native:build": "APP_VARIANT=${APP_VARIANT:-qa} vite build --mode native",
-		"android": "APP_VARIANT=${APP_VARIANT:-qa} svelte-native android",
-		"ios": "APP_VARIANT=${APP_VARIANT:-qa} svelte-native ios",
+		"android": "APP_VARIANT=${APP_VARIANT:-qa} expo-svelte android",
+		"ios": "APP_VARIANT=${APP_VARIANT:-qa} expo-svelte ios",
 		"native-qa": "node qa/native-qa.ts",
 		"native-qa:emulator": "node qa/native-qa.ts build --abi x86_64 && node qa/native-qa.ts lab --device localhost:5555 --repeat 10 && node qa/native-qa.ts boot --device localhost:5555 --warm 30 --cold 30 && node qa/native-qa.ts report && node qa/native-qa.ts gates --platform android",
 		"native-qa:suites": "node qa/native-qa.ts parity --device localhost:5555 && node qa/native-qa.ts a11y --device localhost:5555 --no-install && node qa/native-qa.ts resilience --device localhost:5555 --no-install && node qa/native-qa.ts report",
@@ -42,7 +42,7 @@
 	"dependencies": {
 		"@hmscore/react-native-hms-location": "^6.16.0-301",
 		"@intercom/intercom-react-native": "10.7.0",
-		"@alfayez/svelte-native": "workspace:*",
+		"expo-svelte": "workspace:*",
 		"@react-native-async-storage/async-storage": "2.2.0",
 		"@react-native-community/netinfo": "12.0.1",
 		"@react-native-firebase/analytics": "^24.0.0",
@@ -90,7 +90,7 @@
 	"imports": {
 		"#lib/*": "./src/lib/*"
 	},
-	"main": ".svelte-native/entry.ts",
+	"main": ".expo-svelte/entry.ts",
 	"expo": {
 		"autolinking": {
 			"exclude": [

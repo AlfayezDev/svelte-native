@@ -12,7 +12,7 @@ A native screen is not rendered on a server and has no `load` function. It loads
 ```svelte
 <!--- file: src/routes/posts/+mobile.svelte --->
 <script lang="ts">
-	import { ActivityIndicator, Screen, Text, View } from '@alfayez/svelte-native';
+	import { ActivityIndicator, Screen, Text, View } from 'expo-svelte';
 
 	type Post = { id: number; title: string };
 
@@ -59,7 +59,7 @@ export const like = command(v.number(), async (id) => {
 ```svelte
 <!--- file: src/routes/posts/+mobile.svelte --->
 <script lang="ts">
-	import { Pressable, Screen, Text, View } from '@alfayez/svelte-native';
+	import { Pressable, Screen, Text, View } from 'expo-svelte';
 	import { getPosts, like } from '#lib/posts.remote.ts';
 
 	const posts = getPosts();
@@ -81,13 +81,13 @@ What you get back is SvelteKit's own client API: a query has `.current`, `.loadi
 ### Set it up
 
 1. Turn remote functions on in your SvelteKit config, as for the web: `experimental: { remoteFunctions: true }`.
-2. Tell the app where the server is, in the Svelte Native plugin's options in `app.config.ts` (or `app.json`):
+2. Tell the app where the server is, in the Expo Svelte plugin's options in `app.config.ts` (or `app.json`):
 
    ```ts
    /// file: app.config.ts
    export default {
    	expo: {
-   		plugins: [['@alfayez/svelte-native', { remote: { origin: 'https://app.example.com' } }]]
+   		plugins: [['expo-svelte', { remote: { origin: 'https://app.example.com' } }]]
    	}
    };
    ```
@@ -107,8 +107,8 @@ There is no `<form>` and no `<input>`, so a `form` function is used through its 
 
 ```svelte
 <script lang="ts">
-	import { Pressable, Switch, Text, TextInput, View } from '@alfayez/svelte-native';
-	import { native } from '@alfayez/svelte-native/remote';
+	import { Pressable, Switch, Text, TextInput, View } from 'expo-svelte';
+	import { native } from 'expo-svelte/remote';
 	import { addPost } from '#lib/posts.remote.ts';
 
 	const form = native(addPost);
@@ -145,8 +145,8 @@ const blob = await (await fetch(asset.uri)).blob();
 form.fields.photo.as('file').onValueChange(new File([blob], asset.fileName, { type: asset.mimeType }));
 ```
 
-The server gets an ordinary `File`, as it would from a browser. Uploading a file needs a build of the app made with Svelte Native 0.4.0-rc.8 or later. On an older build, which an over-the-air update can reach, a submission with a file fails: `form.error` is the usual error, and the error your `handleError` gets says which build is needed. `validate()` sends the files too, as SvelteKit's form does.
+The server gets an ordinary `File`, as it would from a browser. Uploading a file needs a build of the app made with Expo Svelte 0.4.0-rc.8 or later. On an older build, which an over-the-air update can reach, a submission with a file fails: `form.error` is the usual error, and the error your `handleError` gets says which build is needed. `validate()` sends the files too, as SvelteKit's form does.
 
 ### Not supported
 
-Restoring data from a server-rendered page (screens aren't server-rendered); `load` invalidation (`refreshAll()` from `@alfayez/svelte-native/remote` refreshes remote queries only); remote modules inside `node_modules`; `export *` in a remote module.
+Restoring data from a server-rendered page (screens aren't server-rendered); `load` invalidation (`refreshAll()` from `expo-svelte/remote` refreshes remote queries only); remote modules inside `node_modules`; `export *` in a remote module.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Prints the CHANGELOG section of one version of @alfayez/svelte-native: the notes of its GitHub Release (.github/workflows/release.yml).
+# Prints the CHANGELOG section of one version of expo-svelte: the notes of its GitHub Release (.github/workflows/release.yml).
 #
-#   scripts/release-notes.sh <version> [changelog]      (default: packages/svelte-native/CHANGELOG.md)
+#   scripts/release-notes.sh <version> [changelog]      (default: packages/expo-svelte/CHANGELOG.md)
 #
 # The section is what follows the heading `## <version>` (or `## [<version>]`, with anything after it, such as ` - 2026-11-10`) up to the
 # next `## ` heading. Exit status 1, with nothing on stdout, when the heading is missing or the section is empty. A warning on stderr when
@@ -10,7 +10,7 @@ set -euo pipefail
 
 version=${1:-}
 [ -n "$version" ] || { echo "usage: scripts/release-notes.sh <version> [changelog]" >&2; exit 2; }
-changelog=${2:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/packages/svelte-native/CHANGELOG.md}
+changelog=${2:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/packages/expo-svelte/CHANGELOG.md}
 [ -f "$changelog" ] || { echo "release-notes: $changelog does not exist" >&2; exit 2; }
 
 # section <heading-word>: the lines under the first `## ` heading whose first word is the argument, without surrounding blank lines.

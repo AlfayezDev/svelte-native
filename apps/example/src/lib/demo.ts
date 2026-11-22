@@ -1,6 +1,6 @@
 // Demo mode: a screen opened with `?demo` in its link plays a short scripted interaction by itself, so a docs video can be recorded on a
-// device without anyone touching it: `adb shell am start -a android.intent.action.VIEW -d "svelte-native:///layout?demo" <package>`
-// (`xcrun simctl openurl booted "svelte-native:///layout?demo"` on iOS). Without the parameter nothing in here runs.
+// device without anyone touching it: `adb shell am start -a android.intent.action.VIEW -d "expo-svelte:///layout?demo" <package>`
+// (`xcrun simctl openurl booted "expo-svelte:///layout?demo"` on iOS). Without the parameter nothing in here runs.
 //
 // A page reads its own link: the router gives every page `url` (the `URL` of its entry, query included) as a prop. So a screen writes
 //

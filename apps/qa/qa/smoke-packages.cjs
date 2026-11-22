@@ -15,7 +15,7 @@ const smokeOnlyPackages = [...new Set(modules.filter((entry) => !entry.shared &&
 const smokeOnlyBundlePackages = [...new Set(modules.filter((entry) => !entry.shared).flatMap((entry) => entry.packages))];
 
 /**
- * The packages the library carries itself (`packages/svelte-native/vendor/`, VENDORING.md): the Nitro runtime and MMKV (`localStorage`), react-native-quick-crypto and the base64 module it
+ * The packages the library carries itself (`packages/expo-svelte/vendor/`, VENDORING.md): the Nitro runtime and MMKV (`localStorage`), react-native-quick-crypto and the base64 module it
  * asks for (`crypto`), and gesture handler, Worklets, Reanimated and svg (the gestures, the animation and the SVG components). They are no dependency of any app here (the smoke app installs the production app's libraries as stand-ins, and these are not among them any more: the vendored copy
  * is what the smoke test calls), so the module table lists them without a package. Every app links and bundles them, the smoke test still checks them.
  */

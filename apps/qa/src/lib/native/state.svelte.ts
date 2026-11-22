@@ -4,7 +4,7 @@ import * as SecureStore from "expo-secure-store";
 import { getLocales } from "expo-localization";
 import { applicationId } from "expo-application";
 import { ar, en, createTranslator, type Locale, type Translate } from "./messages.ts";
-import { lab as bundleLab, variant as bundleVariant } from "@alfayez/svelte-native/routes";
+import { lab as bundleLab, variant as bundleVariant } from "expo-svelte/routes";
 import { smokeApplicationId } from "./app-ids.ts";
 import { labDecision } from "./lab-flag.ts";
 

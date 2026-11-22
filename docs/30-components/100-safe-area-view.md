@@ -9,7 +9,7 @@ video: safe-area-view
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { SafeAreaView, Screen, ScrollView, Text } from '@alfayez/svelte-native';
+	import { SafeAreaView, Screen, ScrollView, Text } from 'expo-svelte';
 </script>
 
 <Screen title="Settings">
@@ -49,7 +49,7 @@ The insets are also a reactive store, `insets`, for when you need a number inste
 
 ```svelte
 <script lang="ts">
-	import { ScrollView, insets } from '@alfayez/svelte-native';
+	import { ScrollView, insets } from 'expo-svelte';
 </script>
 
 <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 20 + insets.bottom }}>

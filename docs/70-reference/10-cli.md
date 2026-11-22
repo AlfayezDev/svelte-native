@@ -1,49 +1,49 @@
 ---
 title: Command line
-description: The svelte-native command, with init, doctor, push, android, ios, dev, build, sync and css.
+description: The expo-svelte command, with init, doctor, push, android, ios, dev, build, sync and css.
 ---
 
-Svelte Native's command line is `svelte-native`. Run it from your app's directory, through pnpm:
+Expo Svelte's command line is `expo-svelte`. Run it from your app's directory, through pnpm:
 
 ```sh
-pnpm exec svelte-native <command> [options]
+pnpm exec expo-svelte <command> [options]
 ```
 
-`svelte-native init` adds four scripts to `package.json`, so the common commands are shorter:
+`expo-svelte init` adds four scripts to `package.json`, so the common commands are shorter:
 
 ```json
 /// file: package.json
 {
 	"scripts": {
-		"native": "svelte-native dev",
-		"android": "svelte-native android",
-		"ios": "svelte-native ios",
-		"check-setup": "svelte-native doctor"
+		"native": "expo-svelte dev",
+		"android": "expo-svelte android",
+		"ios": "expo-svelte ios",
+		"check-setup": "expo-svelte doctor"
 	}
 }
 ```
 
 `pnpm android`, `pnpm ios`, `pnpm native` and `pnpm check-setup` run them. The web app's scripts (`dev`, `build`, `preview`, `check`) are left alone, so `pnpm dev` is still `vite dev`.
 
-> **warning** Don't name a script `doctor`, and don't run `pnpm doctor`: that is pnpm's own command, which checks pnpm, not your app. Use `pnpm exec svelte-native doctor` or `pnpm check-setup`.
+> **warning** Don't name a script `doctor`, and don't run `pnpm doctor`: that is pnpm's own command, which checks pnpm, not your app. Use `pnpm exec expo-svelte doctor` or `pnpm check-setup`.
 
 `android`, `ios` and `dev` turn Expo's TypeScript setup off, and Expo prints a line saying it skipped it. That setup is for React apps: in an app without `@types/react`, it stops the first run to ask whether to install it. A Svelte app's TypeScript is SvelteKit's (`tsconfig.json` and `svelte-check`), and building or running the app doesn't need `@types/react`. To have Expo's setup anyway, set `EXPO_NO_TYPESCRIPT_SETUP=0` in your environment.
 
 ## init
 
 ```sh
-pnpm exec svelte-native init [options]
+pnpm exec expo-svelte init [options]
 ```
 
-Turns a SvelteKit project (from `npx sv create`) into a Svelte Native app. Run it after installing the library. It prints its plan, then:
+Turns a SvelteKit project (from `npx sv create`) into an Expo Svelte app. Run it after installing the library. It prints its plan, then:
 
-- adds the dependencies, `main` and the scripts to `package.json`, and pins Svelte and SvelteKit to the builds Svelte Native needs;
-- adds pnpm's `overrides` and `patchedDependencies` to `pnpm-workspace.yaml`, and copies the patches into `patches/svelte-native/`;
-- creates `metro.config.cjs` and `app.json`, or adds the library's plugin to the `app.json` you have (a `@alfayez/svelte-native/expo` entry, which no longer resolves, becomes the package's name);
-- wraps SvelteKit's plugin in `vite.config.ts` with `svelteNative()`;
+- adds the dependencies, `main` and the scripts to `package.json`, and pins Svelte and SvelteKit to the builds Expo Svelte needs;
+- adds pnpm's `overrides` and `patchedDependencies` to `pnpm-workspace.yaml`, and copies the patches into `patches/expo-svelte/`;
+- creates `metro.config.cjs` and `app.json`, or adds the library's plugin to the `app.json` you have (an `expo-svelte/expo` entry, which no longer resolves, becomes the package's name);
+- wraps SvelteKit's plugin in `vite.config.ts` with `expoSvelte()`;
 - creates a first app if `src/routes` has no native routes: a root layout, a home screen, a details screen and `src/lib/theme.ts`;
 - adds the generated folders to `.gitignore`;
-- runs `pnpm install` and then `svelte-native doctor`.
+- runs `pnpm install` and then `expo-svelte doctor`.
 
 [Configuration](configuration) shows each of these changes.
 
@@ -58,21 +58,21 @@ Turns a SvelteKit project (from `npx sv create`) into a Svelte Native app. Run i
 
 `dev.example.…` is a placeholder: set your own identifiers before you publish the app.
 
-Run `init` again whenever you like. In a project that's set up it prints `Nothing to change`. After an upgrade of Svelte Native it copies the new patches and versions in. It never overwrites a change of yours without saying so: when a file has a shape it can't edit safely (a `vite.config.ts` that isn't what `sv` writes, an `app.config.ts`), it leaves the file alone, prints the exact change for you to make, and exits with status 1.
+Run `init` again whenever you like. In a project that's set up it prints `Nothing to change`. After an upgrade of Expo Svelte it copies the new patches and versions in. It never overwrites a change of yours without saying so: when a file has a shape it can't edit safely (a `vite.config.ts` that isn't what `sv` writes, an `app.config.ts`), it leaves the file alone, prints the exact change for you to make, and exits with status 1.
 
 `init` also works in an existing Expo app, without SvelteKit: see [Adding to an existing Expo app](adding-to-an-existing-expo-app).
 
 ## doctor
 
 ```sh
-pnpm exec svelte-native doctor [--json]
-pnpm exec svelte-native doctor --server [--app <bundle id>] [--json]
+pnpm exec expo-svelte doctor [--json]
+pnpm exec expo-svelte doctor --server [--app <bundle id>] [--json]
 ```
 
-Checks that the app is set up as Svelte Native needs, and changes nothing. It prints one line per check, grouped:
+Checks that the app is set up as Expo Svelte needs, and changes nothing. It prints one line per check, grouped:
 
 ```
-svelte-native doctor: /home/you/my-app
+expo-svelte doctor: /home/you/my-app
 
 environment
   pass  node 24.18.1 (needs ^22.17.0 || ^24.3.0 || >=26.0.0)
@@ -88,7 +88,7 @@ peer dependencies
         fix: pnpm add react@19.2.7
 
 vendored packages
-  pass  react-native-mmkv 4.3.1 comes with @alfayez/svelte-native (vendor/react-native-mmkv); the app does not list it
+  pass  react-native-mmkv 4.3.1 comes with expo-svelte (vendor/react-native-mmkv); the app does not list it
   …
   pass  libraries turned on: expo-image, react-native-maps; the others are not linked, and Metro stubs them
 
@@ -97,9 +97,9 @@ patches
   …
 
 build integration
-  pass  @alfayez/svelte-native 0.4.0-rc.9 is a dependency of the app
-  pass  metro.config.cjs uses withSvelteNative
-  pass  app.json lists the @alfayez/svelte-native plugin
+  pass  expo-svelte 0.4.0-rc.10 is a dependency of the app
+  pass  metro.config.cjs uses withExpoSvelte
+  pass  app.json lists the expo-svelte plugin
 
 21 passed, 1 failed, 0 could not tell, 1 skipped
 ```
@@ -111,7 +111,7 @@ build integration
 | `skip` | Nothing to check, such as an optional package you haven't installed. |
 | `????` | It couldn't tell, such as a Metro config that applies the library from another file. |
 
-It checks Node and pnpm; that Svelte is the custom-renderer build; the versions of the peer dependencies; that each patch is applied to the installed package (not just declared); that the packages Svelte Native carries are all there and patched, that the app doesn't list one of them, and which of the optional libraries its config turns on; that Metro and Expo are wired up; and, for an app that has push, its push setup (below). It exits with status 1 when a check failed, and 0 otherwise. `--json` prints the same checks as JSON.
+It checks Node and pnpm; that Svelte is the custom-renderer build; the versions of the peer dependencies; that each patch is applied to the installed package (not just declared); that the packages Expo Svelte carries are all there and patched, that the app doesn't list one of them, and which of the optional libraries its config turns on; that Metro and Expo are wired up; and, for an app that has push, its push setup (below). It exits with status 1 when a check failed, and 0 otherwise. `--json` prints the same checks as JSON.
 
 Run it after an install that went wrong, after an upgrade, and before you report a bug. [Troubleshooting](troubleshooting) explains the failures you're likely to see.
 
@@ -146,7 +146,7 @@ The doctor can't run `app.config.ts`. It finds the Google services file the way 
 ### doctor --server
 
 ```sh
-pnpm exec svelte-native doctor --server [--app <bundle id>] [--json]
+pnpm exec expo-svelte doctor --server [--app <bundle id>] [--json]
 ```
 
 Checks the push sender's environment on the machine you run it on, which is normally the server (or a shell with the server's variables). It checks only that, not the app: run it without `--server` for the app. It reads the variables `createPush` is given in the guide's example, and then makes one real request to each provider you've set up:
@@ -160,7 +160,7 @@ Checks the push sender's environment on the machine you run it on, which is norm
 | `FCM_BASE_URL`, `FCM_TOKEN_URL`, `APNS_PRODUCTION_URL`, `APNS_SANDBOX_URL` | Optional. Replace the provider's endpoint, as the sender's `baseUrl`, `tokenUrl`, `productionUrl` and `sandboxUrl` options do (tests and proxies). |
 
 ```
-svelte-native doctor --server
+expo-svelte doctor --server
 
 push server
   pass  FCM_SERVICE_ACCOUNT is a service account key for project my-app (push@my-app.iam.gserviceaccount.com) with a private key that loads as RSA
@@ -183,14 +183,14 @@ The exit status is 1 when a check failed, and 2 for an argument it doesn't know.
 ## push
 
 ```sh
-pnpm exec svelte-native push send --token <token> [options]
+pnpm exec expo-svelte push send --token <token> [options]
 ```
 
-Sends one message to one device with the server's credentials, to try a device before the server's own code does it. It's `createPush(...).send(...)` from `@alfayez/svelte-native/push/server` and nothing else, and it prints what the provider answered. It needs no routes, and writes nothing into the app. Run it from any directory, with the variables of `doctor --server` set (the sender's endpoints included).
+Sends one message to one device with the server's credentials, to try a device before the server's own code does it. It's `createPush(...).send(...)` from `expo-svelte/push/server` and nothing else, and it prints what the provider answered. It needs no routes, and writes nothing into the app. Run it from any directory, with the variables of `doctor --server` set (the sender's endpoints included).
 
 ```sh
 export FCM_SERVICE_ACCOUNT=./secrets/firebase-service-account.json
-svelte-native push send --token '{"provider":"fcm","token":"…","app":"dev.example.app"}' \
+expo-svelte push send --token '{"provider":"fcm","token":"…","app":"dev.example.app"}' \
   --title "Order ready" --body "Pickup at gate 3" --url /orders/42
 ```
 
@@ -231,12 +231,12 @@ On a failure it prints the result's `reason` and `detail` with what to do about 
 ## android
 
 ```sh
-pnpm exec svelte-native android [expo run:android options]
+pnpm exec expo-svelte android [expo run:android options]
 ```
 
 Builds the app and runs it on an Android device or emulator:
 
-1. Regenerates `.svelte-native/` (see [sync](#sync)).
+1. Regenerates `.expo-svelte/` (see [sync](#sync)).
 2. Runs `expo run:android`, which prebuilds `android/` if it doesn't exist, compiles the app with Gradle, installs it, starts Metro and opens the app.
 
 Every option goes to `expo run:android`. The useful ones:
@@ -253,7 +253,7 @@ It only prebuilds when `android/` is missing. After a change to native configura
 ## ios
 
 ```sh
-pnpm exec svelte-native ios [expo run:ios options]
+pnpm exec expo-svelte ios [expo run:ios options]
 ```
 
 The same as `android`, for iOS, on a Mac with Xcode. Every option goes to `expo run:ios`: `--device [name]` picks a simulator or a connected iPhone, and `--configuration Release` makes a release build.
@@ -261,45 +261,45 @@ The same as `android`, for iOS, on a Mac with Xcode. Every option goes to `expo 
 ## dev
 
 ```sh
-pnpm exec svelte-native dev [expo start options]
+pnpm exec expo-svelte dev [expo start options]
 ```
 
 Starts Metro, the development server, for an app that's already installed. Open the app and it loads its JavaScript from Metro. A save reloads the app.
 
-`dev` regenerates `.svelte-native/` first, and again whenever a `+mobile.svelte` or `+layout.mobile.svelte` file is added, removed or renamed, so new routes appear without a restart. Every option goes to `expo start`: `--port <port>` sets the port, and `--clear` starts with empty caches.
+`dev` regenerates `.expo-svelte/` first, and again whenever a `+mobile.svelte` or `+layout.mobile.svelte` file is added, removed or renamed, so new routes appear without a restart. Every option goes to `expo start`: `--port <port>` sets the port, and `--clear` starts with empty caches.
 
 A phone on USB needs a tunnel to Metro's port: `adb reverse tcp:8081 tcp:8081`.
 
 ## build
 
 ```sh
-pnpm exec svelte-native build --platform android|ios
+pnpm exec expo-svelte build --platform android|ios
 ```
 
-Bundles the app's JavaScript for release, as Hermes bytecode, without building the native app. The output goes to `.svelte-native/dist/<platform>/`: `index.hbc`, its source map `index.hbc.map`, and the `assets/` folder. `--platform` defaults to `android`.
+Bundles the app's JavaScript for release, as Hermes bytecode, without building the native app. The output goes to `.expo-svelte/dist/<platform>/`: `index.hbc`, its source map `index.hbc.map`, and the `assets/` folder. `--platform` defaults to `android`.
 
 A release build made with Gradle or Xcode bundles the JavaScript itself, so you don't need this command for that. Use it to look at the bundle, or to check that it builds.
 
 ## sync
 
 ```sh
-pnpm exec svelte-native sync
+pnpm exec expo-svelte sync
 ```
 
-Only regenerates `.svelte-native/`:
+Only regenerates `.expo-svelte/`:
 
 - `entry.ts`, the app's entry point, which `main` in `package.json` names;
 - `routes.app.ts`, the route table: every `+mobile.svelte` and `+layout.mobile.svelte` under `src/routes`, with the `presentation` and `navigator` they export.
 
-The other commands, and Metro itself, do this for you. Run `sync` when a tool reads `.svelte-native/` without going through them, such as a type check in CI. A route tree that breaks a rule (a page next to a navigator layout, a tab bar inside a tab bar, ...) fails here with the file's name.
+The other commands, and Metro itself, do this for you. Run `sync` when a tool reads `.expo-svelte/` without going through them, such as a type check in CI. A route tree that breaks a rule (a page next to a navigator layout, a tab bar inside a tab bar, ...) fails here with the file's name.
 
 ## css
 
 ```sh
-pnpm exec svelte-native css src/global.css
+pnpm exec expo-svelte css src/global.css
 ```
 
-Compiles the CSS file the way Metro's `css` option does (Tailwind 4, then React Native styles) and writes the class table to `.svelte-native/classes.<variant>.ts`. Metro already runs it when it starts and when a file changes, so you need it only to see what a file compiles to.
+Compiles the CSS file the way Metro's `css` option does (Tailwind 4, then React Native styles) and writes the class table to `.expo-svelte/classes.<variant>.ts`. Metro already runs it when it starts and when a file changes, so you need it only to see what a file compiles to.
 
 | Option | What it does |
 | --- | --- |

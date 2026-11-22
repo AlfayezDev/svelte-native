@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ScrollView, Text, View } from "@alfayez/svelte-native";
+  import { ScrollView, Text, View } from "expo-svelte";
   import { theme } from "../../state.svelte.ts";
   import SwipeRow from "./SwipeRow.svelte";
   import type { Probe, Session } from "../gestures-lab.ts";

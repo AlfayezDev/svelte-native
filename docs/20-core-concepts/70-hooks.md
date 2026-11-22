@@ -25,7 +25,7 @@ Every export is optional, and the file is optional too. A `.js` file works as we
 
 ## The top level
 
-The file's top level runs right after Svelte Native's own start-up and before your layout and routes, so before everything they import. The modules the file imports itself run just before it, as imports always do. Put code there that has to come before the rest of the app, such as setting up a crash reporter, or a `TaskManager.defineTask(...)` call for a background task, which Expo needs at the top level of the bundle.
+The file's top level runs right after Expo Svelte's own start-up and before your layout and routes, so before everything they import. The modules the file imports itself run just before it, as imports always do. Put code there that has to come before the rest of the app, such as setting up a crash reporter, or a `TaskManager.defineTask(...)` call for a background task, which Expo needs at the top level of the bundle.
 
 ## init
 
@@ -51,7 +51,7 @@ It doesn't see other errors, such as a throw in a component or an event handler.
 
 ```ts
 /// file: src/hooks.mobile.ts
-import type { PushHooks } from '@alfayez/svelte-native/push';
+import type { PushHooks } from 'expo-svelte/push';
 
 export const push: PushHooks = {
 	foreground: () => ({ banner: true, sound: false })

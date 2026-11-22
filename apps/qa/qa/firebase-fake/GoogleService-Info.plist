@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>API_KEY</key>
-	<string>AsvelteNativeSmokeFakeKeyNotARealKey000</string>
+	<string>AexpoSvelteSmokeFakeKeyNotARealKey00000</string>
 	<key>GCM_SENDER_ID</key>
 	<string>000000000000</string>
 	<key>PLIST_VERSION</key>
@@ -11,9 +11,9 @@
 	<key>BUNDLE_ID</key>
 	<string>io.rasheed.svelteqa.smoke</string>
 	<key>PROJECT_ID</key>
-	<string>svelte-native-smoke-fake</string>
+	<string>expo-svelte-smoke-fake</string>
 	<key>STORAGE_BUCKET</key>
-	<string>svelte-native-smoke-fake.invalid</string>
+	<string>expo-svelte-smoke-fake.invalid</string>
 	<key>IS_ADS_ENABLED</key>
 	<false/>
 	<key>IS_ANALYTICS_ENABLED</key>

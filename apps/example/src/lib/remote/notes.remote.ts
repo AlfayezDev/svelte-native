@@ -4,7 +4,7 @@
 //
 // To try it, put this file in a SvelteKit app at the same path (`src/lib/remote/notes.remote.ts` from that app's root: the function ids are a hash
 // of the path), with `experimental: { remoteFunctions: true }` in its options and the module known to the server (list it in `server.warmup.ssrFiles`
-// for `vite dev`, or import it from `hooks.server.ts`). Then build this app with `SVELTE_NATIVE_REMOTE_ORIGIN` set to the server's origin.
+// for `vite dev`, or import it from `hooks.server.ts`). Then build this app with `EXPO_SVELTE_REMOTE_ORIGIN` set to the server's origin.
 // Every export has to be `export const name = query(...)`, `command(...)`, `form(...)` or one of the other kinds.
 import { command, form, query } from "$app/server";
 import * as v from "valibot";

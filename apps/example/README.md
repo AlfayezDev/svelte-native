@@ -1,8 +1,8 @@
-# Svelte Native showcase
+# Expo Svelte showcase
 
-A tour of [`@alfayez/svelte-native`](../../packages/svelte-native/README.md): a small app where every feature of the library is its own screen with one short example. It is written the way an app that installs the library would be written, and it imports nothing but the library's public entries (`@alfayez/svelte-native`, `/animation`, `/gestures`, `/foreign`, `/svg`, ...). Read it with the library's [README](../../packages/svelte-native/README.md) and [REFERENCE](../../packages/svelte-native/REFERENCE.md) beside it.
+A tour of [`expo-svelte`](../../packages/expo-svelte/README.md): a small app where every feature of the library is its own screen with one short example. It is written the way an app that installs the library would be written, and it imports nothing but the library's public entries (`expo-svelte`, `/animation`, `/gestures`, `/foreign`, `/svg`, ...). Read it with the library's [README](../../packages/expo-svelte/README.md) and [REFERENCE](../../packages/expo-svelte/REFERENCE.md) beside it.
 
-The app id is `io.rasheed.sveltenative.example`, the name is "Svelte Native" and the link scheme is `svelte-native://`.
+The app id is `io.rasheed.sveltenative.example`, the name is "Expo Svelte" and the link scheme is `expo-svelte://`.
 
 ## Run it
 
@@ -10,13 +10,13 @@ You need the repository's tools (Node 25, pnpm, see the [root README](../../READ
 
 ```sh
 pnpm install --frozen-lockfile      # once, from the repository root
-pnpm --dir apps/example android     # svelte-native android: prebuild, build and install on a device or emulator
-pnpm --dir apps/example ios         # svelte-native ios (a Mac with Xcode)
+pnpm --dir apps/example android     # expo-svelte android: prebuild, build and install on a device or emulator
+pnpm --dir apps/example ios         # expo-svelte ios (a Mac with Xcode)
 pnpm --dir apps/example start       # only the Metro server, for a build that is already installed
-pnpm --dir apps/example check-setup # svelte-native doctor: checks the app's setup (peer versions, patches, Metro and Expo wiring)
+pnpm --dir apps/example check-setup # expo-svelte doctor: checks the app's setup (peer versions, patches, Metro and Expo wiring)
 ```
 
-`android` and `ios` are the library's command line (`svelte-native android|ios`), which writes the route table into `.svelte-native/` and runs `expo run:android|ios`. A change to a native dependency or to `app.config.ts` needs a new native build; a change to a screen does not (a save remounts the app).
+`android` and `ios` are the library's command line (`expo-svelte android|ios`), which writes the route table into `.expo-svelte/` and runs `expo run:android|ios`. A change to a native dependency or to `app.config.ts` needs a new native build; a change to a screen does not (a save remounts the app).
 
 ## How the app is put together
 
@@ -56,13 +56,13 @@ The features of `src/lib/features/native.ts`: the library's wrappers of other na
 | Feature | Route | What it shows |
 | ------- | ----- | ------------- |
 | Image (expo-image) | `/native-views/image` | `ExpoImage`: `contentFit`, a blurhash `placeholder`, `transition`, `onLoad` |
-| Blur | `/native-views/blur` | Svelte Native's own `BlurView` over striped views: `intensity`, `tint`, children on top |
+| Blur | `/native-views/blur` | Expo Svelte's own `BlurView` over striped views: `intensity`, `tint`, children on top |
 | Linear gradient | `/native-views/linear-gradient` | `LinearGradient`: `colors`, `start`, `end`, `locations`, children |
 | Conic gradient | `/native-views/conic-gradient` | `ConicGradient`: `colors`, `locations`, `center`, `angle` |
 | Video (react-native-video) | `/native-views/video` | `Video` with a bundled clip: `paused`, `repeat`, `onProgress`, `ref.seek` |
 | Lottie | `/native-views/lottie` | `LottieView` with a bundled JSON file: `autoPlay`, `loop`, `speed`, `ref.pause` |
 | PDF (react-native-pdf) | `/native-views/pdf` | `Pdf`: `enablePaging`, `onLoadComplete`, `onPageChanged`, `ref.setPage` |
-| SVG (react-native-svg) | `/native-views/svg` | the SVG components of `@alfayez/svelte-native`: shapes, gradient, `SvgText`, `animatedProps`, `SvgXml` |
+| SVG (react-native-svg) | `/native-views/svg` | the SVG components of `expo-svelte`: shapes, gradient, `SvgText`, `animatedProps`, `SvgXml` |
 | Rive | `/native-views/rive` | `Rive` from a URL (needs the network): `ref.play`, `onPlay`, `onError` |
 | Shadow (fast-shadow) | `/native-views/shadow` | `ShadowedView` and `shadowStyle` |
 | Animateable text | `/native-views/animateable-text` | `AnimateableText`: a counter written on the UI thread by a worklet |
@@ -73,14 +73,14 @@ The features of `src/lib/features/native.ts`: the library's wrappers of other na
 | Any Expo view | `/native-views/any-expo-view` | `defineExpoView` for an Expo library with no wrapper: expo-camera's `ExpoCamera` (`onCameraReady`, `ref.takePicture`) and expo-image's `ExpoImage` (`onLoad`, `ref.reloadAsync`) |
 | Animation | `/animation` | `AnimatedView` with `withTiming`, `withSpring`, `withRepeat`, CSS keyframes, and state written into a shared value |
 | Gestures | `/gestures` | `Gesture.Pan`, `Pinch`, `Rotation`, `LongPress` and a swipeable row (`components/native/SwipeRow.svelte`) |
-| Remote functions | `/remote` | the host (`extra.svelteNative.remote`, `configureRemote`) and a query, a command and a form of `src/lib/remote/notes.remote.ts` |
+| Remote functions | `/remote` | the host (`extra.expoSvelte.remote`, `configureRemote`) and a query, a command and a form of `src/lib/remote/notes.remote.ts` |
 | Updates | `/updates` | `isEnabled`, `updateId`, `channel`, `checkForUpdateAsync`, `fetchUpdateAsync`, `reloadAsync` |
 
 Things a build or a device must provide:
 
 - **Assets.** `assets/images/sample.png` (15 KB), `assets/media/pattern.mp4` (4 KB) and `assets/media/pulse.json` (1 KB) are the lab's samples, kept small. The PDF is a data URI in `src/lib/media.ts`: react-native-pdf opens a `require`d file on iOS only.
 - **Map.** iOS draws Apple Maps. Android needs a Google Maps key in the manifest: build with `GOOGLE_MAPS_API_KEY=...` (`app.config.ts` passes it to react-native-maps' plugin). With the placeholder key the map mounts and draws no tiles.
-- **Remote functions.** The functions run on a SvelteKit server, which this app does not have. To try them, copy `src/lib/remote/notes.remote.ts` to the same path in a SvelteKit app (the function ids are a hash of the path from the app's root) with `experimental: { remoteFunctions: true }`, make the server load the module, and build this app with `SVELTE_NATIVE_REMOTE_ORIGIN=https://that-server` (an `http:` origin works for a development server; `adb reverse` reaches a PC). Without a host the screen says so and offers a field for an origin.
+- **Remote functions.** The functions run on a SvelteKit server, which this app does not have. To try them, copy `src/lib/remote/notes.remote.ts` to the same path in a SvelteKit app (the function ids are a hash of the path from the app's root) with `experimental: { remoteFunctions: true }`, make the server load the module, and build this app with `EXPO_SVELTE_REMOTE_ORIGIN=https://that-server` (an `http:` origin works for a development server; `adb reverse` reaches a PC). Without a host the screen says so and offers a field for an origin.
 - **Updates.** The app config has no `updates` key, so the screen reads "off in this build". To turn updates on, add `updates.url`, `runtimeVersion` and a channel (`UPDATES_CHANNEL`), as the library's README describes under "Updates".
 - **Rive** loads `vehicles.riv` from Rive's CDN: it needs a connection.
 - **Any Expo view** needs the camera permission: the `expo-camera` plugin in `app.config.ts` writes the prompt text (iOS) and `CAMERA` (Android), and the screen asks for it with a button. On an emulator or a simulator with no camera, expo-camera answers `takePicture` with a picture it draws itself. An app built before `expo-camera` was added does not have its native module, so the screen cannot load there: build the app again.
@@ -88,7 +88,7 @@ Things a build or a device must provide:
 ## Notes for a reader
 
 - **React Native's JavaScript modules are imported by path** (`react-native/Libraries/Utilities/Platform`, `Appearance`, `Dimensions`, `Linking`): the library has none of its own, and the `react-native` index would load React's components. React Native ships no types for these paths, so `src/lib/modules.d.ts` declares the few members the app uses. It also declares two modules the library's own source imports, because a workspace link is type-checked with the app.
-- **The app lists no native package for `crypto`, `localStorage` or `Intl`.** `crypto` is react-native-quick-crypto (and the base64 module it asks for), `localStorage` is MMKV (on the Nitro runtime they share) and the `Intl` constructors Hermes lacks are hermes-intl: the library carries all five (`packages/svelte-native/VENDORING.md`) and links them itself, so none is a dependency of the app and an app that lists one is refused.
+- **The app lists no native package for `crypto`, `localStorage` or `Intl`.** `crypto` is react-native-quick-crypto (and the base64 module it asks for), `localStorage` is MMKV (on the Nitro runtime they share) and the `Intl` constructors Hermes lacks are hermes-intl: the library carries all five (`packages/expo-svelte/VENDORING.md`) and links them itself, so none is a dependency of the app and an app that lists one is refused.
 - **`@sveltejs/kit` and `vite` are dependencies too**, because the library lists them as peers (the web target and remote functions use them). A native-only app like this one does not run either.
 - **`expo-system-ui`** makes `userInterfaceStyle: "automatic"` in `app.config.ts` apply on Android, so the app follows the system's dark mode there (Expo warns at prebuild without it).
 - **Dark mode** is the theme's: `src/lib/theme.svelte.ts` keeps the system's colour scheme in `$state` (React Native's `Appearance`), and a screen reads `theme.colors`. There is no in-app switch; change the phone's appearance.
@@ -99,8 +99,8 @@ Things a build or a device must provide:
 Every screen that has something to show can play a short scripted interaction by itself, for recording the docs' videos on a device or a simulator without touch injection. A screen opened with `?demo` in its link runs its script once after it mounts; without the parameter nothing runs.
 
 ```sh
-adb shell am start -a android.intent.action.VIEW -d "svelte-native:///animation/transitions?demo" io.rasheed.sveltenative.example
-xcrun simctl openurl booted "svelte-native:///animation/transitions?demo"
+adb shell am start -a android.intent.action.VIEW -d "expo-svelte:///animation/transitions?demo" io.rasheed.sveltenative.example
+xcrun simctl openurl booted "expo-svelte:///animation/transitions?demo"
 ```
 
 - `src/lib/demo.ts` is the helper. A page gets its link as the prop `url` (the router passes it with `params`), and calls `useDemo(() => url, steps)` with a list of steps, `[run, pauseMs]`: the screen's own state and functions (a toggle, a shuffle, `router.goto`, a text field's bound value typed letter by letter with `typeInto`, a scroll with `scroller().glide`). A settle comes before the first step and a hold after the last. The script logs `[demo] start <path>` and `[demo] end <path> after <ms> ms` (`adb logcat -s ReactNativeJS`), which a recording tool can wait for.

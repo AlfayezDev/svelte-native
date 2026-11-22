@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { Pressable, Text, View } from "@alfayez/svelte-native";
+  import { Pressable, Text, View } from "expo-svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
   import { scroller, useDemo } from "#lib/demo.ts";
 
-  // `class` takes Tailwind's utilities and the classes of src/global.css. Svelte Native compiles them to React Native styles when Metro builds
+  // `class` takes Tailwind's utilities and the classes of src/global.css. Expo Svelte compiles them to React Native styles when Metro builds
   // the app, and `dark:` follows the system's appearance. `class` takes what it takes on a DOM element in Svelte: a string, an array
   // or an object, so a class can depend on state. An inline `style` still wins over the classes.
   let selected = $state(false);

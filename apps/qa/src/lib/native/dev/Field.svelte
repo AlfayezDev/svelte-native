@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { TextInputProps } from "react-native";
-  import { View, Text, TextInput } from "@alfayez/svelte-native";
+  import { View, Text, TextInput } from "expo-svelte";
   import { theme } from "../state.svelte.ts";
   let { label, value = $bindable(""), error, ltr = false, ...attributes }: Omit<TextInputProps, "value"> & { label: string; value?: string; error?: string; ltr?: boolean } = $props();
 </script>

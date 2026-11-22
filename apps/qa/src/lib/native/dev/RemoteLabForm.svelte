@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Switch, Text, TextInput, View } from "@alfayez/svelte-native";
-  import { native } from "@alfayez/svelte-native/remote";
+  import { Switch, Text, TextInput, View } from "expo-svelte";
+  import { native } from "expo-svelte/remote";
   import { theme } from "#lib/native/state.svelte.ts";
   import Button from "#lib/native/components/Button.svelte";
   import { labSignup } from "#lib/native/dev/remote-lab.remote.ts";

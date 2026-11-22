@@ -9,7 +9,7 @@ video: text
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Screen, Text, View } from '@alfayez/svelte-native';
+	import { Screen, Text, View } from 'expo-svelte';
 
 	let name = $state('Amal');
 </script>

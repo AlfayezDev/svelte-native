@@ -7,7 +7,7 @@ On the device, `fetch`, `Blob`, `crypto`, `localStorage` and `navigator`'s clipb
 
 ## fetch
 
-`fetch`, `Request`, `Response` and `Headers` follow the Fetch standard. Svelte Native has a native module of its own for them, on URLSession on iOS and on React Native's OkHttp client on Android, and they share cookies with the rest of the app.
+`fetch`, `Request`, `Response` and `Headers` follow the Fetch standard. Expo Svelte has a native module of its own for them, on URLSession on iOS and on React Native's OkHttp client on Android, and they share cookies with the rest of the app.
 
 ```ts
 const response = await fetch('https://api.example.com/items', {
@@ -71,7 +71,7 @@ A few things differ from a browser:
 
 ## Crypto
 
-`crypto` is the web's: `crypto.getRandomValues(array)`, `crypto.randomUUID()` and `crypto.subtle`, the Web Crypto API (digests, HMAC, AES, RSA, ECDSA, key derivation). It is backed by [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto), which is part of Svelte Native (the library carries it, with the base64 module it asks for, and links it), so the work is native and there is nothing to install.
+`crypto` is the web's: `crypto.getRandomValues(array)`, `crypto.randomUUID()` and `crypto.subtle`, the Web Crypto API (digests, HMAC, AES, RSA, ECDSA, key derivation). It is backed by [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto), which is part of Expo Svelte (the library carries it, with the base64 module it asks for, and links it), so the work is native and there is nothing to install.
 
 ```ts
 const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -99,10 +99,10 @@ Object.keys(localStorage); // ['theme', 'visits']
 
 Nothing is created until `localStorage` is first read, and an app that never uses storage never loads MMKV. There are no `storage` events, and no quota.
 
-For more than strings (numbers, booleans, bytes, encryption, change listeners, other instances), `@alfayez/svelte-native/mmkv` has react-native-mmkv's `createMMKV` and its types, and `localStorageMMKV()`, the instance behind `localStorage`:
+For more than strings (numbers, booleans, bytes, encryption, change listeners, other instances), `expo-svelte/mmkv` has react-native-mmkv's `createMMKV` and its types, and `localStorageMMKV()`, the instance behind `localStorage`:
 
 ```ts
-import { createMMKV, localStorageMMKV } from '@alfayez/svelte-native/mmkv';
+import { createMMKV, localStorageMMKV } from 'expo-svelte/mmkv';
 
 const secrets = createMMKV({ id: 'secrets', encryptionKey: 'a key' });
 localStorageMMKV().set('onboarded', true);
@@ -117,10 +117,10 @@ react-native-mmkv comes with the library, together with react-native-nitro-modul
 
 ### Clipboard
 
-`navigator.clipboard` is the system clipboard, through a native module of Svelte Native's:
+`navigator.clipboard` is the system clipboard, through a native module of Expo Svelte's:
 
 ```ts
-await navigator.clipboard.writeText('Copied from Svelte Native');
+await navigator.clipboard.writeText('Copied from Expo Svelte');
 const text = await navigator.clipboard.readText();
 
 await navigator.clipboard.write([
@@ -137,7 +137,7 @@ It holds text: `text/plain` and `text/html`. Writing another type, such as an im
 `navigator.share()` opens the system share sheet with a title, a text and a link:
 
 ```ts
-await navigator.share({ title: 'Svelte Native', text: 'Have a look', url: 'https://svelte-native.alfayez.dev' });
+await navigator.share({ title: 'Expo Svelte', text: 'Have a look', url: 'https://svelte-native.alfayez.dev' });
 ```
 
 `navigator.canShare(data)` says whether `share` takes it: a title, a text or an absolute URL. Files can't be shared. When the user dismisses the sheet, the promise rejects with an `AbortError` on iOS. Android doesn't report a dismissal, so there it resolves once the sheet is shown.
@@ -149,12 +149,12 @@ await navigator.share({ title: 'Svelte Native', text: 'Have a look', url: 'https
 
 ### Geolocation
 
-`navigator.geolocation` is the web's Geolocation API. It needs a permission of the system, so it is a capability: off until the app says why it uses it. Its native code is part of Svelte Native, so there is nothing to install: give the reason in the plugin's options.
+`navigator.geolocation` is the web's Geolocation API. It needs a permission of the system, so it is a capability: off until the app says why it uses it. Its native code is part of Expo Svelte, so there is nothing to install: give the reason in the plugin's options.
 
 ```ts
 /// file: app.config.ts
 export default {
-	plugins: [['@alfayez/svelte-native', { capabilities: { location: 'Shows the stores near you.' } }]]
+	plugins: [['expo-svelte', { capabilities: { location: 'Shows the stores near you.' } }]]
 };
 ```
 

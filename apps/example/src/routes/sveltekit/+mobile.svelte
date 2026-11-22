@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Text, TextInput, View } from "@alfayez/svelte-native";
+  import { Text, TextInput, View } from "expo-svelte";
   import { goto } from "$app/navigation";
   import { browser, dev, mobile, version } from "$app/env";
   import { resolve } from "$app/paths";
@@ -12,7 +12,7 @@
   import { scroller, typeInto, useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
 
-  // The same imports a SvelteKit page makes. Metro answers each one with the library's file for the device (packages/svelte-native/src/kit), so
+  // The same imports a SvelteKit page makes. Metro answers each one with the library's file for the device (packages/expo-svelte/src/kit), so
   // nothing here asks which platform it runs on. `goto` to this screen with another search changes its `url` prop in place: the screen is not built
   // again, and a screen reads its own data from `url` and `params` (`page` is the screen on top, for the whole app).
   const row = { flexDirection: "row", justifyContent: "space-between" } as const;

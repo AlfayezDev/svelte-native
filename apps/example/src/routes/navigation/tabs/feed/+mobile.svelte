@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pressable, SafeAreaView, Screen, ScrollView, Text, useRouter } from "@alfayez/svelte-native";
+  import { Pressable, SafeAreaView, Screen, ScrollView, Text, useRouter } from "expo-svelte";
   import { useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
 
@@ -10,7 +10,7 @@
   const posts = [1, 2, 3];
 
   // `?demo`: open a post inside this tab, switch to Profile, come back (the post is still open), then close it. The demo link is this tab's:
-  // `svelte-native:///navigation/tabs/feed?demo`; the link to `/navigation/tabs` drops its query, because a tab bar's entry has none.
+  // `expo-svelte:///navigation/tabs/feed?demo`; the link to `/navigation/tabs` drops its query, because a tab bar's entry has none.
   let { url }: { url: URL } = $props();
   useDemo(() => url, [
     [() => root.goto("/navigation/tabs/feed/2"), 1800],

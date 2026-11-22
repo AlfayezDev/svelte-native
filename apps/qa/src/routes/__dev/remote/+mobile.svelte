@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
-  import { Text, TextInput, View } from "@alfayez/svelte-native";
-  import { remoteHost } from "@alfayez/svelte-native/remote";
+  import { Text, TextInput, View } from "expo-svelte";
+  import { remoteHost } from "expo-svelte/remote";
   import { nativeLabEnabled, theme } from "#lib/native/state.svelte.ts";
   import Page from "#lib/native/components/Page.svelte";
   import Button from "#lib/native/components/Button.svelte";
@@ -12,9 +12,9 @@
   import { field } from "#lib/native/dev/remote-lab-style.ts";
 
   /**
-   * The remote functions lab (packages/svelte-native/README.md, "Remote functions"): one of each kind of SvelteKit remote function, imported from
+   * The remote functions lab (packages/expo-svelte/README.md, "Remote functions"): one of each kind of SvelteKit remote function, imported from
    * `remote-lab.remote.ts` as a web page would and answered by the platform app's dev server (`pnpm dev`, port 3000), whose origin is the build's
-   * `extra.svelteNative.remote` (`SVELTE_NATIVE_REMOTE_ORIGIN` when the QA app was built) or what is typed below. `?run=1` runs the checks on
+   * `extra.expoSvelte.remote` (`EXPO_SVELTE_REMOTE_ORIGIN` when the QA app was built) or what is typed below. `?run=1` runs the checks on
    * mount and logs `[remote lab results] {json}` (and `?origin=<origin>` points the page at a server first); a person can also press "Run the
    * checks" and use the form and the live clock below. Every result is a `Text` with `testID` `remote.check.<id>` whose text starts with
    * `pass` or `fail`. The form and the clock are components that are shown once there is a host (making them calls a remote function, which says "no host"
@@ -34,7 +34,7 @@
   }
   const initial = currentOrigin();
   let origin = $state(initial);
-  const host = $derived(origin ?? "none: set extra.svelteNative.remote or type an origin");
+  const host = $derived(origin ?? "none: set extra.expoSvelte.remote or type an origin");
   let typed = $state(initial ?? "");
   function useHost() {
     try {

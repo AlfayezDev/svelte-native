@@ -1,8 +1,8 @@
 {
 	"project_info": {
 		"project_number": "000000000000",
-		"project_id": "svelte-native-smoke-fake",
-		"storage_bucket": "svelte-native-smoke-fake.invalid"
+		"project_id": "expo-svelte-smoke-fake",
+		"storage_bucket": "expo-svelte-smoke-fake.invalid"
 	},
 	"client": [
 		{
@@ -11,7 +11,7 @@
 				"android_client_info": { "package_name": "io.rasheed.svelteqa.smoke" }
 			},
 			"oauth_client": [],
-			"api_key": [{ "current_key": "fake-api-key-svelte-native-smoke" }],
+			"api_key": [{ "current_key": "fake-api-key-expo-svelte-smoke" }],
 			"services": { "appinvite_service": { "other_platform_oauth_client": [] } }
 		}
 	],

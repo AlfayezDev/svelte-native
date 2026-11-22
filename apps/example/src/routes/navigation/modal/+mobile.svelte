@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Pressable, SafeAreaView, Screen, Text, View, useRouter } from "@alfayez/svelte-native";
+  import { Pressable, SafeAreaView, Screen, Text, View, useRouter } from "expo-svelte";
   import Button from "#lib/components/Button.svelte";
   import { useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";

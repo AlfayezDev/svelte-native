@@ -28,7 +28,7 @@ export async function foreignPins(platform: Platform): Promise<ForeignPins> {
  * The modules of each library's own JavaScript (its React components, its wrappers over `requireNativeComponent`), which the Svelte components of the lab
  * do not use and the bundle must not hold: the native view is mounted by name and the library's JavaScript half is ported (SPEC.md, "Native-view
  * libraries"). react-native-svg is the exception that proves how it is done: 17 files of `src/lib` that import no React are the library's own.
- * `react-native-blob-util` is react-native-pdf's file access and is reached as a TurboModule. The libraries are the package's own copies (`packages/svelte-native/vendor/<name>/`, which an app turns on
+ * `react-native-blob-util` is react-native-pdf's file access and is reached as a TurboModule. The libraries are the package's own copies (`packages/expo-svelte/vendor/<name>/`, which an app turns on
  * with `libraries`), so a module is below `vendor/` as well as below `node_modules/`.
  */
 export const libraryModules: Record<string, RegExp[]> = {

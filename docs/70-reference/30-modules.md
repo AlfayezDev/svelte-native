@@ -2,9 +2,9 @@
 title: Modules
 ---
 
-Svelte Native's code is split into a few entry points. An app imports almost everything from the main one and reaches for `/foreign`, `/platform`, `/remote`, `/updates` and `/push` for the rest. This page lists each entry point and what it exports, with a link to the page that explains it.
+Expo Svelte's code is split into a few entry points. An app imports almost everything from the main one and reaches for `/foreign`, `/platform`, `/remote`, `/updates` and `/push` for the rest. This page lists each entry point and what it exports, with a link to the page that explains it.
 
-## @alfayez/svelte-native
+## expo-svelte
 
 The main entry: components, navigation, the app's state, animation, gestures and SVG.
 
@@ -32,7 +32,7 @@ The main entry: components, navigation, the app's state, animation, gestures and
 | `colorScheme` | `colorScheme.current` is `'light'` or `'dark'`, as state. [Styling](styling#light-and-dark-mode) |
 | `windowSize` | The window's `width`, `height`, `scale`, `fontScale` and `screen`, as state. [Platform APIs](platform-apis#window-size) |
 | `insets` | The safe area and the keyboard, as state. [Platform APIs](platform-apis#safe-area-and-keyboard) |
-| `BlurView` | Svelte Native's own blur. [BlurView](blur-view) |
+| `BlurView` | Expo Svelte's own blur. [BlurView](blur-view) |
 | `Native` | A native element whose tag is chosen at run time. For library authors. |
 | `Router`, `createRouter` | The router's building blocks. The generated entry uses them; an app doesn't need to. |
 | `bootSummary()` | How long each phase of the app's start took, as one line of text, for profiling. |
@@ -71,14 +71,14 @@ Native gesture recognisers, with react-native-gesture-handler. [Gestures](gestur
 
 SVG with react-native-svg, which the library carries itself: `Svg`, `G`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polygon`, `Polyline`, `SvgText`, `TSpan`, `TextPath`, `Use`, `SvgImage`, `Defs`, `ClipPath`, `SvgLinearGradient`, `RadialGradient`, `Stop`, `Pattern`, `Mask`, `SvgMarker`, `Symbol`, `ForeignObject`, the filters (`Filter`, `FeBlend`, `FeColorMatrix`, `FeComposite`, `FeDropShadow`, `FeFlood`, `FeGaussianBlur`, `FeMerge`, `FeMergeNode`, `FeOffset`), `SvgXml` and `SvgUri`, and the handle types `SvgHandle` and `SvgRootHandle`. react-native-svg's `Text`, `Image`, `LinearGradient` and `Marker` are `SvgText`, `SvgImage`, `SvgLinearGradient` and `SvgMarker` here, because `Text` and `Image` are the views and `/foreign` has a `LinearGradient` and a `Marker` of its own (expo-linear-gradient and react-native-maps). [SVG](svg)
 
-## @alfayez/svelte-native/foreign
+## expo-svelte/foreign
 
 Native views of other libraries. [Native views](native-views). Each component needs its library turned on in `libraries` of the [plugin's options](configuration#libraries); a component whose library is off throws a message that says so.
 
 | Export | Description |
 | --- | --- |
 | `ExpoImage` | `expo-image`. |
-| `BlurView` | Svelte Native's own blur ([BlurView](blur-view)). The main entry exports it too. |
+| `BlurView` | Expo Svelte's own blur ([BlurView](blur-view)). The main entry exports it too. |
 | `ExpoBlurView`, `BlurTargetView` | `expo-blur`. |
 | `LinearGradient` | `expo-linear-gradient`. |
 | `ConicGradient` | `expo-conic-gradient`. |
@@ -98,13 +98,13 @@ Native views of other libraries. [Native views](native-views). Each component ne
 
 The handle and option types (`VideoHandle`, `LottieHandle`, `MapHandle`, `WebViewHandle`, `RiveHandle`, `PdfHandle`, `ExpoViewHandle`, `CaptureOptions`, ...) are exported with them.
 
-## @alfayez/svelte-native/platform
+## expo-svelte/platform
 
 React Native's platform modules, typed: `Platform`, `Appearance`, `Dimensions`, `PixelRatio`, `Linking`, `Keyboard`, `AppState`, `BackHandler`, `Share`, `Vibration` and `Alert`. Each loads the first time it's used. [Platform APIs](platform-apis)
 
 It also has the two lookups of native modules: `turboModule<T>(name)` returns a TurboModule by name and throws when the build doesn't have it, and `nativeModule<T>(name)` returns a legacy NativeModule by name, or `undefined`. [Native libraries](native-libraries#calling-a-native-module-directly)
 
-## @alfayez/svelte-native/mmkv
+## expo-svelte/mmkv
 
 react-native-mmkv, for storage of the app's own, and the instance behind `localStorage`. [Web APIs](web-apis#storage)
 
@@ -114,9 +114,9 @@ react-native-mmkv, for storage of the app's own, and the instance behind `localS
 | `localStorageMMKV()` | The MMKV instance `localStorage` keeps its data in, created on the first call. |
 | `MMKV`, `Configuration`, `Mode` | react-native-mmkv's types. |
 
-A page that both the web and the phone import can use it: for the web build, `svelteNative()` tells Vite to pick react-native-mmkv's web implementation, which keeps its data in the browser's `localStorage`, under keys that start with the instance's id.
+A page that both the web and the phone import can use it: for the web build, `expoSvelte()` tells Vite to pick react-native-mmkv's web implementation, which keeps its data in the browser's `localStorage`, under keys that start with the instance's id.
 
-## @alfayez/svelte-native/remote
+## expo-svelte/remote
 
 SvelteKit's remote functions on the device. [Loading data](loading-data#remote-functions)
 
@@ -130,11 +130,11 @@ SvelteKit's remote functions on the device. [Loading data](loading-data#remote-f
 | `normalizeOrigin(origin)` | Checks and normalises an origin. |
 | `RemoteConfigError` | Thrown by a remote function call when no server is configured. |
 
-## @alfayez/svelte-native/updates
+## expo-svelte/updates
 
 Over-the-air updates, compatible with `eas update`: `isEnabled`, `updateId`, `channel`, `runtimeVersion`, `checkForUpdateAsync`, `fetchUpdateAsync`, `reloadAsync` and `checkOnLaunch`. [Updates](updates)
 
-## @alfayez/svelte-native/push
+## expo-svelte/push
 
 Push notifications on the device, once `capabilities.push` turns them on. [Push notifications](push-notifications)
 
@@ -144,7 +144,7 @@ Push notifications on the device, once `capabilities.push` turns them on. [Push 
 | `PushHooks`, `PushPresentation` | The types of the `push` export of `src/hooks.mobile.ts`. |
 | `PushMessage`, `PushToken`, `PushPermission` | The types of a message, of the token the app saves, and of `push.permission`. |
 
-## @alfayez/svelte-native/push/server
+## expo-svelte/push/server
 
 The sender, for your server (Node, no dependencies; it does not run on the device). [Push notifications](push-notifications#on-the-server)
 
@@ -159,11 +159,11 @@ These entry points run in Node, in your build configuration, not in the app.
 
 | Entry | Export | Used in |
 | --- | --- | --- |
-| `@alfayez/svelte-native/vite` | `svelteNative(options)`: SvelteKit's Vite plugin, wrapped. | `vite.config.ts` |
-| `@alfayez/svelte-native/metro` | `withSvelteNative(config, options?)`: Expo's Metro config, extended to compile Svelte and find your routes. | `metro.config.cjs` |
-| `@alfayez/svelte-native` | The Expo config plugin, found through the package's `app.plugin.js`. `@alfayez/svelte-native/app.plugin` is the same file. | `app.json` or `app.config.ts` |
+| `expo-svelte/vite` | `expoSvelte(options)`: SvelteKit's Vite plugin, wrapped. | `vite.config.ts` |
+| `expo-svelte/metro` | `withExpoSvelte(config, options?)`: Expo's Metro config, extended to compile Svelte and find your routes. | `metro.config.cjs` |
+| `expo-svelte` | The Expo config plugin, found through the package's `app.plugin.js`. `expo-svelte/app.plugin` is the same file. | `app.json` or `app.config.ts` |
 
-[Configuration](configuration) shows each one with its options. The `svelte-native` command is the package's binary: see [Command line](cli).
+[Configuration](configuration) shows each one with its options. The `expo-svelte` command is the package's binary: see [Command line](cli).
 
 The other entry points (`/app`, `/core`, `/router`, `/routes`, `/renderer`, `/elements`, `/lower`, `/transformer`, `/remote/runtime`, `/remote/globals`) are used by the generated entry, Metro and the library itself. An app doesn't import them.
 
@@ -173,9 +173,9 @@ These paths no longer resolve: they were removed in 0.4.0-rc.7. An app that upgr
 
 | Removed in 0.4.0-rc.7 | Use |
 | --- | --- |
-| `@alfayez/svelte-native/animation` | `@alfayez/svelte-native` |
-| `@alfayez/svelte-native/gestures` | `@alfayez/svelte-native` |
-| `@alfayez/svelte-native/svg` | `@alfayez/svelte-native`, where its `Text`, `Image`, `LinearGradient` and `Marker` are `SvgText`, `SvgImage`, `SvgLinearGradient` and `SvgMarker` |
-| `@alfayez/svelte-native/native-modules` | `@alfayez/svelte-native/platform` |
-| `@alfayez/svelte-native/expo` | `@alfayez/svelte-native` in `plugins` (`svelte-native init` rewrites it; `svelte-native doctor` reports it) |
-| `@alfayez/svelte-native/init`, `/polyfills`, `/fabric` | `@alfayez/svelte-native/app`: run `svelte-native sync` and the generated entry imports it |
+| `expo-svelte/animation` | `expo-svelte` |
+| `expo-svelte/gestures` | `expo-svelte` |
+| `expo-svelte/svg` | `expo-svelte`, where its `Text`, `Image`, `LinearGradient` and `Marker` are `SvgText`, `SvgImage`, `SvgLinearGradient` and `SvgMarker` |
+| `expo-svelte/native-modules` | `expo-svelte/platform` |
+| `expo-svelte/expo` | `expo-svelte` in `plugins` (`expo-svelte init` rewrites it; `expo-svelte doctor` reports it) |
+| `expo-svelte/init`, `/polyfills`, `/fabric` | `expo-svelte/app`: run `expo-svelte sync` and the generated entry imports it |

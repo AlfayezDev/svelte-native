@@ -1,11 +1,11 @@
-// The device checks of the web APIs Svelte Native backs with native code: `fetch` and `Blob` (the SvelteFetch module), `crypto` (react-native-quick-crypto, part of the library),
-// `localStorage` (MMKV) and `navigator` (the clipboard through the SvelteClipboard module, the language, `canShare`, `vibrate`, and the geolocation over the library's own location module). They run against the library's test server (packages/svelte-native/tests/web-apis/fetch/support/server.ts) when the Web APIs screen opens with
-// `?checks=<origin>`: `svelte-native://web-apis?checks=http://localhost:8787` (an Android emulator after `adb reverse tcp:8787 tcp:8787`; the iOS
-// Simulator reaches the Mac's localhost). A release build talks plain HTTP only when it was built with SVELTE_NATIVE_REMOTE_ORIGIN=http://localhost:8787,
+// The device checks of the web APIs Expo Svelte backs with native code: `fetch` and `Blob` (the SvelteFetch module), `crypto` (react-native-quick-crypto, part of the library),
+// `localStorage` (MMKV) and `navigator` (the clipboard through the SvelteClipboard module, the language, `canShare`, `vibrate`, and the geolocation over the library's own location module). They run against the library's test server (packages/expo-svelte/tests/web-apis/fetch/support/server.ts) when the Web APIs screen opens with
+// `?checks=<origin>`: `expo-svelte://web-apis?checks=http://localhost:8787` (an Android emulator after `adb reverse tcp:8787 tcp:8787`; the iOS
+// Simulator reaches the Mac's localhost). A release build talks plain HTTP only when it was built with EXPO_SVELTE_REMOTE_ORIGIN=http://localhost:8787,
 // which makes the plugin allow it. Every result is logged as `[web-apis] …`, the last line `[web-apis] done pass=N fail=N skip=N`,
 // and the lines are posted to the server's /report at the end, which prints them.
 
-import { Platform } from "@alfayez/svelte-native/platform";
+import { Platform } from "expo-svelte/platform";
 
 export type CheckResult = { name: string; status: "pass" | "fail" | "skip"; detail: string; ms: number };
 
@@ -325,7 +325,7 @@ const checks: [name: string, run: (origin: string) => Promise<string>][] = [
   }],
   ["clipboard: writeText, readText", async () => {
     if (typeof navigator.clipboard === "undefined") throw new Skip("no navigator.clipboard");
-    const text = `svelte-native ✓ ${Date.now()}`;
+    const text = `expo-svelte ✓ ${Date.now()}`;
     await navigator.clipboard.writeText(text);
     const read = await navigator.clipboard.readText();
     expect(read === text, `read ${JSON.stringify(read)}`);

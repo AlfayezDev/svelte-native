@@ -3,7 +3,7 @@ title: Routing
 video: routing
 ---
 
-Svelte Native has SvelteKit's _filesystem-based router_: the directories under `src/routes` are the screens of your app. Web routes are `+page.svelte` and `+layout.svelte`; native routes are `+mobile.svelte` and `+layout.mobile.svelte`, and the two kinds can share a directory.
+Expo Svelte has SvelteKit's _filesystem-based router_: the directories under `src/routes` are the screens of your app. Web routes are `+page.svelte` and `+layout.svelte`; native routes are `+mobile.svelte` and `+layout.mobile.svelte`, and the two kinds can share a directory.
 
 | Web | Native | What it is |
 | --- | --- | --- |
@@ -21,7 +21,7 @@ A `+mobile.svelte` file is a screen. Its directory is its route:
 ```svelte
 <!--- file: src/routes/posts/[id]/+mobile.svelte --->
 <script lang="ts">
-	import { Screen, Text, View } from '@alfayez/svelte-native';
+	import { Screen, Text, View } from 'expo-svelte';
 
 	let { params }: { params: { id: string } } = $props();
 </script>
@@ -45,7 +45,7 @@ A `+layout.mobile.svelte` wraps every screen below its directory. It receives `p
 <!--- file: src/routes/(account)/+layout.mobile.svelte --->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { View } from '@alfayez/svelte-native';
+	import { View } from 'expo-svelte';
 
 	let { children }: { children: Snippet } = $props();
 </script>
@@ -61,7 +61,7 @@ The layout at the root, `src/routes/+layout.mobile.svelte`, is the _app shell_. 
 <!--- file: src/routes/+layout.mobile.svelte --->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Stack } from '@alfayez/svelte-native';
+	import { Stack } from 'expo-svelte';
 
 	let { children }: { children: Snippet } = $props();
 </script>
@@ -86,7 +86,7 @@ A _navigator_ decides how screens relate to each other. The root is a stack: eac
 
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Tabs } from '@alfayez/svelte-native';
+	import { Tabs } from 'expo-svelte';
 
 	let { children }: { children: Snippet } = $props();
 </script>
@@ -149,7 +149,7 @@ A screen navigates the way a SvelteKit page does. `<a href>` and `goto` from `$a
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { Screen } from '@alfayez/svelte-native';
+	import { Screen } from 'expo-svelte';
 </script>
 
 <Screen title="Home">
@@ -175,7 +175,7 @@ A press on an `<a href>` goes to the route of its path, and one on a link to ano
 ```svelte
 <!--- file: src/routes/compose/+mobile.svelte --->
 <script lang="ts">
-	import { Pressable, Screen, Text, useRouter } from '@alfayez/svelte-native';
+	import { Pressable, Screen, Text, useRouter } from 'expo-svelte';
 
 	const router = useRouter();
 </script>
@@ -211,22 +211,22 @@ The header's back button, the iOS edge swipe and Android's back button go back w
 
 ## Preparing a screen (experimental)
 
-A heavy screen takes a while to mount on the JavaScript thread, and a tap waits for it. `router.prepare` does that work while the finger is still down, so that lifting it only puts the finished screen on the stack. It builds on Svelte's `fork()`, which Svelte marks experimental, and on Svelte's async mode, which Svelte Native leaves off. Both may change, and so may `prepare`.
+A heavy screen takes a while to mount on the JavaScript thread, and a tap waits for it. `router.prepare` does that work while the finger is still down, so that lifting it only puts the finished screen on the stack. It builds on Svelte's `fork()`, which Svelte marks experimental, and on Svelte's async mode, which Expo Svelte leaves off. Both may change, and so may `prepare`.
 
 Turn async mode on in the Metro config:
 
 ```js
 /// file: metro.config.cjs
-module.exports = withSvelteNative(getDefaultConfig(__dirname), { async: true });
+module.exports = withExpoSvelte(getDefaultConfig(__dirname), { async: true });
 ```
 
-With the option every Svelte file Metro compiles, yours, the library's and your dependencies', is compiled with Svelte's `experimental.async`. Svelte's async mode is one switch for the whole app, and the option sets it for all files at once. It also lets a component use `await` in `$derived`, in the markup and at the top of its script. If the app builds for the web with `svelteNative()` in `vite.config.ts`, give it `async: true` as well, so a shared component compiles the same way on both targets (on the web, `kit.compilerOptions.experimental.async` in your own config wins). A prebuilt Svelte package that was compiled with the option turns the mode on for the whole app by itself, even without yours.
+With the option every Svelte file Metro compiles, yours, the library's and your dependencies', is compiled with Svelte's `experimental.async`. Svelte's async mode is one switch for the whole app, and the option sets it for all files at once. It also lets a component use `await` in `$derived`, in the markup and at the top of its script. If the app builds for the web with `expoSvelte()` in `vite.config.ts`, give it `async: true` as well, so a shared component compiles the same way on both targets (on the web, `kit.compilerOptions.experimental.async` in your own config wins). A prebuilt Svelte package that was compiled with the option turns the mode on for the whole app by itself, even without yours.
 
 Then prepare on the finger going down, commit on the tap and discard when the finger leaves without one:
 
 ```svelte
 <script lang="ts">
-	import { Pressable, Text, useRouter, type PreparedNavigation } from '@alfayez/svelte-native';
+	import { Pressable, Text, useRouter, type PreparedNavigation } from 'expo-svelte';
 
 	const router = useRouter();
 	let prepared: PreparedNavigation | undefined;
@@ -276,7 +276,7 @@ A link to your app opens the screen of its route. The app's scheme is `scheme` i
 
 The link the app was started with becomes the first screen, with no back button. Links that arrive while the app runs are opened with `goto`. A link that arrives and opens a screen while the app is still waiting for the platform to report the launch link is the newer one, so the launch link isn't opened over it.
 
-If your app shell must know the launch link before it renders, for instance to choose between a sign-in screen and the app, await `openLaunchURL(router)` from `@alfayez/svelte-native` before rendering `children`.
+If your app shell must know the launch link before it renders, for instance to choose between a sign-in screen and the app, await `openLaunchURL(router)` from `expo-svelte` before rendering `children`.
 
 ## Navigation state
 

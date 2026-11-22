@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Text, View } from "@alfayez/svelte-native";
-  import { Pdf, type PdfHandle } from "@alfayez/svelte-native/foreign";
+  import { Text, View } from "expo-svelte";
+  import { Pdf, type PdfHandle } from "expo-svelte/foreign";
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";

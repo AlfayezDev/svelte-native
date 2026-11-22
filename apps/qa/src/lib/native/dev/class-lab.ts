@@ -1,6 +1,6 @@
 import { tick } from "svelte";
-import { Appearance, Dimensions } from "@alfayez/svelte-native/platform";
-import { mergeHostProps } from "@alfayez/svelte-native/renderer";
+import { Appearance, Dimensions } from "expo-svelte/platform";
+import { mergeHostProps } from "expo-svelte/renderer";
 import { allSides, classCheckNames, classStyle, expectations, isColor, sentStyle, white, zinc900, type HostNode, type Outcome, type Rect, type Style } from "./class-checks.ts";
 
 /**

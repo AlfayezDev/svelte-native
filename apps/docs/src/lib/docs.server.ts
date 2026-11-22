@@ -496,7 +496,7 @@ export function getMarkdown(slug: string): string | undefined {
 
 /** llms.txt: the guide's pages, and where to read each one as Markdown (https://llmstxt.org). */
 export function getLlmsTxt(): string {
-	const lines = ["# Svelte Native", "", "> Svelte 5 on React Native Fabric, with no React: write Android and iOS apps as Svelte components. This is its guide. Every page is also available as Markdown, at the address listed.", ""];
+	const lines = ["# Expo Svelte", "", "> Svelte 5 on React Native Fabric, with no React: write Android and iOS apps as Svelte components. This is its guide. Every page is also available as Markdown, at the address listed.", ""];
 	/** A page's Markdown file: an absolute address with SITE_URL, a path without. */
 	const where = (slug: string) => `${SITE_URL || BASE}/docs/${slug}.md`;
 	let section = "";

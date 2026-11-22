@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SafeAreaView, Screen, Text, View } from "@alfayez/svelte-native";
+  import { SafeAreaView, Screen, Text, View } from "expo-svelte";
   import { text } from "#lib/theme.svelte.ts";
 
   // A screen pushed inside the Feed tab: the tab bar stays, and the back arrow pops back to the feed.

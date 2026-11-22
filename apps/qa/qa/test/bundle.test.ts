@@ -4,17 +4,17 @@ import { createRequire } from "node:module";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { platformDir, svelteNativeCli } from "../lib/paths.ts";
+import { platformDir, expoSvelteCli } from "../lib/paths.ts";
 
 /**
- * The JavaScript bundle of each app (packages/svelte-native/native/svelte-core/SPEC.md, "Native modules (smoke test)" and "What the product contains: no development lab (JavaScript)"). The smoke test's libraries are in the smoke app only,
+ * The JavaScript bundle of each app (packages/expo-svelte/native/svelte-core/SPEC.md, "Native modules (smoke test)" and "What the product contains: no development lab (JavaScript)"). The smoke test's libraries are in the smoke app only,
  * so Metro resolves them, and the smoke checks, to a stub in the product and the QA app: the bundle the JavaScript boot gate
  * measures must not carry thirty libraries it never calls. Bundled the way React Native's Gradle plugin does it (`expo export:embed`,
  * release, not minified: Hermes compiles it), without the Hermes step.
  *
  * The development lab (`src/routes/__dev/**`, `src/lib/native/dev/**`) is in the QA app and the smoke app and not in the product: route
  * discovery leaves the `/__dev` routes out of the product's route table and Metro stubs what is still imported from the lab's directories.
- * The product's modules are listed from the bundle's source map. Each variant has a route table of its own (`.svelte-native/routes.<variant>.ts`),
+ * The product's modules are listed from the bundle's source map. Each variant has a route table of its own (`.expo-svelte/routes.<variant>.ts`),
  * which Metro writes when its config loads, so a bundle never touches another variant's table, and the tests below can run beside a live
  * development server of the QA app.
  */
@@ -43,7 +43,7 @@ const { smokeOnlyBundlePackages, libraryVendoredPackages } = createRequire(impor
  * renderer entry that the checks read the host's props through (0.1 % over its own baseline below). Both were measured in a checkout whose installed Svelte had the library's patch applied to a scratch copy of the
  * compiler (`patches/svelte@5.56.7.patch`, which lets the compiler accept transitions with a custom renderer), the same bytes an install with the patch gives, because the patch changes the compiler and not what it emits.
  *
- * Moved on 13 November 2026 (feat/exports-grouped), from 6,003,584 to 6,007,156 bytes (+3,572, 1,205 to 1,206 modules): the generated entry imports `@alfayez/svelte-native/app` (one module that imports the boot modules and the Fabric host in the order it
+ * Moved on 13 November 2026 (feat/exports-grouped), from 6,003,584 to 6,007,156 bytes (+3,572, 1,205 to 1,206 modules): the generated entry imports `expo-svelte/app` (one module that imports the boot modules and the Fabric host in the order it
  * imported them), and the main entry exports the animation, the gestures and the SVG components, which the QA app carried already for its lab. The product variant moved far more (see `productBaseline`): it is the variant that did not carry them.
  *
  * Moved on 14 November 2026 (feat/native-fetch), from 6,007,156 to 7,085,004 bytes (+1,077,848, 17.9 %; 1,206 to 1,403 modules), in two parts, both measured with this recipe on the same tree. The library's own `fetch`, `Blob`, `FormData`, `crypto` and
@@ -75,14 +75,14 @@ afterAll(() => {
 });
 
 type Bundle = { text: string; bytes: number; modules: string[] };
-/** `svelte-native sync` for a variant (the command a developer or the QA harness runs). */
+/** `expo-svelte sync` for a variant (the command a developer or the QA harness runs). */
 function sync(variant: string): void {
 	// The QA app's variant is `qa` (the library's own default for no variant is `app`).
-	const done = spawnSync("node", [svelteNativeCli, "sync"], { cwd: platformDir, env: { ...process.env, APP_VARIANT: variant || "qa", EXPO_NO_TELEMETRY: "1" }, encoding: "utf8" });
-	if (done.status !== 0) throw new Error(`svelte-native sync (${variant || "qa"}) failed: ${done.stderr.slice(0, 400)}`);
+	const done = spawnSync("node", [expoSvelteCli, "sync"], { cwd: platformDir, env: { ...process.env, APP_VARIANT: variant || "qa", EXPO_NO_TELEMETRY: "1" }, encoding: "utf8" });
+	if (done.status !== 0) throw new Error(`expo-svelte sync (${variant || "qa"}) failed: ${done.stderr.slice(0, 400)}`);
 }
 /**
- * `syncedFirst`: the variants `svelte-native sync` runs for before the bundle is made (none by default: Metro writes the route table of the
+ * `syncedFirst`: the variants `expo-svelte sync` runs for before the bundle is made (none by default: Metro writes the route table of the
  * variant it bundles when its config loads, which is what the tests below rely on).
  */
 function bundle(variant: string, syncedFirst: readonly string[] = []): Bundle {
@@ -95,7 +95,7 @@ function bundle(variant: string, syncedFirst: readonly string[] = []): Bundle {
 	for (const synced of syncedFirst) sync(synced);
 	const done = spawnSync(
 		"pnpm",
-		["exec", "expo", "export:embed", "--platform", "android", "--dev", "false", "--minify", "false", "--reset-cache", "--entry-file", ".svelte-native/entry.ts", "--bundle-output", output, "--sourcemap-output", sourceMap, "--assets-dest", join(directory, "assets")],
+		["exec", "expo", "export:embed", "--platform", "android", "--dev", "false", "--minify", "false", "--reset-cache", "--entry-file", ".expo-svelte/entry.ts", "--bundle-output", output, "--sourcemap-output", sourceMap, "--assets-dest", join(directory, "assets")],
 		{ cwd: platformDir, env, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
 	);
 	if (done.status !== 0) throw new Error(`export:embed (${variant || "qa"}) failed: ${(done.stderr || done.stdout).slice(-600)}`);
@@ -140,10 +140,10 @@ describe("the JavaScript bundles", () => {
 	test("every app bundles the packages the library carries (crypto and localStorage are made of four of them; the animation, gestures and svg of the rest), its own copies and no stub", () => {
 		for (const variant of ["", "production", "smoke"]) {
 			const { modules, text } = bundled(variant);
-			// The ones the library vendors are its own copies (`packages/svelte-native/vendor/<name>/`), one each: the app's import, quick-crypto's imports of the Nitro runtime and the base64 module and the library's own all reach the same files, and no installed original is bundled beside them (`react-native-quick-base64` is installed all the same, for the Buffer package, and so are gesture handler, Reanimated and Worklets, which a package manager installs for Expo Router's peers: none of them is reached).
-			// Metro's stub for a package is a file named after it (`.svelte-native/stubs/<variant>/<package>.js`): there is none for these.
+			// The ones the library vendors are its own copies (`packages/expo-svelte/vendor/<name>/`), one each: the app's import, quick-crypto's imports of the Nitro runtime and the base64 module and the library's own all reach the same files, and no installed original is bundled beside them (`react-native-quick-base64` is installed all the same, for the Buffer package, and so are gesture handler, Reanimated and Worklets, which a package manager installs for Expo Router's peers: none of them is reached).
+			// Metro's stub for a package is a file named after it (`.expo-svelte/stubs/<variant>/<package>.js`): there is none for these.
 			for (const library of libraryVendoredPackages) {
-				expect([variant, library, modules.some((module) => module.startsWith(`packages/svelte-native/vendor/${library}/`))]).toEqual([variant, library, true]);
+				expect([variant, library, modules.some((module) => module.startsWith(`packages/expo-svelte/vendor/${library}/`))]).toEqual([variant, library, true]);
 				expect([variant, library, modules.filter((module) => module.includes(`node_modules/${library}/`))]).toEqual([variant, library, []]);
 				expect([variant, library, modules.filter((module) => stubModule.test(module) && module.includes(library))]).toEqual([variant, library, []]);
 			}
@@ -165,18 +165,18 @@ describe("the JavaScript bundles", () => {
 /** Modules of the development lab: the routes under `__dev` and what `src/lib/native/dev` holds. */
 const labModule = /^apps\/qa\/src\/(?:lib\/native\/dev|routes\/__dev)\//;
 /** A stub Metro puts where an import would reach a module the app does not carry. */
-const stubModule = /^apps\/qa\/\.svelte-native\/stubs\//;
-/** The generated route table of a variant: each bundle has its own variant's and no other (`.svelte-native/routes.<variant>.ts`). */
-const tableModule = /^apps\/qa\/\.svelte-native\/routes\.[^/]+\.ts$/;
+const stubModule = /^apps\/qa\/\.expo-svelte\/stubs\//;
+/** The generated route table of a variant: each bundle has its own variant's and no other (`.expo-svelte/routes.<variant>.ts`). */
+const tableModule = /^apps\/qa\/\.expo-svelte\/routes\.[^/]+\.ts$/;
 /**
- * The generated class table of a variant (`.svelte-native/classes.<variant>.ts`, the `css` option of `metro.config.cjs`): the lab's own classes are what the checks of the native checks lab read, so the QA app and the smoke app
+ * The generated class table of a variant (`.expo-svelte/classes.<variant>.ts`, the `css` option of `metro.config.cjs`): the lab's own classes are what the checks of the native checks lab read, so the QA app and the smoke app
  * have a table and the product, which has no lab and no class, has none (`css` is off for it).
  */
-const classTable = /^apps\/qa\/\.svelte-native\/classes\.[^/]+\.ts$/;
+const classTable = /^apps\/qa\/\.expo-svelte\/classes\.[^/]+\.ts$/;
 /** What the product has in the class table's place: the library's own empty table (an app with no `css` option). */
-const emptyClassTable = "packages/svelte-native/src/css/empty-table.ts";
+const emptyClassTable = "packages/expo-svelte/src/css/empty-table.ts";
 /** What only the lab may bring along: its assets, the workspace package (the foreign view wrappers) and the libraries. */
-const labDependency = /^(?:apps\/qa\/assets\/native\/lab\/|packages\/svelte-native\/|node_modules\/)|\/node_modules\//;
+const labDependency = /^(?:apps\/qa\/assets\/native\/lab\/|packages\/expo-svelte\/|node_modules\/)|\/node_modules\//;
 
 describe("the development lab", () => {
 	test("the product has no /__dev route and no module of the lab; what shared code still imports from it is a stub", () => {
@@ -184,7 +184,7 @@ describe("the development lab", () => {
 		expect(modules.filter((module) => labModule.test(module))).toEqual([]);
 		expect(modules.filter((module) => /\/__dev\//.test(module) || module.includes("assets/native/lab"))).toEqual([]);
 		// The root layout's hooks (the error counter, the update harness's faults and report, the QA module) name modules of the lab behind `nativeLabEnabled`: all resolve to the directory's stub.
-		expect(modules.filter((module) => stubModule.test(module)).toSorted()).toEqual(["apps/qa/.svelte-native/stubs/production/_core.js", "apps/qa/.svelte-native/stubs/production/src_lib_native_dev_.js"]);
+		expect(modules.filter((module) => stubModule.test(module)).toSorted()).toEqual(["apps/qa/.expo-svelte/stubs/production/_core.js", "apps/qa/.expo-svelte/stubs/production/src_lib_native_dev_.js"]);
 		expect(text).not.toContain("Mobile development lab");
 		// The route table does not name the lab, and the one place that knows its path is the session guard, which sends a link to it away (defence in depth).
 		expect(text.split("\n").filter((line) => line.includes("__dev")).map((line) => line.trim())).toEqual(['if (path === "/__dev" || path.startsWith("/__dev/")) {']);
@@ -202,11 +202,11 @@ describe("the development lab", () => {
 		const qa = new Set(bundled("").modules);
 		const product = new Set(bundled("production").modules);
 		// Each has the route table of its own variant, and only that one.
-		expect([...product].filter((module) => tableModule.test(module))).toEqual(["apps/qa/.svelte-native/routes.production.ts"]);
-		expect([...qa].filter((module) => tableModule.test(module))).toEqual(["apps/qa/.svelte-native/routes.qa.ts"]);
+		expect([...product].filter((module) => tableModule.test(module))).toEqual(["apps/qa/.expo-svelte/routes.production.ts"]);
+		expect([...qa].filter((module) => tableModule.test(module))).toEqual(["apps/qa/.expo-svelte/routes.qa.ts"]);
 		// The class table is the lab's too: the QA app has its own variant's, the product none.
 		expect([...product].filter((module) => classTable.test(module))).toEqual([]);
-		expect([...qa].filter((module) => classTable.test(module))).toEqual(["apps/qa/.svelte-native/classes.qa.ts"]);
+		expect([...qa].filter((module) => classTable.test(module))).toEqual(["apps/qa/.expo-svelte/classes.qa.ts"]);
 		expect([product.has(emptyClassTable), qa.has(emptyClassTable)]).toEqual([true, false]);
 		const missing = [...product].filter((module) => !qa.has(module) && !stubModule.test(module) && !tableModule.test(module) && module !== emptyClassTable);
 		expect(missing).toEqual([]);
@@ -224,7 +224,7 @@ describe("the development lab", () => {
 		expect(lab.length).toBeGreaterThan(100);
 	}, 120_000);
 	test("a route table synced for another variant changes nothing: each variant bundles its own", () => {
-		// `svelte-native sync` for the QA app, then the product is bundled (a forgotten sync before `eas update`, a QA sync before a product export):
+		// `expo-svelte sync` for the QA app, then the product is bundled (a forgotten sync before `eas update`, a QA sync before a product export):
 		// the product's table is its own file, so the product still has no lab route, and no module of the lab but the stub.
 		const forgotten = bundled("production", [""]);
 		expect(forgotten.modules.filter((module) => labModule.test(module))).toEqual([]);
@@ -238,7 +238,7 @@ describe("the development lab", () => {
 	}, 120_000);
 	test("a bundle writes no file another variant's Metro (a live development server of the QA app) reads: not its table, not the stubs", () => {
 		const watched = () => {
-			const directory = join(platformDir, ".svelte-native");
+			const directory = join(platformDir, ".expo-svelte");
 			// What the Metro of the QA app and of the smoke app reads: their tables, the entry and their stubs (a directory of their own each).
 			const stubs = ["qa", "smoke"].flatMap((variant) => (existsSync(join(directory, "stubs", variant)) ? readdirSync(join(directory, "stubs", variant)).map((name) => join(directory, "stubs", variant, name)) : []));
 			const files = [join(directory, "routes.qa.ts"), join(directory, "routes.smoke.ts"), join(directory, "entry.ts"), ...stubs];
@@ -265,8 +265,8 @@ describe("the development lab", () => {
 		expect(product).toBeLessThan(qa * 0.93);
 		expect(qa - product).toBeGreaterThan(900_000);
 		const smoke = new Set(bundled("smoke").modules);
-		expect([...smoke].filter((module) => tableModule.test(module))).toEqual(["apps/qa/.svelte-native/routes.smoke.ts"]);
-		expect([...smoke].filter((module) => classTable.test(module))).toEqual(["apps/qa/.svelte-native/classes.smoke.ts"]);
+		expect([...smoke].filter((module) => tableModule.test(module))).toEqual(["apps/qa/.expo-svelte/routes.smoke.ts"]);
+		expect([...smoke].filter((module) => classTable.test(module))).toEqual(["apps/qa/.expo-svelte/classes.smoke.ts"]);
 		expect(bundled("").modules.filter((module) => !smoke.has(module) && !stubModule.test(module) && !tableModule.test(module) && !classTable.test(module))).toEqual([]);
 	}, 120_000);
 });

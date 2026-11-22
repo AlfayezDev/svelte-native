@@ -3,12 +3,12 @@ title: Animation
 video: animation
 ---
 
-Animations in Svelte Native run on the UI thread, with [Reanimated](https://docs.swmansion.com/react-native-reanimated/), so they stay smooth while JavaScript is busy. `@alfayez/svelte-native` gives you an `AnimatedView`, shared values to animate, and Reanimated's helpers that move them.
+Animations in Expo Svelte run on the UI thread, with [Reanimated](https://docs.swmansion.com/react-native-reanimated/), so they stay smooth while JavaScript is busy. `expo-svelte` gives you an `AnimatedView`, shared values to animate, and Reanimated's helpers that move them.
 
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { AnimatedView, Pressable, Screen, Text, createSharedValue, withSpring } from '@alfayez/svelte-native';
+	import { AnimatedView, Pressable, Screen, Text, createSharedValue, withSpring } from 'expo-svelte';
 
 	const x = createSharedValue(0);
 	let right = $state(false);
@@ -39,7 +39,7 @@ There are three parts:
 - An **animation helper** such as `withSpring` or `withTiming` moves a shared value to a target over time, on the UI thread.
 - A **worklet** turns shared values into style. `animatedStyle` is a function marked `'worklet'`, which runs on the UI thread every frame the values change.
 
-Reanimated and its worklets are part of every Svelte Native app: the library carries them (they are not dependencies of your app) and compiles your worklets with its copy of the Worklets plugin. They load the first time you call `createSharedValue` or another animation function.
+Reanimated and its worklets are part of every Expo Svelte app: the library carries them (they are not dependencies of your app) and compiles your worklets with its copy of the Worklets plugin. They load the first time you call `createSharedValue` or another animation function.
 
 ## AnimatedView
 
@@ -82,7 +82,7 @@ A worklet runs on the UI thread, where Svelte's state doesn't exist, so a workle
 
 ```svelte
 <script lang="ts">
-	import { AnimatedView, Switch, createSharedValue, withTiming } from '@alfayez/svelte-native';
+	import { AnimatedView, Switch, createSharedValue, withTiming } from 'expo-svelte';
 
 	let big = $state(false);
 	const grow = createSharedValue(0);
@@ -104,7 +104,7 @@ A worklet runs on the UI thread, where Svelte's state doesn't exist, so a workle
 
 A worklet that reads Svelte state fails the build, with the name of the variable, rather than crashing on the device.
 
-The same rule makes runes mode matter. Svelte Native compiles your components in runes mode, where state is only what `$state` and `$derived` declare. A component in legacy mode (one with `<svelte:options runes={false} />`) treats a variable the markup changes as state, even a `const` shared value, and its worklets can't capture it. Give such a component `<svelte:options runes />`.
+The same rule makes runes mode matter. Expo Svelte compiles your components in runes mode, where state is only what `$state` and `$derived` declare. A component in legacy mode (one with `<svelte:options runes={false} />`) treats a variable the markup changes as state, even a `const` shared value, and its worklets can't capture it. Give such a component `<svelte:options runes />`.
 
 ## CSS animations
 

@@ -7,7 +7,7 @@
  *
  * `foreign-libraries-lab.ts` mounts the section, builds the context and calls the library's function here.
  */
-import { dismissDatePicker, openDatePicker, captureRef, releaseCapture, type CaptureOptions } from "@alfayez/svelte-native/foreign";
+import { dismissDatePicker, openDatePicker, captureRef, releaseCapture, type CaptureOptions } from "expo-svelte/foreign";
 import { tick } from "svelte";
 import type { Host, LibraryHandles, LibraryKind } from "./LibrarySet.svelte";
 import { libraryLab } from "./foreign.svelte.ts";
@@ -676,7 +676,7 @@ const hostFlushes = (): number => (globalThis as { __svelteFabric?: { stats(): {
  * the load had reached JavaScript before the hold, or the host had not committed the prop (`flushes`), the attempt does not count and is made again with the other page.
  *
  * `tick()` is `await Promise.resolve(); flushSync()` only while Svelte's async mode is off; the web build enables it (`vite.config.ts`, `kit.compilerOptions`), the native bundle does not (the Metro
- * transformer compiles with `customRenderer` only), and `packages/svelte-native/tests/compiler/svelte-async-mode.test.ts` fails if that changes, or if `tick()` stops being those two steps.
+ * transformer compiles with `customRenderer` only), and `packages/expo-svelte/tests/compiler/svelte-async-mode.test.ts` fails if that changes, or if `tick()` stops being those two steps.
  */
 async function loadsWhileBusy(c: Ctx): Promise<void> {
   const name = "events: onLoadComplete arrives although the JS thread was busy while the document loaded";

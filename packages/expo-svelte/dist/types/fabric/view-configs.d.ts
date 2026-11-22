@@ -51,6 +51,8 @@ export type Kind = {
      * created with the view, so on iOS only these kinds carry their events as attributes.
      */
     legacy?: boolean;
+    /** React Native 0.88's text inputs convert `fontVariationSettings` (an object of axes becomes `'wght' 700`): an attribute with a converter, not a plain one. */
+    variationSettings?: boolean;
 };
 /**
  * Describes a native component the host cannot list statically, for both platforms: an Expo module's view, whose

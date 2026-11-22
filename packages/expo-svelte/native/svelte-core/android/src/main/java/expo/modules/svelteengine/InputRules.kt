@@ -47,6 +47,20 @@ object InputRules {
     else -> current
   }
 
+  /**
+   * `onContentSizeChange` and `onScroll` (record 51) are booleans, and React Native gives a view the watcher of each only while the prop is there
+   * (`ReactTextInputManager.setOnContentSizeChange`, `setOnScroll`; JavaScript sends `true` for a handler it has). They travel with the codes of `autoCorrect`
+   * (the same raw-props reading): whether the view watches after an update that carried [code], when it [current]ly does or not.
+   */
+  fun watchAfter(current: Boolean, code: Int): Boolean = when (code) {
+    AUTO_CORRECT_ON -> true
+    AUTO_CORRECT_OFF, AUTO_CORRECT_CLEARED -> false
+    else -> current
+  }
+
+  /** Whether a watcher has something to send: React Native's two watchers send only when one of the two numbers is not the one they sent last. */
+  fun differs(lastA: Int, lastB: Int, a: Int, b: Int): Boolean = a != lastA || b != lastB
+
   /** Record 49 is not part of this update's raw props: the caret stays where it is (the user may have moved it). */
   const val SELECTION_KEEP = -1
 

@@ -54,6 +54,8 @@ A `TextInput` has no border or padding of its own. Give it a style, and a `minHe
 | `enterKeyHint` | `'enter' \| 'done' \| 'go' \| 'next' \| 'previous' \| 'search' \| 'send'` | | The web's name for the return key. It wins over `returnKeyType`. |
 | `selection` | `{ start: number; end?: number }` | | Selects that range, or puts the caret at `start` when there is no `end`. It applies when the field mounts and when `selection` changes. In between, the user moves the caret as usual. |
 | `onSubmitEditing` | `(event) => void` | | The return key was pressed, in a single-line field. |
+| `onContentSizeChange` | `(event) => void` | | The size of the text changed: when the field first lays out, and when an edit adds or removes a line. `event.nativeEvent.contentSize` is `{ width, height }`. A composer that grows with its text sets its height from it. |
+| `onScroll` | `(event) => void` | | The text scrolled inside the field, because the caret moved out of view or the user dragged. `event.nativeEvent.contentOffset` is `{ x, y }`. |
 | `onFocus`, `onBlur` | `(event) => void` | | The field gained or lost focus. |
 | `autoFocus` | `boolean` | `false` | Focuses the field, and opens the keyboard, when it mounts. |
 | `ref` | `(handle \| null) => void` | | Receives the field's handle. See [ref](#ref). |
@@ -61,7 +63,7 @@ A `TextInput` has no border or padding of its own. Give it a style, and a `minHe
 | `class` | `ClassValue` | | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs the `css` option ([Classes](styling#classes)). |
 | `accessibilityLabel` | `string` | | What a screen reader calls the field. A placeholder isn't a label. |
 
-It also takes the other props of React Native's [`TextInput`](https://reactnative.dev/docs/textinput). On Android the field doesn't send `onContentSizeChange` or `onScroll` yet, multiline or not: a composer that grows with its text gets its size from `onLayout` on Android.
+It also takes the other props of React Native's [`TextInput`](https://reactnative.dev/docs/textinput).
 
 ## ref
 

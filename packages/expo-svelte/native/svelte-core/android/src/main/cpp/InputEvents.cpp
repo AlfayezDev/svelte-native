@@ -7,6 +7,7 @@
 #include <react/renderer/components/image/ImageEventEmitter.h>
 #include <react/renderer/core/EventEmitter.h>
 
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -37,6 +38,11 @@ EventEmitter::Shared emitterFor(jint tag) {
 
 void send(const EventEmitter &emitter, const char *name, folly::dynamic payload) {
   emitter.dispatchEvent(std::string(name), std::move(payload));
+}
+
+// For the events React Native sends as coalescable ones (`Event.canCoalesce`): `FabricUIManager.receiveEvent` hands those to `dispatchUniqueEvent`.
+void sendUnique(const EventEmitter &emitter, const char *name, folly::dynamic payload) {
+  emitter.dispatchUniqueEvent(std::string(name), std::move(payload));
 }
 
 std::string toStd(jni::alias_ref<jstring> s) {
@@ -75,6 +81,32 @@ void input(
       break;
     default: break;
   }
+}
+
+// An input's content size in dp, React Native's ReactContentSizeChangedEvent: `topContentSizeChange { contentSize: { width, height }, target }`. That event does not
+// override `canCoalesce`, so it is a unique event: one JavaScript has not read yet is replaced by the newer size.
+void inputContentSize(jni::alias_ref<jclass>, jint tag, jfloat widthDp, jfloat heightDp) {
+  auto emitter = emitterFor(tag);
+  if (!emitter) return;
+  sendUnique(*emitter, "contentSizeChange",
+      folly::dynamic::object("contentSize", folly::dynamic::object("width", static_cast<double>(widthDp))("height", static_cast<double>(heightDp)))(
+          "target", tag));
+}
+
+// An input's scroll, React Native's ScrollEvent as ReactTextScrollWatcher fills it: the offset and the view's size in dp, and what an EditText cannot tell, zero (the
+// content size, the velocity, the inset). `responderIgnoreScroll` is true while the feature flag `shouldTriggerResponderTransferOnScrollAndroid` is off, its default.
+// Unique like every scroll event (`canCoalesce`): the newest offset replaces one JavaScript has not read yet.
+void inputScroll(jni::alias_ref<jclass>, jint tag, jfloat xDp, jfloat yDp, jfloat widthDp, jfloat heightDp) {
+  auto emitter = emitterFor(tag);
+  if (!emitter) return;
+  // Milliseconds of the uptime clock, as SystemClock.uptimeMillis (the clock of MotionEvent times).
+  const double timestamp = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
+  sendUnique(*emitter, "scroll",
+      folly::dynamic::object("contentInset", folly::dynamic::object("top", 0.0)("bottom", 0.0)("left", 0.0)("right", 0.0))(
+          "contentOffset", folly::dynamic::object("x", static_cast<double>(xDp))("y", static_cast<double>(yDp)))(
+          "contentSize", folly::dynamic::object("width", 0.0)("height", 0.0))(
+          "layoutMeasurement", folly::dynamic::object("width", static_cast<double>(widthDp))("height", static_cast<double>(heightDp)))(
+          "velocity", folly::dynamic::object("x", 0.0)("y", 0.0))("target", tag)("timestamp", timestamp)("responderIgnoreScroll", true));
 }
 
 void switchChange(jni::alias_ref<jclass>, jint tag, jboolean value) {
@@ -160,6 +192,8 @@ void registerViewEventNatives() {
   jni::findClassStatic("expo/modules/svelteengine/ViewEvents")
       ->registerNatives({
           makeNativeMethod("input", input),
+          makeNativeMethod("inputContentSize", inputContentSize),
+          makeNativeMethod("inputScroll", inputScroll),
           makeNativeMethod("switchChange", switchChange),
           makeNativeMethod("image", image),
           makeNativeMethod("modal", modal),

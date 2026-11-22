@@ -8,6 +8,8 @@ import { GestureObjects } from "../../src/gestures/rngh.js";
 
 // The detector's pure helpers are copies of RNGH's (it cannot be imported: `GestureDetector/utils` loads `react-native` and the
 // `*GestureHandler` components). Each is run against RNGH's own, bundled as the oracle, so an upgrade that changes one fails here.
+// RNGH 3's `normalizeHitSlop` checks its input in development, where React Native defines `__DEV__`.
+(globalThis as { __DEV__?: boolean }).__DEV__ ??= true;
 const oracle = gestureOracle();
 const callback = () => {};
 

@@ -226,6 +226,8 @@ export type Kind = {
    * created with the view, so on iOS only these kinds carry their events as attributes.
    */
   legacy?: boolean;
+  /** React Native 0.88's text inputs convert `fontVariationSettings` (an object of axes becomes `'wght' 700`): an attribute with a converter, not a plain one. */
+  variationSettings?: boolean;
 };
 
 /**
@@ -387,6 +389,7 @@ const kinds: Record<Platform, Record<string, Kind>> = {
       colors: "endFillColor",
     },
     AndroidTextInput: {
+      variationSettings: true,
       plain: `
         acceptDragAndDropTypes adjustsFontSizeToFit allowFontScaling autoCapitalize autoComplete autoCorrect autoFocus
         caretHidden contextMenuHidden disableFullscreenUI editable fontFamily fontSize fontStyle fontVariant
@@ -469,6 +472,7 @@ const kinds: Record<Platform, Record<string, Kind>> = {
       `,
     },
     RCTSinglelineTextInputView: {
+      variationSettings: true,
       plain: `
         acceptDragAndDropTypes allowFontScaling autoCapitalize autoCorrect autoFocus caretHidden clearButtonMode
         clearTextOnFocus contextMenuHidden disableKeyboardShortcuts dynamicTypeRamp editable
@@ -484,6 +488,7 @@ const kinds: Record<Platform, Record<string, Kind>> = {
       events: "topChangeSync topContentSizeChange topKeyPressSync topScroll topSelectionChange",
     },
     RCTMultilineTextInputView: {
+      variationSettings: true,
       plain: `
         acceptDragAndDropTypes allowFontScaling autoCapitalize autoCorrect autoFocus caretHidden clearButtonMode
         clearTextOnFocus contextMenuHidden dataDetectorTypes disableKeyboardShortcuts dynamicTypeRamp editable
@@ -563,6 +568,7 @@ function attributesFor(platform: Platform, kind: Kind): Table {
     attributes.experimental_backgroundRepeat = backgroundRepeat;
   }
   fill(attributes, kind.plain ?? "", true);
+  if (kind.variationSettings) attributes.fontVariationSettings = fontVariationSettings;
   if (platform === "ios" && kind.legacy) for (const registration of eventsOf(kind.events ?? "").values()) attributes[registration] = true;
   fill(attributes, kind.colors ?? "", color);
   fill(attributes, kind.assetSources ?? "", assetSource);

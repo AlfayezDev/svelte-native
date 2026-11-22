@@ -1,13 +1,13 @@
 # This app's pnpm settings (pnpm reads them from this file; the app is its own workspace root).
 allowBuilds:
   esbuild: true
-# expo depends on expo-modules-core by range (~57.0.23), so a fresh install takes the newest 57.0.x; the patch below is for 57.0.23 only.
-# react-native depends on @react-native/metro-config by range, so a fresh install takes 0.88 beside React Native 0.86.3 (Metro 0.87, tools that exclude Node 25).
+# expo depends on expo-modules-core by range (~58.1.0), so a fresh install takes the newest 58.1.x; the patch below is for 58.1.0 only.
+# Packages of the tool chain ask for @react-native/metro-config by a range or any version: it stays at React Native's version.
 overrides:
-  expo-modules-core: 57.0.23
-  "@react-native/metro-config": 0.86.3
+  expo-modules-core: 58.1.0
+  "@react-native/metro-config": 0.88.1
 # The library's patches, copied from node_modules/expo-svelte/patches/ into patches/expo-svelte/ (README, "Apply the patches").
 # Only the libraries this app installs; the view libraries' patches (lottie, maps, pdf, video) are declared when the app installs them.
 patchedDependencies:
   "@sveltejs/kit@3.1.1": patches/expo-svelte/@sveltejs__kit@3.1.1.patch
-  expo-modules-core@57.0.23: patches/expo-svelte/expo-modules-core@57.0.23.patch
+  expo-modules-core@58.1.0: patches/expo-svelte/expo-modules-core@58.1.0.patch

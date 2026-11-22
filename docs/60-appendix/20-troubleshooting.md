@@ -16,7 +16,7 @@ pnpm exec expo-svelte doctor
 | --- | --- |
 | `node 25.0.0 does not satisfy ^22.17.0 \|\| ^24.3.0 \|\| >=26.0.0` | Switch to Node 24 LTS (24.3 or newer), Node 22.17 or newer, or Node 26 or newer. See [below](#pnpm-stops-during-install) for why not Node 25. |
 | `svelte … is the stock Svelte: it has no ./renderer export` | You have the registry's Svelte. Run `pnpm exec expo-svelte init`, which installs the build Expo Svelte needs. |
-| `react 19.2.6 does not satisfy 19.2.7`, or another version | Install the exact version it names. Each patch is made for one version. |
+| `react 19.2.6 does not satisfy 19.3.0`, or another version | Install the exact version it names. Each patch is made for one version. |
 | `… is not applied` | Run `pnpm exec expo-svelte init` again, which copies the current patches, then `pnpm install`. |
 | `metro.config.cjs does not mention withExpoSvelte` | Wrap your Metro config in `withExpoSvelte` ([Configuration](configuration#metroconfigcjs)). |
 
@@ -28,7 +28,7 @@ pnpm exec expo-svelte doctor
 Unsupported engine for @react-native/babel-plugin-codegen@0.88.1: wanted: {"node":"^22.13.0 || ^24.3.0 || >= 26.0.0"} (current: {"node":"25.0.0"})
 ```
 
-You are on Node 25. A fresh install takes React Native tools whose newest versions exclude Node 25, and the project created by `sv` tells pnpm to stop on that. It happens at the first `pnpm add`, before `expo-svelte init` can pin those tools, so `init` can't prevent it. Switch to Node 24 LTS (24.3 or newer; `mise use node@24`, `nvm install 24`, or the installer from nodejs.org), Node 22.17 or newer, or Node 26 or newer, and run `pnpm add` again.
+You are on Node 25. React Native 0.88 and the tools it installs exclude Node 25 (`^22.13.0 || ^24.3.0 || >=26.0.0`), and the project created by `sv` tells pnpm to stop on that. It happens at the first `pnpm add`, before `expo-svelte init` can run, so `init` can't prevent it. Switch to Node 24 LTS (24.3 or newer; `mise use node@24`, `nvm install 24`, or the installer from nodejs.org), Node 22.17 or newer, or Node 26 or newer, and run `pnpm add` again.
 
 On Node 22 before 22.17, the package named is `@sveltejs/kit`. The fix is the same.
 

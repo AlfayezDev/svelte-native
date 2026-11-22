@@ -82,10 +82,10 @@ svelte
   pass  svelte 5.56.7 has the ./renderer export and the customRenderer compiler option
 
 peer dependencies
-  pass  react-native 0.86.3 satisfies 0.86.3
+  pass  react-native 0.88.1 satisfies 0.88.1
   …
-  FAIL  react 19.2.6 does not satisfy 19.2.7
-        fix: pnpm add react@19.2.7
+  FAIL  react 19.2.6 does not satisfy 19.3.0
+        fix: pnpm add react@19.3.0
 
 vendored packages
   pass  react-native-mmkv 4.3.1 comes with expo-svelte (vendor/react-native-mmkv); the app does not list it
@@ -93,7 +93,7 @@ vendored packages
   pass  libraries turned on: expo-image, react-native-maps; the others are not linked, and Metro stubs them
 
 patches
-  pass  expo-modules-core@57.0.23 applied: Expo modules register lazily and the common ones are prewarmed (Android start)
+  pass  expo-modules-core@58.1.0 applied: Expo modules register lazily and the common ones are prewarmed (Android start)
   …
 
 build integration

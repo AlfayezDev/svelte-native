@@ -33,7 +33,7 @@ pnpm exec expo prebuild --platform android
 pnpm android
 ```
 
-1. `npx expo install` picks the version that matches Expo SDK 57.
+1. `npx expo install` picks the version that matches Expo SDK 58.
 2. If the library has a config plugin or needs permissions, add them to `app.json` as its documentation says.
 3. Prebuild and build again, because the app on your device doesn't contain the new native code yet. [Development builds](development-builds#when-to-run-expo-prebuild) says when a prebuild is needed.
 

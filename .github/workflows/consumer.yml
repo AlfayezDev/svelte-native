@@ -71,7 +71,7 @@ jobs:
         with:
           node-version: "24"
 
-      # React Native 0.86 builds with JDK 17 (scripts/consumer-check.sh looks for it in JAVA_HOME).
+      # React Native 0.88 builds with JDK 17 (scripts/consumer-check.sh looks for it in JAVA_HOME).
       - uses: actions/setup-java@v6
         with:
           distribution: temurin

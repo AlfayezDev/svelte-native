@@ -9,7 +9,7 @@ import { createProject } from "../support/project.ts";
 
 /**
  * The crypto batch in React Native's autolinking and in the config plugin (VENDORING.md): react-native-quick-crypto, react-native-quick-base64 and hermes-intl. Their entries on both platforms are
- * compared with what Expo printed for the installed packages in `vendored-autolinking.test.ts` (`fixtures/vendored-autolinking/expo-sdk57-crypto-<platform>.json`); here are the fields that batch
+ * compared with what Expo printed for the installed packages in `vendored-autolinking.test.ts` (`fixtures/vendored-autolinking/expo-sdk58-crypto-<platform>.json`); here are the fields that batch
  * is the first to need, the refusal of an app that lists one, the link to the vendored Nitro runtime and the `sodiumEnabled` option that moved from quick-crypto's own plugin.
  */
 const names = ["react-native-quick-crypto", "react-native-quick-base64", "hermes-intl"] as const;

@@ -504,8 +504,8 @@ export function planInit(root: string, options: InitOptions = {}): Plan {
   const workspacePath = join(root, "pnpm-workspace.yaml");
   const workspaceText = read(workspacePath);
   // Packages that come with another one and are asked for by a range, so a fresh install takes the newest: pinned for the whole install, as `overrides`.
-  // `expo-modules-core` (the patch is for one version) and `@react-native/metro-config` (React Native asks for it by a range, so a fresh install takes 0.88 beside
-  // React Native 0.86.3, with Metro 0.87 and tools that exclude Node 25; the pin is the React Native version, as in this repository's lockfile).
+  // `expo-modules-core` (the patch is for one version) and `@react-native/metro-config` (the tools around React Native ask for it by a range or for any version, so a fresh
+  // install may take another one than React Native 0.88.1's; the pin is the React Native version, as in this repository's lockfile).
   const overrides: Record<string, string> = {};
   const expoModules = patches.find((patch) => patch.package === "expo-modules-core");
   if (expoModules) overrides["expo-modules-core"] = expoModules.version;

@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { withAndroidManifest, withAppBuildGradle, withAppDelegate, withDangerousMod, withGradleProperties, withMainActivity, withMainApplication, withPodfile, withSettingsGradle, type AndroidConfig, type ConfigPlugin } from "expo/config-plugins";
 import { syncNative } from "./build.ts";
@@ -134,6 +134,9 @@ const delegateEnd = "  // Svelte native: end of navigation state restoration";
 const delegateImport = "internal import SvelteCore // Svelte native: navigation state restoration (generated, do not edit)";
 // The generated import of any module, so a prebuild replaces the one an older version wrote (`SvelteNavigation`, before the native code was one pod).
 const delegateImportLine = /^internal import \w+ \/\/ Svelte native: navigation state restoration \(generated, do not edit\)\n/m;
+// `SceneDelegate.swift` (Expo SDK 58's scene-based template) has the same block, with UIKit imported beside SvelteCore: the scene's methods name UIKit's types, which a file that imports only `Expo` (`internal import`) does not see.
+const sceneUiKitImport = "import UIKit // Svelte native: navigation state restoration (generated, do not edit)";
+const sceneImportLines = /^(?:internal )?import \w+ \/\/ Svelte native: navigation state restoration \(generated, do not edit\)\n/gm;
 const gradleBegin = "// Svelte native: headless autolinking excludes (generated, do not edit)";
 const gradleEnd = "// Svelte native: end of headless autolinking excludes";
 /** The package `settings.gradle` resolves to find the library's CLI (`android-autolinking`). */
@@ -217,7 +220,7 @@ export function applyHeadlessApplication(contents: string, onDemand: Record<stri
   ].join("\n");
   const start = [
     startBegin,
-    "    // Expo modules register lazily on first use (patched expo-modules-core; see patches/expo-modules-core@57.0.23.patch).",
+    "    // Expo modules register lazily on first use (patched expo-modules-core; see patches/expo-modules-core@58.1.0.patch).",
     "    System.setProperty(\"expo.modules.lazy\", \"true\")",
     "    // The patch's prewarm thread (app context and boot-time modules built off the pool thread) stays off until a phone A/B and a cold-start soak clear it.",
     "    System.setProperty(\"expo.modules.prewarm\", \"false\")",
@@ -346,6 +349,36 @@ export function applyAppDelegate(contents: string): string {
   const propertyEnd = property.index + property[0].length;
   const importEnd = lastImport.index + lastImport[0].length;
   return `${stripped.slice(0, importEnd)}\n${delegateImport}${stripped.slice(importEnd, propertyEnd)}\n${block}${stripped.slice(propertyEnd)}`;
+}
+
+/**
+ * `SceneDelegate.swift` (iOS, Expo SDK 58): the template starts React Native from a `UIWindowSceneDelegate` (`ExpoAppSceneDelegate`, which iOS 27 requires of every app), and UIKit does not call the
+ * application delegate's four state restoration callbacks (`applyAppDelegate`) of an app that has scenes. The same signal is the scene's: `stateRestorationActivity(for:)` is asked when the app
+ * enters the background, and the session the system connects at the next launch has that activity only if the system kept the state (it deletes it for an app the user swiped away). The
+ * scene's `willConnectTo` notes it before `ExpoAppSceneDelegate` starts React Native, which is when JavaScript can ask (`SvelteNavigationRestoration`, `native/svelte-core/ios/navigation`).
+ * A project whose template has no `SceneDelegate.swift` keeps `applyAppDelegate`'s callbacks alone. Idempotent.
+ */
+export function applySceneDelegate(contents: string): string {
+  const stripped = contents.replace(blockPattern(delegateBegin, delegateEnd), "").replace(sceneImportLines, "");
+  const imports = [...stripped.matchAll(/^(?:(?:internal|public|package|private|fileprivate) |@_exported |@preconcurrency )*import [\w.]+[ \t]*$/gm)];
+  const lastImport = imports.at(-1);
+  const declaration = /^[ \t]*(?:(?:public|open|final|internal) )*class \w+[ \t]*:[ \t]*ExpoAppSceneDelegate\b[^{\n]*\{[ \t]*$/m.exec(stripped);
+  if (!lastImport || !declaration) throw new Error("Svelte native could not find the imports and `class SceneDelegate: ExpoAppSceneDelegate` in SceneDelegate.swift");
+  const block = [
+    delegateBegin,
+    "  func stateRestorationActivity(for scene: UIScene) -> NSUserActivity? {",
+    "    SvelteNavigationRestoration.stateRestorationActivity()",
+    "  }",
+    "",
+    "  override func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {",
+    "    SvelteNavigationRestoration.sceneWillConnect(session.stateRestorationActivity)",
+    "    super.scene(scene, willConnectTo: session, options: connectionOptions)",
+    "  }",
+    delegateEnd,
+  ].join("\n");
+  const declarationEnd = declaration.index + declaration[0].length;
+  const importEnd = lastImport.index + lastImport[0].length;
+  return `${stripped.slice(0, importEnd)}\n${delegateImport}\n${sceneUiKitImport}${stripped.slice(importEnd, declarationEnd)}\n${block}${stripped.slice(declarationEnd)}`;
 }
 
 /** The community CLI's command (`EXPO_USE_COMMUNITY_AUTOLINKING=1`) through the library's: React Native's default, `cmd /c` first on Windows as React Native's `windowsAwareCommandLine` does. */
@@ -738,6 +771,17 @@ const withExpoSvelte: ConfigPlugin<ExpoSvelteOptions | undefined> = (config, opt
     config.modResults.contents = applyAppDelegate(config.modResults.contents);
     return config;
   });
+  config = withDangerousMod(config, ["ios", async (config) => {
+    // Expo SDK 58's template has a `SceneDelegate.swift` beside `AppDelegate.swift` (one folder below ios/, named for the project); an older template has none.
+    const root = config.modRequest.platformProjectRoot;
+    const folders = (await readdir(root, { withFileTypes: true }).catch(() => [])).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+    for (const folder of folders) {
+      const file = join(root, folder, "SceneDelegate.swift");
+      const contents = await readFile(file, "utf8").catch(() => undefined);
+      if (contents !== undefined) await writeFile(file, applySceneDelegate(contents));
+    }
+    return config;
+  }]);
   config = withMainApplication(config, (config) => {
     if (config.modResults.language !== "kt") throw new Error("Svelte native requires Expo's Kotlin MainApplication");
     config.modResults.contents = applyHeadlessApplication(applyFeatureFlags(config.modResults.contents, androidFeatureFlagsFor(options)), onDemandForLibraries(options?.androidOnDemandViewManagers, links.enabled));

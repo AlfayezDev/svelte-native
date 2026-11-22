@@ -1,4 +1,2 @@
 # Generated output: excluded from diff line counts and collapsed in the Files changed view.
 pnpm-lock.yaml linguist-generated
-# The vendored Svelte build (the pull request build packages/expo-svelte depends on).
-vendor/*.tgz binary

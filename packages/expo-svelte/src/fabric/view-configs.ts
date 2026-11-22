@@ -4,7 +4,7 @@
  * React Native encodes props for Fabric from a view config's `validAttributes` (which keys are native props and how a
  * value is converted) through `ReactNativeAttributePayload`. Loading that module and the native components that register
  * the configs costs about 50 ms of boot, so the host's own view names carry the tables below, equal to what React Native
- * 0.86 registers on Android and iOS (`tests/renderer/view-configs.test.ts` compares them with React Native's own modules). A name
+ * 0.88 registers on Android and iOS (`tests/renderer/view-configs.test.ts` compares them with React Native's own modules). A name
  * outside the tables, from a third-party native component, takes React Native's registry and payload code, required on
  * first use.
  *
@@ -49,6 +49,7 @@ const backgroundImage = required(() => require("react-native/Libraries/StyleShee
 const backgroundSize = required(() => require("react-native/Libraries/StyleSheet/processBackgroundSize").default);
 const backgroundPosition = required(() => require("react-native/Libraries/StyleSheet/processBackgroundPosition").default);
 const backgroundRepeat = required(() => require("react-native/Libraries/StyleSheet/processBackgroundRepeat").default);
+const fontVariationSettings = required(() => require("react-native/Libraries/StyleSheet/processFontVariationSettings").default);
 const assetSource = required(() => require("react-native/Libraries/Image/resolveAssetSource").default);
 type RegistryModule = {
   get(name: string): {
@@ -157,7 +158,8 @@ const viewPlain = `
 const androidViewPlain = `
     accessibilityCollection accessibilityCollectionItem accessibilityLabelledBy accessibilityLiveRegion elevation
     hasTVPreferredFocus importantForAccessibility nativeBackgroundAndroid nativeForegroundAndroid nextFocusDown
-    nextFocusForward nextFocusLeft nextFocusRight nextFocusUp onPointerEnterCapture onPointerLeaveCapture
+    nextFocusForward nextFocusLeft nextFocusRight nextFocusUp onGotPointerCapture onGotPointerCaptureCapture
+    onLostPointerCapture onLostPointerCaptureCapture onPointerEnterCapture onPointerLeaveCapture
     onPointerMoveCapture onPointerOutCapture onPointerOverCapture outlineOffset outlineStyle outlineWidth
     renderToHardwareTextureAndroid rotation scaleX scaleY screenReaderFocusable translateX translateY
   `;
@@ -196,8 +198,8 @@ const styleColors = `
   `;
 const androidEvents = `
     onGestureHandlerEvent onGestureHandlerStateChange topAccessibilityAction topBlur topChange topClick
-    topContentSizeChange topFocus topKeyDown topKeyUp topLayout topLoadingError topLoadingFinish topLoadingStart
-    topMessage topMomentumScrollBegin topMomentumScrollEnd topPointerCancel topPointerDown topPointerEnter
+    topContentSizeChange topFocus topGotPointerCapture topKeyDown topKeyUp topLayout topLoadingError topLoadingFinish topLoadingStart
+    topLostPointerCapture topMessage topMomentumScrollBegin topMomentumScrollEnd topPointerCancel topPointerDown topPointerEnter
     topPointerLeave topPointerMove topPointerOut topPointerOver topPointerUp topScroll topScrollBeginDrag
     topScrollEndDrag topSelect topSelectionChange topTouchCancel topTouchEnd topTouchMove topTouchStart
   `;
@@ -534,6 +536,7 @@ function styleFor(platform: Platform): Table {
   fill(style, styleColors, color);
   Object.assign(style, {
     aspectRatio, transform, transformOrigin, fontVariant, filter, boxShadow,
+    backgroundImage, backgroundSize, backgroundPosition, backgroundRepeat, fontVariationSettings,
     experimental_backgroundImage: backgroundImage, experimental_backgroundSize: backgroundSize,
     experimental_backgroundPosition: backgroundPosition, experimental_backgroundRepeat: backgroundRepeat,
   });
@@ -550,6 +553,10 @@ function attributesFor(platform: Platform, kind: Kind): Table {
   attributes.boxShadow = boxShadow;
   if (platform === "android") {
     attributes.outlineColor = color;
+    attributes.backgroundImage = backgroundImage;
+    attributes.backgroundSize = backgroundSize;
+    attributes.backgroundPosition = backgroundPosition;
+    attributes.backgroundRepeat = backgroundRepeat;
     attributes.experimental_backgroundImage = backgroundImage;
     attributes.experimental_backgroundSize = backgroundSize;
     attributes.experimental_backgroundPosition = backgroundPosition;

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { nodeModules } from "../support/paths.ts";
-import { expoTemplateAppDelegate } from "../cli/support/app-delegate.ts";
+import { expoTemplateAppDelegate, expoTemplateSceneDelegate } from "../cli/support/app-delegate.ts";
 
 // iOS push (`native/svelte-core/ios/push`, PUSH.md) is written against the sources of Expo's app delegate, Expo modules core and React Native, which cannot be compiled on the
 // machines these tests run on. What the Swift assumes of them is read from the installed sources here, so an update of one that changes the facts fails this file and says what, before
@@ -13,9 +13,10 @@ const rootViewFactory = read("react-native/Libraries/AppDelegate/RCTRootViewFact
 const reactNativeFactory = read("react-native/Libraries/AppDelegate/RCTReactNativeFactory.mm");
 const reactNativeFactoryHeader = read("react-native/Libraries/AppDelegate/RCTReactNativeFactory.h");
 const host = read("react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHost.mm");
-const expoFactory = read("expo/ios/AppDelegates/ExpoReactNativeFactory.swift");
-const expoRootViewFactory = read("expo/ios/AppDelegates/EXReactRootViewFactory.mm");
-const expoAppDelegate = read("expo/ios/AppDelegates/ExpoAppDelegate.swift");
+const expoFactory = read("expo/ios/Expo/ExpoReactNativeFactory.swift");
+const expoRootViewFactory = read("expo/ios/ExpoObjC/AppDelegates/EXReactRootViewFactory.mm");
+const expoAppDelegate = read("expo/ios/Expo/ExpoAppDelegate.swift");
+const expoSceneDelegate = read("expo/ios/Expo/ExpoAppSceneDelegate.swift");
 const subscriberManager = read("expo-modules-core/ios/AppDelegates/ExpoAppDelegateSubscriberManager.swift");
 const subscriberProtocol = read("expo-modules-core/ios/AppDelegates/ExpoAppDelegateSubscriber.swift");
 const module = read("expo-modules-core/ios/Core/Modules/Module.swift");
@@ -60,13 +61,23 @@ describe("a launch in the background can start the React host without a screen, 
     expect(expoFactory).toContain("rootView = factory.superView(");
   });
 
-  test("Expo's template makes the call the patch wraps, in a method that returns the subscribers' answer last", () => {
+  test("Expo's template starts React Native from the scene, so the patch adds a block before the subscribers' answer, which the method returns last", () => {
     const template = expoTemplateAppDelegate();
-    expect(template).toContain('    window = UIWindow(frame: UIScreen.main.bounds)\n    factory.startReactNative(\n      withModuleName: "main",\n      in: window,\n      launchOptions: launchOptions)\n#endif\n\n    return super.application(application, didFinishLaunchingWithOptions: launchOptions)');
-    expect(template).toContain("class AppDelegate: ExpoAppDelegate {");
+    // SDK 58: the AppDelegate creates the factory and the delegate and starts nothing; the window and the surface are the scene's (iOS 27 requires scenes).
+    expect(template).toContain("class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider {");
+    expect(template).toContain("let factory = ExpoReactNativeFactory(delegate: delegate)");
     expect(template).toContain("var reactNativeFactory: RCTReactNativeFactory?");
-    expect(template).not.toContain("UIWindowSceneDelegate");
-    expect(template).not.toContain("ExpoAppSceneDelegate");
+    expect(template).toContain("    reactNativeFactory = factory\n\n");
+    expect(template).toContain("    return super.application(application, didFinishLaunchingWithOptions: launchOptions)\n  }");
+    expect(template).not.toContain("startReactNative");
+    expect(template).not.toContain("UIWindow(frame:");
+    // The scene makes the window and starts React Native on the factory the app delegate keeps, when UIKit connects a scene: not in a launch in the background.
+    expect(expoSceneDelegate).toContain("open class ExpoAppSceneDelegate: UIResponder, UIWindowSceneDelegate");
+    expect(expoSceneDelegate).toContain("open func scene(\n    _ scene: UIScene,\n    willConnectTo session: UISceneSession,\n    options connectionOptions: UIScene.ConnectionOptions\n  ) {");
+    expect(expoSceneDelegate).toContain("factory.startReactNative(\n      withModuleName: provider.reactNativeFactoryModuleName,\n      in: window,");
+    expect(expoSceneDelegate).toContain("provider.window = window");
+    // The scene delegate of the template is the class the plugin adds the state restoration to.
+    expect(expoTemplateSceneDelegate()).toContain("class SceneDelegate: ExpoAppSceneDelegate {");
   });
 });
 

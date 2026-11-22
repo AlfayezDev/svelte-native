@@ -32,9 +32,9 @@ describe("the transformer adds the Worklets plugin from the vendored copy", () =
     expect(without.code.match(/__workletHash/g)?.length).toBe(2);
     expect(without.code.match(/__initData/g)?.length).toBe(2);
     expect(without.code).not.toContain('"worklet"');
-    // The closure of the first worklet is `width`, and of the second `grow`: what each captures, no more (the plugin names a worklet after its file and its place in it).
-    expect(without.code).toMatch(/stylesTs1\.__closure = \{\s*width\s*\}/);
-    expect(without.code).toMatch(/stylesTs2\.__closure = \{\s*grow\s*\}/);
+    // The closure (an array of the variables since Worklets 0.13) of the first worklet is `width`, and of the second `grow`: what each captures, no more (the plugin names a worklet after its file and its place in it).
+    expect(without.code).toMatch(/stylesTs1\.__closure = \[\s*width\s*\]/);
+    expect(without.code).toMatch(/stylesTs2\.__closure = \[\s*grow\s*\]/);
   });
 
   test("the name is the copy's plugin for whoever resolves it: the app's directory and babel-preset-expo's own lookup", () => {
@@ -58,9 +58,9 @@ describe("the transformer adds the Worklets plugin from the vendored copy", () =
     expect(found.code).toBe(without.code);
   });
 
-  test("the plugin the copy carries is the one the patches and the version pin are about: 0.10.1, with the Babel packages it requires declared by the library", () => {
+  test("the plugin the copy carries is the one the patches and the version pin are about: 0.13.0, with the Babel packages it requires declared by the library", () => {
     const manifest = JSON.parse(readFileSync(join(vendoredRoot("react-native-worklets"), "package.json"), "utf8")) as { version: string };
-    expect(manifest.version).toBe("0.10.1");
+    expect(manifest.version).toBe("0.13.0");
     const library = JSON.parse(readFileSync(join(import.meta.dirname, "../../package.json"), "utf8")) as { dependencies: Record<string, string> };
     const required = [...readFileSync(copy, "utf8").matchAll(/require\("(@babel\/[\w-]+|convert-source-map)"\)/g)].map((match) => match[1] ?? "");
     for (const name of new Set(required)) expect([name, name === "@babel/core" || name in library.dependencies]).toEqual([name, true]);

@@ -150,13 +150,13 @@ describe("the packages the library carries", () => {
     expect(vendoredChecks(checks).filter((entry) => entry.status !== "pass").map((entry) => [entry.status, entry.message])).toEqual([["skip", expect.stringContaining("could not read the app's config")]]);
     // The libraries the package patches in its own copies (`vendor-patches/`) are looked at there, each as applied.
     const patched = patchSpecs.filter((spec) => spec.vendored);
-    expect(patched).toHaveLength(8);
+    expect(patched).toHaveLength(9);
     for (const spec of patched) expect(find(checks, `${spec.package}: ${spec.does} (in ${library.name}'s copy)`)?.status, spec.package).toBe("pass");
     expect(vendoredChecks(checks)).toHaveLength(alwaysLinkedPackages.length + 2 + patched.length);
   });
 
   describe("the patches of a copy (vendor-patches/, applied by scripts/vendor.ts) are looked for in the copy's files", () => {
-    const patched = ["react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"];
+    const patched = ["react-native-gesture-handler", "react-native-reanimated", "react-native-worklets", "react-native-blob-util"];
     /** The files of each copy that the doctor's check reads (`shapes.ts`). */
     const shapeFiles: Record<string, string[]> = {
       "react-native-gesture-handler": ["apple/RNGestureHandlerManager.h", "apple/RNGestureHandlerManager.mm", "scripts/gesture_handler_utils.rb"],
@@ -165,6 +165,7 @@ describe("the packages the library carries", () => {
         "android/src/main/cpp/reanimated/android/NativeProxy.h", "scripts/validate-worklets-version.js", "src/featureFlags/staticFlags.json",
       ],
       "react-native-worklets": ["lib/module/runLoop/uiRuntime/requestAnimationFrame.js", "src/runLoop/uiRuntime/requestAnimationFrame.ts"],
+      "react-native-blob-util": ["android/build.gradle"],
     };
     /** A library directory with the repository's copies (the one that is edited as far as the doctor reads it: its package.json and the files of its patch), `edit` made to one file of it. */
     function libraryWith(name: string, file: string, edit: (text: string) => string) {
@@ -194,6 +195,7 @@ describe("the packages the library carries", () => {
       ["react-native-reanimated", "src/featureFlags/staticFlags.json", '"ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true', '"ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": false', "synchronous Android update off"],
       ["react-native-reanimated", "scripts/validate-worklets-version.js", "../../react-native-worklets/package.json", "react-native-worklets/package.json", "still looks for react-native-worklets by name"],
       ["react-native-worklets", "src/runLoop/uiRuntime/requestAnimationFrame.ts", "let frameRequested = false;", "", "does not request a native frame on demand"],
+      ["react-native-blob-util", "android/build.gradle", "proguard-android-optimize.txt", "proguard-android.txt", "still names `proguard-android.txt`, which AGP 9 refuses"],
     ];
     for (const [name, file, from, to, said] of cases) {
       test(`${name}: ${file} without the patch fails the copy, naming what is missing`, () => {
@@ -585,7 +587,7 @@ describe("the report and the exit status", () => {
     const out = output();
     expect(runDoctor(root, [], out, { ...tools })).toBe(1);
     const text = out.text();
-    expect(text).toMatch(/ {2}FAIL {2}react 19\.0\.0 does not satisfy 19\.2\.7\n {8}fix: pnpm add react@19\.2\.7\n/);
+    expect(text).toMatch(/ {2}FAIL {2}react 19\.0\.0 does not satisfy 19\.3\.0\n {8}fix: pnpm add react@19\.3\.0\n/);
     expect(text).toMatch(/ {2}FAIL {2}@sveltejs\/kit@3\.1\.1 is not applied: .*\n {8}src\/core\/sync\/create_manifest_data\/index\.js: does not skip the \+mobile files of a route directory\n(?: {8}.*\n)* {8}fix: /);
     expect(text).toMatch(/2 failed/);
   });

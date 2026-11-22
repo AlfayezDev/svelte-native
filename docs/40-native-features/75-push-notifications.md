@@ -412,13 +412,13 @@ A device needs a paid Apple Developer team for the entitlement. On Android, FCM 
 A silent push can start the app in the background. The plugin makes that launch run your JavaScript, `init` and the hooks, and start the first screen when the user opens the app. Two things follow:
 
 - **The splash screen.** An app that calls `SplashScreen.preventAutoHideAsync()` and then `SplashScreen.hideAsync()` from `init` can leave the splash up after a background launch: `init` ran with no screen, so the hide was spent before the screen existed. Hide the splash from the first screen, `+layout.mobile.svelte`, and not from `init`. This is not fixed in version 1.
-- **Expo's scene-based template.** The iOS 27 template of Expo moves `startReactNative` into `ExpoAppSceneDelegate`. The plugin finds no call to wrap in `AppDelegate.swift` there, so it stops the prebuild with an error:
+- **Expo's scene-based template.** Expo SDK 58's iOS template starts React Native from the scene (`SceneDelegate`), which UIKit connects for a launch the user makes and not for the one iOS makes for a silent push. So the plugin adds a block to `AppDelegate.swift` that starts the React host, and no screen, in a launch in the background; the scene makes the first screen when the user opens the app. If a prebuild stops with
 
   ```
-  Svelte native could not find the imports and `factory.startReactNative(withModuleName: …, in: window, launchOptions: launchOptions)` in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift. Push needs the call to keep a launch in the background (a silent push) from mounting the first screen.
+  Svelte native could not find the imports, `let factory = ExpoReactNativeFactory(delegate: …)` and `return super.application(application, didFinishLaunchingWithOptions: launchOptions)` in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift. Push needs them to start the React host in a launch in the background (a silent push).
   ```
 
-  Push doesn't support that template yet.
+  the app's `AppDelegate.swift` is not Expo's template (the plugin patches that file as the template writes it).
 
 #### Not in version 1
 

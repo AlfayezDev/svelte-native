@@ -81,8 +81,12 @@ describe("loading", () => {
   test("and it names no export that Expo defines with a getter (`AndroidConfig`, `XML`, `IOSConfig`): Node before 24 does not see those in a CommonJS module, whatever the Node that runs this test sees", () => {
     const expoRequire = createRequire(createRequire(import.meta.url).resolve("expo/package.json"));
     const index = readFileSync(expoRequire.resolve("@expo/config-plugins"), "utf8");
-    const getters = [...index.matchAll(/Object\.defineProperty\(exports, "(\w+)"/g)].map((match) => match[1]);
-    expect(getters).toContain("AndroidConfig");
+    // `0 && (module.exports = { name: null, ... })` is the hint Expo's compiler leaves for Node's CommonJS lexer (SDK 58): a name in it is seen whatever defines it.
+    const hinted = new Set([...(/0 && \(module\.exports = \{([\s\S]*?)\}\);/.exec(index)?.[1] ?? "").matchAll(/(\w+): null/g)].map((match) => match[1]));
+    const defined = [...index.matchAll(/Object\.defineProperty\(exports, "(\w+)"/g), ...index.matchAll(/^\s*get (\w+) \(\) \{/gm)].map((match) => match[1]);
+    // What Expo defines with a getter and the lexer cannot see: the hint lists them all in SDK 58, which makes a named import work in Node before 24 too; a build that loses the hint puts them back.
+    const getters = defined.filter((name) => name !== "__esModule" && !hinted.has(name ?? ""));
+    expect(defined).toContain("AndroidConfig");
     for (const file of ["remote/plugin.ts", "remote/host.ts", "capabilities.ts"]) {
       const source = readFileSync(new URL(`../../src/${file}`, import.meta.url), "utf8");
       const named = [...source.matchAll(/^import\s+(?!type\b)[^;]*?\{([^}]*)\}\s*from\s*"expo\/config-plugins(?:\.js)?";/gm)]

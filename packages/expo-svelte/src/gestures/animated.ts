@@ -11,10 +11,8 @@
  * Loaded after Reanimated (the host loads both on the first gesture), so the imports below are Reanimated's own functions.
  */
 import { makeMutable, type SharedValue } from "#vendor/react-native-reanimated";
-import { getUIRuntimeHolder } from "#vendor/react-native-worklets";
 import { WorkletEventHandler } from "../fabric/reanimated-internals.js";
 import { gestureName } from "./guards.ts";
-import { installUiRuntimeBindings } from "./native.ts";
 import type { GestureType } from "./rngh.js";
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- the payloads and callbacks cross the thread boundary untyped, as in RNGH */
@@ -105,7 +103,7 @@ function isTouchEvent(event: Event): boolean {
 
 /**
  * RNGH 3's `wrappedSetGestureState`: the state change goes to the handler through the function RNGH's native module installs on the UI runtime
- * (`_setGestureStateSync`; `installUiRuntimeBindings` in `native.ts` does the installing), where Reanimated's `setGestureState` was RNGH 2's way.
+ * (`_setGestureStateSync`; `installUiRuntimeBindings` in `native.ts` does the installing, called by the host before the first `createUiPath`), where Reanimated's `setGestureState` was RNGH 2's way.
  */
 function setGestureStateOnUi(handlerTag: number, state: number) {
   "worklet";
@@ -179,9 +177,8 @@ export type UiPath = {
   lastUpdateEvent: SharedValue<(Event | undefined)[]>;
 };
 
-/** `useSharedValue` twice and `useEvent` (a `WorkletEventHandler`) for the node's tag; the handlers are shared with `shareHandlers`. The first one also installs RNGH's UI runtime bindings. */
+/** `useSharedValue` twice and `useEvent` (a `WorkletEventHandler`) for the node's tag; the handlers are shared with `shareHandlers`. The host installs RNGH's UI runtime bindings before the first one (`fabric/gestures.ts`: this file is also what the public entry loads for `GestureStateManager`, and loads nothing of React Native). */
 export function createUiPath(tag: number): UiPath {
-  installUiRuntimeBindings(getUIRuntimeHolder);
   const sharedHandlers = makeMutable<Callbacks[] | null>(null);
   const lastUpdateEvent = makeMutable<(Event | undefined)[]>([]);
   const handler = new WorkletEventHandler<Event>(createCallback(sharedHandlers, lastUpdateEvent), EVENT_NAMES);

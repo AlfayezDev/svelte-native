@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type { Plugin } from "esbuild";
 import generate from "@babel/generator";
+import { closureEntries } from "../../src/gestures/closure.ts";
 import { transform } from "../../src/transformer.ts";
 import { load, settle, callsOf } from "../gestures/support/harness.ts";
 
@@ -37,12 +38,12 @@ const start = (fixture: string, props: Record<string, unknown> = {}) => load({ f
 
 test("an inline callback of a Gesture.X().onY(...) chain is workletized, and its closure holds exactly what it captured", async () => {
   const { m, run } = await start("gesture-worklets-ok.svelte");
-  const surface = run() as unknown as { pan: { handlers: Record<string, { __workletHash?: number; __closure?: Record<string, unknown> }>; shouldUseReanimated: boolean } };
+  const surface = run() as unknown as { pan: { handlers: Record<string, { __workletHash?: number; __closure?: unknown; __initData?: { code?: string } }>; shouldUseReanimated: boolean } };
   await settle(m);
   const { onUpdate, onEnd } = surface.pan.handlers;
   expect(typeof onUpdate?.__workletHash).toBe("number");
-  expect(Object.keys(onUpdate?.__closure ?? {})).toEqual(["x"]);
-  expect(Object.keys(onEnd?.__closure ?? {})).toEqual(["x"]);
+  expect(closureEntries(onUpdate ?? {}).map(([name]) => name)).toEqual(["x"]);
+  expect(closureEntries(onEnd ?? {}).map(([name]) => name)).toEqual(["x"]);
   expect(surface.pan.shouldUseReanimated).toBe(true);
   expect(callsOf("attachGestureHandler")[0]?.[3]).toBe(1);
   expect(outputs.get("gesture-worklets-ok.svelte")).toMatch(/__workletHash/);
@@ -52,7 +53,7 @@ test("a UI-thread callback that reads $state is refused in development, naming t
   const { run } = await start("gesture-worklets-state.svelte");
   let message = "";
   try { run(); } catch (error) { message = (error as Error).message; }
-  expect(outputs.get("gesture-worklets-state.svelte")).toMatch(/__closure = \{\s*\$,\s*count\s*\}/);
+  expect(outputs.get("gesture-worklets-state.svelte")).toMatch(/__closure = \[\s*\$,\s*count\s*\]/);
   expect(message).toContain("The onEnd callback of Gesture.Pan() runs on the UI thread but reads the state \"count\"");
   expect(message).toContain("SharedValue");
   expect(message).toContain(".runOnJS(true)");
@@ -62,7 +63,7 @@ test("a UI-thread callback that reads $state is refused in development, naming t
 test("a UI-thread callback that reads a prop is refused too", async () => {
   const { run } = await start("gesture-worklets-props.svelte", { limit: 10 });
   expect(run).toThrow("reads the component's props ($props)");
-  expect(outputs.get("gesture-worklets-props.svelte")).toMatch(/__closure = \{\s*\$\$props/);
+  expect(outputs.get("gesture-worklets-props.svelte")).toMatch(/__closure = \[\s*\$\$props/);
 });
 
 test("with .runOnJS(true) the same read is fine: the callback runs on the JS thread and reads live state", async () => {

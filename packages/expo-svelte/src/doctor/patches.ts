@@ -2,7 +2,7 @@ import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { packageRoot } from "../package-root.ts";
 import type { Reader } from "./resolve.ts";
-import { expoModulesCoreProblems, kitProblems, lottieProblems, mapsProblems, pdfProblems, reanimatedProblems, riveProblems, rnghProblems, videoProblems, workletsProblems } from "./shapes.ts";
+import { blobUtilProblems, expoModulesCoreProblems, kitProblems, lottieProblems, mapsProblems, pdfProblems, reanimatedProblems, riveProblems, rnghProblems, videoProblems, workletsProblems } from "./shapes.ts";
 
 /** The directory of the library's patch files, in the repository and in an app's `node_modules` alike. */
 export const patchesDirectory = resolve(packageRoot, "patches");
@@ -25,6 +25,7 @@ export const patchSpecs: readonly PatchSpec[] = [
   { package: "@sveltejs/kit", does: "SvelteKit leaves the `+mobile.svelte` files of a route directory alone", inspect: kitProblems },
   { package: "expo-modules-core", via: "expo", does: "Expo modules register lazily and the common ones are prewarmed (Android start)", inspect: expoModulesCoreProblems },
   { package: "lottie-react-native", vendored: true, does: "Lottie's events are delivered one by one (Android) and a load or failure before the emitter exists is kept (iOS)", inspect: lottieProblems },
+  { package: "react-native-blob-util", vendored: true, does: "the release build type names the optimizing Proguard file: Android Gradle plugin 9 refuses the default one (Android)", inspect: blobUtilProblems },
   { package: "react-native-gesture-handler", vendored: true, does: "the root gesture recognizer can be registered for the screens the library presents, and the podspec finds the Worklets copy beside it (iOS)", inspect: rnghProblems },
   { package: "react-native-maps", vendored: true, does: "the map's discrete events are delivered one by one, its streams still coalesce (Android); its iOS plugin points the Podfile at the library's copy", inspect: mapsProblems },
   { package: "react-native-pdf", vendored: true, does: "the pdf view's one event, which carries every message, no longer coalesces, and react-native is found from the app's directory (Android)", inspect: pdfProblems },

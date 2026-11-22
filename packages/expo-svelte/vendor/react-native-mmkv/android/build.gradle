@@ -5,7 +5,7 @@ buildscript {
   }
 
   dependencies {
-    classpath "com.android.tools.build:gradle:9.1.0"
+    classpath "com.android.tools.build:gradle:9.2.1"
   }
 }
 
@@ -36,14 +36,14 @@ def getExtOrIntegerDefault(name) {
 }
 
 android {
-  namespace "com.margelo.nitro.mmkv"
+  namespace = "com.margelo.nitro.mmkv"
 
-  ndkVersion getExtOrDefault("ndkVersion")
-  compileSdkVersion getExtOrIntegerDefault("compileSdkVersion")
+  ndkVersion = getExtOrDefault("ndkVersion")
+  compileSdkVersion = getExtOrIntegerDefault("compileSdkVersion")
 
   defaultConfig {
-    minSdkVersion getExtOrIntegerDefault("minSdkVersion")
-    targetSdkVersion getExtOrIntegerDefault("targetSdkVersion")
+    minSdkVersion = getExtOrIntegerDefault("minSdkVersion")
+    targetSdkVersion = getExtOrIntegerDefault("targetSdkVersion")
     buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", isNewArchitectureEnabled().toString()
 
     externalNativeBuild {
@@ -71,7 +71,7 @@ android {
 
   externalNativeBuild {
     cmake {
-      path "CMakeLists.txt"
+      path = file("CMakeLists.txt")
     }
   }
 
@@ -98,13 +98,13 @@ android {
   }
 
   buildFeatures {
-    buildConfig true
-    prefab true
+    buildConfig = true
+    prefab = true
   }
 
   buildTypes {
     release {
-      minifyEnabled false
+      minifyEnabled = false
     }
   }
 
@@ -145,6 +145,5 @@ dependencies {
   implementation project(":react-native-nitro-modules")
 
   // Add a dependency on mmkv core (this ships a C++ prefab)
-  implementation "io.github.zhongwuzw:mmkv:2.4.0"
+  implementation "io.github.zhongwuzw:mmkv:2.4.1"
 }
-

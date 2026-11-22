@@ -27,7 +27,8 @@ export function createMMKV(config = { id: 'mmkv.default' }) {
     return {
         id: config.id,
         get length() {
-            return getLocalStorage().length;
+            const keys = this.getAllKeys();
+            return keys.length;
         },
         get size() {
             return this.byteSize;
@@ -114,6 +115,9 @@ export function createMMKV(config = { id: 'mmkv.default' }) {
             throw new Error('`decrypt(..)` is not supported on Web!');
         },
         trim: () => {
+            // no-op
+        },
+        checkContentChanged: () => {
             // no-op
         },
         dispose: () => { },

@@ -360,6 +360,29 @@ describe("rest parameters", () => {
   });
 });
 
+describe("static segments that are not ASCII", () => {
+  test("match their URL however it is written, readable or percent-encoded, as SvelteKit matches them against the decoded pathname (#94)", () => {
+    const tree = buildTree([file("+mobile.svelte"), file("العربية/+mobile.svelte"), file("café/+mobile.svelte"), file("settings/+mobile.svelte"), file("item/[slug]/+mobile.svelte")]);
+    for (const href of ["/العربية", "/%D8%A7%D9%84%D8%B9%D8%B1%D8%A8%D9%8A%D8%A9", "https://example.com/العربية"]) expect(resolve(tree, href)?.page.id).toBe("العربية");
+    expect(resolve(tree, "/café")?.page.id).toBe("café");
+    const encoded = resolve(tree, "/caf%C3%A9?from=menu#top");
+    expect(encoded?.page.id).toBe("café");
+    expect(encoded?.href).toBe("/caf%C3%A9?from=menu#top");
+    expect(resolve(tree, "/cafe")).toBeNull();
+    expect(resolve(tree, "/item/%D8%B9?from=menu#top")).toMatchObject({ params: { slug: "ع" }, href: "/item/%D8%B9?from=menu#top" });
+    expect(resolve(tree, "/settings")?.page.id).toBe("settings");
+    // The route's name in either Unicode form (a file system may store `é` decomposed) matches the composed URL.
+    expect(matchPath("/cafe\u0301", "/caf%C3%A9")).toEqual({});
+    // An escape `decodeURI` keeps stays one: a parameter holds it decoded once, and a bad escape matches nothing.
+    expect(matchPath("/item/[slug]", "/item/a%2Fb%25")).toEqual({ slug: "a/b%" });
+    expect(matchPath("/50%", "/50%25")).toEqual({});
+    expect(matchPath("/item/[slug]", "/item/%E2")).toBeNull();
+    // A filled path is written as a URL's pathname writes it, so it compares equal to the href of the same screen.
+    expect(fillPath("/café/[slug]", { slug: "a b" })).toBe("/caf%C3%A9/a%20b");
+    expect(fillPath("/العربية", {})).toBe(new URL("https://example.com/العربية").pathname);
+  });
+});
+
 describe("ranking", () => {
   test("when several routes match, the one SvelteKit's sort puts first wins: a required parameter over a rest, a leading fixed segment over a parameter (#82)", () => {
     // In the order a directory scan gives: the rest route and the parameter-first route come first.

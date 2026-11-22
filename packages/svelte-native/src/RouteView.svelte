@@ -9,7 +9,7 @@
   import type { NativeLocation, Router } from "./router.svelte.ts";
   import type { RouteModules } from "./route-tree.ts";
   /** One entry of a stack: its page, or the layout of the navigator it is the screen of, inside the content layouts above it. */
-  let { entry, router, loading }: { entry: NativeLocation; router: Router; loading?: Snippet<[NativeLocation]> } = $props();
+  let { entry, router, loading, leaving = false }: { entry: NativeLocation; router: Router; loading?: Snippet<[NativeLocation]>; leaving?: boolean } = $props();
   // The entry's modules load when its screen first renders (the first screen, a restored stack); a navigation loaded them already. A load that failed
   // before the screen first rendered is not started again here: Router makes a pushed screen once its load has settled, so the screen renders to throw
   // the failure below, and the next navigation loads again. A screen that renders again (its boundary reset) loads again, as a first screen always did.
@@ -21,7 +21,17 @@
     if (failed && !again) return;
     router.load(entry.route);
   });
-  const modules = $derived(router.modules(entry.route));
+  // A screen that is leaving (Back took it off the stack while its route loaded) shows nothing for a load that failed: the failure is no longer the app's
+  // current screen's, and thrown here it would reach the error boundary around the router and take the place of the screen the user went back to.
+  const loaded = $derived.by(() => {
+    try {
+      return { modules: router.modules(entry.route), failed: false };
+    } catch (error) {
+      if (leaving) return { modules: undefined, failed: true };
+      throw error;
+    }
+  });
+  const modules = $derived(loaded.modules);
 </script>
 {#snippet level(depth: number, loaded: RouteModules)}
   {@const Current = loaded.layouts[depth] ?? loaded.component}
@@ -37,6 +47,6 @@
 {/snippet}
 {#if modules}
   {@render level(0, modules)}
-{:else if loading}
+{:else if loading && !loaded.failed}
   {@render loading(entry)}
 {/if}

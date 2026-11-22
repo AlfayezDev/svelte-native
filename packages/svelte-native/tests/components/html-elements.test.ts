@@ -1106,7 +1106,7 @@ test("style:display with a value a device has no layout for is left out with a w
   expect(hostStyleProps({ display: "inline-block" })).toEqual({ display: "flex", htmlDisplay: "inline-block" });
 });
 
-type Forms = { setReady(value: boolean): void; setHints(inputmode: string, enterkeyhint: string): void; shown(): boolean };
+type Forms = { setReady(value: boolean): void; setHints(inputmode: string, enterkeyhint: string): void; shown(): boolean; setLocked(value: boolean): void };
 const forms = () => (globalThis as unknown as { __htmlForms: Forms }).__htmlForms;
 const logged = (): string[] => {
   const log: string[] = [];
@@ -1168,6 +1168,13 @@ test("autocomplete goes over what the type implies and under a native autoComple
   forms().setHints("numeric", "done");
   await android.settle();
   expect(android.byID("spread-hints").props).toMatchObject({ keyboardType: "number-pad", returnKeyType: "done" });
+  // readonly, written on the element, from a spread, or as the component's readOnly, is a field that cannot be edited, and unlocking it reaches the host (#95).
+  const locks = ["locked", "locked-note", "locked-native"];
+  for (const id of locks) expect(on(id), id).toMatchObject({ editable: false });
+  for (const id of locks) expect(on(id).readOnly, id).toBeUndefined();
+  forms().setLocked(false);
+  await android.settle();
+  for (const id of locks) expect(android.byID(id).props.editable, id).toBe(true);
   started = { m: android.m, tag: 642 };
 
   // iOS: the field has no autoComplete; the hint is its textContentType.
@@ -1187,6 +1194,7 @@ test("autocomplete goes over what the type implies and under a native autoComple
     expect(ios.byID("message-area").name).toBe("RCTMultilineTextInputView");
     expect(of("message-area")).toMatchObject({ keyboardType: "decimal-pad", returnKeyType: "send" });
     expect(of("search").returnKeyType).toBe("go");
+    for (const id of ["locked", "locked-note", "locked-native"]) expect(of(id).editable, id).toBe(false);
     ios.m.stopSurface(643);
   } finally {
     delete os.__htmlOS;

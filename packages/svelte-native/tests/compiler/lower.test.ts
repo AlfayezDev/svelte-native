@@ -605,6 +605,10 @@ test("style as a string is converted by the class converter when the file is bui
   // On a component (an input), the style is the `style` prop; an empty one is nothing.
   expect(body(`<input style="margin: 2px" />`)).toContain(`style={{"marginTop":2,"marginRight":2,"marginBottom":2,"marginLeft":2}}`);
   expect(body(`<div style="">a</div>`)).toBe(`<native-view >a</native-view>`);
+  // `direction` is React Native's as well, as it is when the same text is a style expression (#98).
+  expect(body(`<div style="direction: rtl; margin-inline-start: 12px">سام Sam</div>`)).toContain(`"direction":"rtl"`);
+  expect(body(`<div style="direction: LTR">a</div>`)).toContain(`"direction":"ltr"`);
+  expect(() => html(`<div style="direction: sideways">a</div>`)).toThrow(/direction/);
   // A declaration the converter cannot express, or a value only the device knows, is an error that names it; so is a string with an expression in it.
   expect(() => html(`<div style="display: flex; float: left">a</div>`)).toThrow(/^page\.svelte:1:6 style="display: flex; float: left" on <div> cannot be converted: float: no React Native style for float/);
   expect(() => html(`<div style="width: 50vw">a</div>`)).toThrow(/cannot be converted: width: a viewport or safe-area unit is only for classes/);

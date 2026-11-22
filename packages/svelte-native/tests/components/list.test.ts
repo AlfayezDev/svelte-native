@@ -129,6 +129,25 @@ test("rowHeights skips measuring", async () => {
   expect(t.style("r3")).toMatchObject({ top: 30 + 31 + 32, height: 33 });
 });
 
+test("rowHeights that read state, and a new rowHeights for the same items, move the rows below and what scrollToIndex scrolls to (#93)", async () => {
+  const t = await setup({ count: 12, rowHeight: null, growing: true }, { height: 320, width: 300 });
+  expect(t.style("r1")).toMatchObject({ top: 40, height: 40 });
+  const commands: unknown[] = [];
+  t.sp().ref({ dispatchCommand: (name: string, args: unknown[]) => commands.push([name, args]) });
+  t.app.grow();
+  await t.result.tick();
+  expect(t.style("r0")).toMatchObject({ top: 0, height: 120 });
+  expect(t.style("r1")).toMatchObject({ top: 120, height: 40 });
+  expect(t.style("r2")).toMatchObject({ top: 160 });
+  t.app.jump(1);
+  expect(commands.splice(0)).toEqual([["scrollTo", [0, 120, false]]]);
+  t.app.setHeights((_item: unknown, index: number) => (index === 0 ? 60 : 40));
+  await t.result.tick();
+  expect(t.style("r1")).toMatchObject({ top: 60, height: 40 });
+  t.app.jump(1);
+  expect(commands.splice(0)).toEqual([["scrollTo", [0, 60, false]]]);
+});
+
 test("horizontal lists window on x and scroll by x", async () => {
   const t = await setup({ count: 300, rowHeight: 40, horizontal: true }, { height: 100, width: 300 });
   expect(t.scroll().getSnapshot().props.nativeProps).toMatchObject({ horizontal: true });

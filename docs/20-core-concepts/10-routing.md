@@ -164,7 +164,7 @@ A press on an `<a href>` goes to the route of its path, and one on a link to ano
 
 | Option of `goto(url, options)` | Effect |
 | --- | --- |
-| `replace: true` (or `replaceState: true`, SvelteKit's older name) | replace the top screen instead of pushing a new one. When the page is in tabs or a stack that isn't open yet, they replace the screen on top, so a sheet opened by a link and replaced by a page in the tabs isn't left behind them. |
+| `replace: true` (or `replaceState: true`, SvelteKit's older name) | replace the top screen instead of pushing a new one. When the page is in tabs or a stack that isn't open yet, the screen on top still goes: a sheet opened by a link and replaced by a page in the tabs isn't left behind them. |
 | `reset`, `refreshAll`, `invalidate`, `invalidateAll`, `persistState` | ignored: they scroll and focus, and run `load` functions again, and a phone screen has none of them |
 | `shallow`, `state` | the promise rejects: they need `page.state`, which is always empty here |
 

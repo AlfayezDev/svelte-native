@@ -251,9 +251,12 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
 
   /**
    * `selection` (record 49), what React Native's TextInput does with the `setTextAndSelection` command: the caret goes where the props say when they
-   * change it, after the text of the same commit (`applyState`), and stays where the user puts it otherwise (`InputRules.selects`).
+   * change it, after the text of the same commit (`applyState`), and stays where the user puts it otherwise (`InputRules.selects`). Like the command,
+   * a range sent with an event count older than the field's is ignored: JavaScript set it before it heard of the last edit.
    */
   private fun applySelection(v: ViewProps) {
+    // Props that answer an older edit than the user has made since (`mostRecentEventCount`, record 41) do not move the caret, as the command would not.
+    if (v.selection == InputRules.SELECTION_SET && v.propCount < nativeEventCount) return
     when (v.selection) {
       InputRules.SELECTION_CLEARED -> { propSelStart = -1; propSelEnd = -1 }
       InputRules.SELECTION_SET -> if (InputRules.selects(v.selection, v.selectionStart, v.selectionEnd, propSelStart, propSelEnd)) {
@@ -398,6 +401,8 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
   fun focus() {
     if (!isFocusableInTouchMode) isFocusableInTouchMode = true
     requestFocus()
+    // `showSoftInputOnFocus={false}` (`inputMode="none"`) keeps the keyboard closed for a focus from JavaScript too, as React Native's `requestFocusInternal` does.
+    if (!showSoftInputOnFocus) return
     val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
     imm?.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
   }

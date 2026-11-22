@@ -29,8 +29,22 @@ function bundle(platform: "android" | "ios"): Bundle {
     { cwd: app, env, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
   );
   if (done.status !== 0) throw new Error(`export:embed (${platform}) failed: ${(done.stderr || done.stdout).slice(-800)}`);
-  const { sources } = JSON.parse(readFileSync(sourceMap, "utf8")) as { sources: string[] };
+  const sources = sourcesOfMap(JSON.parse(readFileSync(sourceMap, "utf8")) as RawSourceMap);
   return { bytes: statSync(output).size, modules: sources.map((source) => source.replace(/^\//, "")), text: readFileSync(output, "utf8") };
+}
+
+/** A source map as Metro writes it: one map with `sources`, or, since Metro 0.87 when a module brings a map of its own, an index map whose `sections` each hold one. */
+type RawSourceMap = { sources?: unknown; sections?: { map?: RawSourceMap }[] };
+
+/** The modules a source map lists, each once, from a plain map or an index map. */
+function sourcesOfMap(map: RawSourceMap): string[] {
+  const found = new Set<string>();
+  const walk = (entry: RawSourceMap): void => {
+    if (Array.isArray(entry.sources)) for (const source of entry.sources) if (typeof source === "string") found.add(source);
+    for (const section of entry.sections ?? []) if (section.map) walk(section.map);
+  };
+  walk(map);
+  return [...found];
 }
 
 /** Every `+mobile.svelte` and `+layout.mobile.svelte` of src/routes, as the paths the source map names (from the repository root). */

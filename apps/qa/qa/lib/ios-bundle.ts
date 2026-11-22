@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { exec } from "./exec.ts";
 import { outDir, platformDir, expoSvelteCli } from "./paths.ts";
+import { sourcesOfMap, type RawSourceMap } from "./source-map.ts";
 import { appVariantOf, type Variant } from "./variant.ts";
 
 /**
@@ -36,8 +37,8 @@ export async function makeIosBundleMap(variant: Variant): Promise<IosBundleMap> 
 		);
 		if (made.code !== 0) throw new Error(`expo export:embed (ios, ${variant}) failed (${made.code}): ${(made.stderr || made.stdout).trim().slice(-600)}`);
 		const text = await readFile(map);
-		const sources = (JSON.parse(text.toString("utf8")) as { sources?: unknown }).sources;
-		if (!Array.isArray(sources) || sources.length === 0) throw new Error("the iOS bundle's source map lists no module");
+		const sources = sourcesOfMap(JSON.parse(text.toString("utf8")) as RawSourceMap);
+		if (sources.length === 0) throw new Error("the iOS bundle's source map lists no module");
 		await mkdir(outDir, { recursive: true });
 		const target = iosBundleMapPath(variant);
 		await writeFile(target, text);

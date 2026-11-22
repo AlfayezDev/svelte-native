@@ -188,7 +188,7 @@ describe("the HTML checks on the host: the real table, lowering, renderer and Fa
 	test("a submission whose event cannot be prevented, or that never reaches the form, fails the submit check and only it", async () => {
 		const unprevented = await ran(builtTable(), [{ file: /renderer\.ts$/, from: "preventDefault() { submit.defaultPrevented = true; }", to: "preventDefault() {}" }]);
 		expect(failed(unprevented)).toEqual([submit]);
-		const lost = await ran(builtTable(), [{ file: /renderer\.ts$/, from: 'node.dispatcher("submit")(submit);', to: "void submit;" }]);
+		const lost = await ran(builtTable(), [{ file: /renderer\.ts$/, from: 'form.dispatcher("submit")(submit);', to: "void submit;" }]);
 		expect(failed(lost)).toEqual([submit]);
 	}, 60_000);
 

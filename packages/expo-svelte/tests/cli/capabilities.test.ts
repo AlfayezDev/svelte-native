@@ -599,7 +599,13 @@ describe("capabilities.push on iOS: a push that wakes the app mounts no screen",
       "    // Svelte native: end of the first screen of a launch in the background",
       "    return super.application(",
     ].join("\n"));
-    expect(applyPushAppDelegate(wrapped)).toBe(applyPushAppDelegate(template));
+    // What stays is the template's own call, which the old wrapper held and which is not the plugin's to remove: nothing of the wrapper is left, and the new block is there once.
+    const cleaned = removePushAppDelegate(wrapped);
+    for (const gone of ["SveltePushBackgroundLaunch", "surface:", "Svelte native: push, the first screen", "Svelte native: end of the first screen"]) expect(cleaned, gone).not.toContain(gone);
+    expect(cleaned).toContain("factory.startReactNative(");
+    const renewed = applyPushAppDelegate(wrapped);
+    expect(renewed.match(/SveltePushBackgroundLaunch\.start\(/g)).toHaveLength(1);
+    expect(renewed).not.toContain("surface:");
   });
 
   test("an AppDelegate that the separate package's version of the plugin patched is cleaned and patched again: its import of the module `SveltePush` goes, SvelteCore's takes its place", () => {

@@ -3,7 +3,7 @@
   import type {} from "../elements.d.ts";
   import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
-  import type { ScrollView as NativeScrollView, ScrollViewProps } from "react-native";
+  import type { ScrollViewInstance as NativeScrollView, ScrollViewProps } from "react-native";
   import type { HostHandle } from "../fabric/host.ts";
   import type { GestureProps } from "../gestures/types.ts";
   let { children, ref, ...attributes }: Omit<ScrollViewProps, "children"> & GestureProps & {

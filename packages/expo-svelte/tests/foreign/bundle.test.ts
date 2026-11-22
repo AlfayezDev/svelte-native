@@ -31,11 +31,12 @@ async function bundleForeignEntry(): Promise<Bundle> {
       name: "foreign-entry",
       setup(builder) {
         // Everything the app's bundler resolves from React Native or Expo is external here, and recorded: a library or React among them fails the test below.
-        builder.onResolve({ filter: /^(react|react-dom|react-native|expo|@react-native|@react-native-community|lottie-react-native|react-native-[\w-]+|expo-(?!svelte\/)[\w-]+)(\/|$)/ }, (args) => {
+        // The library's own renderer before the rule for Expo's packages, whose `expo-` prefix its name has too.
+        builder.onResolve({ filter: /^expo-svelte\/renderer$/ }, () => ({ path: src("renderer.ts") }));
+        builder.onResolve({ filter: /^(react|react-dom|react-native|expo|@react-native|@react-native-community|lottie-react-native|react-native-[\w-]+|expo-[\w-]+)(\/|$)/ }, (args) => {
           externals.add(args.path);
           return { path: args.path, external: true };
         });
-        builder.onResolve({ filter: /^expo-svelte\/renderer$/ }, () => ({ path: src("renderer.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: src("environment.ts") }));
         builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
           contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code,

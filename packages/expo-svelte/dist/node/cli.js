@@ -427,8 +427,8 @@ function staleEntry(source) {
   const literal = (text3) => text3.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
   const patterns = Object.keys(manifest.exports);
   const exported = (key) => patterns.some((pattern) => pattern.includes("*") ? new RegExp(`^${pattern.split("*").map(literal).join(".*")}$`).test(key) : pattern === key);
-  for (const [, , name, subpath] of source.matchAll(new RegExp(`(['"])(${literal(manifest.name)}|${literal(FORMER_NAME)})((?:/[^'"]*)?)\\1`, "g"))) {
-    if (name === FORMER_NAME || !exported(subpath ? `.${subpath}` : ".")) return true;
+  for (const [, , name, subpath] of source.matchAll(new RegExp(`(['"])(${[manifest.name, ...FORMER_NAMES].map(literal).join("|")})((?:/[^'"]*)?)\\1`, "g"))) {
+    if (FORMER_NAMES.includes(name) || !exported(subpath ? `.${subpath}` : ".")) return true;
   }
   return false;
 }
@@ -527,7 +527,7 @@ async function exportNative(root2, platform, options = {}) {
   });
   if (result !== 0) throw new Error(`Native ${platform} export exited with ${result}`);
 }
-var require2, posix, PRESENTATIONS, NAVIGATORS, labIncluded, LAB_DIRECTORY, FORMER_NAME;
+var require2, posix, PRESENTATIONS, NAVIGATORS, labIncluded, LAB_DIRECTORY, FORMER_NAMES;
 var init_build = __esm({
   "src/build.ts"() {
     "use strict";
@@ -542,7 +542,7 @@ var init_build = __esm({
     NAVIGATORS = ["stack", "tabs"];
     labIncluded = (env = process.env) => labIncludedFor(variantName(env));
     LAB_DIRECTORY = "__dev";
-    FORMER_NAME = "@rasheed/svelte-native";
+    FORMER_NAMES = ["@rasheed/svelte-native", "@alfayez/svelte-native"];
   }
 });
 
@@ -1194,12 +1194,12 @@ __export(init_app_exports, {
   appDependencies: () => appDependencies,
   appNames: () => appNames,
   applyPlan: () => applyPlan,
+  expoSvelteViteConfig: () => expoSvelteViteConfig,
   formatPlan: () => formatPlan,
   mergeWorkspaceYaml: () => mergeWorkspaceYaml,
   parseInitArguments: () => parseInitArguments,
   planInit: () => planInit,
-  runInit: () => runInit,
-  expoSvelteViteConfig: () => expoSvelteViteConfig
+  runInit: () => runInit
 });
 import { spawnSync } from "node:child_process";
 import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync3, readdirSync as readdirSync4, writeFileSync as writeFileSync2 } from "node:fs";

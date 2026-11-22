@@ -330,15 +330,15 @@ export const lab = ${lab};
 export const tree: StackNode = ${nodeOf(tree, "").trimStart()};
 `;
 }
-var FORMER_NAME = "@rasheed/svelte-native";
+var FORMER_NAMES = ["@rasheed/svelte-native", "@alfayez/svelte-native"];
 function staleEntry(source) {
   if (!/^import ['"]\.\/hooks['"];$/m.test(source)) return true;
   const manifest = JSON.parse((0, import_node_fs2.readFileSync)((0, import_node_path3.resolve)(packageRoot, "package.json"), "utf8"));
   const literal = (text) => text.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
   const patterns = Object.keys(manifest.exports);
   const exported = (key) => patterns.some((pattern) => pattern.includes("*") ? new RegExp(`^${pattern.split("*").map(literal).join(".*")}$`).test(key) : pattern === key);
-  for (const [, , name, subpath] of source.matchAll(new RegExp(`(['"])(${literal(manifest.name)}|${literal(FORMER_NAME)})((?:/[^'"]*)?)\\1`, "g"))) {
-    if (name === FORMER_NAME || !exported(subpath ? `.${subpath}` : ".")) return true;
+  for (const [, , name, subpath] of source.matchAll(new RegExp(`(['"])(${[manifest.name, ...FORMER_NAMES].map(literal).join("|")})((?:/[^'"]*)?)\\1`, "g"))) {
+    if (FORMER_NAMES.includes(name) || !exported(subpath ? `.${subpath}` : ".")) return true;
   }
   return false;
 }
@@ -1565,7 +1565,7 @@ ${block}${stripped.slice(propertyEnd)}`;
 }
 var communityCall = "expoSvelteConfigCommand + expoSvelteCommunityCommand, expoSvelteAppRoot.asFile, expoSvelteLockFiles";
 function applyHeadlessSettings(contents, extra = [], links) {
-  const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\((?:expoSvelteConfigCommand \+ )?expoAutolinking\.rnConfigCommand \+ expoSvelteExcludeArgs(?:, expoSvelteAppRoot\.asFile, expoSvelteLockFiles)?\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)").replace(`autolinkLibrariesFromCommand(${communityCall})`, "autolinkLibrariesFromCommand()");
+  const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\((?:(?:expoSvelte|svelteNative)ConfigCommand \+ )?expoAutolinking\.rnConfigCommand \+ (?:expoSvelte|svelteNative)ExcludeArgs(?:, (?:expoSvelte|svelteNative)AppRoot\.asFile, (?:expoSvelte|svelteNative)LockFiles)?\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)").replace(`autolinkLibrariesFromCommand(${communityCall})`, "autolinkLibrariesFromCommand()");
   const anchor = /^extensions\.configure\(com\.facebook\.react\.ReactSettingsExtension\)/m.exec(stripped);
   if (!anchor || !stripped.includes("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)")) throw new Error("Svelte native could not find the autolinking block in settings.gradle");
   const quoted = (names) => names.map((name) => `"${name}"`).join(", ");
@@ -1600,7 +1600,7 @@ var podfileEnd = "  # Svelte native: end of autolinking excludes";
 var podfileCommandBegin = "  # Svelte native: autolinking excludes for React Native's config command (generated, do not edit)";
 var podfileCommandEnd = "  # Svelte native: end of config command excludes";
 function applyPodfileAutolinkingExclude(contents, names, expoModules = []) {
-  const stripped = contents.replace(blockPattern(podfileBegin, podfileEnd), "").replace(blockPattern(podfileCommandBegin, podfileCommandEnd), "").replace(/use_expo_modules!\((?:exclude: expo_svelte_exclude)?(?:, )?(?:searchPaths: [^\n]*?)?\)(?=[ \t]*$)/m, "use_expo_modules!");
+  const stripped = contents.replace(blockPattern(podfileBegin, podfileEnd), "").replace(blockPattern(podfileCommandBegin, podfileCommandEnd), "").replace(/use_expo_modules!\((?:exclude: (?:expo_svelte|svelte_native)_exclude)?(?:, )?(?:searchPaths: [^\n]*?)?\)(?=[ \t]*$)/m, "use_expo_modules!");
   if (names.length === 0 && expoModules.length === 0) return stripped;
   const useAnchor = /^[ \t]*use_expo_modules!(?!\()[ \t]*$/m.exec(stripped);
   const commandAnchor = /^[ \t]*config = use_native_modules!\(config_command\)[ \t]*$/m.exec(stripped);

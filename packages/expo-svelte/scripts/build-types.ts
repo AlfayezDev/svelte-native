@@ -142,6 +142,19 @@ function carryReferences(directory: string): void {
   }
 }
 
+/**
+ * The side-effect imports of React Native's deep paths (`import "react-native/Libraries/Core/setUpGlobals";` in `init.ts`) are runtime only and say nothing to a type checker, but React
+ * Native 0.88's `exports` map gives `./Libraries/*` no types (`"types": null`), so a declaration that keeps them fails an app's checker with TS2882. They are taken out of the declarations.
+ */
+function dropRuntimeImports(directory: string): void {
+  for (const name of filesUnder(directory)) {
+    const path = join(directory, name);
+    const text = readFileSync(path, "utf8");
+    const next = text.replace(/^import "react-native\/Libraries\/[^"]+";\n/gm, "");
+    if (next !== text) writeFileSync(path, next);
+  }
+}
+
 /** The files of `directory` a checker loads when it starts from `roots` (their relative imports, exports and references). */
 function reachableFrom(directory: string, roots: readonly string[]): string[] {
   const options: ts.CompilerOptions = { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler, noEmit: true, types: [], skipLibCheck: true };
@@ -161,6 +174,7 @@ export async function buildTypes(): Promise<Map<string, string>> {
       const path = join(directory, name);
       writeFileSync(path, withJsSpecifiers(readFileSync(path, "utf8")));
     }
+    dropRuntimeImports(directory);
     renameForCase(directory);
     const roots = typeEntries().map((entry) => `src/${declarationOf(entry)}`);
     const files = new Map<string, string>();

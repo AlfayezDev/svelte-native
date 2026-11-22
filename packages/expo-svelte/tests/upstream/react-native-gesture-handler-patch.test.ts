@@ -32,7 +32,7 @@ test("the patch adds the manager's current-manager accessor and the registration
 test("the second patch makes the podspec's helper find the Worklets copy beside the package, before it asks Node for an installed one", async () => {
   const patch = await readFile(workletsPatchPath, "utf8");
   expect(patch).toContain(`+        copy = ${rnghWorkletsLookup}`);
-  expect(patch).toMatch(/\+        return copy if File\.exist\?\(File\.join\(copy, 'package\.json'\)\)/);
+  expect(patch).toMatch(/\+ {8}return copy if File\.exist\?\(File\.join\(copy, 'package\.json'\)\)/);
 });
 
 test("the copy carries it: the manager has the accessor and the registration, and the doctor's check of the copy finds nothing missing", () => {

@@ -87,10 +87,20 @@ describe("lazy Expo module registry", () => {
 
   test("the modules the host and the app touch at boot are lazy and prewarmed", () => {
     // `SvelteUpdates` is read by `updates/launch.ts` when the host loads, the others by the app and the engine before the first commit.
-    const atBoot = ["ExpoApplication", "ExpoSecureStore", "ExponentConstants", "ExpoSplashScreen", "SvelteEngine", "SvelteUpdates"];
+    // (`ExpoApplication` and `ExpoCrypto` are Expo Modules API 2.0 modules since SDK 58, which Expo installs on its own runtime: they are not in this registry.)
+    const atBoot = ["ExpoSecureStore", "ExponentConstants", "ExpoSplashScreen", "SvelteEngine", "SvelteUpdates"];
     for (const name of atBoot) {
       expect(lazyEntries.some(([, lazyName]) => lazyName === name), `${name} is not lazy`).toBe(true);
       expect(prewarm, `${name} is not prewarmed`).toContain(name);
+    }
+  });
+
+  test("the modules left out are the ones Expo moved to its second module API, which this registry does not hold", () => {
+    for (const [name, className] of [["ExpoApplication", "expo.modules.application.ApplicationModule"], ["ExpoCrypto", "expo.modules.crypto.CryptoModule"]] as const) {
+      const source = sourceOf(className);
+      expect(source, `${className} sources not found`).toBeDefined();
+      expect(source).toContain(`@ExpoModule("${name}")`);
+      expect(lazyEntries.some(([listed]) => listed === className), `${className} is listed but is not in the registry`).toBe(false);
     }
   });
 

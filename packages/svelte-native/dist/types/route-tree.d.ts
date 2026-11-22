@@ -64,7 +64,10 @@ export type RouteFile = {
     };
 };
 export declare function buildTree(files: readonly RouteFile[]): StackNode;
-/** The parameters of `pathname` against a route path (`[id]`, `[[id]]`, `[...rest]`), or `null` when it does not match or has a bad escape. */
+/**
+ * The parameters of `pathname` (as a URL has it, percent-encoded or not) against a route path (`[id]`, `[[id]]`, `[...rest]`), or `null` when it
+ * does not match or has a bad escape. It is matched decoded, as SvelteKit matches it, so a static segment named `العربية` matches its encoded form.
+ */
 export declare function matchPath(path: string, pathname: string): Record<string, string> | null;
 /** The path of a route with its parameters in place: `/[slug]/inbox` with `{ slug: "acme" }` is `/acme/inbox`. */
 export declare function fillPath(path: string, params: Readonly<Record<string, string>>): string;

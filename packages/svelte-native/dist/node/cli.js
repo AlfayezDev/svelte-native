@@ -5237,6 +5237,7 @@ var init_properties = __esm({
       if (d.keyword("display", text3, { flex: "flex", "inline-flex": "flex", block: "flex", "inline-block": "flex", inline: "flex", "flow-root": "flex", none: "none", contents: "contents" })) d.set("htmlDisplay", text3.trim().toLowerCase());
     };
     handlers.position = (d, text3) => void d.keyword("position", text3, same("absolute", "relative", "static"));
+    handlers.direction = (d, text3) => void d.keyword("direction", text3, same("ltr", "rtl"));
     handlers["z-index"] = (d, text3) => text3.trim() === "auto" ? d.set("zIndex", null) : void d.number("zIndex", text3);
     handlers.overflow = (d, text3) => {
       const values = splitTop(text3, " ");

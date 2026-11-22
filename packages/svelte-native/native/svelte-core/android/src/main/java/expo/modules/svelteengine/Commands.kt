@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.util.Log
 import android.view.View
 import expo.modules.svelteengine.views.EngineHScroll
+import expo.modules.svelteengine.views.EngineInput
 import expo.modules.svelteengine.views.EngineNode
 import expo.modules.svelteengine.views.EngineScroll
 import expo.modules.svelteengine.views.EngineScrollable
@@ -37,6 +38,13 @@ object Commands {
       "flashScrollIndicators" -> (view as? EngineScrollable)?.flashIndicators()
       "focus" -> callOrFallback(view, "focus") { it.requestFocus() }
       "blur" -> callOrFallback(view, "blur") { it.clearFocus() }
+      // React Native's TextInput command, `ref.dispatchCommand("setTextAndSelection", [eventCount, text | null, start, end])`.
+      "setTextAndSelection" -> (view as? EngineInput)?.setTextAndSelection(
+        (num(args.getOrNull(0)) ?: 0.0).toInt(),
+        args.getOrNull(1) as? String,
+        (num(args.getOrNull(2)) ?: -1.0).toInt(),
+        (num(args.getOrNull(3)) ?: -1.0).toInt(),
+      )
       else -> Log.w(TAG, "dispatchCommand: unsupported command '$name' for tag $tag (${view.javaClass.simpleName})")
     }
   }

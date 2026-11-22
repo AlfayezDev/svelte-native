@@ -33,7 +33,7 @@ A `+mobile.svelte` file is a screen. Its directory is its route:
 </Screen>
 ```
 
-A page receives `params`, the route's parameters as strings. Route groups `(group)`, parameters `[param]`, optional parameters `[[optional]]` and rest parameters `[...rest]` work as in SvelteKit. Parameter matchers (`[id=integer]`) don't. A static route wins over one with parameters.
+A page receives `params`, the route's parameters as strings. Route groups `(group)`, parameters `[param]`, optional parameters `[[optional]]` and rest parameters `[...rest]` work as in SvelteKit. Parameter matchers (`[id=integer]`) don't. A rest parameter also matches nothing at all, so `files/[...path]` opens `/files` as well as `/files/a/b`. When several routes match a URL, the one SvelteKit would pick wins, so a URL opens the same page on the web and on a phone: a static segment beats a parameter, and a required parameter beats an optional or rest one, comparing segment by segment from the left.
 
 [`<Screen>`](screen) sets the screen's title, header, toolbar and system bars. A page without one has no header.
 
@@ -164,7 +164,7 @@ A press on an `<a href>` goes to the route of its path, and one on a link to ano
 
 | Option of `goto(url, options)` | Effect |
 | --- | --- |
-| `replace: true` (or `replaceState: true`, SvelteKit's older name) | replace the top screen instead of pushing a new one |
+| `replace: true` (or `replaceState: true`, SvelteKit's older name) | replace the top screen instead of pushing a new one. When the page is in tabs or a stack that isn't open yet, they replace the screen on top, so a sheet opened by a link and replaced by a page in the tabs isn't left behind them. |
 | `reset`, `refreshAll`, `invalidate`, `invalidateAll`, `persistState` | ignored: they scroll and focus, and run `load` functions again, and a phone screen has none of them |
 | `shallow`, `state` | the promise rejects: they need `page.state`, which is always empty here |
 
@@ -230,12 +230,27 @@ Then prepare on the finger going down, commit on the tap and discard when the fi
 
 	const router = useRouter();
 	let prepared: PreparedNavigation | undefined;
+
+	function open() {
+		const handle = prepared;
+		prepared = undefined;
+		if (handle) handle.commit();
+		else router.goto('/posts/42');
+	}
+
+	function release() {
+		const handle = prepared;
+		handle?.discard();
+		setTimeout(() => {
+			if (prepared === handle) prepared = undefined;
+		});
+	}
 </script>
 
 <Pressable
 	onPressIn={() => (prepared = router.prepare('/posts/42'))}
-	onPress={() => prepared?.commit()}
-	onPressOut={() => prepared?.discard()}
+	onPress={open}
+	onPressOut={release}
 >
 	<Text>Read post 42</Text>
 </Pressable>
@@ -244,7 +259,8 @@ Then prepare on the finger going down, commit on the tap and discard when the fi
 `prepare` loads the code of the pages the screen needs (the page, its layouts and the first page of a tab it opens), renders the screen off screen, and returns `{ ready, commit(), discard() }`. Nothing reaches the native stack until `commit()`, and the screen's effects run then, once. `ready` is a promise of `true` when a screen was rendered and `false` when none will be, and it never rejects.
 
 - `commit()` does the navigation `goto` does. When the screen was ready and nothing has changed in the stacks since, it puts that screen on at once. When it was not ready (the finger came up first), when something else navigated or a screen finished leaving in between, or when async mode is off, the prepared screen is dropped and `commit()` is a plain `goto` from the stacks as they are then.
-- `discard()` takes effect a task later, and a `commit()` before then wins. That is why the example is safe: for a press of 130 ms or more `Pressable` calls `onPressOut` and then `onPress` in one task. Once `commit()` or `discard()` has taken effect, further calls do nothing, and `ready` settles `false` at once if it had not settled.
+- `discard()` takes effect a task later, and a `commit()` before then wins. That is why the example is safe: for a press of 130 ms or more `Pressable` calls `onPressOut` and then `onPress` in one task. Once `commit()` or `discard()` has taken effect, further calls do nothing, and `ready` settles `false` at once if it had not settled. So the example forgets a handle once it is used or discarded.
+- A screen reader or a keyboard activates the `Pressable` with `onPress` alone, without `onPressIn`. With no prepared handle, the example's `onPress` calls `goto`, so every activation navigates.
 - Only forward navigations are prepared: a push, or the selection of a tab. One that pops, replaces or resets is not prepared and `commit()` is the `goto`.
 - A tree has one prepared navigation at a time. A newer `prepare` takes the screen of the one before it, and that one's `commit()` is then a plain `goto`.
 - **Every `prepare` must end in `commit()` or `discard()`.** A screen that is never committed or discarded stays in memory, with everything its components created.
@@ -258,7 +274,7 @@ With async mode on, `await tick()` waits for the next frame or timer instead of 
 
 A link to your app opens the screen of its route. The app's scheme is `scheme` in `app.json` (`init` sets it to the app's slug), so `my-app://posts/42` opens `src/routes/posts/[id]/+mobile.svelte`. Links that match no route are ignored.
 
-The link the app was started with becomes the first screen, with no back button. Links that arrive while the app runs are opened with `goto`.
+The link the app was started with becomes the first screen, with no back button. Links that arrive while the app runs are opened with `goto`. A link that arrives and opens a screen while the app is still waiting for the platform to report the launch link is the newer one, so the launch link isn't opened over it.
 
 If your app shell must know the launch link before it renders, for instance to choose between a sign-in screen and the app, await `openLaunchURL(router)` from `@alfayez/svelte-native` before rendering `children`.
 

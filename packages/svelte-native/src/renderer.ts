@@ -172,26 +172,70 @@ export function hostHref(event: unknown): string | undefined {
 /** The inputs whose last key press was prevented: Enter in them is not a submission. */
 const keyPrevented = new WeakSet<object>();
 
+/** The nearest lowered `<form>` above `node` (it has `nativeForm`, which the element tree knows however the components are put together). */
+function formAbove(node: NativeNode): NativeNode | undefined {
+  for (let at: NativeNode | null = node; at; at = at.parent) if (at.getProp("nativeForm") === true) return at;
+  return undefined;
+}
+
+/** A lowered `<button>` (`nativeButton`) whose `type` makes it a submit button: none, or `"submit"`. Its own `type`, so one from a spread counts. */
+function isSubmitButton(node: NativeNode): boolean {
+  if (node.getProp("nativeButton") !== true) return false;
+  const type = node.getProp("type");
+  return typeof type !== "string" || type === "" || type.toLowerCase() === "submit";
+}
+
+/** The elements below `form` in tree order (a form inside it is no part of it, as HTML has no nested forms). */
+function* inForm(form: NativeNode): Generator<NativeNode> {
+  for (let child = form.firstChild; child; child = child.nextSibling) {
+    if (child.getProp("nativeForm") === true) continue;
+    yield child;
+    yield* inForm(child);
+  }
+}
+
+/** What the press of a lowered button runs: its `onPress` listener, or the handler a spread gave as a prop. */
+function pressOf(node: NativeNode): ((event: unknown) => void) | undefined {
+  for (const type of ["Press", "press"]) if (node.listeners.has(type)) return node.dispatcher(type);
+  const prop = node.getProp("onPress");
+  return typeof prop === "function" ? (prop as (event: unknown) => void) : undefined;
+}
+
+function submitForm(form: NativeNode, submitter: NativeNode | null): void {
+  const submit = { type: "submit", target: form, currentTarget: form, submitter, defaultPrevented: false, preventDefault() { submit.defaultPrevented = true; }, stopPropagation() {} };
+  form.dispatcher("submit")(submit);
+}
+
 /**
- * What a `<button>` does after its press when it is a submit button (no `type`, or `type="submit"`: the element's own `type`, so one from a spread counts), or what Enter in a
- * single-line input does (`force`, unless its key press was prevented): the nearest `<form>` above the element that gave the event (a lowered `<form>` has `nativeForm`, which the
- * element tree knows however the components are put together) hears `submit`, with `target` and `currentTarget` the form and `submitter` the element. With no form above, nothing happens.
+ * What a `<button>` does after its press when it is a submit button (no `type`, or `type="submit"`: the element's own `type`, so one from a spread counts): the nearest `<form>` above
+ * it hears `submit`, with `target` and `currentTarget` the form and `submitter` the button. With no form above, nothing happens.
+ *
+ * Enter in a single-line input (`force`, unless its key press was prevented) is HTML's implicit submission: the form's default button, its first submit button in tree order, is
+ * pressed, so its `onclick` runs and it is the `submitter`; a disabled one means no submission. A form with no submit button is submitted (`submitter` null) when the input is its
+ * only single-line field.
  */
 export function hostSubmit(event: unknown, force = false): void {
   const origin = (event as { currentTarget?: unknown } | null | undefined)?.currentTarget;
   if (!(origin instanceof NativeNode)) return;
-  if (force) {
-    if (keyPrevented.delete(origin)) return;
-  } else {
+  if (!force) {
     const type = origin.getProp("type");
     if (typeof type === "string" && type !== "" && type.toLowerCase() !== "submit") return;
-  }
-  for (let node: NativeNode | null = origin; node; node = node.parent) {
-    if (node.getProp("nativeForm") !== true) continue;
-    const submit = { type: "submit", target: node, currentTarget: node, submitter: origin, defaultPrevented: false, preventDefault() { submit.defaultPrevented = true; }, stopPropagation() {} };
-    node.dispatcher("submit")(submit);
+    const form = formAbove(origin);
+    if (form) submitForm(form, origin);
     return;
   }
+  if (keyPrevented.delete(origin)) return;
+  const form = formAbove(origin);
+  if (!form) return;
+  let fields = 0;
+  for (const node of inForm(form)) {
+    if (isSubmitButton(node)) {
+      if (!node.getProp("disabled")) pressOf(node)?.({ nativeEvent: {}, currentTarget: node, target: node });
+      return;
+    }
+    if (node.name === "native-input" && node.getProp("nativeHtml") === true && (node.getProp("nativeProps") as { multiline?: unknown } | undefined)?.multiline !== true) fields++;
+  }
+  if (fields <= 1) submitForm(form, null);
 }
 
 /**

@@ -248,6 +248,8 @@ function createStore(tree: StackNode) {
   let readFailedAt: number | undefined;
   /** An answer that came after the wait and that `accept` refused for the moment, with the navigation count it came at: the next call to `openLaunchURL` takes it up as if it had come in time. */
   let lateLink: { url: string; at: number } | undefined;
+  /** A link that arrived while the app ran was opened before the launch link was dealt with: it is the newer one, and the launch link is not opened over it. */
+  let linkedFirst = false;
   /**
    * Whether the root `<Router>` is mounted. A screen that leaves stays on screen until the native stack reports its exit, which a screen that is
    * not on a native stack cannot: a navigation before the first mount (the launch link, opened ahead by `openLaunchURL`) or while the
@@ -655,11 +657,16 @@ function createStore(tree: StackNode) {
         if (late.at === navigations) url = late.url; else dropLaunch(late.url);
       }
       if (!url || launchDone) return url;
-      // A read that failed and was asked again after the app went on (a sign-out remounts the <Router>) would open a link that is long stale.
-      if (staleRead()) { dropLaunch(url); return url; }
+      // A read that failed and was asked again after the app went on (a sign-out remounts the <Router>) would open a link that is long stale;
+      // a link that arrived while the platform was answering was opened, and resetting the app to the launch link would take it away.
+      if (staleRead() || linkedFirst) { dropLaunch(url); return url; }
       if (accept && !accept(url)) return url;
       openLaunch(router, url);
       return url;
+    },
+    /** A link that arrived while the app runs was opened: if the launch link is still being read, this one is newer and wins. */
+    linkOpened() {
+      if (!launchDone) linkedFirst = true;
     },
     /** The root `<Router>` mounted or unmounted: while it is mounted a screen that a navigation replaces leaves through the native stack. */
     markShown(value: boolean) {
@@ -760,7 +767,7 @@ export function connectHost(router: Router): () => void {
   const binding = bindings.get(router);
   if (!binding || router.nested) return () => {};
   const back = BackHandler.addEventListener("hardwareBackPress", () => router.active() && innermost(router).back());
-  const links = Linking.addEventListener("url", ({ url }) => { if (router.active()) router.openURL(url); });
+  const links = Linking.addEventListener("url", ({ url }) => { if (router.active() && router.openURL(url)) binding.store.linkOpened(); });
   binding.store.markShown(true);
   binding.store.openLaunchURL(router).catch((error: unknown) => { console.error("[Svelte router] the launch link could not be read", error); });
   // Remote functions follow a server `redirect()` through this router and send its current URL as the page's (`remote/link.ts`).

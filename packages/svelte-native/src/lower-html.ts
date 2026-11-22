@@ -482,6 +482,8 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
       tag = "native-pressable";
       role("button");
       // A button is a submit button unless its `type` says it is not, which is read when it is pressed (`hostSubmit`, so a spread's `type` counts): whether a form is above it is known then too.
+      // `nativeButton` lets Enter in an input of the form find its default button, the first submit button (`hostSubmit`).
+      generated.push("nativeButton={true}");
       spreadHelper = WEB_CLICK_SPREAD_HELPER;
       press(node, handled, generated, `(__event) => ${helper(SUBMIT_HELPER)}(__event)`);
     } else if (kind === "image") {

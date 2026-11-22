@@ -143,6 +143,8 @@ A link follows the `href` the element has when it is pressed, so one that comes 
 
 A `<form onsubmit>` hears `submit` when a submit button inside it is pressed, or when someone presses Enter in a single-line `input` inside it. A button is a submit button unless it says `type="button"` (or `reset`), even when its `type` comes from a spread. The form finds its buttons and fields by where they are, not by which file they're written in, so a field in a component of its own submits the form it sits in.
 
+Enter works as it does in a browser: it presses the form's first submit button, so that button's `onclick` runs and `event.submitter` is that button. If that button is `disabled`, Enter submits nothing, so a Send button you disable until the form is ready also stops Enter. A form with no submit button is submitted by Enter only when the input is its one single-line field, and `event.submitter` is then `null`.
+
 ```svelte
 <form onsubmit={(event) => { event.preventDefault(); save(); }}>
 	<input bind:value={name} placeholder="Name" />
@@ -169,7 +171,9 @@ A native image has no size of its own until it loads, so give it a `width` and a
 
 A single-line `input` keeps its text centred in the field whatever the line height, as a browser does: it ignores a `leading-*` class and the line height it would inherit. A `textarea` uses them.
 
-`disabled` is `editable={false}`, and `readonly`, `maxlength`, `autofocus`, `autocomplete`, `autocapitalize`, `inputmode` and `enterkeyhint` are the native props of those names. `rows` on a `textarea` is `numberOfLines`, and the text between its tags is its initial value (unless it has `bind:value`).
+`disabled` and `readonly` are `editable={false}`, and `maxlength`, `autofocus`, `autocomplete`, `autocapitalize`, `inputmode` and `enterkeyhint` are the props of those names. `rows` on a `textarea` is `numberOfLines`, and the text between its tags is its initial value (unless it has `bind:value`).
+
+`inputmode` chooses the keyboard and `enterkeyhint` the label of the return key, over what `type` chose: `<input type="email" inputmode="numeric">` opens a number pad. `inputmode="none"` opens no keyboard. `autocomplete` goes over the hint `type` gives, so `<input type="password" autocomplete="new-password">` asks the password manager for a new password, and `autocomplete="off"` turns the hint off. On Android it becomes the field's autofill hint, and on iOS its `textContentType`, as with React Native's `TextInput`.
 
 `oninput` runs on every edit, and `onchange` when the edit is finished. Their event has what web code reads: `event.currentTarget.value` (and `event.target.value`), and the `name`, `id` and `type` of the input. `onkeydown` and `onkeyup` are the key press of the keyboard, with `event.key` (`"Enter"`, `"a"`, `"Backspace"`); a key press comes once, so both run for it.
 

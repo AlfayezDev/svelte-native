@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildTree, fillPath, locate, matchPath, plan, resolve, type RouteNode, type RouteFile, type StackNode } from "../../src/route-tree.ts";
+import { buildTree, compareRoutes, fillPath, locate, matchPath, plan, resolve, type RouteNode, type RouteFile, type StackNode } from "../../src/route-tree.ts";
 
 /**
  * Golden vectors of the route tree contract (SPEC.md "Route tree: layouts as navigators"). `buildTree` takes the route files
@@ -339,5 +339,108 @@ describe("order", () => {
     const tree = buildTree([file("t/+layout.mobile.svelte", { navigator: "tabs" }), file("t/zed/+mobile.svelte"), file("t/alpha/+mobile.svelte")]);
     const tabs = tree.routes[0];
     expect(tabs.kind === "tabs" && tabs.panes.map((pane) => pane.key)).toEqual(["zed", "alpha"]);
+  });
+});
+
+describe("rest parameters", () => {
+  test("take zero segments too, as in SvelteKit: one catch-all screen opens its base path and the paths below it (#80)", () => {
+    expect(matchPath("/files/[...path]", "/files")).toEqual({ path: "" });
+    expect(matchPath("/files/[...path]", "/files/")).toEqual({ path: "" });
+    expect(matchPath("/files/[...path]", "/files/reports/2026")).toEqual({ path: "reports/2026" });
+    expect(matchPath("/files/[...path]", "/filesx")).toBeNull();
+    expect(matchPath("/a/[...rest]/z", "/a/z")).toEqual({ rest: "" });
+    expect(matchPath("/a/[...rest]/z", "/a/b/z")).toEqual({ rest: "b" });
+    expect(matchPath("/[...rest]", "/")).toEqual({ rest: "" });
+    expect(fillPath("/files/[...path]", { path: "" })).toBe("/files");
+    expect(fillPath("/a/[...rest]/z", { rest: "" })).toBe("/a/z");
+    const tree = buildTree([file("files/[...path]/+mobile.svelte"), file("a/[...rest]/z/+mobile.svelte")]);
+    expect(resolve(tree, "/files")?.params).toEqual({ path: "" });
+    expect(resolve(tree, "/files")?.href).toBe("/files");
+    expect(resolve(tree, "/a/z")?.params).toEqual({ rest: "" });
+  });
+});
+
+describe("ranking", () => {
+  test("when several routes match, the one SvelteKit's sort puts first wins: a required parameter over a rest, a leading fixed segment over a parameter (#82)", () => {
+    // In the order a directory scan gives: the rest route and the parameter-first route come first.
+    const tree = buildTree([
+      file("[section]/account/edit/+mobile.svelte"),
+      file("files/[...path]/+mobile.svelte"),
+      file("files/[id]/+mobile.svelte"),
+      file("settings/[area]/[action]/+mobile.svelte"),
+    ]);
+    expect(resolve(tree, "/files/report")?.page.id).toBe("files/[id]");
+    expect(resolve(tree, "/files/a/b")?.page.id).toBe("files/[...path]");
+    expect(resolve(tree, "/files")?.page.id).toBe("files/[...path]");
+    expect(resolve(tree, "/settings/account/edit")?.page.id).toBe("settings/[area]/[action]");
+    expect(resolve(tree, "/other/account/edit")?.page.id).toBe("[section]/account/edit");
+  });
+
+  test("ranks across navigators: a page in a nested stack outranks a root page that matches the same URL less specifically", () => {
+    const tree = buildTree([file("[x]/q/r/+mobile.svelte"), file("n/+layout.mobile.svelte", { navigator: "stack" }), file("n/[id]/r/+mobile.svelte")]);
+    const hit = resolve(tree, "/n/q/r");
+    expect(hit?.page.id).toBe("n/[id]/r");
+    expect(hit?.chain.map((step) => step.node.id)).toEqual(["", "n"]);
+    expect(resolve(tree, "/m/q/r")?.page.id).toBe("[x]/q/r");
+  });
+
+  test("sorts as SvelteKit 3.3.0's sort_routes does (the expected orders are its output)", () => {
+    const order = (paths: string[]) => paths.map((path) => ({ path, id: path.slice(1) })).sort(compareRoutes).map((route) => route.path);
+    expect(order(["/[...rest]", "/[a]", "/a", "/[[a]]", "/a/b", "/[a]/b", "/[...rest]/x", "/a/[b]", "/[a=m]"]))
+      .toEqual(["/a", "/a/b", "/a/[b]", "/[a=m]", "/[a]", "/[a]/b", "/[...rest]/x", "/[[a]]", "/[...rest]"]);
+    expect(order(["/foo", "/foobar"])).toEqual(["/foobar", "/foo"]);
+  });
+});
+
+describe("replacing across navigators", () => {
+  const tree = buildTree([
+    file("(tabs)/+layout.mobile.svelte", { navigator: "tabs" }),
+    file("(tabs)/list/+mobile.svelte"),
+    file("(tabs)/list/detail/+mobile.svelte"),
+    file("(tabs)/settings/+mobile.svelte"),
+    file("compose/+mobile.svelte", { presentation: "sheet" }),
+  ]);
+  const at = (href: string) => { const hit = resolve(tree, href); if (!hit) throw new Error(href); return hit; };
+
+  test("a sheet opened by a link and replaced by a page in tabs that aren't there yet leaves no sheet under the tabs (#88)", () => {
+    const linked = { "": { entries: ["/compose"] } };
+    expect(plan(linked, at("/list"), { replaceState: true })).toEqual([{ node: "", op: "replace", href: "/", presentation: "push" }]);
+    expect(plan(linked, at("/settings"), { replaceState: true })).toEqual([
+      { node: "", op: "replace", href: "/", presentation: "push" },
+      { node: "(tabs)", op: "select", pane: "settings" },
+    ]);
+    // The new pane's stack keeps its base: the target goes on top of it.
+    expect(plan(linked, at("/list/detail"), { replaceState: true })).toEqual([
+      { node: "", op: "replace", href: "/", presentation: "push" },
+      { node: "(tabs)/list", op: "push", href: "/list/detail", presentation: "push" },
+    ]);
+    // A push is still a push.
+    expect(plan(linked, at("/list"), {})).toEqual([{ node: "", op: "push", href: "/", presentation: "push" }]);
+  });
+
+  test("a replacement takes the shown screen only: once a pop above has taken it away, the new navigator is pushed", () => {
+    const nested = buildTree([
+      file("(tabs)/+layout.mobile.svelte", { navigator: "tabs" }),
+      file("(tabs)/list/+mobile.svelte"),
+      file("(tabs)/list/flow/+layout.mobile.svelte", { navigator: "stack" }),
+      file("(tabs)/list/flow/start/+mobile.svelte"),
+      file("home/+mobile.svelte"),
+      file("compose/+mobile.svelte", { presentation: "sheet" }),
+    ]);
+    const hit = (href: string) => { const found = resolve(nested, href); if (!found) throw new Error(href); return found; };
+    // The sheet is shown over the tabs: the pop takes it away, and the flow is pushed in the pane.
+    const overTabs = { "": { entries: ["/", "/compose"] }, "(tabs)": { selected: "list" }, "(tabs)/list": { entries: ["/list"] } };
+    expect(plan(overTabs, hit("/list/flow/start"), { replaceState: true })).toEqual([
+      { node: "", op: "popTo", href: "/" },
+      { node: "(tabs)/list", op: "push", href: "/list/flow", presentation: "push" },
+      { node: "(tabs)/list/flow", op: "push", href: "/list/flow/start", presentation: "push" },
+    ]);
+    // The sheet is shown over another root page: the tabs replace the sheet, and the page below stays.
+    const overHome = { "": { entries: ["/home", "/compose"] } };
+    expect(plan(overHome, hit("/list/flow/start"), { replaceState: true })).toEqual([
+      { node: "", op: "replace", href: "/", presentation: "push" },
+      { node: "(tabs)/list", op: "push", href: "/list/flow", presentation: "push" },
+      { node: "(tabs)/list/flow", op: "push", href: "/list/flow/start", presentation: "push" },
+    ]);
   });
 });

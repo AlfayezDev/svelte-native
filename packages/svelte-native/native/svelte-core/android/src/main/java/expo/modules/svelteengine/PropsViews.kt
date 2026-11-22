@@ -2,7 +2,7 @@ package expo.modules.svelteengine
 
 /** Decoded records of the view kinds 5..9 (SPEC-views.md). Reset together with the owning [PropSet]. */
 class ViewProps {
-  // TextInput 40..48
+  // TextInput 40..50
   var fontSize = 14f
   var hasColor = false
   var color = 0
@@ -36,6 +36,14 @@ class ViewProps {
   var caretHidden = false
   var stateText: String? = null
   var stateCount = 0
+  /** Record 49: `InputRules` selection code (-1 not part of the update, 0 removed, 1 set) and the range. */
+  var selection = InputRules.SELECTION_KEEP
+  var selectionStart = -1
+  var selectionEnd = -1
+  /** Record 50: the autofill name (React Native's Android token), `importantForAutofill` (0 auto .. 4), and the `showSoftInputOnFocus` code (as `autoCorrect`'s). */
+  var autoComplete: String? = null
+  var importantForAutofill = 0
+  var showSoftInputOnFocus = InputRules.AUTO_CORRECT_KEEP
 
   // Switch 60..65
   var switchValue = false
@@ -88,6 +96,8 @@ class ViewProps {
     hasSelectionColor = false; selectionColor = 0; hasCursorColor = false; cursorColor = 0
     autoFocus = false; selectTextOnFocus = false; caretHidden = false
     stateText = null; stateCount = 0
+    selection = InputRules.SELECTION_KEEP; selectionStart = -1; selectionEnd = -1
+    autoComplete = null; importantForAutofill = 0; showSoftInputOnFocus = InputRules.AUTO_CORRECT_KEEP
     switchValue = false; enabled = true; hasThumb = false; thumb = 0
     hasTrackFalse = false; trackFalse = 0; hasTrackTrue = false; trackTrue = 0; hasTrackTint = false; trackTint = 0
     spinnerStyle = 0; animating = true; hasSpinnerColor = false; spinnerColor = 0; indeterminate = false; progress = 0f
@@ -130,6 +140,11 @@ object PropsViews {
       }
       47 -> { v.autoFocus = ops[i] == 1; v.selectTextOnFocus = ops[i + 1] == 1; v.caretHidden = ops[i + 2] == 1; i += 3 }
       48 -> { v.stateText = strings[ops[i]]; v.stateCount = ops[i + 1]; i += 2 }
+      49 -> { v.selection = ops[i]; v.selectionStart = ops[i + 1]; v.selectionEnd = ops[i + 2]; i += 3 }
+      50 -> {
+        v.autoComplete = if (ops[i] >= 0) strings[ops[i]] else null
+        v.importantForAutofill = ops[i + 1]; v.showSoftInputOnFocus = ops[i + 2]; i += 3
+      }
       60 -> v.switchValue = ops[i++] == 1
       61 -> v.enabled = ops[i++] == 1
       62 -> { v.hasThumb = ops[i] == 1; v.thumb = ops[i + 1]; i += 2 }

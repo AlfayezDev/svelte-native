@@ -25,6 +25,12 @@ object ViewEvents {
   /** [text]: the text (change, endEditing, submitEditing) or the key (keyPress). */
   @JvmStatic external fun input(tag: Int, kind: Int, text: String?, eventCount: Int, selStart: Int, selEnd: Int)
 
+  /** An input's content size in dp (`onContentSizeChange`): `{contentSize: {width, height}}`, as React Native's `ReactContentSizeChangedEvent`. */
+  @JvmStatic external fun inputContentSize(tag: Int, widthDp: Float, heightDp: Float)
+
+  /** An input scrolled (`onScroll`): the offset and the view's size, in dp, as React Native's `ReactTextScrollWatcher` sends them in a `ScrollEvent`. */
+  @JvmStatic external fun inputScroll(tag: Int, xDp: Float, yDp: Float, widthDp: Float, heightDp: Float)
+
   @JvmStatic external fun switchChange(tag: Int, value: Boolean)
 
   /** [width]/[height] in pixels of the decoded source (load only). */

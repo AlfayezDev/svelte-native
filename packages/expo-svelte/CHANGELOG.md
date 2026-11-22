@@ -8,6 +8,10 @@ Notable changes to `expo-svelte` (named `@alfayez/svelte-native` up to 0.4.0-rc.
 
 - The package's npm page links the repository, the guide (now at <https://expo-svelte.alfayez.dev>; the old address redirects) and the issues.
 
+### Fixed
+
+- On Android, a pop that plays during the first 70 ms of a push (the screen below still fading out) no longer blanks the screen below. It was taken to nothing and faded back in only after 35 % of the way back, so for about 70 ms the screen showed nothing but its background; it now comes back to whole from where the push had faded it.
+
 ## 0.4.0-rc.10 - 2026-11-22
 
 ### Changed

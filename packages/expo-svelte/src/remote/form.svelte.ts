@@ -505,7 +505,8 @@ export function form(id: string) {
               attempt.updates = () => { throw new Error("With an enhance callback, call .updates(...) on the submit() inside it."); };
             } else {
               const sent = send(data, true);
-              attempt = sent.then(async (ok) => { if (ok) { await tick(); reset(); } return ok; }) as Submission;
+              // Accepted: the form starts again, unless it was reset while the request was out (and maybe holds a new draft since), which this reset would erase.
+              attempt = sent.then(async (ok) => { if (ok) { await tick(); if (reset_epoch === reset_id) reset(); } return ok; }) as Submission;
               attempt.updates = (...updates) => { sent.updates(...updates); return attempt; };
             }
           } catch (caught) {

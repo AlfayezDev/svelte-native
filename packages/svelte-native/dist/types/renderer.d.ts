@@ -92,9 +92,12 @@ export declare function hostClick(event: unknown, handler: ((event: unknown) => 
 /** The `href` of the element a press came from (an `<a>`'s, which stays an attribute of it, so one from a spread is there too): a string, or nothing. */
 export declare function hostHref(event: unknown): string | undefined;
 /**
- * What a `<button>` does after its press when it is a submit button (no `type`, or `type="submit"`: the element's own `type`, so one from a spread counts), or what Enter in a
- * single-line input does (`force`, unless its key press was prevented): the nearest `<form>` above the element that gave the event (a lowered `<form>` has `nativeForm`, which the
- * element tree knows however the components are put together) hears `submit`, with `target` and `currentTarget` the form and `submitter` the element. With no form above, nothing happens.
+ * What a `<button>` does after its press when it is a submit button (no `type`, or `type="submit"`: the element's own `type`, so one from a spread counts): the nearest `<form>` above
+ * it hears `submit`, with `target` and `currentTarget` the form and `submitter` the button. With no form above, nothing happens.
+ *
+ * Enter in a single-line input (`force`, unless its key press was prevented) is HTML's implicit submission: the form's default button, its first submit button in tree order, is
+ * pressed, so its `onclick` runs and it is the `submitter`; a disabled one means no submission. A form with no submit button is submitted (`submitter` null) when the input is its
+ * only single-line field.
  */
 export declare function hostSubmit(event: unknown, force?: boolean): void;
 /**

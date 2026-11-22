@@ -1828,6 +1828,7 @@ function lowerHtml(ast, content, filename, warn = () => {
     } else if (kind === "button") {
       tag = "native-pressable";
       role("button");
+      generated.push("nativeButton={true}");
       spreadHelper = WEB_CLICK_SPREAD_HELPER;
       press(node, handled, generated, `(__event) => ${helper(SUBMIT_HELPER)}(__event)`);
     } else if (kind === "image") {

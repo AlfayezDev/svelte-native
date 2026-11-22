@@ -64,7 +64,10 @@ export type RouteFile = {
     };
 };
 export declare function buildTree(files: readonly RouteFile[]): StackNode;
-/** The parameters of `pathname` against a route path (`[id]`, `[[id]]`, `[...rest]`), or `null` when it does not match or has a bad escape. */
+/**
+ * The parameters of `pathname` (as a URL has it, percent-encoded or not) against a route path (`[id]`, `[[id]]`, `[...rest]`), or `null` when it
+ * does not match or has a bad escape. It is matched decoded, as SvelteKit matches it, so a static segment named `العربية` matches its encoded form.
+ */
 export declare function matchPath(path: string, pathname: string): Record<string, string> | null;
 /** The path of a route with its parameters in place: `/[slug]/inbox` with `{ slug: "acme" }` is `/acme/inbox`. */
 export declare function fillPath(path: string, params: Readonly<Record<string, string>>): string;
@@ -85,11 +88,22 @@ export type Resolution = {
 };
 /** The origin every route URL of the app is built on (`page.url`, `NativeLocation.url`): a native screen has no real one. */
 export declare const BASE = "https://native.invalid";
-/** The page `href` names and the chain of navigators above it, or `null` when no page matches. Query and hash do not take part in matching. */
+/** Negative when the route `a` outranks `b`, positive when `b` outranks it, as SvelteKit sorts them. */
+export declare function compareRoutes(a: {
+    path: string;
+    id: string;
+}, b: {
+    path: string;
+    id: string;
+}): number;
+/**
+ * The page `href` names and the chain of navigators above it, or `null` when no page matches. Query and hash do not take part in
+ * matching. When several routes match, the one SvelteKit would choose wins, wherever it is in the tree.
+ */
 export declare function resolve(tree: StackNode, href: string): Resolution | null;
 /**
  * The route of `stack` an entry shows: the one with the `id` it was recorded with when that route is still there and still matches
- * the href (a page and a navigator of one stack can share a path: only the id says which it was), else the first route whose own
+ * the href (a page and a navigator of one stack can share a path: only the id says which it was), else the best route whose own
  * path matches, a page or the screen of a navigator.
  */
 export declare function locate(stack: StackNode, href: string, id?: string): {

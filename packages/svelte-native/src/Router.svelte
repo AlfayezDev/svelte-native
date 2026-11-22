@@ -71,7 +71,7 @@
       onDismiss={() => router.dismissed(entry.key)}
       onExited={() => router.exited(entry.key)}
     >
-      <RouteView {entry} {router} loading={placeholder} />
+      <RouteView {entry} {router} {leaving} loading={placeholder} />
     </Screen>
     {/if}
   {/each}

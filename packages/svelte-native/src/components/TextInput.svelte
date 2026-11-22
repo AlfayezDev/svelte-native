@@ -5,6 +5,7 @@
   import type { TextInput as NativeTextInput, TextInputProps } from "react-native";
   import type { HostHandle } from "../fabric/host.ts";
   import { htmlTextInput } from "../html-input.ts";
+  import { textInputProps } from "../text-input-props.ts";
   let { value = $bindable(""), onChangeText, ref, nativeHtml, ...attributes }: TextInputProps & {
     /** Set by the lowering of an HTML `<input>` or `<textarea>` (`lower-html.ts`): the attributes are HTML's (`type`, `disabled`, `oninput`, ...) and are worked out here (`html-input.ts`), and the input takes the text style of the HTML elements around it (`fabric/text-inherit.ts`). */
     nativeHtml?: boolean;
@@ -14,4 +15,4 @@
   const resolveProps = createNativeProps();
   const html = $derived(nativeHtml ? htmlTextInput(attributes as Record<string, unknown>) : undefined);
 </script>
-<native-input nativeHtml={nativeHtml} nativeProps={resolveProps({ ...(html?.props ?? attributes), ref, value: value === null || value === undefined ? "" : String(value), onChangeText: (text: string) => { value = text; onChangeText?.(text); html?.onChangeText?.(text); } })}></native-input>
+<native-input nativeHtml={nativeHtml} nativeProps={resolveProps({ ...textInputProps(html?.props ?? attributes), ref, value: value === null || value === undefined ? "" : String(value), onChangeText: (text: string) => { value = text; onChangeText?.(text); html?.onChangeText?.(text); } })}></native-input>

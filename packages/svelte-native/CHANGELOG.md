@@ -14,6 +14,32 @@ Notable changes to `@alfayez/svelte-native` (named `@rasheed/svelte-native` up t
 - `svelte-native init` writes `"userInterfaceStyle": "automatic"` in the `app.json` it creates, so the light and dark colours of the theme it writes show on both platforms. An existing `app.json` keeps its mode.
 - `svelte-native android`, `ios` and `dev` run Expo with its TypeScript setup off (`EXPO_NO_TYPESCRIPT_SETUP=1`). The first run of a new app no longer stops to ask whether to install `@types/react`, which the setup asks for and building or running a Svelte app doesn't need. Expo prints one line saying it skipped the setup. Setting `EXPO_NO_TYPESCRIPT_SETUP=0` in the environment gives Expo's setup back.
 
+### Fixed
+
+- A rest route matches zero segments, as in SvelteKit: `files/[...path]` opens `/files` (with `path` `""`) as well as `/files/a/b`, and `a/[...rest]/z` opens `/a/z`. Before, the base path matched no route (#80).
+- When several routes match a URL, the native router opens the one SvelteKit opens: SvelteKit's route sort, segment by segment, across every navigator. `/files/report` opens `files/[id]` and not `files/[...path]`, and `/settings/account/edit` opens `settings/[area]/[action]` and not `[section]/account/edit`. Before, the route with more static segments won, then the first file (#82).
+- `goto(href, { replace: true })` (and `replaceState`) to a page in tabs or a stack that isn't open yet replaces the screen on top. A sheet opened by a link and replaced by a tab route is no longer left under the tabs for Back to show again (#88).
+- A link that arrives and opens a screen while the platform is still answering for the launch link wins over it: the launch link no longer resets the app and takes the newer screen away (#85).
+- A static route whose name isn't ASCII (`src/routes/café`, `src/routes/العربية`) opens from its URL written either way, `/café` or `/caf%C3%A9`, and from a link: routes are matched against the decoded pathname, as SvelteKit matches them. Before, `goto` threw `No native screen` and `openURL` returned false (#94).
+- A route whose load fails after Back took its screen away no longer replaces the screen the user went back to with its error: the screen that is leaving shows nothing. A route still on the stack that fails throws where it renders, as before (#92).
+- Enter in an input of a `<form>` presses the form's default button (its first submit button), as a browser does: the button's `onclick` runs, it is `event.submitter`, and a disabled one stops the submission. Before, Enter submitted the form directly, even with the Send button disabled, and named the input as the submitter. A form with no submit button is submitted by Enter only when the input is its one single-line field (#79).
+- A `<dialog>` hears `onclose` when it comes in a spread (`<dialog {...rest}>`), as it does when written on the element (#81).
+- An input's `autocomplete` goes over the hint its `type` gives (`type="password" autocomplete="new-password"`, `type="email" autocomplete="off"`), under a native `autoComplete` the element sets itself. As in React Native's `TextInput`, `autoComplete` becomes `textContentType` on iOS, where the views have no `autoComplete`, and React Native's Android autofill name on Android, where the engine now applies it as the field's autofill hint (it applied none). A value with section or address words (`shipping email`) is read for its token, and one with no hint on the platform (`on`) is left out, so it doesn't turn autofill off (#86).
+- `inputmode` and `enterkeyhint` (and `TextInput`'s `inputMode` and `enterKeyHint`) are the keyboard and the return key, as in React Native's `TextInput`; the native views have only those names, so the props were dropped. `inputmode="none"` opens no keyboard, also with `autofocus` or `focus()`: the Android engine applies `showSoftInputOnFocus` now (#87).
+- `readonly` on an `<input>` or `<textarea>`, written on the element or in a spread, and `TextInput`'s `readOnly` make the field not editable, and unlocking it makes it editable again: both were dropped, so a read-only field could be edited (#95).
+- `TextInput`'s `selection` places the caret on Android, at mount and when it changes, as on iOS: the prop was dropped there. The `setTextAndSelection` command works on Android too (#90).
+- A `TextInput` or `Switch` with a raw `onChange` still runs `onChangeText` or `onValueChange` and updates `bind:value`, after `onChange`, as React Native does. Before, `onChange` took both away, and a controlled field sent a stale event count (#91).
+- A `List` whose `rowHeights` reads state (a row that expands) or is given a new function moves the rows below the one that changed, and `scrollToIndex` scrolls to where they are now. The rows kept the old offsets and overlapped until the items array changed (#93).
+- A checkbox of a remote form's group (`fields.topics.as("checkbox", "work")`), or a radio, keeps the choice made on it when it goes off screen while others of its field stay (a row of a `List` that scrolled away): it is sent, and checking or unchecking the others leaves it checked. Before, the next submission dropped it. A default of a box that is gone is still not sent, as for every input that is gone (#96).
+- `navigator.clipboard.write()` with HTML only writes the HTML's text with every character reference decoded, as HTML reads them (`Caf&#233; &copy; 2026` is `Café © 2026`; named references from the spec's whole table, numeric ones in decimal and hex). Only six were decoded (#97).
+- A literal `style="direction: rtl"` on an HTML element builds, as React Native's `direction` (`ltr` or `rtl`), as the same style given as an expression does: the class and style converter had no `direction` (#98).
+
+### Docs
+
+- Getting Started no longer says Svelte transitions are unsupported: they play on HTML elements, with the limits the animation guide lists (#78).
+- The speculative navigation example in Routing navigates when a screen reader or a keyboard activates the button, which calls `onPress` with no `onPressIn`, and forgets a handle once it is used (#84).
+- The TextInput page says that Android doesn't send `onContentSizeChange` or `onScroll` yet (#89).
+
 ## 0.4.0-rc.9 - 2026-11-18
 
 ### Added

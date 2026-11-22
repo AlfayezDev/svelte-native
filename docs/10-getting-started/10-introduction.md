@@ -60,7 +60,8 @@ Not there yet:
 - No Fast Refresh. Saving a file reloads the app's root, and component state is lost.
 - Phones only: tablet and foldable layouts, and tvOS, are not supported yet.
 - Screen reader support is checked by automated tests, not yet by people using TalkBack and VoiceOver.
-- No Svelte transitions, no DOM libraries, no React components, and no Expo dev client.
+- Svelte transitions play on HTML elements only, and a few CSS properties, such as `filter`, don't animate: see [Svelte transitions](animation#svelte-transitions).
+- No DOM libraries, no React components, and no Expo dev client.
 - Building on Expo's servers (EAS Build) is untested.
 - Svelte Native needs a build of Svelte from an [open pull request](https://github.com/sveltejs/svelte/pull/18042), and SvelteKit 3.1.1 exactly. `init` installs both.
 - `@alfayez/svelte-native` is a working name. The repository is private for now, and you install from it over SSH.

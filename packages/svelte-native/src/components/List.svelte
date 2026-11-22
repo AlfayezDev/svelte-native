@@ -117,7 +117,9 @@
       };
     }
     void version;
-    if (items !== lastItems || n !== lastCount) { valid = 1; lastItems = items; lastCount = n; }
+    // A `rowHeights` function may read state of its own (a row that expands), and a new one may be passed: the table is built again whenever this runs with one,
+    // so each run reads every row's size and runs again when what they read changes. Only measured sizes keep the prefix up to the first one that changed.
+    if (rowHeights || items !== lastItems || n !== lastCount) { valid = 1; lastItems = items; lastCount = n; }
     offsets.length = Math.min(offsets.length, valid);
     for (let index = valid - 1; index < n; index++) offsets[index + 1] = offsets[index] + sizeAt(index);
     valid = n + 1;

@@ -22,5 +22,6 @@
 <form onsubmit={(event) => { event.preventDefault(); probe.__log.push("submitted"); }}>
   <input testID="enter" onkeydown={(event) => { if (event.key === "Enter") event.preventDefault(); }} />
   <input testID="enter-free" />
+  <button testID="enter-submit">Go</button>
 </form>
 <svelte:element this={tag} testID="dynamic">Dynamic</svelte:element>

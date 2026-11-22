@@ -1039,6 +1039,7 @@ handlers.display = (d, text) => {
   if (d.keyword("display", text, { flex: "flex", "inline-flex": "flex", block: "flex", "inline-block": "flex", inline: "flex", "flow-root": "flex", none: "none", contents: "contents" })) d.set("htmlDisplay", text.trim().toLowerCase());
 };
 handlers.position = (d, text) => void d.keyword("position", text, same("absolute", "relative", "static"));
+handlers.direction = (d, text) => void d.keyword("direction", text, same("ltr", "rtl"));
 handlers["z-index"] = (d, text) => text.trim() === "auto" ? d.set("zIndex", null) : void d.number("zIndex", text);
 handlers.overflow = (d, text) => {
   const values = splitTop(text, " ");
@@ -1717,6 +1718,7 @@ function lowerHtml(ast, content, filename, warn = () => {
     } else if (kind === "button") {
       tag = "native-pressable";
       role("button");
+      generated.push("nativeButton={true}");
       spreadHelper = WEB_CLICK_SPREAD_HELPER;
       press(node, handled, generated, `(__event) => ${helper(SUBMIT_HELPER)}(__event)`);
     } else if (kind === "image") {

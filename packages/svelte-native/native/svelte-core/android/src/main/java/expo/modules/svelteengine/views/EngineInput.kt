@@ -20,6 +20,7 @@ import android.view.inputmethod.InputConnectionWrapper
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import expo.modules.svelteappearance.isNight
+import expo.modules.svelteengine.InputAutofill
 import expo.modules.svelteengine.InputRules
 import expo.modules.svelteengine.TextLayouts
 import expo.modules.svelteengine.ViewEvents
@@ -123,6 +124,13 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
   private var weight = 400
   private var italic = false
   private var created = false
+  /** The range the props asked for last (record 49), -1 for none, and whether that was in the batch being mounted (the state text of the same commit is put in after it). */
+  private var propSelStart = -1
+  private var propSelEnd = -1
+  private var selectionFresh = false
+  /** The autofill name and mode the view was given last (record 50): applied again only when they change. */
+  private var autofillName: String? = null
+  private var autofillMode = -1
   private var padL = -1
   private var padT = -1
   private var padR = -1
@@ -220,6 +228,9 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
     isCursorVisible = !v.caretHidden
     setSelectAllOnFocus(v.selectTextOnFocus)
 
+    showSoftInputOnFocus = InputRules.softInputAfter(showSoftInputOnFocus, v.showSoftInputOnFocus)
+    applyAutofill(v)
+
     if (create) {
       // Initial text from the props; the state (text + event count) overrides it once the layout ran.
       val initial = v.propText
@@ -227,12 +238,63 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
       created = true
       if (v.autoFocus) post { focus() }
     }
+    applySelection(v)
   }
 
   /** The text of the TextInput state (set after layout, whenever the React tree text changes). */
   fun applyState(v: ViewProps) {
     val t = v.stateText ?: return
     maybeSetText(t, v.stateCount)
+    // A commit that set the text and the selection together (an input that reformats what is typed): the range is the new text's.
+    if (selectionFresh) selectRange(propSelStart, propSelEnd)
+  }
+
+  /**
+   * `selection` (record 49), what React Native's TextInput does with the `setTextAndSelection` command: the caret goes where the props say when they
+   * change it, after the text of the same commit (`applyState`), and stays where the user puts it otherwise (`InputRules.selects`). Like the command,
+   * a range sent with an event count older than the field's is ignored: JavaScript set it before it heard of the last edit.
+   */
+  private fun applySelection(v: ViewProps) {
+    // Props that answer an older edit than the user has made since (`mostRecentEventCount`, record 41) do not move the caret, as the command would not.
+    if (v.selection == InputRules.SELECTION_SET && v.propCount < nativeEventCount) return
+    when (v.selection) {
+      InputRules.SELECTION_CLEARED -> { propSelStart = -1; propSelEnd = -1 }
+      InputRules.SELECTION_SET -> if (InputRules.selects(v.selection, v.selectionStart, v.selectionEnd, propSelStart, propSelEnd)) {
+        propSelStart = v.selectionStart
+        propSelEnd = v.selectionEnd
+        selectRange(propSelStart, propSelEnd)
+        if (!selectionFresh) {
+          selectionFresh = true
+          post { selectionFresh = false }
+        }
+      }
+    }
+  }
+
+  private fun selectRange(start: Int, end: Int) {
+    val (from, to) = InputRules.clampSelection(start, end, length())
+    if (selectionStart != from || selectionEnd != to) setSelection(from, to)
+  }
+
+  /**
+   * `autoComplete` and `importantForAutofill` (record 50), as `ReactTextInputManager` applies them: the name's autofill hint (`InputAutofill`), and
+   * autofill off for `"off"` or a name with no hint.
+   */
+  private fun applyAutofill(v: ViewProps) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+    val hint = InputAutofill.hintOf(v.autoComplete)
+    val mode = InputRules.autofillMode(v.autoComplete, hint != null, v.importantForAutofill)
+    if (v.autoComplete == autofillName && mode == autofillMode) return
+    autofillName = v.autoComplete
+    autofillMode = mode
+    if (hint != null) setAutofillHints(hint) else setAutofillHints(*emptyArray<String>())
+    importantForAutofill = when (mode) {
+      InputRules.AUTOFILL_NO -> View.IMPORTANT_FOR_AUTOFILL_NO
+      2 -> View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+      3 -> View.IMPORTANT_FOR_AUTOFILL_YES
+      4 -> View.IMPORTANT_FOR_AUTOFILL_YES_EXCLUDE_DESCENDANTS
+      else -> View.IMPORTANT_FOR_AUTOFILL_AUTO
+    }
   }
 
   private fun applyTextStyle(v: ViewProps) {
@@ -339,6 +401,8 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
   fun focus() {
     if (!isFocusableInTouchMode) isFocusableInTouchMode = true
     requestFocus()
+    // `showSoftInputOnFocus={false}` (`inputMode="none"`) keeps the keyboard closed for a focus from JavaScript too, as React Native's `requestFocusInternal` does.
+    if (!showSoftInputOnFocus) return
     val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
     imm?.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
   }

@@ -3,18 +3,18 @@
  * its attributes as they are, and the component works them out here (`TextInput.svelte`). So what the web writes means the same whether it is written on the element or comes from
  * a `{...rest}` that a component of the app passes down, and a `type={expression}` is looked at when it changes.
  *
- * `type` is the keyboard and what the platform may fill in (`INPUT_TYPES`), under any native prop the element has; `disabled` is `editable`, `readonly`, `maxlength`, `rows`,
- * `autofocus`, `autocomplete`, `autocapitalize`, `inputmode` and `enterkeyhint` are the props of those names, `oninput` is `onChangeText`, `onchange` is `onEndEditing`, `onkeydown`
+ * `type` is the keyboard and what the platform may fill in (`INPUT_TYPES`), under any HTML attribute or native prop the element has; `disabled` and `readonly` are `editable`,
+ * `maxlength`, `rows`, `autofocus`, `autocomplete`, `autocapitalize`, `inputmode` and `enterkeyhint` are the props of those names (which `text-input-props.ts` makes native), `oninput` is `onChangeText`, `onchange` is `onEndEditing`, `onkeydown`
  * and `onkeyup` are `onKeyPress`, and Enter in a single-line input is a submission of the form it is in. The events have the fields web code reads (`currentTarget.value`, `key`).
  */
 import { styleText } from "./html-style.ts";
 import { hostInputEvent, hostKeyEvent, hostSubmit } from "./renderer.ts";
 
-/** What the `type` of an `<input>` means for a `TextInput`: the props it implies. */
+/** What the `type` of an `<input>` means for a `TextInput`: the props it implies. `autoComplete` is an HTML token, which `text-input-props.ts` makes Android's or iOS's. */
 export const INPUT_TYPES: Readonly<Record<string, Readonly<Record<string, string | boolean>>>> = {
   text: {},
   email: { keyboardType: "email-address", autoComplete: "email", autoCapitalize: "none" },
-  password: { secureTextEntry: true, autoComplete: "password", autoCapitalize: "none" },
+  password: { secureTextEntry: true, autoComplete: "current-password", autoCapitalize: "none" },
   number: { keyboardType: "numeric" },
   search: { returnKeyType: "search" },
   url: { keyboardType: "url", autoCapitalize: "none" },
@@ -33,7 +33,7 @@ type Props = Record<string, any>; // eslint-disable-line @typescript-eslint/no-e
 
 /** What an HTML attribute is called for a `TextInput`. */
 const RENAMES: Record<string, string> = {
-  readonly: "readOnly", autofocus: "autoFocus", autocomplete: "autoComplete", autocapitalize: "autoCapitalize", inputmode: "inputMode", enterkeyhint: "enterKeyHint",
+  autofocus: "autoFocus", autocomplete: "autoComplete", autocapitalize: "autoCapitalize", inputmode: "inputMode", enterkeyhint: "enterKeyHint",
   onfocus: "onFocus", onblur: "onBlur",
 };
 
@@ -48,17 +48,19 @@ function both(first: ((event: unknown) => void) | undefined, second: ((event: un
  * The props a `TextInput` takes for the attributes of an HTML input. `onChangeText` is separate: the component runs it with its own (the `bind:value` write comes first).
  */
 export function htmlTextInput(attributes: Props): { props: Props; onChangeText: ((text: string) => void) | undefined } {
-  const { type, disabled, maxlength, rows, oninput, onchange, onkeydown, onkeyup, style, ...rest } = attributes;
+  const { type, disabled, readonly, maxlength, rows, oninput, onchange, onkeydown, onkeyup, style, ...rest } = attributes;
   // What the element sets goes over what its type implies, but a prop that is `undefined` (`secureTextEntry={maybe}` with nothing yet) sets nothing: the type's still holds, as a missing attribute would leave it.
   const props: Props = { ...inputTypeProps(type) };
   for (const key in rest) if (rest[key] !== undefined) props[key] = rest[key];
+  // An HTML attribute goes over what the type implies (`type="password" autocomplete="new-password"`), and under the native prop of the same meaning the element sets itself.
   for (const web in RENAMES) {
     if (!(web in props)) continue;
     const native = RENAMES[web] as string;
-    if (props[native] === undefined) props[native] = props[web];
+    if (rest[native] === undefined) props[native] = props[web];
     delete props[web];
   }
-  if (disabled !== undefined && props.editable === undefined) props.editable = !disabled;
+  // Either one makes the field read-only; a native `editable` or `readOnly` the element sets itself wins (`text-input-props.ts`).
+  if ((disabled !== undefined || readonly !== undefined) && props.editable === undefined && props.readOnly === undefined) props.editable = !(disabled || readonly);
   if (maxlength !== undefined && props.maxLength === undefined && Number.isFinite(Number(maxlength))) props.maxLength = Number(maxlength);
   if (rows !== undefined && props.numberOfLines === undefined && Number.isFinite(Number(rows))) props.numberOfLines = Number(rows);
   if (style !== undefined && style !== null) props.style = typeof style === "string" ? styleText(style) : style;

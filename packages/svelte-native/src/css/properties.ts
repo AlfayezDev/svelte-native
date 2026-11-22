@@ -308,6 +308,8 @@ handlers.display = (d, text) => {
   if (d.keyword("display", text, { flex: "flex", "inline-flex": "flex", block: "flex", "inline-block": "flex", inline: "flex", "flow-root": "flex", none: "none", contents: "contents" })) d.set("htmlDisplay", text.trim().toLowerCase());
 };
 handlers.position = (d, text) => void d.keyword("position", text, same("absolute", "relative", "static"));
+// The direction of the box's text and of its children's start and end (`margin-inline-start`, a row's start): React Native's `direction`.
+handlers.direction = (d, text) => void d.keyword("direction", text, same("ltr", "rtl"));
 handlers["z-index"] = (d, text) => (text.trim() === "auto" ? d.set("zIndex", null) : void d.number("zIndex", text));
 handlers.overflow = (d, text) => {
   const values = splitTop(text, " ");

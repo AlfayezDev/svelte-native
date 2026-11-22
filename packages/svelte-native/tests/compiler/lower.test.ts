@@ -223,7 +223,7 @@ test("`use:gesture` of the main entry, under its own name or an alias, is not wa
 
 const html = (source: string, options: { filename?: string; warn?: (message: string) => void } = {}) => lowerPrimitives(source, { filename: "page.svelte", warn: () => {}, ...options, html: true });
 /** What the markers of an HTML element and its class helper are called is not what most of these tests are about: `plainHtml` takes them out (the raw output has them: "an HTML element is marked"). */
-const plainHtml = (code: string) => code.replaceAll(" nativeHtml={true}", "").replaceAll(' nativeHtml="inline"', "").replace(/ nativeBase="[^"]*"/g, "").replaceAll("__svelteNativeHtmlClass", "__svelteNativeClass");
+const plainHtml = (code: string) => code.replaceAll(" nativeHtml={true}", "").replaceAll(" nativeButton={true}", "").replaceAll(' nativeHtml="inline"', "").replace(/ nativeBase="[^"]*"/g, "").replaceAll("__svelteNativeHtmlClass", "__svelteNativeClass");
 /** The markup after the script(s), whatever the lowering put into the script. */
 const body = (source: string) => { const out = html(source); const end = out.lastIndexOf("</script>"); return plainHtml(end < 0 ? out : out.slice(end + "</script>".length).replace(/^\n/, "")); };
 const compiled = (lowered: string) => compile(lowered, { filename: "/app/page.svelte", generate: "client", runes: true, experimental: { customRenderer: "@alfayez/svelte-native/renderer" } }).js.code;
@@ -285,6 +285,7 @@ test("a button is a pressable with the button role; its press reads its own type
   expect(body(`<button type="submit" onclick={go} class="b" disabled={busy}>Save</button>`))
     .toBe(`<native-pressable accessibilityRole="button" type="submit" ${submitHook("go")} nativeClass={__svelteNativeClass(\`b\`)} disabled={busy}>Save</native-pressable>`);
   expect(body(`<button>x</button>`)).toBe(`<native-pressable accessibilityRole="button" ${submitHook()}>x</native-pressable>`);
+  expect(html(`<button>x</button>`)).toContain(" nativeButton={true} "); // the default button of a form is found by it (`hostSubmit`)
   expect(body(`<button type={kind} onclick={clear}>x</button>`)).toBe(`<native-pressable accessibilityRole="button" type={kind} ${submitHook("clear")}>x</native-pressable>`);
   expect(body(`<button on:click={go} role="tab">x</button>`)).toBe(`<native-pressable ${submitHook("go")} role="tab">x</native-pressable>`);
   // What the author said about the role stands; a disabled button is dimmed for the screen reader by the host (a press reads `disabled`), so nothing is copied.
@@ -604,6 +605,10 @@ test("style as a string is converted by the class converter when the file is bui
   // On a component (an input), the style is the `style` prop; an empty one is nothing.
   expect(body(`<input style="margin: 2px" />`)).toContain(`style={{"marginTop":2,"marginRight":2,"marginBottom":2,"marginLeft":2}}`);
   expect(body(`<div style="">a</div>`)).toBe(`<native-view >a</native-view>`);
+  // `direction` is React Native's as well, as it is when the same text is a style expression (#98).
+  expect(body(`<div style="direction: rtl; margin-inline-start: 12px">سام Sam</div>`)).toContain(`"direction":"rtl"`);
+  expect(body(`<div style="direction: LTR">a</div>`)).toContain(`"direction":"ltr"`);
+  expect(() => html(`<div style="direction: sideways">a</div>`)).toThrow(/direction/);
   // A declaration the converter cannot express, or a value only the device knows, is an error that names it; so is a string with an expression in it.
   expect(() => html(`<div style="display: flex; float: left">a</div>`)).toThrow(/^page\.svelte:1:6 style="display: flex; float: left" on <div> cannot be converted: float: no React Native style for float/);
   expect(() => html(`<div style="width: 50vw">a</div>`)).toThrow(/cannot be converted: width: a viewport or safe-area unit is only for classes/);

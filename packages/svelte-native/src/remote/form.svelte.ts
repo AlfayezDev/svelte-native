@@ -140,7 +140,11 @@ export function form(id: string) {
         // Modal its inputs, a step of a wizard its fields; none of that is the user taking a value back), and what the inputs would have shown is not added.
         if (live.length === 0) continue;
         const set = (value: unknown) => deep_set(data, path.map(String), value);
-        const shown = live.filter((variant) => variant.kind === "list" && variant.shown() === true).map((variant) => variant.option);
+        // A box or radio of the field that is gone while others are on screen keeps what the user chose on it (a row of a List that scrolled away is still checked),
+        // but not its default, as the defaults of other inputs that are gone are not sent.
+        const stored = deep_get(data, path);
+        const chosen = (variant: Variant) => (onScreen(variant) ? variant.shown() === true : variant.kind === "list" ? Array.isArray(stored) && stored.includes(variant.option) : stored === variant.option);
+        const shown = group.filter((variant) => variant.kind === "list" && chosen(variant)).map((variant) => variant.option);
         for (const variant of live) {
           const value = variant.shown();
           switch (variant.kind) {
@@ -156,7 +160,7 @@ export function form(id: string) {
         }
         // The boxes of a list: the checked ones, in the order they were made; none checked is no field. Radios: none chosen is no field.
         if (live.some((variant) => variant.kind === "list")) set(shown.length > 0 ? shown : DELETE_KEY);
-        if (live.every((variant) => variant.kind === "radio") && !live.some((variant) => variant.shown() === true)) set(DELETE_KEY);
+        if (live.every((variant) => variant.kind === "radio") && !group.some((variant) => variant.kind === "radio" && chosen(variant))) set(DELETE_KEY);
       }
       if (key !== undefined && !("id" in data)) data.id = key;
       return data;
@@ -381,8 +385,8 @@ export function form(id: string) {
                 onValueChange: (next: boolean) => {
                   if (type === "radio") { if (next) edit(path, option); return; }
                   if (!listed) return edit(path, next);
-                  // The boxes of the list that are checked on screen (the ones that start checked included), in the order they were made.
-                  const group = [...variants.values()].filter((other) => other.name === name && other.kind === "list" && onScreen(other));
+                  // The boxes of the list that are checked (the ones that start checked included, and the ones that are not on screen now), in the order they were made.
+                  const group = [...variants.values()].filter((other) => other.name === name && other.kind === "list");
                   edit(path, group.filter((other) => (other.option === option ? next : other.shown() === true)).map((other) => other.option));
                 },
                 ...handlers,

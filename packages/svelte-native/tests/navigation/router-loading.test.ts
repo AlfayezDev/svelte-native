@@ -108,6 +108,30 @@ test("a route that fails to load throws where it renders and loads again on its 
   expect(app.modulesOf("section")).toBe("ready");
 });
 
+test("a route that fails to load after Back took its screen away does not take the place of the screen the user went back to (#92)", async () => {
+  const m = await load("router-fixture.svelte");
+  const app = m.startSurface(47, m.Fixture, {}) as RouterApp;
+  app.release("home");
+  await turns(m);
+  app.goto("/a");
+  await turns(m);
+  expect(app.back()).toBe(true);
+  expect(app.stack()).toEqual(["/"]);
+  // The load of the route Back left fails before the stack reports the exit of its screen, and after.
+  app.fail("section", "chunk missing");
+  await turns(m);
+  expect(app.modulesOf("section")).toBe("failed: chunk missing");
+  expect(texts(47)).toEqual(["page /"]);
+  for (const screen of host.roots[47][0].children) if (activityOf(screen) === "0") host.emit(screen.target, "topExited", {});
+  await turns(m);
+  expect(texts(47)).toEqual(["page /"]);
+  // A route on the stack that fails still throws where it renders.
+  app.goto("/a");
+  app.fail("section", "chunk missing again");
+  await turns(m);
+  expect(texts(47)).toEqual(["failed: chunk missing again"]);
+});
+
 test("a pushed screen is made once its page has loaded, so its options are there from the start; a slow load lets it come in empty", async () => {
   const m = await load("router-fixture.svelte");
   const app = m.startSurface(48, m.Fixture, {}) as RouterApp;

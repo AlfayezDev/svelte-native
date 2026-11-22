@@ -81,6 +81,9 @@ describe("navigator.clipboard", () => {
     expect((await item.getType("text/plain")).type).toStartWith("text/plain"); // Bun adds ";charset=utf-8"
     await scope.navigator.clipboard.write([new ClipboardItem({ "text/html": "<p>One &amp; two</p><p>three<br>four</p><script>x()</script>" })]);
     expect(native.writes.at(-1)).toEqual(["One & two\nthree\nfour", "<p>One &amp; two</p><p>three<br>four</p><script>x()</script>"]);
+    // Every character reference HTML reads is decoded in the plain part (#97); the HTML part stays as it was given.
+    await scope.navigator.clipboard.write([new ClipboardItem({ "text/html": "<p>Caf&#233; &copy; 2026 &eacute; &#1593;</p>" })]);
+    expect(native.writes.at(-1)).toEqual(["Café © 2026 é ع", "<p>Caf&#233; &copy; 2026 &eacute; &#1593;</p>"]);
     native.clipboard = {};
     expect(await scope.navigator.clipboard.read()).toEqual([]);
   });

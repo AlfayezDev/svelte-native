@@ -391,7 +391,7 @@ const kinds: Record<Platform, Record<string, Kind>> = {
         fontWeight importantForAutofill includeFontPadding inlineImageLeft inlineImagePadding keyboardType
         letterSpacing lineHeight maxFontSizeMultiplier maxLength minimumFontScale mostRecentEventCount multiline
         numberOfLines onContentSizeChange onKeyPress onScroll onSelectionChange placeholder returnKeyLabel
-        returnKeyType secureTextEntry selectTextOnFocus showSoftInputOnFocus submitBehavior text textAlign
+        returnKeyType secureTextEntry selectTextOnFocus selection showSoftInputOnFocus submitBehavior text textAlign
         textAlignVertical textBreakStrategy textDecorationLine textShadowOffset textShadowRadius textTransform
       `,
       colors: `

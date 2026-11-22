@@ -338,3 +338,51 @@ test("a read that throws at once is forgotten like one that rejects, and leaves 
   expect(launch.__initialURLReads).toBe(3);
   expect(pathsOf(router)).toEqual(["/workspaces"]);
 });
+
+test("a link that arrives while the platform is still answering for the launch link is the newer one: the launch link's answer does not reset the app over it (#85)", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURLMode?: string; __resolveInitialURL?: (url: string | null) => void };
+  const emit = (url: string) => { for (const handler of handlersOf("__linkHandlers")) (handler as (event: { url: string }) => void)({ url }); };
+  launch.__initialURLMode = "late";
+  try {
+    const newer = await mountTree(206, { initial: "/workspaces" });
+    emit("https://example.test/account");
+    await newer.settled();
+    expect(pathsOf(newer.router)).toEqual(["/workspaces", "/account"]);
+    launch.__resolveInitialURL?.("https://example.test/acme/home"); // within the three seconds
+    await newer.settled();
+    expect(pathsOf(newer.router)).toEqual(["/workspaces", "/account"]);
+    newer.app.show(false);
+    await newer.settled();
+
+    // A link no screen matches opens nothing, so the launch link still opens.
+    const unmatched = await mountTree(207, { initial: "/workspaces" });
+    emit("https://example.test/a/b/c/d/e");
+    await unmatched.settled();
+    launch.__resolveInitialURL?.("https://example.test/account");
+    await unmatched.settled();
+    expect(pathsOf(unmatched.router)).toEqual(["/account"]);
+    unmatched.app.show(false);
+    await unmatched.settled();
+
+    // The launch link delivered as an event too, while the read is pending: it is the launch link, and becomes the base.
+    const twice = await mountTree(209, { initial: "/workspaces" });
+    emit("https://example.test/account");
+    await twice.settled();
+    launch.__resolveInitialURL?.("https://example.test/account");
+    await twice.settled();
+    expect(pathsOf(twice.router)).toEqual(["/account"]);
+    twice.app.show(false);
+    await twice.settled();
+
+    // The launch link answered first: it is the base, and the newer link stacks on it.
+    const first = await mountTree(208, { initial: "/workspaces" });
+    launch.__resolveInitialURL?.("https://example.test/account");
+    await first.settled();
+    emit("https://example.test/workspaces");
+    await first.settled();
+    expect(pathsOf(first.router)).toEqual(["/account", "/workspaces"]);
+  } finally {
+    delete launch.__initialURLMode;
+  }
+});

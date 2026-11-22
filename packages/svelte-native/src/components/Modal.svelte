@@ -7,10 +7,12 @@
   import type { ModalProps } from "react-native";
   import Platform from "react-native/Libraries/Utilities/Platform";
   import { keyboard } from "../keyboard.ts";
-  let { children, onRequestClose, onDismiss, onShow, open = $bindable(), nativeHtml, ...attributes }: Omit<ModalProps, "children"> & {
+  let { children, onRequestClose, onclose, onDismiss, onShow, open = $bindable(), nativeHtml, ...attributes }: Omit<ModalProps, "children"> & {
     children?: Snippet;
     /** HTML's name for `visible` (an `<dialog open>`, written by the lowering of HTML elements): `bind:open` is set to `false` when the platform closes the modal (the Back key, a swipe). */
     open?: boolean;
+    /** HTML's name for `onRequestClose`. The lowering renames an `onclose` written on a `<dialog>`; one that comes in a spread (`<dialog {...rest}>`) arrives as it is. */
+    onclose?: ModalProps["onRequestClose"];
     /** Set by the lowering of an HTML `<dialog>`: the text bare in it is drawn, and its class and style are the text style of what is in it (`fabric/text-inherit.ts`). */
     nativeHtml?: boolean;
   } & ClassProps = $props();
@@ -20,7 +22,7 @@
     if (keyboard().isVisible()) keyboard().dismiss();
     else {
       if (open !== undefined) open = false;
-      onRequestClose?.(event);
+      (onRequestClose ?? onclose)?.(event);
     }
   }
   // iOS mounts the host only while it is shown, as React Native's `Modal.js` does: a hidden `RCTModalHostView` is still a

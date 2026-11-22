@@ -1375,9 +1375,10 @@ function dispatchEvent(target: unknown, topLevelType: string, nativeEvent: objec
     const name = (own && eventNamesOf(own.viewName).get(topLevelType)) ?? `on${topLevelType.replace(/^top/, "")}`;
     const handler = own?.handlers[name];
     // An element lowered from HTML gets the element the handler is on and the one the event came from, as a web event has (a lowered `<form>` finds the input an Enter came from by them: `hostSubmit`).
-    if (handler) { handler(own?.html ? { nativeEvent, currentTarget: node, target } : { nativeEvent }); return; }
+    if (handler) handler(own?.html ? { nativeEvent, currentTarget: node, target } : { nativeEvent });
     if (own && name === "onChange") {
-      // Component-level conveniences React Native's TextInput and Switch provide on top of the native `onChange`.
+      // Component-level conveniences React Native's TextInput and Switch provide on top of the native `onChange`, after it, as there: a raw
+      // `onChange` does not take them away (the bound value, `onChangeText`, `onValueChange`), and the edit's count is the one the next text is sent with.
       const event = nativeEvent as { text?: string; eventCount?: number; value?: boolean };
       if (typeof event.eventCount === "number") own.eventCount = event.eventCount;
       const changeText = own.handlers.onChangeText as unknown as ((text: string) => void) | undefined;
@@ -1385,6 +1386,7 @@ function dispatchEvent(target: unknown, topLevelType: string, nativeEvent: objec
       const valueChange = own.handlers.onValueChange as unknown as ((value: boolean) => void) | undefined;
       if (valueChange && typeof event.value === "boolean") { valueChange(event.value); return; }
     }
+    if (handler) return;
     if (!topLevelType.startsWith("topTouch")) return; // only touch events bubble
   }
 }

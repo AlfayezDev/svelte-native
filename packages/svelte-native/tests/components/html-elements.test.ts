@@ -450,8 +450,8 @@ test("style:property values are what a native style takes: px and numbers are dp
 });
 
 test("an input's own props go over what its type implies, but one that is undefined does not undo it", () => {
-  expect(htmlTextInput({ type: "password" }).props).toMatchObject({ secureTextEntry: true, autoComplete: "password" });
-  expect(htmlTextInput({ type: "password", secureTextEntry: undefined, autocomplete: undefined }).props).toMatchObject({ secureTextEntry: true, autoComplete: "password" });
+  expect(htmlTextInput({ type: "password" }).props).toMatchObject({ secureTextEntry: true, autoComplete: "current-password" });
+  expect(htmlTextInput({ type: "password", secureTextEntry: undefined, autocomplete: undefined }).props).toMatchObject({ secureTextEntry: true, autoComplete: "current-password" });
   expect(htmlTextInput({ type: "password", secureTextEntry: false }).props.secureTextEntry).toBe(false);
   expect(htmlTextInput({ type: "email", keyboardType: "default" }).props).toMatchObject({ keyboardType: "default", autoComplete: "email" });
 });
@@ -622,7 +622,8 @@ test("a component that passes its props down keeps HTML semantics: a button's ty
   emit(pass.target, "topChange", { text: "pw", eventCount: 1 });
   await t.settle();
   expect(log.splice(0)).toEqual(["input pw"]);
-  expect(t.byID("off").props).toMatchObject({ editable: false, readOnly: true });
+  expect(t.byID("off").props).toMatchObject({ editable: false });
+  expect(t.byID("off").props.readOnly).toBeUndefined();
   // A number in state is the text of a number input.
   expect(t.byID("num").props).toMatchObject({ keyboardType: "numeric", text: "5" });
   // A link gets its href from a spread, and the `onclick` of a spread that prevents the default stops the navigation.
@@ -1103,4 +1104,140 @@ test("style:display with a value a device has no layout for is left out with a w
   expect(warnings).toHaveLength(2);
   expect(warnings[0]).toContain("display: grid has no React Native equivalent");
   expect(hostStyleProps({ display: "inline-block" })).toEqual({ display: "flex", htmlDisplay: "inline-block" });
+});
+
+type Forms = { setReady(value: boolean): void; setHints(inputmode: string, enterkeyhint: string): void; shown(): boolean; setLocked(value: boolean): void };
+const forms = () => (globalThis as unknown as { __htmlForms: Forms }).__htmlForms;
+const logged = (): string[] => {
+  const log: string[] = [];
+  globals.__htmlLog = (entry) => log.push(entry);
+  return log;
+};
+
+test("Enter in an input of a form presses the form's default button, as a browser's implicit submission does: a disabled one submits nothing, an enabled one runs its click and is the submitter (#79)", async () => {
+  const log = logged();
+  const t = await mountFixture(fixture("html-forms-fixture.svelte"), 640);
+  const enter = (testID: string) => emit(t.byID(testID).target, "topSubmitEditing", { text: "" });
+  enter("message");
+  expect(log.splice(0)).toEqual([]); // Send is the default button, and it is disabled: Save draft is not pressed instead
+  forms().setReady(true);
+  await t.settle();
+  enter("message");
+  expect(log.splice(0)).toEqual(["click send", "submit send"]);
+  // The tap, for comparison: the same.
+  emit(t.byID("send").target, "topClick", {});
+  expect(log.splice(0)).toEqual(["click send", "submit send"]);
+  // No submit button: the form is submitted, with no submitter, when the input is its only single-line field (a textarea does not count); with two, nothing.
+  enter("lone");
+  expect(log.splice(0)).toEqual(["lone none"]);
+  enter("first");
+  expect(log.splice(0)).toEqual([]);
+  // A button of type "button" is not the default one; the default one's click can prevent the submission.
+  enter("before-plain");
+  expect(log.splice(0)).toEqual(["click last"]);
+});
+
+test("a dialog's onclose that comes in a spread hears the platform's close, as one written on the element does (#81)", async () => {
+  const log = logged();
+  const t = await mountFixture(fixture("html-forms-fixture.svelte"), 641);
+  expect(forms().shown()).toBe(true);
+  emit(t.byID("spread-dialog").target, "topRequestClose", {});
+  await t.settle();
+  expect(log.splice(0)).toEqual(["closed"]);
+  expect(forms().shown()).toBe(false);
+});
+
+test("autocomplete goes over what the type implies and under a native autoComplete; inputmode and enterkeyhint are the keyboard and the return key the native view takes (#86, #87)", async () => {
+  logged();
+  const android = await mountFixture(fixture("html-forms-fixture.svelte"), 642);
+  const on = (id: string) => android.byID(id).props;
+  // Android: React Native's autofill names.
+  expect(on("current")).toMatchObject({ autoComplete: "password", secureTextEntry: true });
+  expect(on("new")).toMatchObject({ autoComplete: "password-new", secureTextEntry: true });
+  expect(on("email-off")).toMatchObject({ autoComplete: "off", keyboardType: "email-address" });
+  expect(on("tel-off").autoComplete).toBe("off");
+  expect(on("otp").autoComplete).toBe("sms-otp");
+  expect(on("native-wins").autoComplete).toBe("password");
+  expect(on("amount")).toMatchObject({ keyboardType: "decimal-pad", returnKeyType: "send", showSoftInputOnFocus: true });
+  expect(on("email-numeric")).toMatchObject({ keyboardType: "number-pad", returnKeyType: "next" });
+  expect(on("message-area")).toMatchObject({ keyboardType: "decimal-pad", returnKeyType: "send", multiline: true });
+  expect(on("search").returnKeyType).toBe("go");
+  expect(on("no-keyboard")).toMatchObject({ keyboardType: "default", showSoftInputOnFocus: false });
+  expect(on("read-only").editable).toBe(false);
+  expect(on("spread-hints")).toMatchObject({ keyboardType: "decimal-pad", returnKeyType: "send" });
+  forms().setHints("numeric", "done");
+  await android.settle();
+  expect(android.byID("spread-hints").props).toMatchObject({ keyboardType: "number-pad", returnKeyType: "done" });
+  // readonly, written on the element, from a spread, or as the component's readOnly, is a field that cannot be edited, and unlocking it reaches the host (#95).
+  const locks = ["locked", "locked-note", "locked-native"];
+  for (const id of locks) expect(on(id), id).toMatchObject({ editable: false });
+  for (const id of locks) expect(on(id).readOnly, id).toBeUndefined();
+  forms().setLocked(false);
+  await android.settle();
+  for (const id of locks) expect(android.byID(id).props.editable, id).toBe(true);
+  started = { m: android.m, tag: 642 };
+
+  // iOS: the field has no autoComplete; the hint is its textContentType.
+  const os = globalThis as { __htmlOS?: string };
+  os.__htmlOS = "ios";
+  try {
+    const ios = await mountFixture(fixture("html-forms-fixture.svelte"), 643);
+    const of = (id: string) => ios.byID(id).props;
+    expect(ios.byID("current").name).toBe("RCTSinglelineTextInputView");
+    expect(of("current")).toMatchObject({ textContentType: "password", secureTextEntry: true });
+    expect(of("current").autoComplete).toBeUndefined();
+    expect(of("new").textContentType).toBe("newPassword");
+    expect(of("email-off")).toMatchObject({ textContentType: "none", keyboardType: "email-address" });
+    expect(of("tel-off").textContentType).toBe("none");
+    expect(of("otp").textContentType).toBe("oneTimeCode");
+    expect(of("amount")).toMatchObject({ keyboardType: "decimal-pad", returnKeyType: "send" });
+    expect(ios.byID("message-area").name).toBe("RCTMultilineTextInputView");
+    expect(of("message-area")).toMatchObject({ keyboardType: "decimal-pad", returnKeyType: "send" });
+    expect(of("search").returnKeyType).toBe("go");
+    for (const id of ["locked", "locked-note", "locked-native"]) expect(of(id).editable, id).toBe(false);
+    ios.m.stopSurface(643);
+  } finally {
+    delete os.__htmlOS;
+  }
+});
+
+test("a raw onChange runs before the conveniences and the binding, which still run: a TextInput's onChangeText and bind:value, a Switch's onValueChange and bind:value (#91)", async () => {
+  const log = logged();
+  const t = await mountFixture(fixture("native-changes-fixture.svelte"), 644);
+  started = { m: t.m, tag: 644 };
+  const changes = (globalThis as unknown as { __changes: { value(): string; enabled(): boolean } }).__changes;
+  emit(t.byID("both").target, "topChange", { text: "abcdefghX", eventCount: 7 });
+  await t.settle();
+  expect(log.splice(0)).toEqual(["raw abcdefghX 7", "text abcdefghX"]);
+  expect(changes.value()).toBe("abcdefghX");
+  expect(t.byID("mirror").props.text).toBe("abcdefghX");
+  expect(t.byID("both").props.mostRecentEventCount).toBe(7);
+  emit(t.byID("switch").target, "topChange", { value: true });
+  await t.settle();
+  expect(log.splice(0)).toEqual(["raw true", "value true"]);
+  expect(changes.enabled()).toBe(true);
+  expect(t.byID("switch").props.value).toBe(true);
+  emit(t.byID("switch").target, "topChange", { value: false });
+  await t.settle();
+  expect(log.splice(0)).toEqual(["raw false", "value false"]);
+});
+
+test("a declarative selection reaches the native text input on Android as on iOS, at mount and when it changes (#90)", async () => {
+  logged();
+  for (const [os, surface] of [["android", 645], ["ios", 646]] as const) {
+    (globalThis as { __htmlOS?: string }).__htmlOS = os;
+    try {
+      const t = await mountFixture(fixture("native-changes-fixture.svelte"), surface);
+      const changes = (globalThis as unknown as { __changes: { setRange(start: number, end: number): void } }).__changes;
+      expect(t.byID("caret").props.selection).toEqual({ start: 1, end: 3 });
+      expect(t.byID("caret-multiline").props.selection).toEqual({ start: 1, end: 3 });
+      changes.setRange(4, 4);
+      await t.settle();
+      expect(t.byID("caret").props.selection).toEqual({ start: 4, end: 4 });
+      expect(t.byID("caret-multiline").props.selection).toEqual({ start: 4, end: 4 });
+      t.m.stopSurface(surface);
+    } finally {
+      delete (globalThis as { __htmlOS?: string }).__htmlOS;
+    }
+  }
 });

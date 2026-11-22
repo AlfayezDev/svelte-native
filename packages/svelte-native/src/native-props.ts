@@ -80,7 +80,7 @@ function parseStrings(style: unknown): unknown {
 }
 
 function hidden(key: string): boolean {
-  return key === "nativeProps" || key === "nativeClass" || key === "nativeBase" || key === "nativeHtml" || key === "nativeForm" || key === "children" || key === "class" || key === "id" || key.startsWith("$$") || key.startsWith("data-");
+  return key === "nativeProps" || key === "nativeClass" || key === "nativeBase" || key === "nativeHtml" || key === "nativeForm" || key === "nativeButton" || key === "children" || key === "class" || key === "id" || key.startsWith("$$") || key.startsWith("data-");
 }
 
 /**

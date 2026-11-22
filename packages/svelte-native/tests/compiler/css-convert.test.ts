@@ -168,6 +168,8 @@ test("flex: direction, wrap, grow, shrink and basis", () => {
   expect(styleOf("flex-row")).toEqual({ flexDirection: "row" });
   expect(styleOf("flex-col")).toEqual({ flexDirection: "column" });
   expect(styleOf("flex-wrap")).toEqual({ flexWrap: "wrap" });
+  expect(styleOfCss("direction: rtl")).toEqual({ direction: "rtl" });
+  expect(styleOfCss("direction: ltr")).toEqual({ direction: "ltr" });
   // `flex: 1` is `1 1 0%`, written out so that `grow-0` after it works key by key; a basis of 0% is React Native's 0.
   expect(styleOf("flex-1")).toEqual({ flexGrow: 1, flexShrink: 1, flexBasis: 0 });
   expect(styleOf("flex-auto")).toEqual({ flexGrow: 1, flexShrink: 1, flexBasis: "auto" });

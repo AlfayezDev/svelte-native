@@ -7,6 +7,7 @@
  * with `NotAllowedError`, as Chrome refuses a type it does not support; there is no `clipboardchange` event. On Android the clipboard reads
  * as empty while none of the app's windows has the focus, and on iOS a read shows the system's paste prompt, as Safari's does.
  */
+import { htmlText } from "./html-text.ts";
 
 type NativeClipboard = {
   read(): Promise<Partial<Record<ClipboardType, string>>>;
@@ -90,12 +91,6 @@ export class Clipboard {
   }
 }
 Object.defineProperty(Clipboard.prototype, Symbol.toStringTag, { value: "Clipboard", configurable: true });
-
-/** The text of an HTML fragment, for the plain-text part of a clipboard item that was given HTML only. */
-function htmlText(html: string): string {
-  return html.replace(/<(script|style)[\s\S]*?<\/\1>/gi, "").replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|li|h[1-6])>/gi, "\n").replace(/<[^>]*>/g, "")
-    .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&").trim();
-}
 
 /** `navigator.clipboard`: the native module, looked up on the first read. Throws in a binary without it (the lazy global then reads as `undefined`). */
 export function loadClipboard(): Clipboard {

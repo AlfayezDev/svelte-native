@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, tick, untrack } from "svelte";
   import { SvelteMap } from "svelte/reactivity";
-  import type { ScrollView as NativeScrollView, TextInput as NativeTextInput } from "react-native";
+  import type { ScrollViewInstance as NativeScrollView, TextInputInstance as NativeTextInput } from "react-native";
   import type {} from "expo-svelte/elements";
   import { List, Modal, ScrollView, Tabs, Text, TextInput, View, useRouter, type TabHandle, type TabItem, createSharedValue, runOnUIAsync, type SharedValue } from "expo-svelte";
   import { requireOptionalNativeModule } from "expo-modules-core";

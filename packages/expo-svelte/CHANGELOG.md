@@ -2,6 +2,12 @@
 
 Notable changes to `expo-svelte` (named `@alfayez/svelte-native` up to 0.4.0-rc.9, and `@rasheed/svelte-native` up to 0.4.0-rc.4), newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are `0.x` while its Svelte compiler is pinned to an unmerged pull request, so a minor version may break. Each line is what an app that uses the package gets.
 
+## Unreleased
+
+### Changed
+
+- The package's npm page links the repository, the guide (now at <https://expo-svelte.alfayez.dev>; the old address redirects) and the issues.
+
 ## 0.4.0-rc.10 - 2026-11-22
 
 ### Changed

@@ -90,7 +90,7 @@ const stored = new Map<string, string>();
 };
 // The Web APIs screen downloads from the docs site; here it gets a few bytes without the network.
 const realFetch = globalThis.fetch;
-globalThis.fetch = Object.assign((input: string | URL | Request, init?: RequestInit) => String(input instanceof Request ? input.url : input).startsWith("https://svelte-native.alfayez.dev/")
+globalThis.fetch = Object.assign((input: string | URL | Request, init?: RequestInit) => String(input instanceof Request ? input.url : input).startsWith("https://expo-svelte.alfayez.dev/")
   ? Promise.resolve(new Response(new Uint8Array(16), { headers: { "content-length": "16" } }))
   : realFetch(input, init), realFetch);
 (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame ??= (callback: (time: number) => void) => setTimeout(() => callback(performance.now()), 16);

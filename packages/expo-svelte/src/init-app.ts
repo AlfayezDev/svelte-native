@@ -18,10 +18,10 @@ import { collisionMessage, vendoredNames } from "./vendored.ts";
 
 /** The dependencies of an Expo Svelte app, at the versions the library was exercised on (`examples/minimal`; a test keeps the two equal and inside the peer ranges). */
 export const appDependencies: Readonly<Record<string, string>> = {
-  expo: "57.0.30",
-  "expo-constants": "57.0.22",
-  react: "19.2.7",
-  "react-native": "0.86.3",
+  expo: "58.0.26",
+  "expo-constants": "58.0.16",
+  react: "19.3.0",
+  "react-native": "0.88.1",
 };
 
 /**

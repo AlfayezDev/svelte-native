@@ -18,15 +18,15 @@ allowBuilds:
   protobufjs: true
 
 catalog:
-  "@types/react": ~19.2.17
+  "@types/react": ~19.3.0
   esbuild: 0.28.1
-  react: 19.2.7
+  react: 19.3.0
   vite: ^8.1.4
   valibot: ^1.4.2
 overrides:
-  react-dom: 19.2.7
+  react-dom: 19.3.0
   "@babel/core": 7.29.7
-  "@types/react": 19.2.17
+  "@types/react": 19.3.0
   "brace-expansion@5.0.6": 5.0.12
   "browserslist@4.28.5": 4.28.7
   "devalue@5.9.0": 5.9.3
@@ -41,6 +41,6 @@ overrides:
   "source-map-js@1.2.1": 1.2.2
 patchedDependencies:
   "@sveltejs/kit@3.1.1": packages/expo-svelte/patches/@sveltejs__kit@3.1.1.patch
-  expo-modules-core@57.0.23: packages/expo-svelte/patches/expo-modules-core@57.0.23.patch
+  expo-modules-core@58.1.0: packages/expo-svelte/patches/expo-modules-core@58.1.0.patch
   react-native-live-direction@0.1.1: patches/react-native-live-direction@0.1.1.patch
   svelte@5.56.7: patches/svelte@5.56.7.patch

@@ -128,12 +128,12 @@ index c39159cd47d1c1ec19ea608ec5d49f25e7cf8ac7..4cd1210092fd6f1d3fae021e5c472334
  
    ModuleRegistry getModuleRegistry() {
 diff --git a/android/src/main/java/expo/modules/kotlin/AppContext.kt b/android/src/main/java/expo/modules/kotlin/AppContext.kt
-index 7bb61c680027d60c4ab79d91db5169589a512353..1861a538cba2195cbe2be90d6491ed918a512134 100644
+index eec38de858ec307cbec442dd12540018396c1ee2..2e3ef205012505e6e60b0ddbad8c91a07f612445 100644
 --- a/android/src/main/java/expo/modules/kotlin/AppContext.kt
 +++ b/android/src/main/java/expo/modules/kotlin/AppContext.kt
-@@ -21,7 +21,9 @@ import expo.modules.kotlin.activityresult.ActivityResultsManager
+@@ -15,7 +15,9 @@ import expo.modules.interfaces.permissions.Permissions
+ import expo.modules.kotlin.activityresult.ActivityResultsManager
  import expo.modules.kotlin.activityresult.DefaultAppContextActivityResultCaller
- import expo.modules.kotlin.defaultmodules.ErrorManagerModule
  import expo.modules.kotlin.defaultmodules.JSLoggerModule
 +import expo.modules.kotlin.defaultmodules.JSLoggerModuleName
  import expo.modules.kotlin.defaultmodules.NativeModulesProxyModule
@@ -141,7 +141,7 @@ index 7bb61c680027d60c4ab79d91db5169589a512353..1861a538cba2195cbe2be90d6491ed91
  import expo.modules.kotlin.events.EventEmitter
  import expo.modules.kotlin.events.EventName
  import expo.modules.kotlin.events.KEventEmitterWrapper
-@@ -125,8 +127,8 @@ class AppContext(
+@@ -124,8 +126,8 @@ class AppContext(
        // Registering modules has to happen at the very end of `AppContext` creation. Some modules need to access
        // `AppContext` during their initialisation, so we need to ensure all `AppContext`'s
        // properties are initialized first. Not having that would trigger NPE.
@@ -162,7 +162,7 @@ index 7bb61c680027d60c4ab79d91db5169589a512353..1861a538cba2195cbe2be90d6491ed91
        },
        legacyEventEmitter,
 diff --git a/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt b/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt
-index d1e5b3952b08accb1dee87aeb5819f5427c1f325..d15061b0535e0065391244cd71b1ccc379d2a1e2 100644
+index d1e5b3952b08accb1dee87aeb5819f5427c1f325..84f50585bcfd77d01ee077c851a01d51b9174060 100644
 --- a/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt
 +++ b/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt
 @@ -9,16 +9,45 @@ import kotlinx.coroutines.CoroutineName
@@ -503,10 +503,10 @@ index d1e5b3952b08accb1dee87aeb5819f5427c1f325..d15061b0535e0065391244cd71b1ccc3
 +  }
  }
 diff --git a/android/src/main/java/expo/modules/kotlin/jni/JSIContext.kt b/android/src/main/java/expo/modules/kotlin/jni/JSIContext.kt
-index 148a85e735122a21156b26b37f041c62ee6f1310..09da51082be5cb7abcc0f28ff4c7e820849feee7 100644
+index d4dbdd710a370ead3fd51f691a65f23fd009687d..65b81d3fa3e74b9bed1a0f8a2c5f6c7057ae286f 100644
 --- a/android/src/main/java/expo/modules/kotlin/jni/JSIContext.kt
 +++ b/android/src/main/java/expo/modules/kotlin/jni/JSIContext.kt
-@@ -82,10 +82,17 @@ class JSIContext @DoNotStrip internal constructor(
+@@ -94,10 +94,17 @@ class JSIContext @DoNotStrip internal constructor(
      val runtime = runtimeHolder.get() ?: return null
      val appContext = runtime.appContext ?: return null
  
@@ -525,7 +525,7 @@ index 148a85e735122a21156b26b37f041c62ee6f1310..09da51082be5cb7abcc0f28ff4c7e820
        ?: return null
  
      val decorator = JSDecoratorsBridgingObject(runtime.deallocator)
-@@ -120,7 +127,7 @@ class JSIContext @DoNotStrip internal constructor(
+@@ -132,7 +139,7 @@ class JSIContext @DoNotStrip internal constructor(
    @Suppress("unused")
    @DoNotStrip
    fun getJavaScriptModulesName(): Array<String> {
@@ -535,7 +535,7 @@ index 148a85e735122a21156b26b37f041c62ee6f1310..09da51082be5cb7abcc0f28ff4c7e820
    }
  
 diff --git a/android/src/main/java/expo/modules/kotlin/runtime/MainRuntime.kt b/android/src/main/java/expo/modules/kotlin/runtime/MainRuntime.kt
-index bb88e7c3f4f9bda3ce4400b0a683faf33b76bb0e..deca7346a26e3e39f6161c736224857a90863f84 100644
+index 659098eb8e91c6d1c8cd2e71b5fdd7824ce5c959..6668770189bf6d07df518e7695b150daca3748fb 100644
 --- a/android/src/main/java/expo/modules/kotlin/runtime/MainRuntime.kt
 +++ b/android/src/main/java/expo/modules/kotlin/runtime/MainRuntime.kt
 @@ -61,7 +61,7 @@ class MainRuntime(
@@ -548,26 +548,34 @@ index bb88e7c3f4f9bda3ce4400b0a683faf33b76bb0e..deca7346a26e3e39f6161c736224857a
      module._appContextHolder = appContextHolder
      ModuleHolder(module, null)
 diff --git a/src/NativeViewManagerAdapter.native.tsx b/src/NativeViewManagerAdapter.native.tsx
-index 8d31011024a07fd908d97b817e7072078ef5f92e..4572d3d120f2c5037cca00de16a73bc55821650f 100644
+index a42ad11d6eee6dc6716c0b4cb9176c3a7ac1a001..0f316b5c2dd0ccf9ef294ddf5411c005ce26f417 100644
 --- a/src/NativeViewManagerAdapter.native.tsx
 +++ b/src/NativeViewManagerAdapter.native.tsx
-@@ -6,7 +6,6 @@
+@@ -3,12 +3,7 @@
+ 'use client';
  
  import { type Component, type ComponentType, createRef, PureComponent } from 'react';
- import { type ReactNativeElement, findNodeHandle, type HostComponent } from 'react-native';
--import { get as componentRegistryGet } from 'react-native/Libraries/NativeComponent/NativeComponentRegistry';
+-import {
+-  type ReactNativeElement,
+-  findNodeHandle,
+-  type HostComponent,
+-  NativeComponentRegistry,
+-} from 'react-native';
++import { type ReactNativeElement, findNodeHandle, type HostComponent } from 'react-native';
  
  import { SharedObject } from './SharedObject';
  import { requireNativeModule } from './requireNativeModule';
-@@ -55,6 +54,11 @@ function requireNativeComponent<Props>(
+@@ -57,7 +52,12 @@ function requireNativeComponent<Props extends object>(
      ? `ViewManagerAdapter_${moduleName}_${viewName}${viewNameSuffix}`
      : `ViewManagerAdapter_${moduleName}${viewNameSuffix}`;
  
+-  return NativeComponentRegistry.get<Props>(nativeViewName, () => {
 +  // Required on the first native view instead of at import: loading the registry evaluates `getNativeComponentAttributes`
 +  // and `UIManager`, which an app that renders no Expo native view never needs.
 +  const { get: componentRegistryGet } =
 +    require('react-native/Libraries/NativeComponent/NativeComponentRegistry') as typeof import('react-native/Libraries/NativeComponent/NativeComponentRegistry');
 +
-   return componentRegistryGet<Props>(nativeViewName, () => {
++  return componentRegistryGet<Props>(nativeViewName, () => {
      const expoViewConfig = globalThis.expo?.getViewConfig(moduleName, viewName);
  
+     if (!expoViewConfig) {

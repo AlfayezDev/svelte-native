@@ -88,7 +88,7 @@ peer dependencies
         fix: pnpm add react@19.3.0
 
 vendored packages
-  pass  react-native-mmkv 4.3.1 comes with expo-svelte (vendor/react-native-mmkv); the app does not list it
+  pass  react-native-mmkv 4.3.2 comes with expo-svelte (vendor/react-native-mmkv); the app does not list it
   …
   pass  libraries turned on: expo-image, react-native-maps; the others are not linked, and Metro stubs them
 

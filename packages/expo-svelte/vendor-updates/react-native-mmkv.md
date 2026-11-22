@@ -1,6 +1,6 @@
 # react-native-mmkv
 
-- **Current**: 4.3.1
+- **Current**: 4.3.2
 - **Linked**: every app
 - **Upstream**: https://github.com/mrousavy/react-native-mmkv
 - **Copy**: `vendor/react-native-mmkv/` (its `VENDOR.md` has the tarball's integrity, what was left out and the patches)
@@ -36,7 +36,7 @@ None.
 
 ## Native dependencies downloaded at build time
 
-The pod `MMKVCore` 2.4.0 and the Maven artifact `io.github.zhongwuzw:mmkv:2.4.0` (MMKV core, built from Tencent/MMKV): check the version the podspec and `android/build.gradle` ask for, and that release's notes.
+The pod `MMKVCore` 2.4.0 and the Maven artifact `io.github.zhongwuzw:mmkv:2.4.1` (MMKV core, built from Tencent/MMKV; 4.3.1 asked for 2.4.0, whose `mmkv` and `annotation` AARs share the namespace `com.tencent.mmkv`, which Android Gradle plugin 9 refuses: 2.4.1 renamed them): check the version the podspec and `android/build.gradle` ask for, and that release's notes.
 
 ## Proof
 

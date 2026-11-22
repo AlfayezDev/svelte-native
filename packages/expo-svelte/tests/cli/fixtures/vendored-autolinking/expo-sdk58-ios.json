@@ -17,7 +17,7 @@
     "platforms": {
       "ios": {
         "podspecPath": "$PACKAGE/NitroMmkv.podspec",
-        "version": "4.3.1",
+        "version": "4.3.2",
         "configurations": [],
         "scriptPhases": []
       }

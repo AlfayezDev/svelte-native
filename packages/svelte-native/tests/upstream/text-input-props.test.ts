@@ -48,8 +48,23 @@ test("enterKeyHint, inputMode and autoComplete give the native props React Nativ
     expect(props.textContentType).toBe(type);
     expect(props.autoComplete).toBeUndefined(); // the iOS views have no autoComplete
   }
-  // Every Android name but "off" is one the engine has an autofill hint for.
+  // Every Android name but "off" is one the engine has an autofill hint for, and every name the engine has passes as it is.
   for (const [, name] of android) if (name !== "off") expect(autofill).toContain(`"${name}" to HintConstants.`);
+  const engine = [...autofill.matchAll(/"([^"]+)" to HintConstants\./g)].map((match) => match[1] as string);
+  expect(engine.length).toBe(48);
+  for (const name of engine) expect(textInputProps({ autoComplete: name }, "android").autoComplete).toBe(name);
+});
+
+test("an autocomplete value is read for its token, and one with no hint on the platform is left out rather than turning autofill off", () => {
+  expect(textInputProps({ autoComplete: "shipping email" }, "android").autoComplete).toBe("email");
+  expect(textInputProps({ autoComplete: "section-a billing tel" }, "ios").textContentType).toBe("telephoneNumber");
+  expect(textInputProps({ autoComplete: "home Email webauthn" }, "ios").textContentType).toBe("emailAddress");
+  for (const token of ["on", "nickname", "organization", "url", "cc-name"]) {
+    const props = textInputProps({ autoComplete: token }, "android");
+    expect(Object.hasOwn(props, "autoComplete") ? props.autoComplete : undefined, token).toBeUndefined();
+  }
+  expect(textInputProps({ autoComplete: "nickname" }, "ios").textContentType).toBe("nickname");
+  expect(textInputProps({ autoComplete: "on" }, "ios").textContentType).toBeUndefined();
 });
 
 test("which prop wins, as in React Native's TextInput: the web name over the native one, a defined textContentType over autoComplete's, and a value it does not know changes nothing", () => {

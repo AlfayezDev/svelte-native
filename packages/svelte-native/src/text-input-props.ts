@@ -2,7 +2,8 @@
  * What React Native's `TextInput` component does to its props before they reach the native view (`Libraries/Components/TextInput/TextInput.js`,
  * React Native 0.86.3), for Svelte Native's `TextInput`, which mounts the native view directly: `readOnly` is `editable`, `enterKeyHint` is the
  * `returnKeyType`, `inputMode` is the `keyboardType` (and `"none"` opens no keyboard), and `autoComplete` is Android's autofill hint or, on iOS,
- * the `textContentType`. The view tables (`fabric/view-configs.ts`) take only the native names, so without this the web names would be dropped.
+ * the `textContentType`. The view tables (`fabric/view-configs.ts`) take only the native names, so without this the web names would be dropped. An `autocomplete` value with
+ * section or address words (`shipping email`) is read for its token, and one neither platform has a hint for (`on`, `nickname` on Android) is left out.
  */
 import { Platform } from "./platform.ts";
 
@@ -27,6 +28,20 @@ const ANDROID_AUTOCOMPLETE: Readonly<Record<string, string>> = {
   tel: "tel", "tel-country-code": "tel-country-code", "tel-national": "tel-national", username: "username",
 };
 
+/**
+ * The autofill names Android's engine has a hint for (`InputAutofill.kt`, React Native's `ReactTextInputManager` table), which a `TextInput` may be given as they are,
+ * and `"off"`. Any other value would turn autofill off for the field there, so it is left out: the field keeps Android's own guess (`autocomplete="on"`).
+ */
+const ANDROID_NAMES: ReadonlySet<string> = new Set([
+  "2fa-app-otp", "birthdate-day", "birthdate-full", "birthdate-month", "birthdate-year", "cc-csc", "cc-exp", "cc-exp-day", "cc-exp-month", "cc-exp-year", "cc-number",
+  "email", "email-otp", "flight-confirmation-code", "flight-number", "gender", "gift-card-number", "gift-card-pin", "loyalty-account-number", "name", "name-family",
+  "name-given", "name-middle", "name-middle-initial", "name-prefix", "name-suffix", "password", "password-new", "postal-address", "postal-address-country",
+  "postal-address-dependent-locality", "postal-address-extended", "postal-address-extended-postal-code", "postal-address-locality", "postal-address-region",
+  "postal-address-unit", "postal-code", "promo-code", "street-address", "sms-otp", "tel", "tel-country-code", "tel-national", "tel-device", "upi-vpa", "wifi-password",
+  "username", "username-new",
+  "off",
+]);
+
 /** HTML `autocomplete` tokens as iOS's `textContentType`. */
 const IOS_CONTENT_TYPES: Readonly<Record<string, string>> = {
   "additional-name": "middleName", "address-line1": "streetAddressLine1", "address-line2": "streetAddressLine2", bday: "birthdate", "bday-day": "birthdateDay",
@@ -40,6 +55,16 @@ const IOS_CONTENT_TYPES: Readonly<Record<string, string>> = {
 };
 
 const known = (table: Readonly<Record<string, string>>, key: unknown): string | undefined => (typeof key === "string" && Object.hasOwn(table, key) ? table[key] : undefined);
+
+/** The words of an HTML `autocomplete` value that say where the field belongs rather than what it holds (`section-blue shipping home tel webauthn`). */
+const DETAIL = /^(section-.*|shipping|billing|home|work|mobile|fax|pager|webauthn)$/i;
+
+/** What a field holds, from an `autocomplete` value: the token among its words (`shipping email` is `email`), lowercased as HTML compares it; the value as it is when it has one word. */
+function fieldName(value: string): string {
+  const words = value.trim().split(/\s+/);
+  if (words.length === 1) return words[0] ?? value;
+  return (words.filter((word) => !DETAIL.test(word)).at(-1) ?? value).toLowerCase();
+}
 
 /**
  * The native props of a `TextInput` from the props it was given, as React Native's component computes them: a defined `enterKeyHint` or `inputMode` wins over
@@ -57,8 +82,9 @@ export function textInputProps(props: Props, os: string = Platform.OS): Props {
     out.showSoftInputOnFocus = inputMode !== "none";
   }
   if (typeof autoComplete === "string") {
-    if (os === "ios") out.textContentType ??= known(IOS_CONTENT_TYPES, autoComplete);
-    else out.autoComplete = known(ANDROID_AUTOCOMPLETE, autoComplete) ?? autoComplete;
+    const name = fieldName(autoComplete);
+    if (os === "ios") out.textContentType ??= known(IOS_CONTENT_TYPES, name);
+    else out.autoComplete = known(ANDROID_AUTOCOMPLETE, name) ?? (ANDROID_NAMES.has(name) ? name : undefined);
   }
   return out;
 }

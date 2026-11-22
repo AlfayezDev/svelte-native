@@ -365,6 +365,16 @@ test("a link that arrives while the platform is still answering for the launch l
     unmatched.app.show(false);
     await unmatched.settled();
 
+    // The launch link delivered as an event too, while the read is pending: it is the launch link, and becomes the base.
+    const twice = await mountTree(209, { initial: "/workspaces" });
+    emit("https://example.test/account");
+    await twice.settled();
+    launch.__resolveInitialURL?.("https://example.test/account");
+    await twice.settled();
+    expect(pathsOf(twice.router)).toEqual(["/account"]);
+    twice.app.show(false);
+    await twice.settled();
+
     // The launch link answered first: it is the base, and the newer link stacks on it.
     const first = await mountTree(208, { initial: "/workspaces" });
     launch.__resolveInitialURL?.("https://example.test/account");

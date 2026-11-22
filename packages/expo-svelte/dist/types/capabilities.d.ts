@@ -1,5 +1,5 @@
 import type { ExpoConfig } from "expo/config";
-import type { AndroidConfig } from "expo/config-plugins.js";
+import type { AndroidConfig } from "expo/config-plugins";
 import { findPushSecret } from "./push/config.js";
 export { findPushSecret };
 /**

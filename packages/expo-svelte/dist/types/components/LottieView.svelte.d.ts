@@ -14,6 +14,7 @@ type $$ComponentProps = Omit<ViewProps, "children"> & {
     imageAssetsFolder?: string;
     cacheComposition?: boolean;
     enableMergePathsAndroidForKitKatAndAbove?: boolean;
+    applyOpacityToLayersAndroid?: boolean;
     enableSafeModeAndroid?: boolean;
     hardwareAccelerationAndroid?: boolean;
     colorFilters?: readonly {

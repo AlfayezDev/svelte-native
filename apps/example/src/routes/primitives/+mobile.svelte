@@ -88,7 +88,7 @@
       <ActivityIndicator size="large" color={theme.colors.accent} accessibilityLabel="Loading" />
       <View style={{ flex: 1 }}><Button label="Open a Modal" variant="secondary" onPress={() => (modalOpen = true)} /></View>
     </View>
-    <Modal visible={modalOpen} transparent animationType="fade" onRequestClose={() => (modalOpen = false)}>
+    <Modal visible={modalOpen} transparent animationType="fade" onRequestClose={() => { modalOpen = false; }}>
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32, backgroundColor: "rgba(0, 0, 0, 0.5)" }}>
         <View style={{ alignSelf: "stretch", gap: 12, padding: 20, borderRadius: 16, backgroundColor: theme.colors.surface }}>
           <Text style={text.heading}>A Modal</Text>

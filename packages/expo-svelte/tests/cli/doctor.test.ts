@@ -106,8 +106,8 @@ describe("a patch that is not applied", () => {
   });
 
   test("a package that comes with expo is pinned by an override, not added as a dependency", () => {
-    const { checks } = check({ versions: { "expo-modules-core": "57.0.25" } });
-    const failure = find(checks, `expo-modules-core 57.0.25 is installed, the patch is for exactly ${patchVersion("expo-modules-core")}`);
+    const { checks } = check({ versions: { "expo-modules-core": "58.1.1" } });
+    const failure = find(checks, `expo-modules-core 58.1.1 is installed, the patch is for exactly ${patchVersion("expo-modules-core")}`);
     expect(failure?.status).toBe("fail");
     expect(failure?.fix).toContain(`\`overrides:\` with \`expo-modules-core: ${patchVersion("expo-modules-core")}\` in pnpm-workspace.yaml`);
     expect(failure?.fix).toContain("ERR_PNPM_UNUSED_PATCH");
@@ -314,7 +314,7 @@ describe("finding an installed package", () => {
     const isolated = makeFakeApp({ without: ["expo", "expo-modules-core"] });
     apps.push(isolated);
     const store = join(isolated, "node_modules/.pnpm/expo@1/node_modules");
-    for (const [name, version] of [["expo", "57.0.30"], ["expo-modules-core", `${patchVersion("expo-modules-core")}`]] as const) {
+    for (const [name, version] of [["expo", "58.0.26"], ["expo-modules-core", `${patchVersion("expo-modules-core")}`]] as const) {
       mkdirSync(join(store, name), { recursive: true });
       writeFileSync(join(store, name, "package.json"), JSON.stringify({ name, version }));
     }
@@ -328,9 +328,9 @@ describe("finding an installed package", () => {
 
 describe("versions", () => {
   test("react-native, expo and react must satisfy the library's peers", () => {
-    const { checks } = check({ versions: { "react-native": "0.85.1", expo: "57.1.0", react: "19.2.6" } });
+    const { checks } = check({ versions: { "react-native": "0.85.1", expo: "58.1.0", react: "19.2.6" } });
     expect(failed(checks).map((entry) => entry.message).sort()).toEqual([
-      `expo 57.1.0 does not satisfy ~${peerVersion("expo")}`,
+      `expo 58.1.0 does not satisfy ~${peerVersion("expo")}`,
       `react 19.2.6 does not satisfy ${peerVersion("react")}`,
       `react-native 0.85.1 does not satisfy ${peerVersion("react-native")}`,
     ]);
@@ -357,8 +357,8 @@ describe("versions", () => {
 
   test("semver ranges", () => {
     const table: [string, string, boolean][] = [
-      ["57.0.30", "~57.0.27", true], ["57.0.26", "~57.0.27", false], ["57.1.0", "~57.0.27", false], ["8.1.4", "^8.1.4", true], ["8.9.0", "^8.1.4", true], ["9.0.0", "^8.1.4", false],
-      ["0.2.1", "~0.2.1", true], ["0.3.0", "~0.2.1", false], ["0.2.5", "^0.2.1", true], ["0.3.0", "^0.2.1", false], ["0.0.4", "^0.0.3", false], ["19.2.7", "19.2.7", true], ["19.2.8", "19.2.7", false],
+      ["58.0.30", "~58.0.26", true], ["58.0.25", "~58.0.26", false], ["58.1.0", "~58.0.26", false], ["8.1.4", "^8.1.4", true], ["8.9.0", "^8.1.4", true], ["9.0.0", "^8.1.4", false],
+      ["0.2.1", "~0.2.1", true], ["0.3.0", "~0.2.1", false], ["0.2.5", "^0.2.1", true], ["0.3.0", "^0.2.1", false], ["0.0.4", "^0.0.3", false], ["19.3.0", "19.3.0", true], ["19.3.1", "19.3.0", false],
       ["3.0.0-next.27", "3.0.0-next.27", true], ["3.0.0-next.28", "3.0.0-next.27", false], ["3.0.0", "3.0.0-next.27", false], ["3.0.0-next.28", "^3.0.0-next.27", true], ["3.0.0-next.26", "^3.0.0-next.27", false],
       ["3.1.0-next.1", "^3.0.0-next.27", false], ["2.0.0-beta.1", "^1.0.0", false], ["1.5.0", "1.x", true], ["2.0.0", "1.x", false], ["1.2.9", "1.2", true], ["1.3.0", "1.2", false], ["5.0.0", "*", true],
       ["1.5.0", ">=1.2.0 <2.0.0", true], ["2.0.0", ">=1.2.0 <2.0.0", false], ["1.0.0", "^1.0.0 || ^2.0.0", true], ["2.4.0", "^1.0.0 || ^2.0.0", true], ["3.0.0", "^1.0.0 || ^2.0.0", false], ["1.5.0", ">= 1.2.0", true],

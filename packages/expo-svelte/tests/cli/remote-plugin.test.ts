@@ -70,7 +70,7 @@ describe("the plugin", () => {
 });
 
 describe("loading", () => {
-  test("what the config plugin imports from its own files is loaded by Node's module loader, which wants `expo/config-plugins.js` spelled out", () => {
+  test("what the config plugin imports from its own files is loaded by Node's module loader, which wants `expo/config-plugins` without an extension (Expo 58's `exports` map)", () => {
     // (`expo.ts` is transpiled by Expo's config loader, which turns its imports into requires; the files it requires are Node's to load.)
     for (const file of ["remote/plugin.ts", "remote/host.ts", "capabilities.ts"]) {
       const done = spawnSync("node", ["--input-type=module", "-e", `const loaded = await import(${JSON.stringify(new URL(`../../src/${file}`, import.meta.url).href)}); if (Object.keys(loaded).length === 0) process.exit(2);`], { encoding: "utf8" });

@@ -1083,7 +1083,7 @@ var init_vendored = __esm({
       },
       {
         name: "react-native-mmkv",
-        version: "4.3.1",
+        version: "4.3.2",
         android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
         ios: { podspec: "NitroMmkv.podspec" }
       },

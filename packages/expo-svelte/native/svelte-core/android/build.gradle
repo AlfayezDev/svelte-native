@@ -106,6 +106,6 @@ dependencies {
   implementation "androidx.activity:activity:1.10.1"
   implementation "androidx.tracing:tracing-ktx:1.2.0"
   // The app's night mode from its `userInterfaceStyle` (`expo.modules.svelteappearance`). Compile time only: every app has AppCompat, since React Native's activity is an
-  // AppCompatActivity; this is the version React Native 0.86 builds with (its `gradle/libs.versions.toml`, `androidx-appcompat`).
+  // AppCompatActivity; this is the version React Native 0.88 builds with (its `gradle/libs.versions.toml`, `androidx-appcompat`).
   compileOnly "androidx.appcompat:appcompat:1.7.0"
 }

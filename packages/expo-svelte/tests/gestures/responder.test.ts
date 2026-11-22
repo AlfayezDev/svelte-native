@@ -1,9 +1,9 @@
 import { test, expect } from "bun:test";
-import { load, settle, world, byId, callsOf } from "./support/harness.ts";
+import { load, settle, world, byId } from "./support/harness.ts";
 
-// A JS responder that blocks the native ones reaches react-native-gesture-handler's module (`handleSetJSResponder`), as React Native's
-// UIManager.setJSResponder does once RNGH has patched it, and only when the gesture host is loaded. When a grant blocks and when a release gives the responders back (a termination,
-// a grant that answers nothing or false) is `responder-native.test.ts`'s, on a fake tree; this file shows the wiring to the real module.
+// A JS responder that blocks the native ones (its `onResponderGrant` answers true) used to reach react-native-gesture-handler's module as `handleSetJSResponder`, as React Native's
+// UIManager.setJSResponder did once RNGH 2 had patched it. RNGH 3's module has neither call, so the host sends nothing, with the gesture host loaded or not (`responder-native.test.ts` is
+// the responder's own bookkeeping, which still reports a block and its release to a tree that wires them); this file shows the host wires none to the module.
 
 type App = { setGesture(gesture: unknown): void };
 const touch = (type: "topTouchStart" | "topTouchEnd" | "topTouchCancel") => {
@@ -17,8 +17,6 @@ async function mount() {
   const send = (id: string, type: Parameters<typeof touch>[0]) => world().dispatch?.(byId(62, id)?.target, type, touch(type));
   return { m, app, send, G: m.gestures.Gesture };
 }
-const responderCalls = () => callsOf("handleSetJSResponder", "handleClearJSResponder");
-
 test("an app that never used a gesture never touches RNGH's module, whatever its responders answer", async () => {
   const { m, send } = await mount();
   send("responder", "topTouchStart");
@@ -27,14 +25,14 @@ test("an app that never used a gesture never touches RNGH's module, whatever its
   expect(m.fabricStats().gesturesLoaded).toBe(false);
 });
 
-test("a grant that answers true tells the module with the node's tag, and the release clears it", async () => {
+test("a grant that answers true tells RNGH's module nothing, loaded or not: it has no JS-responder calls", async () => {
   const { m, app, send, G } = await mount();
   app.setGesture(G.Pan().onUpdate(() => {}).runOnJS(true));
   await settle(m);
   expect(m.fabricStats().gesturesLoaded).toBe(true);
   world().calls.length = 0;
   send("responder", "topTouchStart");
-  expect(responderCalls()).toEqual([["handleSetJSResponder", byId(62, "responder")?.tag, true]]);
   send("responder", "topTouchEnd");
-  expect(responderCalls()).toEqual([["handleSetJSResponder", byId(62, "responder")?.tag, true], ["handleClearJSResponder"]]);
+  expect(world().calls).toEqual([]);
+  expect(byId(62, "responder")).toBeDefined();
 });

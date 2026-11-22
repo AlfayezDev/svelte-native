@@ -1,6 +1,6 @@
 # @react-native-community/datetimepicker
 
-- **Current**: 9.1.0
+- **Current**: 9.2.1
 - **Linked**: when the app turns it on (`libraries`)
 - **Upstream**: https://github.com/react-native-datetimepicker/datetimepicker
 - **Copy**: `vendor/@react-native-community/datetimepicker/` (its `VENDOR.md` has the tarball's integrity, what was left out and the patches)
@@ -31,6 +31,7 @@ None. The copy leaves out `jest` and `windows`.
 ## What to look at in its source
 
 - The Android dialog API (`open`/`dismiss`) the library calls by name.
+- 9.2's config plugin requires `expo/config-plugins` (not `@expo/config-plugins`) and has the style `numbersInnerTextColor`; `DateTimePickerAndroid.dismiss(mode, design)` takes the design.
 
 ## Native dependencies downloaded at build time
 

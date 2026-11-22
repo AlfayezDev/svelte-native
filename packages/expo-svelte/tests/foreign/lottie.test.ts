@@ -20,7 +20,7 @@ test("the component mounts LottieAnimationView with the library's source props, 
   harness.expectToldFirst("LottieAnimationView");
   expect(lottie.props).toMatchObject({
     sourceJson: JSON.stringify(animation), progress: 0.25, autoPlay: true, loop: false, speed: 2, resizeMode: "contain", cacheComposition: true,
-    enableMergePathsAndroidForKitKatAndAbove: false, enableSafeModeAndroid: false, textFiltersAndroid: [], textFiltersIOS: [], width: 100, height: 100,
+    enableMergePathsAndroidForKitKatAndAbove: false, applyOpacityToLayersAndroid: false, enableSafeModeAndroid: false, textFiltersAndroid: [], textFiltersIOS: [], width: 100, height: 100,
     colorFilters: [{ keypath: "layer", color: -65536 }],
   });
   for (const key of ["source", "duration", "onAnimationFinish", "ref", "nativeProps", "component"]) expect(key in lottie.props, key).toBe(false);

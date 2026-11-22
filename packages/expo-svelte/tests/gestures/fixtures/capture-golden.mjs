@@ -1,7 +1,7 @@
 /**
  * Captures what react-native-gesture-handler's own detector code sends to its native module for a set of gesture objects:
- * `createGestureHandler`, `attachGestureHandler`, `updateGestureHandler` (config plus relation arrays), `dropGestureHandler`
- * and `flushOperations`, in order. The files in `golden/` are the expected output of the Svelte detector (SPEC.md,
+ * `createGestureHandler`, `attachGestureHandler`, `setGestureHandlerConfig` and `configureRelations` (RNGH 3 sends a handler's config and its
+ * relation arrays as two calls), `dropGestureHandler` and `flushOperations`, in order. The files in `golden/` are the expected output of the Svelte detector (SPEC.md,
  * "Gestures (react-native-gesture-handler)", "Test plan"); regenerate them with `node tests/gestures/fixtures/capture-golden.mjs`
  * after upgrading the package and read the diff: it is what the native side will see differently.
  *
@@ -39,8 +39,9 @@ export const FlatList = function () {};
 const record = (name) => (...args) => globalThis.__calls.push([name, ...args]);
 export const TurboModuleRegistry = { getEnforcing: () => ({
   createGestureHandler: record('createGestureHandler'), attachGestureHandler: record('attachGestureHandler'),
-  updateGestureHandler: record('updateGestureHandler'), dropGestureHandler: record('dropGestureHandler'),
-  flushOperations: record('flushOperations'), handleSetJSResponder() {}, handleClearJSResponder() {}, install: () => true,
+  setGestureHandlerConfig: record('setGestureHandlerConfig'), updateGestureHandlerConfig: record('updateGestureHandlerConfig'),
+  configureRelations: record('configureRelations'), dropGestureHandler: record('dropGestureHandler'),
+  flushOperations: record('flushOperations'), installUIRuntimeBindings: () => true,
 }) };
 `;
 
@@ -117,10 +118,11 @@ try {
     plugins: [{ name: "stubs", setup(b) {
       b.onResolve({ filter: /^react-native$/ }, () => ({ path: "react-native", namespace: "stub" }));
       b.onResolve({ filter: /^react-native\// }, (a) => ({ path: a.path, namespace: "stub-sub" }));
-      b.onResolve({ filter: /^react-native-reanimated$/ }, () => ({ path: "react-native-reanimated", namespace: "no-reanimated" }));
+      // RNGH 3 requires Worklets as well as Reanimated, each inside a try: a package that throws is one that is not installed.
+      b.onResolve({ filter: /^react-native-(?:reanimated|worklets)$/ }, (a) => ({ path: a.path, namespace: "no-reanimated" }));
       b.onLoad({ filter: /.*/, namespace: "stub" }, () => ({ contents: reactNative, loader: "js" }));
       b.onLoad({ filter: /.*/, namespace: "stub-sub" }, () => ({ contents: "export default function () {}; export const customDirectEventTypes = {};", loader: "js" }));
-      b.onLoad({ filter: /.*/, namespace: "no-reanimated" }, () => ({ contents: "throw new Error('react-native-reanimated is not available in the capture');", loader: "js" }));
+      b.onLoad({ filter: /.*/, namespace: "no-reanimated" }, (a) => ({ contents: `throw new Error('${a.path} is not available in the capture');`, loader: "js" }));
     } }],
   });
   const { run } = await import(pathToFileURL(join(directory, "out.mjs")).href);

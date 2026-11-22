@@ -5,14 +5,16 @@
  * `handlerTag` in a shared value of the attached gestures' callbacks and runs the one the event calls for. `useEvent` is
  * `new WorkletEventHandler(...)` plus a ref, so the registration here is the same code.
  *
- * The constants below are copies (`State`, `TouchEventType`, `CALLBACK_TYPE`): a worklet captures its closure by value, and
+ * The constants below are copies (`State`, `TouchEventType`, `CallbackType`): a worklet captures its closure by value, and
  * a re-exported module object is a poor thing to serialise; `copiedConstants` below lists them by RNGH's names, and the last test of
  * `tests/gestures/config.test.ts` compares that list with RNGH's own modules, bundled apart from this file.
  * Loaded after Reanimated (the host loads both on the first gesture), so the imports below are Reanimated's own functions.
  */
-import { makeMutable, setGestureState, type SharedValue } from "#vendor/react-native-reanimated";
+import { makeMutable, type SharedValue } from "#vendor/react-native-reanimated";
+import { getUIRuntimeHolder } from "#vendor/react-native-worklets";
 import { WorkletEventHandler } from "../fabric/reanimated-internals.js";
 import { gestureName } from "./guards.ts";
+import { installUiRuntimeBindings } from "./native.ts";
 import type { GestureType } from "./rngh.js";
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- the payloads and callbacks cross the thread boundary untyped, as in RNGH */
@@ -31,7 +33,7 @@ const TOUCH_UNDETERMINED = 0;
 const TOUCH_DOWN = 1;
 const TOUCH_MOVE = 2;
 const TOUCH_UP = 3;
-const TOUCH_CANCELLED = 4;
+const TOUCH_CANCEL = 4;
 const CALLBACK_UNDEFINED = 0;
 const CALLBACK_BEGAN = 1;
 const CALLBACK_START = 2;
@@ -42,15 +44,15 @@ const CALLBACK_FINALIZE = 6;
 const CALLBACK_TOUCHES_DOWN = 7;
 const CALLBACK_TOUCHES_MOVE = 8;
 const CALLBACK_TOUCHES_UP = 9;
-const CALLBACK_TOUCHES_CANCELLED = 10;
+const CALLBACK_TOUCHES_CANCEL = 10;
 
-/** The numbers above by the names RNGH's `State`, `TouchEventType` and `CALLBACK_TYPE` give them: what the test that pins them reads. */
+/** The numbers above by the names RNGH's `State`, `TouchEventType` and `CallbackType` give them: what the test that pins them reads. */
 export const copiedConstants = {
   State: { UNDETERMINED: STATE_UNDETERMINED, FAILED: STATE_FAILED, BEGAN: STATE_BEGAN, CANCELLED: STATE_CANCELLED, ACTIVE: STATE_ACTIVE, END: STATE_END },
-  TouchEventType: { UNDETERMINED: TOUCH_UNDETERMINED, TOUCHES_DOWN: TOUCH_DOWN, TOUCHES_MOVE: TOUCH_MOVE, TOUCHES_UP: TOUCH_UP, TOUCHES_CANCELLED: TOUCH_CANCELLED },
-  CALLBACK_TYPE: {
+  TouchEventType: { UNDETERMINED: TOUCH_UNDETERMINED, TOUCHES_DOWN: TOUCH_DOWN, TOUCHES_MOVE: TOUCH_MOVE, TOUCHES_UP: TOUCH_UP, TOUCHES_CANCEL: TOUCH_CANCEL },
+  CallbackType: {
     UNDEFINED: CALLBACK_UNDEFINED, BEGAN: CALLBACK_BEGAN, START: CALLBACK_START, UPDATE: CALLBACK_UPDATE, CHANGE: CALLBACK_CHANGE, END: CALLBACK_END,
-    FINALIZE: CALLBACK_FINALIZE, TOUCHES_DOWN: CALLBACK_TOUCHES_DOWN, TOUCHES_MOVE: CALLBACK_TOUCHES_MOVE, TOUCHES_UP: CALLBACK_TOUCHES_UP, TOUCHES_CANCELLED: CALLBACK_TOUCHES_CANCELLED,
+    FINALIZE: CALLBACK_FINALIZE, TOUCHES_DOWN: CALLBACK_TOUCHES_DOWN, TOUCHES_MOVE: CALLBACK_TOUCHES_MOVE, TOUCHES_UP: CALLBACK_TOUCHES_UP, TOUCHES_CANCEL: CALLBACK_TOUCHES_CANCEL,
   },
 };
 
@@ -66,7 +68,7 @@ function getHandler(type: number, gesture: Callbacks) {
     case CALLBACK_TOUCHES_DOWN: return gesture.onTouchesDown;
     case CALLBACK_TOUCHES_MOVE: return gesture.onTouchesMove;
     case CALLBACK_TOUCHES_UP: return gesture.onTouchesUp;
-    case CALLBACK_TOUCHES_CANCELLED: return gesture.onTouchesCancelled;
+    case CALLBACK_TOUCHES_CANCEL: return gesture.onTouchesCancelled;
   }
 }
 
@@ -76,7 +78,7 @@ function touchEventTypeToCallbackType(eventType: number): number {
     case TOUCH_DOWN: return CALLBACK_TOUCHES_DOWN;
     case TOUCH_MOVE: return CALLBACK_TOUCHES_MOVE;
     case TOUCH_UP: return CALLBACK_TOUCHES_UP;
-    case TOUCH_CANCELLED: return CALLBACK_TOUCHES_CANCELLED;
+    case TOUCH_CANCEL: return CALLBACK_TOUCHES_CANCEL;
   }
   return CALLBACK_UNDEFINED;
 }
@@ -101,15 +103,27 @@ function isTouchEvent(event: Event): boolean {
   return event.eventType != null;
 }
 
+/**
+ * RNGH 3's `wrappedSetGestureState`: the state change goes to the handler through the function RNGH's native module installs on the UI runtime
+ * (`_setGestureStateSync`; `installUiRuntimeBindings` in `native.ts` does the installing), where Reanimated's `setGestureState` was RNGH 2's way.
+ */
+function setGestureStateOnUi(handlerTag: number, state: number) {
+  "worklet";
+  const scope = globalThis as unknown as { _setGestureStateSync?: (tag: number, state: number) => void; _setGestureStateAsync?: (tag: number, state: number) => void };
+  if (scope._setGestureStateSync) scope._setGestureStateSync(handlerTag, state);
+  else if (scope._setGestureStateAsync) scope._setGestureStateAsync(handlerTag, state);
+  else throw new Error("[expo-svelte gestures] Failed to set gesture state");
+}
+
 /** `GestureStateManager.create`: the handle a touch callback uses to begin, activate, fail or end the gesture from the UI thread. */
 function createStateManager(handlerTag: number) {
   "worklet";
   return {
     handlerTag,
-    begin: () => { "worklet"; setGestureState(handlerTag, STATE_BEGAN); },
-    activate: () => { "worklet"; setGestureState(handlerTag, STATE_ACTIVE); },
-    fail: () => { "worklet"; setGestureState(handlerTag, STATE_FAILED); },
-    end: () => { "worklet"; setGestureState(handlerTag, STATE_END); },
+    begin: () => { "worklet"; setGestureStateOnUi(handlerTag, STATE_BEGAN); },
+    activate: () => { "worklet"; setGestureStateOnUi(handlerTag, STATE_ACTIVE); },
+    fail: () => { "worklet"; setGestureStateOnUi(handlerTag, STATE_FAILED); },
+    end: () => { "worklet"; setGestureStateOnUi(handlerTag, STATE_END); },
   };
 }
 
@@ -165,8 +179,9 @@ export type UiPath = {
   lastUpdateEvent: SharedValue<(Event | undefined)[]>;
 };
 
-/** `useSharedValue` twice and `useEvent` (a `WorkletEventHandler`) for the node's tag; the handlers are shared with `shareHandlers`. */
+/** `useSharedValue` twice and `useEvent` (a `WorkletEventHandler`) for the node's tag; the handlers are shared with `shareHandlers`. The first one also installs RNGH's UI runtime bindings. */
 export function createUiPath(tag: number): UiPath {
+  installUiRuntimeBindings(getUIRuntimeHolder);
   const sharedHandlers = makeMutable<Callbacks[] | null>(null);
   const lastUpdateEvent = makeMutable<(Event | undefined)[]>([]);
   const handler = new WorkletEventHandler<Event>(createCallback(sharedHandlers, lastUpdateEvent), EVENT_NAMES);

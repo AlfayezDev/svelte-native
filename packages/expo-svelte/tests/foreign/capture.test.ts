@@ -63,10 +63,8 @@ test("Android: a tag the engine does not own goes to the library's module with t
   expect(harness.calls.filter((call) => call.startsWith("engine.captureView"))).toEqual([`engine.captureView ${tag} ${JSON.stringify(base)}`]);
   expect(viewShot.log).toEqual([`captureRef ${tag} ${JSON.stringify(base)}`]);
 
-  // A plain handle, with options: validated first (width and quality as given, a bad format back to png). The development warning needs `__DEV__`, which goes with the
-  // harness's globals when the test ends.
+  // A plain handle, with options: validated first (width and quality as given, a bad format back to png). The library 6 warns in every build, `__DEV__` or not.
   const warn = spyOn(console, "warn").mockImplementation(() => {});
-  (globalThis as { __DEV__?: boolean }).__DEV__ = true;
   let warnings: unknown[];
   try {
     viewShot.log.length = 0;
@@ -76,7 +74,7 @@ test("Android: a tag the engine does not own goes to the library's module with t
     warn.mockRestore();
   }
   expect(viewShot.log).toEqual([`captureRef ${app.plainHandle().tag} ${JSON.stringify({ format: "png", quality: 0.5, result: "data-uri", snapshotContentContainer: false, handleGLSurfaceViewOnAndroid: false, width: 20, height: 10 })}`]);
-  expect(warnings).toEqual(["react-native-view-shot: bad options:\n- option format 'gif' is not in valid formats: png | jpg | webm | raw"]);
+  expect(warnings).toEqual(["react-native-view-shot: bad options:\n- option format 'gif' is not in valid formats: png | jpg | webp | webm | raw"]);
 });
 
 test("Android: every option reaches the library's module for a view the engine does not own; only an engine view is refused one it does not capture", async () => {
@@ -122,7 +120,7 @@ test("iOS: React Native mounts every view, so the module takes the handle's tag 
   // The formats and results of iOS are fewer.
   expect(validateCaptureOptions({ format: "webm", result: "zip-base64" }, "ios")).toEqual({
     options: { format: "png", quality: 1, result: "tmpfile", snapshotContentContainer: false, handleGLSurfaceViewOnAndroid: false },
-    errors: ["option format 'webm' is not in valid formats: png | jpg", "option result 'zip-base64' is not in valid formats: tmpfile | base64 | data-uri"],
+    errors: ["option format 'webm' is not in valid formats: png | jpg", "option result 'zip-base64' is not a valid result: tmpfile | base64 | data-uri"],
   });
 });
 
@@ -266,7 +264,7 @@ async function until(condition: () => boolean): Promise<void> {
 }
 
 // The library's own `captureRef`, bundled with React Native stubbed, normalises the options as ours does. The module it calls is a stand-in that records what it was given
-// in `calls`, which the bundle exports for the test to read; `__DEV__` is true in the bundle, so the library reports bad options.
+// in `calls`, which the bundle exports for the test to read; the library reports bad options in every build.
 type Library = { captureRef(view: unknown, options?: object): Promise<string>; calls: { tag: unknown; options: object }[] };
 const library = (platform: Platform) => loadLibrary<Library>({
   entry: `export { captureRef } from "react-native-view-shot/src/index.tsx"; export { calls } from "view-shot-calls";`,
@@ -281,7 +279,7 @@ const library = (platform: Platform) => loadLibrary<Library>({
 
 test("options are validated and defaulted as the library does, on both platforms", async () => {
   const cases: (CaptureOptions | undefined)[] = [
-    undefined, {}, { format: "jpg", quality: 0.4, result: "base64" }, { format: "webm" }, { format: "raw", result: "zip-base64" }, { result: "data-uri", width: 30, height: 40 },
+    undefined, {}, { format: "jpg", quality: 0.4, result: "base64" }, { format: "webm" }, { format: "webp" }, { width: Number.POSITIVE_INFINITY, quality: Number.NaN }, { format: "raw", result: "zip-base64" }, { result: "data-uri", width: 30, height: 40 },
     { width: -1, height: 0 }, { quality: 2 }, { quality: "high" as never }, { snapshotContentContainer: "yes" as never, handleGLSurfaceViewOnAndroid: 1 as never }, { format: "gif" as never, result: "file" as never },
     { fileName: "shot", useRenderInContext: true },
   ];
@@ -296,7 +294,7 @@ test("options are validated and defaulted as the library does, on both platforms
         const expected = { options: reference.calls[0]?.options, warning: warn.mock.calls[0]?.[0] as string | undefined };
         const ours = validateCaptureOptions(input, platform);
         expect(ours.options, `${platform} ${JSON.stringify(input)}`).toEqual(expected.options as CaptureOptions);
-        // The same options are reported. (The library names the default it fell back to in the format and result messages, not the value it was given.)
+        // The same options are reported (and `webm` on Android is reported as deprecated, in favour of `webp`).
         const named = (lines: string[]) => lines.map((line) => /option (\w+)/.exec(line)?.[1]);
         expect(named(ours.errors), `${platform} ${JSON.stringify(input)}`).toEqual(named((expected.warning ?? "").split("\n").slice(1)));
       }

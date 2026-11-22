@@ -39,7 +39,7 @@ test("use:gesture follows its parameter and removes the gesture when the element
   world().calls.length = 0;
   surface.use(G.Pan().onUpdate(w()).minDistance(9));
   await settle(m);
-  expect(world().calls.map((call) => call[0])).toEqual(["updateGestureHandler", "flushOperations"]);
+  expect(world().calls.map((call) => call[0])).toEqual(["setGestureHandlerConfig", "configureRelations", "flushOperations"]);
   expect(world().calls[0]?.[2]).toMatchObject({ minDist: 9 });
   world().calls.length = 0;
   surface.hide();

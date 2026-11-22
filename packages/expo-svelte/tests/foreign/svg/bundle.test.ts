@@ -84,8 +84,8 @@ test("the svg entry bundles no React, and of the library only the extractors of 
     "src/lib/util.ts",
     "src/lib/utils/convertPercentageColor.ts",
   ].sort());
-  // The packages besides: `warn-once`, a dependency of the library's `util.ts` (plain JavaScript), and Svelte's own `clsx`.
-  expect(inputs.filter((path) => path.includes("node_modules/") && !path.includes("react-native-svg/") && !path.includes("node_modules/svelte/")).map((path) => /node_modules\/([^/]+)\//.exec(path)?.[1]).sort()).toEqual(["clsx", "warn-once"]);
+  // The packages besides: Svelte's own `clsx` (react-native-svg 15.16 has no `warn-once` any more: `util.ts` keeps its own `warnOnce`).
+  expect(inputs.filter((path) => path.includes("node_modules/") && !path.includes("react-native-svg/") && !path.includes("node_modules/svelte/")).map((path) => /node_modules\/([^/]+)\//.exec(path)?.[1]).sort()).toEqual(["clsx"]);
   // The entry's own files: every element and both XML components.
   for (const file of ["Svg", "G", "Path", "Rect", "Circle", "Ellipse", "Line", "Polygon", "Polyline", "Text", "TSpan", "TextPath", "Use", "Image", "Defs", "ClipPath", "LinearGradient", "RadialGradient", "Stop", "Pattern", "Mask", "Marker", "Symbol", "ForeignObject", "Filter", "FeBlend", "FeColorMatrix", "FeComposite", "FeDropShadow", "FeFlood", "FeGaussianBlur", "FeMerge", "FeMergeNode", "FeOffset", "SvgXml", "SvgUri"]) {
     expect(inputs.some((path) => path.endsWith(`components/svg/${file}.svelte`)), file).toBe(true);

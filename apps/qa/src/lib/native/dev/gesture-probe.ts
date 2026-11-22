@@ -2,14 +2,14 @@ import { getEnforcing } from "react-native/Libraries/TurboModule/TurboModuleRegi
 
 /**
  * What the `gestures-*` probes (`probe.ts`) need of the lab page `/__dev/gesture-probe`: the tags of the views it draws, and react-native-gesture-handler's
- * native module called the way the library's JavaScript calls it (`createGestureHandler`, `attachGestureHandler`, `flushOperations`), so that iOS can be
+ * native module called the way the library's JavaScript calls it (`createGestureHandler`, `attachGestureHandler`, `flushOperations`; 3.x has `setGestureHandlerConfig` where 2.x had `updateGestureHandler`), so that iOS can be
  * checked on its own, without the Svelte detector.
  */
 
 type HandlerModule = {
   createGestureHandler(handlerName: string, handlerTag: number, config: Record<string, unknown>): void;
   attachGestureHandler(handlerTag: number, viewTag: number, actionType: number): void;
-  updateGestureHandler(handlerTag: number, config: Record<string, unknown>): void;
+  setGestureHandlerConfig(handlerTag: number, config: Record<string, unknown>): void;
   dropGestureHandler(handlerTag: number): void;
   flushOperations(): void;
 };
@@ -40,7 +40,7 @@ export function attachHandler(viewTag: number, handlerName = "PanGestureHandler"
 
 export function updateHandler(handlerTag: number, config: Record<string, unknown>): void {
   module ??= getEnforcing<HandlerModule>("RNGestureHandlerModule");
-  module.updateGestureHandler(handlerTag, config);
+  module.setGestureHandlerConfig(handlerTag, config);
   module.flushOperations();
 }
 

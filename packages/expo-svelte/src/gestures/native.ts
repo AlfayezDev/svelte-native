@@ -6,16 +6,20 @@
 import { requireOptionalNativeModule } from "../fabric/deps-expo.ts";
 import { turboModuleRegistry } from "../fabric/deps-rn.ts";
 
-/** The calls the detector makes (`NativeRNGestureHandlerModule`); the rest of the module is for RNGH's components. */
+/**
+ * The calls the detector makes (`NativeRNGestureHandlerModule` of RNGH 3: the config and the relations of a handler are two calls,
+ * `setGestureHandlerConfig` and `configureRelations`; RNGH 2's `updateGestureHandler` and its two JS-responder calls are gone);
+ * the rest of the module is for RNGH's components.
+ */
 export type GestureHandlerModule = {
   createGestureHandler(handlerName: string, handlerTag: number, config: object): void;
   attachGestureHandler(handlerTag: number, viewTag: number, actionType: number): void;
-  updateGestureHandler(handlerTag: number, config: object): void;
+  setGestureHandlerConfig(handlerTag: number, config: object): void;
+  configureRelations(handlerTag: number, relations: object): void;
   dropGestureHandler(handlerTag: number): void;
   flushOperations(): void;
-  /** React Native's JS responder that blocks the native ones (iOS: the root recognisers wait; Android: a no-op for an engine root, see SPEC.md "Gestures"). */
-  handleSetJSResponder(viewTag: number, blockNativeResponder: boolean): void;
-  handleClearJSResponder(): void;
+  /** Gives the UI runtime `_setGestureStateSync` (what `GestureStateManager` calls there); false when the runtime was not found. */
+  installUIRuntimeBindings(): boolean;
 };
 
 let module_: GestureHandlerModule | null = null;
@@ -23,6 +27,27 @@ let module_: GestureHandlerModule | null = null;
 export function nativeModule(): GestureHandlerModule {
   module_ ??= turboModuleRegistry().getEnforcing<GestureHandlerModule>("RNGestureHandlerModule");
   return module_;
+}
+
+let uiInstalled = false;
+/**
+ * RNGH 3 installs its own `_setGestureStateSync` on the UI runtime (the state manager of a worklet callback calls it; Reanimated's
+ * `setGestureState` no longer reaches RNGH's module), from the module's native side, which needs the UI runtime of `react-native-worklets`
+ * handed to it in a global for the length of the call: `reanimatedWrapper.ts` of RNGH does the same when it loads, and defers it by a microtask.
+ * Called when the first gesture runs on the UI thread (the host has loaded Worklets by then); `holder` is Worklets' `getUIRuntimeHolder`.
+ */
+export function installUiRuntimeBindings(holder: () => object): void {
+  if (uiInstalled) return;
+  const scope = globalThis as { __RNGH_UI_WORKLET_RUNTIME_HOLDER?: object };
+  scope.__RNGH_UI_WORKLET_RUNTIME_HOLDER = holder();
+  uiInstalled = true;
+  try {
+    if (!nativeModule().installUIRuntimeBindings()) {
+      console.warn("[expo-svelte gestures] Failed to install the UI runtime bindings of react-native-gesture-handler: GestureStateManager will not work in worklet callbacks.");
+    }
+  } finally {
+    scope.__RNGH_UI_WORKLET_RUNTIME_HOLDER = undefined;
+  }
 }
 
 let enabled = false;

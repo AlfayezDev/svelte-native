@@ -72,20 +72,20 @@ test("the public entry imports no builders at start: only RNGH's five constants 
   expect(atStart.filter((path) => /^stub:react-native-(reanimated|worklets)/.test(path))).toEqual([]);
 });
 
-test("what the gesture host imports: RNGH's 22 pure modules, no component, no createHandler, no Reanimated wrapper, no react-native but through deps-rn", async () => {
+test("what the gesture host imports: RNGH's 24 pure modules, no component, no createHandler, no Reanimated wrapper, no react-native but through deps-rn", async () => {
   for (const entry of ["gestures/index.ts", "fabric/gestures.ts"]) {
     const meta = await graph(src(entry));
     const all = reachable(meta, src(entry));
     const upstream = all.filter((path) => path.startsWith("rngh/")).map((path) => path.slice(5));
     expect(upstream, entry).toEqual([
-      "ActionType.ts", "Directions.ts", "PointerType.ts", "State.ts", "TouchEventType.ts", "handlers/getNextHandlerTag.ts", "handlers/gestures/flingGesture.ts",
+      "ActionType.ts", "CallbackType.ts", "Directions.ts", "PointerType.ts", "State.ts", "TouchEventType.ts", "handlers/getNextHandlerTag.ts", "handlers/hitSlop.ts", "handlers/gestures/flingGesture.ts",
       "handlers/gestures/forceTouchGesture.ts", "handlers/gestures/gesture.ts", "handlers/gestures/gestureComposition.ts", "handlers/gestures/gestureObjects.ts",
       "handlers/gestures/hoverGesture.ts", "handlers/gestures/longPressGesture.ts", "handlers/gestures/manualGesture.ts", "handlers/gestures/nativeGesture.ts",
       "handlers/gestures/panGesture.ts", "handlers/gestures/pinchGesture.ts", "handlers/gestures/rotationGesture.ts", "handlers/gestures/tapGesture.ts",
       "handlers/handlersRegistry.ts", "mountRegistry.ts", "utils.ts",
     ].sort());
-    expect(upstream).toHaveLength(22);
-    expect(all.filter((path) => /createHandler|rngh\/components\/|reanimatedWrapper|eventReceiver|gestureStateManager|GestureDetector\/|findNodeHandle|rngh\/index|[A-Za-z]GestureHandler\.tsx?$/.test(path)), entry).toEqual([]);
+    expect(upstream).toHaveLength(24);
+    expect(all.filter((path) => /createHandler|rngh\/components\/|reanimatedWrapper|eventReceiver|gestureStateManager|GestureDetector\/|findNodeHandle|rngh\/index|rngh\/v3\/|[A-Za-z]GestureHandler\.tsx?$/.test(path)), entry).toEqual([]);
     // `react-native` itself (its `Libraries/...` modules) is imported from deps-rn.ts alone, which loads them on first use.
     const importers = Object.entries(meta.inputs).filter(([, input]) => input.imports.some((edge) => /^stub:react-native(\/|$)/.test(edge.path))).map(([path]) => relative(path));
     expect(importers, entry).toEqual(entry === "fabric/gestures.ts" ? ["src/fabric/deps-rn.ts"] : []);

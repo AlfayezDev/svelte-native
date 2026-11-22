@@ -1,11 +1,11 @@
 /**
  * What react-native-gesture-handler's detector does with a gesture's config before the native module sees it, as pure
  * functions: copies of `GestureDetector/utils.ts` (`ALLOWED_PROPS`, `extractGestureRelations`), `GestureDetector/needsToReattach.ts`
- * and `handlers/utils.ts` (`filterConfig`, `transformIntoHandlerTags`, web branches left out). RNGH's own modules import
+ * and `handlers/utils.ts` (`filterConfig`, `transformIntoHandlerTags`, web branches left out; the hit slop is RNGH's own `normalizeHitSlop`). RNGH's own modules import
  * `react-native` and the `*GestureHandler` components, so they cannot load on this host; `tests/gestures/config.test.ts`
  * compares every list and function here with the originals, bundled against stubs, so an RNGH upgrade shows up as a failing test.
  */
-import { BaseGesture, type GestureRef, type GestureType } from "./rngh.js";
+import { BaseGesture, normalizeHitSlop, type GestureRef, type GestureType } from "./rngh.js";
 
 const commonProps = ["id", "enabled", "shouldCancelWhenOutside", "hitSlop", "cancelsTouchesInView", "userSelect", "activeCursor", "mouseButton", "enableContextMenu", "touchAction"];
 
@@ -43,14 +43,14 @@ export function transformIntoHandlerTags(handlerIDs: unknown): number[] {
     .filter((handlerTag) => handlerTag > 0);
 }
 
-/** The subset of `props` the native handler takes, over `defaults`; a numeric `hitSlop` becomes the four-sided object. */
+/** The subset of `props` the native handler takes, over `defaults`; `hitSlop` goes to the native side as RNGH 3 normalises it (a number stays one, the rest become the six slots `[left, top, right, bottom, width, height]`). */
 export function filterConfig(props: Record<string, unknown>, validProps: readonly string[], defaults: Record<string, unknown> = {}): Record<string, unknown> {
   const filtered = { ...defaults };
   for (const key of validProps) {
     let value = props[key];
     if (isConfigParam(value, key)) {
       if (key === "simultaneousHandlers" || key === "waitFor") value = transformIntoHandlerTags(props[key]);
-      else if (key === "hitSlop" && typeof value !== "object") value = { top: value, left: value, bottom: value, right: value };
+      else if (key === "hitSlop") value = normalizeHitSlop(value as never);
       filtered[key] = value;
     }
   }
@@ -68,10 +68,10 @@ function extractValidHandlerTags(group: GestureRef[] | undefined): number[] {
 }
 
 /**
- * The relation lists of a gesture's config as native tag arrays, under the native names; a gesture that has no tag yet resolves to
- * nothing. RNGH rewrites the config's lists in place to the tags, which forgets a gesture that had none; here the lists keep
- * what the app named (duplicates removed, as `ComposedGesture.prepare` adds the same gestures each time it runs), so the detector can
- * send the relations again when that gesture mounts.
+ * The relation lists of a gesture's config as native tag arrays, under the native names (`configureRelations` takes them); a gesture
+ * that has no tag yet resolves to nothing. RNGH 2 rewrote the config's lists in place to the tags, which forgot a gesture that had none;
+ * RNGH 3 leaves the config alone, and so does this: the lists keep what the app named (duplicates removed, as `ComposedGesture.prepare`
+ * adds the same gestures each time it runs), so the detector can send the relations again when that gesture mounts.
  */
 export function extractGestureRelations(gesture: GestureType): { waitFor: number[]; simultaneousHandlers: number[]; blocksHandlers: number[] } {
   const { requireToFail, simultaneousWith, blocksHandlers } = gesture.config;

@@ -1,6 +1,6 @@
 # lottie-react-native
 
-- **Current**: 7.3.8
+- **Current**: 7.5.0
 - **Linked**: when the app turns it on (`libraries`)
 - **Upstream**: https://github.com/lottie-react-native/lottie-react-native
 - **Copy**: `vendor/lottie-react-native/` (its `VENDOR.md` has the tarball's integrity, what was left out and the patches)
@@ -31,6 +31,7 @@ Its newest release whose peer range includes the library's React Native and that
 ## What to look at in its source
 
 - The event classes the patch changes; a new event class must not coalesce either.
+- 7.5 adds `applyOpacityToLayersAndroid` (view config, `LottieView.svelte` default `false` as in the library's `defaultProps`) and a `source` that may be a number; its peers are `react >=19.2` and `react-native >=0.84`.
 
 ## Native dependencies downloaded at build time
 

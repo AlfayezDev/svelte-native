@@ -1,6 +1,6 @@
 # react-native-view-shot
 
-- **Current**: 5.1.0
+- **Current**: 6.1.1
 - **Linked**: when the app turns it on (`libraries`)
 - **Upstream**: https://github.com/gre/react-native-view-shot
 - **Copy**: `vendor/react-native-view-shot/` (its `VENDOR.md` has the tarball's integrity, what was left out and the patches)
@@ -21,7 +21,7 @@ Its newest release whose peer range includes the library's React Native and that
 
 ## Local changes
 
-None. The copy leaves out the repository's tooling that the tarball carries (`.claude`, `.github`, `CLAUDE.md`, `coverage`, `example-expo`, tests).
+None. The copy leaves out the repository's tooling that the tarball carries (`.github`, `CLAUDE.md`, `example-expo`, `babel.config.cjs`, tests; 5.1.0 also carried `.claude`, `coverage` and `babel.config.js`, which 6 does not).
 
 ## What the library relies on
 
@@ -31,6 +31,7 @@ None. The copy leaves out the repository's tooling that the tarball carries (`.c
 ## What to look at in its source
 
 - New files the tarball carries that an app never needs: add them to the excludes.
+- `validateOptions` of `src/index.tsx`, which `src/fabric/foreign-capture.ts` ports (6: finite numbers, a bad boolean falls back to its default, `webp` and the deprecated `webm`, a bad option is reported in every build); the Android format table of `Capture.kt` and `CaptureRules`; iOS `releaseCapture` (6 deletes only a regular file directly inside `tmp/ReactNative`, `tests/upstream/view-shot-ios.test.ts`). The tarball has a `Package.swift` (SwiftPM autolinking of React Native 0.87 and later) that CocoaPods ignores.
 
 ## Native dependencies downloaded at build time
 

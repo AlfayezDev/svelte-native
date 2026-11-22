@@ -16,8 +16,8 @@ export type ResponderTree<Node> = {
   pressability(node: Node): ResponderHandlers | undefined;
   /**
    * A responder whose `onResponderGrant` answered `true` blocks the native responders: React Native tells its UIManager
-   * (`setJSResponder(tag, true)`), and react-native-gesture-handler, which patches that call, makes its recognisers wait. The host wires it to
-   * the gesture handler's module once the gesture host is loaded; without it a grant is only JavaScript's.
+   * (`setJSResponder(tag, true)`), and react-native-gesture-handler 2, which patched that call, made its recognisers wait. Gesture handler 3
+   * has no call for it (its module lost `handleSetJSResponder`), so the host wires nothing and a grant is only JavaScript's; the hook stays for a tree that has one.
    */
   blockNativeResponder?(node: Node): void;
   /** The responder that blocked them was released or terminated, or the next one does not block (`UIManager.clearJSResponder()`). */

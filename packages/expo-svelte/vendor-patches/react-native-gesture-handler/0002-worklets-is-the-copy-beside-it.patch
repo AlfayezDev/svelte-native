@@ -1,0 +1,15 @@
+diff --git a/scripts/gesture_handler_utils.rb b/scripts/gesture_handler_utils.rb
+index d37ea6acfba533d9df08040a20dad240b098f64a..eda1e45e11d8db03628b82ef09693e03ac6f38c3 100644
+--- a/scripts/gesture_handler_utils.rb
++++ b/scripts/gesture_handler_utils.rb
+@@ -16,6 +16,10 @@ module GestureHandlerUtils
+     end
+ 
+     def react_native_worklets_package_dir()
++        # expo-svelte: Worklets is the copy beside this one in vendor/, which no package resolution from the app's directory would find.
++        copy = File.expand_path('../../react-native-worklets', __dir__)
++        return copy if File.exist?(File.join(copy, 'package.json'))
++
+         return node_package_dir('react-native-worklets')
+     end
+ 

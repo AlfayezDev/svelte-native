@@ -17,7 +17,7 @@ test("SvelteEnsureGestureRoot asks the library's manager instead of walking view
   expect(body).toContain("[managerClass currentManager]");
   expect(body).toContain("registerRootViewGestureRecognizerIfAttachedBelow:view");
   // Nothing of the old version: no walk of the subtree, no recognizer class of the library created here, no delegate of the module's own
-  // (a recognizer outside the manager's set is skipped by `handleSetJSResponder`).
+  // (a recognizer outside the manager's set is not reached by what the manager does for its own).
   for (const gone of ["subviews", "RNRootViewGestureRecognizer", "addGestureRecognizer", "SvelteGestureRootDelegate", "SvelteHoldsGestureHandler"]) {
     expect(section, gone).not.toContain(gone);
   }

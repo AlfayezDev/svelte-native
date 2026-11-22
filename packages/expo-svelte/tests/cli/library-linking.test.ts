@@ -79,11 +79,11 @@ describe("linkVendored: the libraries that are on", () => {
 
   test("an app that lists a library itself is refused, whether the library is on or not, and the message says how to turn it on", () => {
     for (const on of [[], ["react-native-maps"]]) {
-      const root = app({ "react-native-maps": "1.27.2" });
+      const root = app({ "react-native-maps": "1.29.11" });
       let refused: unknown;
       try { linkVendored({ root, dependencies: { "react-native-maps": originalOf("react-native-maps", "android") } }, "android", undefined, on); } catch (error) { refused = error; }
       expect(refused).toBeInstanceOf(VendoredCollision);
-      expect((refused as Error).message).toContain("includes react-native-maps 1.27.2; remove it from the app's dependencies (package.json)");
+      expect((refused as Error).message).toContain("includes react-native-maps 1.29.11; remove it from the app's dependencies (package.json)");
       expect((refused as Error).message).toContain('turn it on with `libraries: { "react-native-maps": true }` in the expo-svelte plugin\'s options');
     }
   });
@@ -124,7 +124,7 @@ describe("the commands settings.gradle and the Podfile run", () => {
         });
 
         test(`${command}: an app that lists a library is refused with the message that says how to turn it on, and prints no config`, () => {
-          const root = app({ "react-native-webview": "13.16.1" });
+          const root = app({ "react-native-webview": "14.0.1" });
           const result = run(script, command, ...printing({ root, dependencies: { "react-native-webview": originalOf("react-native-webview", platform) } }));
           expect(result.exitCode).toBe(1);
           expect(result.stderr.toString()).toContain('turn it on with `libraries: { "react-native-webview": true }`');

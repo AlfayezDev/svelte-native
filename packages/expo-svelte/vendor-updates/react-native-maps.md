@@ -1,6 +1,6 @@
 # react-native-maps
 
-- **Current**: 1.27.2
+- **Current**: 1.29.11
 - **Linked**: when the app turns it on (`libraries`)
 - **Upstream**: https://github.com/react-native-maps/react-native-maps
 - **Copy**: `vendor/react-native-maps/` (its `VENDOR.md` has the tarball's integrity, what was left out and the patches)
@@ -33,6 +33,7 @@ Its newest release whose peer range includes the library's React Native and that
 
 - It references CoreLocation (the user location), which is why it stays optional: App Store Connect asks every app whose binary references CoreLocation for a usage text.
 - The Podfile code its plugin writes (patch 0002) and the event classes (patch 0001).
+- 1.29 adds the iOS-only components `RNMapsGoogleMarker` and `RNMapsPolygon` (the library mounts none of them: `Marker` is `RNMapsMarker` and the map has no polygon child component) and the prop `flat` of `RNMapsMarker` (view config); the Android event classes are unchanged.
 
 ## Native dependencies downloaded at build time
 

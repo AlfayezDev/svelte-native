@@ -1,6 +1,6 @@
 # expo-blur
 
-- **Current**: 57.0.3
+- **Current**: 58.0.6
 - **Linked**: when the app turns it on (`libraries`)
 - **Upstream**: https://github.com/expo/expo
 - **Copy**: `vendor/expo-blur/` (its `VENDOR.md` has the tarball's integrity, what was left out and the patches)
@@ -13,7 +13,7 @@ The optional `ExpoBlurView` (the library's own `BlurView` is native code of `sve
 
 ## Coupled with
 
-The Expo SDK: `expo` and `expo-constants` (the library's peers), `expo-modules-core` (and the library's pnpm patch of it, `patches/expo-modules-core@57.0.23.patch`), and the other Expo modules carried here (expo-blur, expo-image, expo-linear-gradient, expo-video; expo-conic-gradient follows its own releases but must build against the SDK's `expo-modules-core`).
+The Expo SDK: `expo` and `expo-constants` (the library's peers), `expo-modules-core` (and the library's pnpm patch of it, `patches/expo-modules-core@58.1.0.patch`), and the other Expo modules carried here (expo-blur, expo-image, expo-linear-gradient, expo-video; expo-conic-gradient follows its own releases but must build against the SDK's `expo-modules-core`).
 
 ## Version policy
 
@@ -32,6 +32,7 @@ None.
 ## What to look at in its source
 
 - `local-maven-repo/` (Expo's precompiled Android artifacts): their provenance, like any binary.
+- `borderRadii` (Android, new in 58): `BlurView.tsx` clips the native blur to the container's corners (`getNativeBlurViewRadiusStyle`, `getAndroidBlurViewBorderRadii`); `blurRadiusStyle` and `androidBlurBorderRadii` in `src/fabric/foreign-blur.ts` are the same two functions, and `tests/upstream/foreign-view-configs.test.ts` lists the module's props exactly.
 
 ## Native dependencies downloaded at build time
 

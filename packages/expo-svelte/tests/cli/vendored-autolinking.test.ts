@@ -120,10 +120,10 @@ describe("the entries the library adds are the ones Expo's autolinking prints fo
       }
       if (android?.cmakeListsPath !== undefined) expect(existsSync(join(vendoredRoot(vendored.name), android.cmakeListsPath)), `${vendored.name}: ${android.cmakeListsPath}`).toBe(true);
     }
-    // Gesture handler's two components are its codegen's (`RNGestureHandlerButton`, `RNGestureHandlerRootView`).
+    // Gesture handler 3 lists one component in its own config: the detector (`RNGestureHandlerDetector`); its button and root view are the codegen's alone.
     const handler = vendoredPackages.find((vendored) => vendored.name === "react-native-gesture-handler");
     const codegen = JSON.parse(readFileSync(join(vendoredRoot("react-native-gesture-handler"), "package.json"), "utf8")) as { codegenConfig: { name: string } };
-    expect([handler?.android?.componentDescriptors, codegen.codegenConfig.name]).toEqual([["RNGestureHandlerButtonComponentDescriptor", "RNGestureHandlerRootViewComponentDescriptor"], "rngesturehandler_codegen"]);
+    expect([handler?.android?.componentDescriptors, codegen.codegenConfig.name]).toEqual([["RNGestureHandlerDetectorComponentDescriptor"], "rngesturehandler_codegen"]);
   });
 
   test("the list is what vendor/ holds, and what the library no longer asks an app to install", () => {

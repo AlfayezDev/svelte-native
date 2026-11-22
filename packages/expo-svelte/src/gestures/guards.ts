@@ -2,7 +2,7 @@
  * The development checks of the gesture host, run before a gesture's handlers are created or updated. None is on in a release
  * build (`__DEV__` false), where a gesture that passed them in development behaves the same.
  */
-import { CALLBACK_TYPE, type GestureType } from "./rngh.js";
+import { CallbackType, type GestureType } from "./rngh.js";
 
 const dev = () => typeof __DEV__ !== "undefined" && __DEV__;
 
@@ -35,9 +35,9 @@ export function checkGestureCallbacksForWorklets(gesture: GestureType): void {
 }
 
 const CALLBACKS = [
-  ["onBegin", CALLBACK_TYPE.BEGAN], ["onStart", CALLBACK_TYPE.START], ["onUpdate", CALLBACK_TYPE.UPDATE], ["onChange", CALLBACK_TYPE.CHANGE],
-  ["onEnd", CALLBACK_TYPE.END], ["onFinalize", CALLBACK_TYPE.FINALIZE],
-  ["onTouchesDown", CALLBACK_TYPE.TOUCHES_DOWN], ["onTouchesMove", CALLBACK_TYPE.TOUCHES_MOVE], ["onTouchesUp", CALLBACK_TYPE.TOUCHES_UP], ["onTouchesCancelled", CALLBACK_TYPE.TOUCHES_CANCELLED],
+  ["onBegin", CallbackType.BEGAN], ["onStart", CallbackType.START], ["onUpdate", CallbackType.UPDATE], ["onChange", CallbackType.CHANGE],
+  ["onEnd", CallbackType.END], ["onFinalize", CallbackType.FINALIZE],
+  ["onTouchesDown", CallbackType.TOUCHES_DOWN], ["onTouchesMove", CallbackType.TOUCHES_MOVE], ["onTouchesUp", CallbackType.TOUCHES_UP], ["onTouchesCancelled", CallbackType.TOUCHES_CANCEL],
 ] as const;
 
 /** A Svelte signal (`$state`, `$derived`): the compiled closure holds the signal object, whose fields these are. */

@@ -28,7 +28,7 @@ export const I18nManager = { isRTL: false };
 export const NativeModules = {};
 export const TouchableNativeFeedback = function () {};
 export const FlatList = function () {};
-export const TurboModuleRegistry = { getEnforcing: () => ({ createGestureHandler() {}, attachGestureHandler() {}, updateGestureHandler() {}, dropGestureHandler() {}, flushOperations() {}, install: () => true }) };
+export const TurboModuleRegistry = { getEnforcing: () => ({ createGestureHandler() {}, attachGestureHandler() {}, setGestureHandlerConfig() {}, updateGestureHandlerConfig() {}, configureRelations() {}, dropGestureHandler() {}, flushOperations() {}, installUIRuntimeBindings: () => true }) };
 `;
 
 const entry = `
@@ -38,7 +38,7 @@ export { registerHandler, unregisterHandler, findHandler } from ${JSON.stringify
 export { ALLOWED_PROPS, extractGestureRelations } from ${JSON.stringify(`${root}/handlers/gestures/GestureDetector/utils`)};
 export { needsToReattach } from ${JSON.stringify(`${root}/handlers/gestures/GestureDetector/needsToReattach`)};
 export { filterConfig } from ${JSON.stringify(`${root}/handlers/utils`)};
-export { CALLBACK_TYPE } from ${JSON.stringify(`${root}/handlers/gestures/gesture`)};
+export { CallbackType } from ${JSON.stringify(`${root}/CallbackType`)};
 export { State } from ${JSON.stringify(`${root}/State`)};
 export { TouchEventType } from ${JSON.stringify(`${root}/TouchEventType`)};
 `;
@@ -52,7 +52,7 @@ export type Oracle = {
   extractGestureRelations(gesture: unknown): { waitFor: number[]; simultaneousHandlers: number[]; blocksHandlers: number[] };
   needsToReattach(prepared: { attachedGestures: unknown[] }, next: unknown[]): boolean;
   filterConfig(props: Record<string, unknown>, valid: readonly string[], defaults?: Record<string, unknown>): Record<string, unknown>;
-  CALLBACK_TYPE: Record<string, number>;
+  CallbackType: Record<string, number>;
   State: Record<string, number>;
   TouchEventType: Record<string, number>;
 };
@@ -70,10 +70,11 @@ async function bundleOracle(): Promise<string> {
       plugins: [{ name: "stubs", setup(b) {
         b.onResolve({ filter: /^react-native$/ }, () => ({ path: "react-native", namespace: "stub" }));
         b.onResolve({ filter: /^react-native\// }, (a) => ({ path: a.path, namespace: "stub-sub" }));
-        b.onResolve({ filter: /^react-native-reanimated$/ }, () => ({ path: "react-native-reanimated", namespace: "no-reanimated" }));
+        // RNGH 3 requires Worklets as well as Reanimated, each inside a try: a package that throws is one that is not installed.
+        b.onResolve({ filter: /^react-native-(?:reanimated|worklets)$/ }, (a) => ({ path: a.path, namespace: "no-reanimated" }));
         b.onLoad({ filter: /.*/, namespace: "stub" }, () => ({ contents: reactNative, loader: "js" }));
         b.onLoad({ filter: /.*/, namespace: "stub-sub" }, () => ({ contents: "export default function () {}; export const customDirectEventTypes = {};", loader: "js" }));
-        b.onLoad({ filter: /.*/, namespace: "no-reanimated" }, () => ({ contents: "throw new Error('react-native-reanimated is not available in the oracle');", loader: "js" }));
+        b.onLoad({ filter: /.*/, namespace: "no-reanimated" }, (a) => ({ contents: `throw new Error('${a.path} is not available in the oracle');`, loader: "js" }));
       } }],
     });
     return await readFile(join(directory, "out.mjs"), "utf8");

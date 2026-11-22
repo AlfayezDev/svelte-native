@@ -1,5 +1,5 @@
 /**
- * `react-native-view-shot` 5 without React (`index.tsx`). The library has no native view: its TurboModule `RNViewShot` takes a React
+ * `react-native-view-shot` 6 without React (`index.tsx`). The library has no native view: its TurboModule `RNViewShot` takes a React
  * tag and draws the view that tag names. Which view that is depends on the platform.
  *
  * - iOS: React Native's own mounting makes every view (the engine does not replace it there), and the module finds it by tag, so the
@@ -15,7 +15,7 @@
 import { turboModule } from "./foreign.ts";
 import { assertLibrary } from "./foreign-libraries.ts";
 
-export type CaptureFormat = "jpg" | "png" | "webm" | "raw";
+export type CaptureFormat = "jpg" | "png" | "webp" | "webm" | "raw";
 export type CaptureResult = "tmpfile" | "base64" | "data-uri" | "zip-base64";
 export type CaptureOptions = {
   /** Android: the file name of a `tmpfile` result, at least three characters. */
@@ -26,7 +26,7 @@ export type CaptureOptions = {
    */
   width?: number;
   height?: number;
-  /** `png` (default), `jpg`, and on Android `webm` and `raw` (ARGB pixels, preceded by `width:height|`). */
+  /** `png` (default), `jpg`, and on Android `webp` (`webm` is its deprecated name, with a warning) and `raw` (ARGB pixels, preceded by `width:height|`). */
   format?: CaptureFormat;
   /** 0 to 1, for the lossy formats. */
   quality?: number;
@@ -48,23 +48,26 @@ export type CaptureOptions = {
 type Platform = "android" | "ios";
 const defaultOptions = { format: "png", quality: 1, result: "tmpfile", snapshotContentContainer: false, handleGLSurfaceViewOnAndroid: false } as const;
 
-/** `validateOptions`: the library's defaults and checks; a bad option falls back to its default and is reported (the library warns in development). */
+/** `validateOptions`: the library's defaults and checks; a bad option falls back to its default and is reported (the library warns, as it has done in every build since 6). */
 export function validateCaptureOptions(input: CaptureOptions | undefined, platform: Platform): { options: CaptureOptions; errors: string[] } {
   const options: CaptureOptions = { ...defaultOptions, ...input };
   const errors: string[] = [];
-  if ("width" in options && (typeof options.width !== "number" || options.width <= 0)) { errors.push("option width should be a positive number"); delete options.width; }
-  if ("height" in options && (typeof options.height !== "number" || options.height <= 0)) { errors.push("option height should be a positive number"); delete options.height; }
-  if (typeof options.quality !== "number" || options.quality < 0 || options.quality > 1) { errors.push("option quality should be a number between 0.0 and 1.0"); options.quality = defaultOptions.quality; }
-  if (typeof options.snapshotContentContainer !== "boolean") errors.push("option snapshotContentContainer should be a boolean");
-  if (typeof options.handleGLSurfaceViewOnAndroid !== "boolean") errors.push("option handleGLSurfaceViewOnAndroid should be a boolean");
-  const formats = platform === "android" ? ["png", "jpg", "webm", "raw"] : ["png", "jpg"];
+  const positive = (value: unknown): boolean => typeof value === "number" && Number.isFinite(value) && value > 0;
+  if ("width" in options && !positive(options.width)) { errors.push("option width should be a positive number"); delete options.width; }
+  if ("height" in options && !positive(options.height)) { errors.push("option height should be a positive number"); delete options.height; }
+  if (typeof options.quality !== "number" || !Number.isFinite(options.quality) || options.quality < 0 || options.quality > 1) { errors.push("option quality should be a number between 0.0 and 1.0"); options.quality = defaultOptions.quality; }
+  if (typeof options.snapshotContentContainer !== "boolean") { errors.push("option snapshotContentContainer should be a boolean"); options.snapshotContentContainer = defaultOptions.snapshotContentContainer; }
+  if (typeof options.handleGLSurfaceViewOnAndroid !== "boolean") { errors.push("option handleGLSurfaceViewOnAndroid should be a boolean"); options.handleGLSurfaceViewOnAndroid = defaultOptions.handleGLSurfaceViewOnAndroid; }
+  const formats = platform === "android" ? ["png", "jpg", "webp", "webm", "raw"] : ["png", "jpg"];
   if (!formats.includes(options.format ?? "")) {
     errors.push(`option format '${options.format}' is not in valid formats: ${formats.join(" | ")}`);
     options.format = defaultOptions.format;
+  } else if (options.format === "webm") {
+    errors.push("option format 'webm' is deprecated and will be removed in a future version. Use 'webp' instead (the encoded data has always been WEBP, only the extension was misnamed).");
   }
   const results = platform === "android" ? ["tmpfile", "base64", "data-uri", "zip-base64"] : ["tmpfile", "base64", "data-uri"];
   if (!results.includes(options.result ?? "")) {
-    errors.push(`option result '${options.result}' is not in valid formats: ${results.join(" | ")}`);
+    errors.push(`option result '${options.result}' is not a valid result: ${results.join(" | ")}`);
     options.result = defaultOptions.result;
   }
   return { options, errors };
@@ -87,7 +90,7 @@ const platform = (): Platform =>
 export type CaptureTarget = { readonly tag: number } | number | null | undefined;
 
 const report = (errors: string[]) => {
-  if (errors.length > 0 && typeof __DEV__ !== "undefined" && __DEV__) console.warn(`react-native-view-shot: bad options:\n${errors.map((error) => `- ${error}`).join("\n")}`);
+  if (errors.length > 0) console.warn(`react-native-view-shot: bad options:\n${errors.map((error) => `- ${error}`).join("\n")}`);
 };
 
 /**

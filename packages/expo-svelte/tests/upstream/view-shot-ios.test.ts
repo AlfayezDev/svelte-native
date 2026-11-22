@@ -17,15 +17,17 @@ const tempFilePath = (() => {
 })();
 
 describe("what the library's iOS module answers, which the wrapper passes on untouched", () => {
-  test("a tmpfile result is the plain path React Native made, not a URI; releaseCapture deletes only a path inside tmp/ReactNative", () => {
+  test("a tmpfile result is the plain path React Native made, not a URI; releaseCapture deletes only a file directly inside tmp/ReactNative", () => {
     expect(viewShot).toContain("NSString *path = RCTTempFilePath(format, &error);");
     expect(viewShot).toContain("res = path;");
     // No scheme anywhere in the module: a `file://` prefix would be a different string from the one `releaseCapture` compares.
     expect(viewShot).not.toContain("file://");
     const release = viewShot.slice(viewShot.indexOf("RCT_EXPORT_METHOD(releaseCapture"), viewShot.indexOf("RCT_EXPORT_METHOD(captureRef"));
     expect(release).toContain('[NSTemporaryDirectory() stringByAppendingPathComponent:@"ReactNative"]');
-    expect(release).toContain("[uri hasPrefix:directory]");
-    expect(release).toContain("[fileManager removeItemAtPath:uri error:NULL]");
+    // view-shot 6 deletes only a regular file that is a direct child of the directory, through a descriptor of the directory (no symbolic link is followed).
+    expect(release).toContain('NSString *prefix = [directory stringByAppendingString:@"/"];');
+    expect(release).toContain("[uri hasPrefix:prefix]");
+    expect(release).toContain("unlinkat(directoryFD, fileName, 0)");
   });
 
   test("width and height are points drawn at the screen's scale, so the image is that many times larger on a 2x or 3x phone", () => {

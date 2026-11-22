@@ -137,7 +137,7 @@ It holds text: `text/plain` and `text/html`. Writing another type, such as an im
 `navigator.share()` opens the system share sheet with a title, a text and a link:
 
 ```ts
-await navigator.share({ title: 'Expo Svelte', text: 'Have a look', url: 'https://svelte-native.alfayez.dev' });
+await navigator.share({ title: 'Expo Svelte', text: 'Have a look', url: 'https://expo-svelte.alfayez.dev' });
 ```
 
 `navigator.canShare(data)` says whether `share` takes it: a title, a text or an absolute URL. Files can't be shared. When the user dismisses the sheet, the promise rejects with an `AbortError` on iOS. Android doesn't report a dismissal, so there it resolves once the sheet is shown.

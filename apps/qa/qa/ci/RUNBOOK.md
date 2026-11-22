@@ -5,7 +5,7 @@ command below is yours to run, and each step says what it changes. `<TOKEN>` is 
 prompt on the host, so it is never in a shell history, an argument list or a file.
 
 The runner is a dedicated user `svelte-qa` on the OVH host (`ssh ovh-root`), the label is `svelte-qa-emulator`, the repository is
-`https://github.com/AlfayezDev/svelte-native` (private). What the setup script does, in full: `bash apps/qa/qa/ci/setup-runner.sh --help`.
+`https://github.com/AlfayezDev/svelte-native`. What the setup script does, in full: `bash apps/qa/qa/ci/setup-runner.sh --help`.
 
 Only the emulator lane and the crash volume (`.github/workflows/native-qa.yml`) use this runner. The static checks (`ci.yml`), the consumer
 build (`consumer.yml`) and the release (`release.yml`) run on GitHub-hosted runners and need nothing from this file. Until step 8 sets the

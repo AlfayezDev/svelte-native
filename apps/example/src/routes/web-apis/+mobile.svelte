@@ -12,7 +12,7 @@
   let { url }: { url: URL } = $props();
   const row = { flexDirection: "row", justifyContent: "space-between", gap: 12 } as const;
   // `?site=<origin>`: where the two files come from (the docs site, or a copy for a machine that cannot reach it, as when recording the docs video).
-  const site = $derived(url.searchParams.get("site") ?? "https://svelte-native.alfayez.dev/videos");
+  const site = $derived(url.searchParams.get("site") ?? "https://expo-svelte.alfayez.dev/videos");
   const hex = (buffer: ArrayBuffer) => Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, "0")).join("");
 
   // Download: the response body as a stream, chunk by chunk, for the progress bar; then its SHA-256 with crypto.subtle. The picture is
@@ -67,7 +67,7 @@
   }
   async function shareDocs() {
     try {
-      await navigator.share({ title: "Expo Svelte", text: "Web APIs on the device", url: "https://svelte-native.alfayez.dev/docs/web-apis" });
+      await navigator.share({ title: "Expo Svelte", text: "Web APIs on the device", url: "https://expo-svelte.alfayez.dev/docs/web-apis" });
     } catch (error) {
       if (!(error instanceof Error && error.name === "AbortError")) report(error);
     }

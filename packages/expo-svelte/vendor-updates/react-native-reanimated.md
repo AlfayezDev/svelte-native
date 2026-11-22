@@ -1,6 +1,6 @@
 # react-native-reanimated
 
-- **Current**: 4.5.1
+- **Current**: 4.7.1
 - **Linked**: every app
 - **Upstream**: https://github.com/software-mansion/react-native-reanimated
 - **Copy**: `vendor/react-native-reanimated/` (its `VENDOR.md` has the tarball's integrity, what was left out and the patches)
@@ -13,7 +13,7 @@ The animation host: animated styles and props, CSS animations and transitions, l
 
 ## Coupled with
 
-react-native-worklets (Reanimated's `compatibility.json` names the Worklets versions each release supports; its peer is `0.10.x` today) and React Native (`0.83 - 0.86` today).
+react-native-worklets (Reanimated's `compatibility.json` names the Worklets versions each release supports; its peer is `0.13.x` today) and React Native (`0.86 - 0.88` today).
 
 ## Version policy
 

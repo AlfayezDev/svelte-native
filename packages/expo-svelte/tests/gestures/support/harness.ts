@@ -39,7 +39,7 @@ const record = (name) => (...args) => { W().calls.push(JSON.parse(JSON.stringify
 export const get = () => null;
 export const getEnforcing = (name) => {
   if (name !== 'RNGestureHandlerModule') throw new Error('unexpected native module ' + name);
-  // RNGH 3's module: no `updateGestureHandler` and no JS-responder calls. `installUIRuntimeBindings` is not a call of the detector (RNGH makes it when Reanimated loads), so it is kept apart from `calls` and `log`.
+  // RNGH 3's module: no updateGestureHandler and no JS-responder calls. installUIRuntimeBindings is not a call of the detector (RNGH makes it when Reanimated loads), so it is kept apart from calls and log.
   return { createGestureHandler: record('createGestureHandler'), attachGestureHandler: record('attachGestureHandler'), setGestureHandlerConfig: record('setGestureHandlerConfig'), configureRelations: record('configureRelations'), dropGestureHandler: record('dropGestureHandler'), flushOperations: record('flushOperations'), installUIRuntimeBindings: () => { (W().uiBindings ??= []).push(JSON.parse(JSON.stringify(globalThis.__RNGH_UI_WORKLET_RUNTIME_HOLDER ?? null))); return true; } };
 };`;
 const emitterSource = `

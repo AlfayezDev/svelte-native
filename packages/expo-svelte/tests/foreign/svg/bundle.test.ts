@@ -132,6 +132,7 @@ test("React Native is reached by deep paths only: the lite shim's modules and th
     "react-native/Libraries/StyleSheet/processBoxShadow",
     "react-native/Libraries/StyleSheet/processFilter",
     "react-native/Libraries/StyleSheet/processFontVariant",
+    "react-native/Libraries/StyleSheet/processFontVariationSettings",
     "react-native/Libraries/StyleSheet/processTransform",
     "react-native/Libraries/StyleSheet/processTransformOrigin",
   ].sort());

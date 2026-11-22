@@ -12,6 +12,9 @@
 	"devDependencies": {
 		"@biomejs/biome": "2.5.3",
 		"esbuild": "catalog:",
+		"react-native-gesture-handler": "3.3.0",
+		"react-native-reanimated": "4.7.1",
+		"react-native-worklets": "0.13.0",
 		"typescript": "^6.0.3"
 	},
 	"devEngines": {

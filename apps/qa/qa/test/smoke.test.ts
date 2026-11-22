@@ -130,7 +130,7 @@ describe("the byte helpers", () => {
 			expect(encodeBase64(bytes)).toBe(expected);
 			expect(Array.from(decodeBase64(expected))).toEqual(Array.from(bytes));
 		}
-		expect(encodeBase64(ascii("Expo Svelte"))).toBe("U3ZlbHRlIE5hdGl2ZQ==");
+		expect(encodeBase64(ascii("Expo Svelte"))).toBe("RXhwbyBTdmVsdGU=");
 		expect(() => decodeBase64("ab$d")).toThrow(/not base64/);
 	});
 	test("hex and the randomness check", () => {

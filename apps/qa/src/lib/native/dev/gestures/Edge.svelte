@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Text, View } from "@alfayez/svelte-native";
+  import { Text, View } from "expo-svelte";
   import { theme } from "../../state.svelte.ts";
   import PanBox from "./PanBox.svelte";
   import type { Probe, Session } from "../gestures-lab.ts";

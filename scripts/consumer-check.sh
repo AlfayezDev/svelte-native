@@ -8,14 +8,14 @@
 #
 #   tarball   the library is `pnpm pack`ed and installed as a tarball (`pnpm add <tgz>`): exactly what `files` in package.json ships
 #   git       the library is installed as a pnpm git dependency of this repository's own commit:
-#               pnpm add "git+file://<repo>#<commit>&path:packages/svelte-native"
+#               pnpm add "git+file://<repo>#<commit>&path:packages/expo-svelte"
 #             apps install it from the private repository the same way:
-#               pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native"
+#               pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/expo-svelte"
 #
 #   starter   the path the guide (docs/10-getting-started/20-creating-a-project.md) gives a person, from a SvelteKit project and not from the template:
 #               pnpm dlx sv create <app> --template minimal --types ts --no-add-ons --install pnpm
-#               pnpm add "git+file://<repo>#<commit>&path:packages/svelte-native"      (the first install: Svelte is still the registry's)
-#               pnpm exec svelte-native init                                              (the install and the doctor are part of it)
+#               pnpm add "git+file://<repo>#<commit>&path:packages/expo-svelte"      (the first install: Svelte is still the registry's)
+#               pnpm exec expo-svelte init                                              (the install and the doctor are part of it)
 #             and then what the guide promises: init again changes nothing, `pnpm check` has no error, `pnpm build` builds the web app, and the
 #             native stages below. Svelte comes from pkg.pr.new, as it does for a person (SV_VERSION is the sv release asked for, 1.3.0).
 #
@@ -28,14 +28,14 @@
 #   template  examples/minimal copied, without its patchedDependencies block (the app before "Apply the patches")
 #   install   pnpm add <library> <svelte>
 #   patches   the patch files copied as the README says, the block declared, pnpm install; every patch is in the lockfile
-#   doctor    pnpm exec svelte-native doctor: no failed check
+#   doctor    pnpm exec expo-svelte doctor: no failed check
 #   sv        (starter) sv create, every question answered by a flag
 #   add       (starter) pnpm add of the library: what the first install of an sv project does
-#   init      (starter) pnpm exec svelte-native init: the files, pnpm install and the doctor, which must pass
+#   init      (starter) pnpm exec expo-svelte init: the files, pnpm install and the doctor, which must pass
 #   again     (starter) init a second time: no file changes
 #   check     (starter) pnpm check: svelte-check finds no error
 #   web       (starter) pnpm build: the web app still builds, and its build holds no native route
-#   sync      pnpm exec svelte-native sync: .svelte-native/entry.ts and the route table
+#   sync      pnpm exec expo-svelte sync: .expo-svelte/entry.ts and the route table
 #   bundle    expo export:embed for Android, the way React Native's Gradle plugin bundles; nothing in the source map is from this repository
 #   prebuild  expo prebuild --platform android --no-install: the config plugin ran; nothing generated points into this repository
 #   gradle    ./gradlew :app:assembleRelease for one ABI
@@ -46,7 +46,7 @@
 # removed unless KEEP=1; on failure it stays.
 #
 # Environment:
-#   WORK=<dir>        where the scratch directories go (default ${TMPDIR:-/tmp}/svelte-native-consumer-check); must be outside any pnpm workspace
+#   WORK=<dir>        where the scratch directories go (default ${TMPDIR:-/tmp}/expo-svelte-consumer-check); must be outside any pnpm workspace
 #   KEEP=1            keep the scratch directories after a successful run
 #   KEEP_GOING=1      carry on past a failed stage
 #   ABI=x86_64        the ABI Gradle builds (x86_64, arm64-v8a)
@@ -66,9 +66,9 @@
 set -uo pipefail
 
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
-package=$repo/packages/svelte-native
+package=$repo/packages/expo-svelte
 template=$repo/examples/minimal
-work=${WORK:-${TMPDIR:-/tmp}/svelte-native-consumer-check}
+work=${WORK:-${TMPDIR:-/tmp}/expo-svelte-consumer-check}
 abi=${ABI:-x86_64}
 modes=()
 case "${1:-all}" in
@@ -175,7 +175,7 @@ st_source_tarball() {
   cd "$package"
   cap pnpm pack --pack-destination "$tarballs"
   local tgz
-  tgz=$(ls "$tarballs"/alfayez-svelte-native-*.tgz)
+  tgz=$(ls "$tarballs"/expo-svelte-*.tgz)
   echo "packed: $tgz ($(stat -c %s "$tgz") bytes, $(tar tzf "$tgz" | wc -l) files)"
   local listing
   listing=$(tar tzf "$tgz")
@@ -188,9 +188,9 @@ st_source_tarball() {
 
 st_source_git() {
   git -C "$repo" cat-file -e "$git_ref^{commit}" 2>/dev/null || [ "${GIT_URL:-}" != "" ] || die "$git_ref is not a commit of $repo"
-  echo "installing: $git_url#$git_ref&path:packages/svelte-native"
+  echo "installing: $git_url#$git_ref&path:packages/expo-svelte"
   local dirty
-  dirty=$(git -C "$repo" status --porcelain -- packages/svelte-native vendor)
+  dirty=$(git -C "$repo" status --porcelain -- packages/expo-svelte vendor)
   [ -z "$dirty" ] || { echo "warning: uncommitted changes in the library; the git dependency installs the commit, not the working tree:"; echo "$dirty"; }
 }
 
@@ -207,14 +207,14 @@ st_svelte() {
 
 st_template() {
   mkdir -p "$app"
-  tar -C "$template" -cf - --exclude=node_modules --exclude=.svelte-native --exclude=android --exclude=ios --exclude=.expo . | tar -C "$app" -xf -
+  tar -C "$template" -cf - --exclude=node_modules --exclude=.expo-svelte --exclude=android --exclude=ios --exclude=.expo . | tar -C "$app" -xf -
   # The app before "Apply the patches": the block is the last of the file, set aside and declared by the "patches" stage.
   awk '/^patchedDependencies:/ { exit } { print }' "$template/pnpm-workspace.yaml" >"$app/pnpm-workspace.yaml"
   awk '/^patchedDependencies:/ { found = 1 } found { print }' "$template/pnpm-workspace.yaml" >"$mode_dir/patched-dependencies.yaml"
   [ -s "$mode_dir/patched-dependencies.yaml" ] || die "examples/minimal/pnpm-workspace.yaml has no patchedDependencies block"
   awk 'NR > 1 && NF && !/^ / { exit 1 }' "$mode_dir/patched-dependencies.yaml" || die "patchedDependencies must be the last block of examples/minimal/pnpm-workspace.yaml"
   # Nothing the app is made of reaches into this repository: no relative path out of it, no workspace/link/file specifier, no import of the library by path.
-  if grep -rnE '\.\./|packages/svelte-native|apps/(example|qa)' "$app/src" "$app/metro.config.cjs" "$app/app.json"; then die "the template points into the repository"; fi
+  if grep -rnE '\.\./|packages/expo-svelte|apps/(example|qa)' "$app/src" "$app/metro.config.cjs" "$app/app.json"; then die "the template points into the repository"; fi
   if grep -nE '"(workspace|link|file):' "$app/package.json"; then die "the template's package.json has a workspace:, link: or file: specifier"; fi
   echo "template: $(find "$app" -type f | wc -l) files, $(($(wc -l <"$mode_dir/patched-dependencies.yaml") - 1)) patches to declare"
 }
@@ -222,22 +222,22 @@ st_template() {
 st_install() {
   cd "$app"
   local library
-  if [ "$mode" = tarball ]; then library=$(ls "$tarballs"/alfayez-svelte-native-*.tgz); else library="$git_url#$git_ref&path:packages/svelte-native"; fi
+  if [ "$mode" = tarball ]; then library=$(ls "$tarballs"/expo-svelte-*.tgz); else library="$git_url#$git_ref&path:packages/expo-svelte"; fi
   echo "+ pnpm add $library $(ls "$tarballs"/svelte-*.tgz)"
   cap pnpm add "${pnpm_flags[@]}" "$library" "$(ls "$tarballs"/svelte-*.tgz)"
-  echo "package.json: \"@alfayez/svelte-native\": \"$(spec_of @alfayez/svelte-native)\""
+  echo "package.json: \"expo-svelte\": \"$(spec_of expo-svelte)\""
   echo "package.json: \"svelte\": \"$(spec_of svelte)\""
-  [ -f node_modules/@alfayez/svelte-native/package.json ] || die "node_modules/@alfayez/svelte-native is missing"
-  [ -f node_modules/@alfayez/svelte-native/expo-module.config.json ] || die "the installed library has no expo-module.config.json"
+  [ -f node_modules/expo-svelte/package.json ] || die "node_modules/expo-svelte is missing"
+  [ -f node_modules/expo-svelte/expo-module.config.json ] || die "the installed library has no expo-module.config.json"
   if [ "$mode" = git ]; then grep -m1 "resolution: {commit" pnpm-lock.yaml | sed 's/^ */lockfile: /'; fi
 }
 
 st_patches() {
   cd "$app"
   # README, "Apply the patches": copy the files, declare them, install again.
-  mkdir -p patches/svelte-native
-  cp node_modules/@alfayez/svelte-native/patches/*.patch patches/svelte-native/
-  echo "copied $(ls patches/svelte-native | wc -l) patch files"
+  mkdir -p patches/expo-svelte
+  cp node_modules/expo-svelte/patches/*.patch patches/expo-svelte/
+  echo "copied $(ls patches/expo-svelte | wc -l) patch files"
   cat "$mode_dir/patched-dependencies.yaml" >>pnpm-workspace.yaml
   # Declaring the patches changes the lockfile; with CI=1 pnpm would refuse ("frozen installation"), so the first install after the declaration is not frozen.
   cap pnpm install --no-frozen-lockfile "${pnpm_flags[@]}"
@@ -258,7 +258,7 @@ st_hook() {
 
 st_doctor() {
   cd "$app"
-  cap pnpm exec svelte-native doctor
+  cap pnpm exec expo-svelte doctor
 }
 
 # What a person types: every question of `sv create` answered by a flag, so that nothing is asked.
@@ -273,24 +273,24 @@ st_sv() {
 # The first install: Svelte is the registry's, the peers are missing and nothing is declared. It must succeed and leave a CLI that runs.
 st_add() {
   cd "$app"
-  local library="$git_url#$git_ref&path:packages/svelte-native"
+  local library="$git_url#$git_ref&path:packages/expo-svelte"
   echo "+ pnpm add $library"
   cap pnpm add "${pnpm_flags[@]}" "$library"
-  [ -f node_modules/@alfayez/svelte-native/package.json ] || die "node_modules/@alfayez/svelte-native is missing"
+  [ -f node_modules/expo-svelte/package.json ] || die "node_modules/expo-svelte is missing"
   # init has to run in a project that is not set up yet: no Svelte renderer, no Metro, no patches.
-  cap pnpm exec svelte-native init --dry-run | sed -n '1,6p'
+  cap pnpm exec expo-svelte init --dry-run | sed -n '1,6p'
   [ -z "$(cd "$app" && ls patches 2>/dev/null)" ] || die "init --dry-run wrote patches"
 }
 
 # The command of the guide. It installs and runs the doctor itself.
 st_init() {
   cd "$app"
-  cap pnpm exec svelte-native init
-  [ -f .svelte-native/entry.ts ] || echo "(the entry is written by sync, below)"
-  for file in metro.config.cjs app.json src/routes/+layout.mobile.svelte src/routes/+mobile.svelte src/routes/details/+mobile.svelte patches/svelte-native; do
+  cap pnpm exec expo-svelte init
+  [ -f .expo-svelte/entry.ts ] || echo "(the entry is written by sync, below)"
+  for file in metro.config.cjs app.json src/routes/+layout.mobile.svelte src/routes/+mobile.svelte src/routes/details/+mobile.svelte patches/expo-svelte; do
     [ -e "$file" ] || die "init did not write $file"
   done
-  grep -q "svelteNative" vite.config.ts || die "init did not change vite.config.ts"
+  grep -q "expoSvelte" vite.config.ts || die "init did not change vite.config.ts"
   echo "package.json: svelte $(dev_spec svelte), @sveltejs/kit $(dev_spec @sveltejs/kit)"
   grep -m1 "resolution: {commit" pnpm-lock.yaml | sed 's/^ */lockfile: /'
 }
@@ -299,10 +299,10 @@ st_init() {
 st_again() {
   cd "$app"
   local before after
-  before=$(find . \( -path ./node_modules -o -path ./.svelte-kit -o -path ./.svelte-native -o -path ./out \) -prune -o -type f -print0 | sort -z | xargs -0 sha256sum)
-  cap pnpm exec svelte-native init --no-install | tee "$mode_dir/again.out"
+  before=$(find . \( -path ./node_modules -o -path ./.svelte-kit -o -path ./.expo-svelte -o -path ./out \) -prune -o -type f -print0 | sort -z | xargs -0 sha256sum)
+  cap pnpm exec expo-svelte init --no-install | tee "$mode_dir/again.out"
   grep -q "Nothing to change" "$mode_dir/again.out" || die "the second init did not say that nothing changed"
-  after=$(find . \( -path ./node_modules -o -path ./.svelte-kit -o -path ./.svelte-native -o -path ./out \) -prune -o -type f -print0 | sort -z | xargs -0 sha256sum)
+  after=$(find . \( -path ./node_modules -o -path ./.svelte-kit -o -path ./.expo-svelte -o -path ./out \) -prune -o -type f -print0 | sort -z | xargs -0 sha256sum)
   [ "$before" = "$after" ] || { diff <(echo "$before") <(echo "$after") || true; die "the second init changed a file"; }
   echo "unchanged: $(echo "$after" | wc -l) files"
 }
@@ -323,9 +323,9 @@ st_web() {
 
 st_sync() {
   cd "$app"
-  cap pnpm exec svelte-native sync
-  [ -f .svelte-native/entry.ts ] || die ".svelte-native/entry.ts was not written"
-  ls .svelte-native
+  cap pnpm exec expo-svelte sync
+  [ -f .expo-svelte/entry.ts ] || die ".expo-svelte/entry.ts was not written"
+  ls .expo-svelte
 }
 
 st_bundle() {
@@ -333,7 +333,7 @@ st_bundle() {
   mkdir -p out "$mode_dir/metro-tmp"
   # NODE_ENV=production and a Metro cache of its own, as qa/test/bundle.test.ts bundles.
   NODE_ENV=production TMPDIR="$mode_dir/metro-tmp" cap pnpm exec expo export:embed --platform android --dev false --minify false --reset-cache \
-    --entry-file .svelte-native/entry.ts --bundle-output out/index.android.bundle --sourcemap-output out/index.android.bundle.map --assets-dest out/assets
+    --entry-file .expo-svelte/entry.ts --bundle-output out/index.android.bundle --sourcemap-output out/index.android.bundle.map --assets-dest out/assets
   node - "$app/out/index.android.bundle.map" "$app/out/index.android.bundle" "$repo" <<'JS'
 const fs = require("node:fs");
 const [map, bundle, repo] = process.argv.slice(2);
@@ -341,7 +341,7 @@ const sources = JSON.parse(fs.readFileSync(map, "utf8")).sources;
 const text = fs.readFileSync(map, "utf8");
 const inRepo = sources.filter((source) => source.includes(`${repo}/`));
 if (text.includes(`${repo}/`)) { console.error(`the source map mentions ${repo}`); process.exit(1); }
-const need = ["src/routes/+mobile.svelte", "src/routes/+layout.mobile.svelte", "src/routes/details/+mobile.svelte", "@alfayez/svelte-native/src/router.svelte.ts", "@alfayez/svelte-native/src/fabric/index.ts"];
+const need = ["src/routes/+mobile.svelte", "src/routes/+layout.mobile.svelte", "src/routes/details/+mobile.svelte", "expo-svelte/src/router.svelte.ts", "expo-svelte/src/fabric/index.ts"];
 const missing = need.filter((suffix) => !sources.some((source) => source.endsWith(suffix)));
 if (missing.length) { console.error(`not in the bundle: ${missing.join(", ")}`); process.exit(1); }
 console.log(`bundle: ${fs.statSync(bundle).size} bytes, ${sources.length} modules, none from ${repo} (${inRepo.length})`);
@@ -352,7 +352,7 @@ st_prebuild() {
   cd "$app"
   cap pnpm exec expo prebuild --platform android --no-install
   grep -q "Svelte native: headless autolinking excludes" android/settings.gradle || die "the config plugin did not write android/settings.gradle"
-  grep -rqs "SvelteNativeHeadlessMainPackage" android/app/src/main/java || die "the config plugin did not write MainApplication.kt"
+  grep -rqs "ExpoSvelteHeadlessMainPackage" android/app/src/main/java || die "the config plugin did not write MainApplication.kt"
   if grep -rIl --exclude-dir=build --exclude-dir=.gradle --exclude-dir=.cxx "$repo" android; then die "files under android/ point into $repo"; fi
   echo "android/ generated by the plugin, nothing in it points into the repository"
 }

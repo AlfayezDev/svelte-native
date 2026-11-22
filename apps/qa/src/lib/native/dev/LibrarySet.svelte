@@ -1,6 +1,6 @@
 <script lang="ts" module>
-  import type { SharedValue, SvgHandle, SvgRootHandle } from "@alfayez/svelte-native";
-  import type { LottieHandle, PdfHandle, RiveHandle, VideoHandle } from "@alfayez/svelte-native/foreign";
+  import type { SharedValue, SvgHandle, SvgRootHandle } from "expo-svelte";
+  import type { LottieHandle, PdfHandle, RiveHandle, VideoHandle } from "expo-svelte/foreign";
   /** A host handle (`ref` of a view): its tag names the native view, `measureInWindow` gives the layout the engine measured. */
   export type Host = { readonly tag: number; measureInWindow(callback: (x: number, y: number, width: number, height: number) => void): void };
   export type LibraryKind = "image" | "blur" | "svelteblur" | "gradient" | "video" | "datetime" | "lottie" | "pdf" | "capture" | "rive" | "conic" | "shadow" | "text" | "svg";
@@ -42,11 +42,11 @@
   import {
     Circle, Defs, Image, Path, Pressable, ReduceMotion, Rect, Stop, Svg, SvgLinearGradient, SvgText, SvgXml, Text, View,
     createSharedValue, withRepeat, withTiming,
-  } from "@alfayez/svelte-native";
+  } from "expo-svelte";
   import {
     AnimateableText, BlurTargetView, BlurView, ConicGradient, DateTimePicker, ExpoBlurView, ExpoImage, LinearGradient, LottieView, Pdf, Rive, ShadowedView, Video, ViewShot,
     captureRef, openDatePicker, shadowStyle,
-  } from "@alfayez/svelte-native/foreign";
+  } from "expo-svelte/foreign";
   import Platform from "react-native/Libraries/Utilities/Platform";
   import labImage from "../../../../assets/native/lab/lab-image.png";
   import { theme } from "../state.svelte.ts";

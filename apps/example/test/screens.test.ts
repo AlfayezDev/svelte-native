@@ -10,7 +10,7 @@ import { coreFeatures } from "../src/lib/features/core.ts";
 import { demos } from "../src/lib/features/demos.ts";
 
 /**
- * Every screen of the core tour mounted on the library's fake Fabric binding (the one its own tests use, `packages/svelte-native/tests`): the
+ * Every screen of the core tour mounted on the library's fake Fabric binding (the one its own tests use, `packages/expo-svelte/tests`): the
  * app's real root layout, the generated route table and the real pages, compiled by the Svelte compiler with the custom renderer, with React
  * Native's modules stubbed. It cannot say how a screen looks, but it does catch a screen that throws when it mounts, a log of an error, and a
  * list that mounts every row. A device is still where the look and the touch are checked.
@@ -20,11 +20,11 @@ import { demos } from "../src/lib/features/demos.ts";
  * native library are the ones it cannot mount (`needsNativeLibrary`).
  */
 const app = join(import.meta.dirname, "..");
-const library = dirname(createRequire(import.meta.url).resolve("@alfayez/svelte-native/package.json"));
+const library = dirname(createRequire(import.meta.url).resolve("expo-svelte/package.json"));
 const libraryTests = join(library, "tests");
 
 /**
- * The routes of the demo manifest this harness does not mount, and the native library each one needs. A foreign view (`@alfayez/svelte-native/foreign`
+ * The routes of the demo manifest this harness does not mount, and the native library each one needs. A foreign view (`expo-svelte/foreign`
  * and `/svg`) is drawn from the library's own view configs and native module, and the gestures screen attaches handlers to react-native-gesture-handler's
  * turbo module; the fake binding has none of them. Their scripts are checked on a device (the videos are recorded there); the bundle test compiles
  * the screens, and `demo.test.ts` runs the helper they all use.
@@ -120,7 +120,7 @@ const stubs: Record<string, string> = {
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };
 
-// What Metro resolves SvelteKit's `$app/*` modules to (`withSvelteNative`): the same function, so the bundle below imports the library's files for them.
+// What Metro resolves SvelteKit's `$app/*` modules to (`withExpoSvelte`): the same function, so the bundle below imports the library's files for them.
 const { kitResolution } = (await import(join(library, "src/kit/modules.ts"))) as { kitResolution(moduleName: string): string | undefined };
 
 // The options the library's transformer compiles a component with (runes mode for the app's own components), as the library's tests use them.
@@ -145,7 +145,7 @@ const svelteCompiler: Plugin = {
 type Mounted = { startSurface(surface: number, component: unknown, props: Record<string, unknown>): unknown; tick(): Promise<void>; Fixture: unknown };
 let mounted: Mounted;
 let directory: string;
-/** The files the screens' bundle holds (esbuild's metafile: paths from the working directory, so `../../packages/svelte-native/src/...`). */
+/** The files the screens' bundle holds (esbuild's metafile: paths from the working directory, so `../../packages/expo-svelte/src/...`). */
 let inputs: string[] = [];
 
 let vendoredAliases: Record<string, string>;
@@ -162,7 +162,7 @@ beforeAll(async () => {
   stubs["react-native-reanimated"] += "\nexport const withSpring = (to, config, callback) => withTiming(to, config, callback); export const withRepeat = (animation) => animation;";
   directory = await mkdtemp(join(process.env.TMPDIR ?? tmpdir(), "example-screens-"));
   // A project whose `src` holds the app's real layout, home and lib, and the route folders of the core tour and of the demo screens that
-  // can run here: the route table `svelte-native sync` writes then requires exactly the pages this test mounts. The native-view and remote
+  // can run here: the route table `expo-svelte sync` writes then requires exactly the pages this test mounts. The native-view and remote
   // screens need their libraries' native views, which the fake binding does not have; the bundle test (`bundle.test.ts`) compiles them.
   await mkdir(join(directory, "src/routes"), { recursive: true });
   // The app's `imports` (`#lib/*`), so the copied pages resolve what they import as they do in the app.
@@ -180,7 +180,7 @@ beforeAll(async () => {
   await writeFile(join(directory, "fixture/Fixture.svelte"), `<script>
     import Root from ${JSON.stringify(join(library, "src/Root.svelte"))};
     import Shell from ${JSON.stringify(join(app, "src/routes/+layout.mobile.svelte"))};
-    import { tree } from "@alfayez/svelte-native/routes";
+    import { tree } from "expo-svelte/routes";
     let { initial } = $props();
   </script>
   <Root shell={Shell} {tree} {initial} />`);
@@ -200,8 +200,8 @@ beforeAll(async () => {
         builder.onResolve({ filter: /^(react-native|expo-modules-core|expo-constants|#vendor\/)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? stubs[args.path.replace(/^#vendor\//, "")] ?? "export {};", loader: "js" }));
         builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: join(libraryTests, "support/view-configs-stub.ts") }));
-        builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));
-        builder.onResolve({ filter: /^@alfayez\/svelte-native\/routes$/ }, () => ({ path: join(directory, ".svelte-native/routes.test.ts") }));
+        builder.onResolve({ filter: /^expo-svelte\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));
+        builder.onResolve({ filter: /^expo-svelte\/routes$/ }, () => ({ path: join(directory, ".expo-svelte/routes.test.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: join(library, "src/environment.ts") }));
         // The polyfills' Expo runtime, Hermes' Intl and the libraries behind `crypto` and `localStorage` are not what a screen test is about.
         builder.onResolve({ filter: /^(?:expo\/src\/winter|hermes-intl|react-native-quick-crypto|#vendor\/(?:react-native-mmkv|react-native-quick-crypto|hermes-intl))$/ }, (args) => ({ path: args.path, namespace: "stub" }));
@@ -271,7 +271,7 @@ async function play(route: string, from?: string) {
     await turns();
     if (from) {
       const links = (globalThis as { __linkHandlers?: ((event: { url: string }) => void)[] }).__linkHandlers ?? [];
-      links[links.length - 1]?.({ url: `svelte-native://${route}?demo` });
+      links[links.length - 1]?.({ url: `expo-svelte://${route}?demo` });
       await turns();
     }
     for (let fired = 0; !ended() && problems.length === 0 && jest.getTimerCount() > 0 && fired < 20_000; fired++) {
@@ -303,7 +303,7 @@ describe("every screen of the core tour mounts", () => {
   test("the home screen lists every feature of the registries under its group", async () => {
     const { surface, problems } = await mount("/");
     expect(problems).toEqual([]);
-    expect(titles(surface)).toContain("Svelte Native");
+    expect(titles(surface)).toContain("Expo Svelte");
     for (const feature of coreFeatures) expect([feature.title, texts(surface).includes(feature.title)]).toEqual([feature.title, true]);
     expect(texts(surface)).toContain("BASICS");
   });
@@ -337,8 +337,8 @@ describe("every screen of the core tour mounts", () => {
   });
 
   test("the SvelteKit modules screen: imports resolve to the library's files, and the page, env and url prop answer from the device", async () => {
-    // Metro's answer for each import (`kitResolution`, the function of `withSvelteNative`) is the library's file for it, and SvelteKit's own implementation of them is not bundled.
-    for (const file of ["navigation", "state", "env", "paths"]) expect([file, inputs.some((input) => input.endsWith(`packages/svelte-native/src/kit/${file}.ts`))]).toEqual([file, true]);
+    // Metro's answer for each import (`kitResolution`, the function of `withExpoSvelte`) is the library's file for it, and SvelteKit's own implementation of them is not bundled.
+    for (const file of ["navigation", "state", "env", "paths"]) expect([file, inputs.some((input) => input.endsWith(`packages/expo-svelte/src/kit/${file}.ts`))]).toEqual([file, true]);
     expect(inputs.filter((input) => /node_modules\/@sveltejs\/kit\/src\/runtime\/app\//.test(input))).toEqual([]);
     const { surface, problems } = await mount("/sveltekit?filter=open");
     expect(problems).toEqual([]);
@@ -354,7 +354,7 @@ describe("every screen of the core tour mounts", () => {
   test("a link with another search to the visible /sveltekit screen changes its url prop and `page` in place", async () => {
     const { surface } = await mount("/sveltekit");
     expect(texts(surface)).toContain("(empty)");
-    (globalThis as { __linkHandlers?: ((event: { url: string }) => void)[] }).__linkHandlers?.at(-1)?.({ url: "svelte-native:///sveltekit?filter=done" });
+    (globalThis as { __linkHandlers?: ((event: { url: string }) => void)[] }).__linkHandlers?.at(-1)?.({ url: "expo-svelte:///sveltekit?filter=done" });
     await turns();
     expect(texts(surface)).toContain("?filter=done");
     expect(texts(surface)).toContain("url.searchParams.get(\"filter\") is done");

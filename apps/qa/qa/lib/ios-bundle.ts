@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { exec } from "./exec.ts";
-import { outDir, platformDir, svelteNativeCli } from "./paths.ts";
+import { outDir, platformDir, expoSvelteCli } from "./paths.ts";
 import { appVariantOf, type Variant } from "./variant.ts";
 
 /**
@@ -25,13 +25,13 @@ export async function makeIosBundleMap(variant: Variant): Promise<IosBundleMap> 
 	try {
 		const env = { APP_VARIANT: appVariantOf[variant], CI: "1", EXPO_NO_TELEMETRY: "1", NODE_ENV: "production", TMPDIR: join(scratch, "metro") };
 		await mkdir(env.TMPDIR, { recursive: true });
-		const synced = await exec("node", [svelteNativeCli, "sync"], { cwd: platformDir, env, timeoutMs: 300_000 });
-		if (synced.code !== 0) throw new Error(`svelte-native sync failed (${synced.code}): ${synced.stderr.trim().slice(-400)}`);
+		const synced = await exec("node", [expoSvelteCli, "sync"], { cwd: platformDir, env, timeoutMs: 300_000 });
+		if (synced.code !== 0) throw new Error(`expo-svelte sync failed (${synced.code}): ${synced.stderr.trim().slice(-400)}`);
 		const bundle = join(scratch, "main.jsbundle");
 		const map = join(scratch, "main.jsbundle.map");
 		const made = await exec(
 			"pnpm",
-			["exec", "expo", "export:embed", "--platform", "ios", "--dev", "false", "--minify", "false", "--reset-cache", "--entry-file", ".svelte-native/entry.ts", "--bundle-output", bundle, "--sourcemap-output", map, "--assets-dest", join(scratch, "assets")],
+			["exec", "expo", "export:embed", "--platform", "ios", "--dev", "false", "--minify", "false", "--reset-cache", "--entry-file", ".expo-svelte/entry.ts", "--bundle-output", bundle, "--sourcemap-output", map, "--assets-dest", join(scratch, "assets")],
 			{ cwd: platformDir, env, timeoutMs: 1_200_000 },
 		);
 		if (made.code !== 0) throw new Error(`expo export:embed (ios, ${variant}) failed (${made.code}): ${(made.stderr || made.stdout).trim().slice(-600)}`);

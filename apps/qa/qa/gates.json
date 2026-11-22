@@ -216,7 +216,7 @@
       ],
       "decision": "D1",
       "reason": "UIKit's UINavigationBar re-lays out its items for every push and pop (about 30 ms a run, 20 to 23 ms of it layoutSubviews), which is the platform's floor, not the engine's",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
     },
     {
       "gate": "frames.maxPeriodRatio",
@@ -226,7 +226,7 @@
       ],
       "decision": "D1",
       "reason": "UIKit's UINavigationBar re-lays out its items for every push and pop (about 30 ms a run, 20 to 23 ms of it layoutSubviews), which is the platform's floor, not the engine's",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
     },
     {
       "gate": "frames.maxMs",
@@ -236,7 +236,7 @@
       ],
       "decision": "D1",
       "reason": "UIKit's UINavigationBar re-lays out its items for every push and pop (about 30 ms a run, 20 to 23 ms of it layoutSubviews), which is the platform's floor, not the engine's",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
     },
     {
       "gate": "frames.droppedPct",
@@ -246,7 +246,7 @@
       ],
       "decision": "D1",
       "reason": "Reanimated's worklet runtime applies the animated props of the churn on the Android UI thread, which no change in the engine's write path removes",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
     },
     {
       "gate": "frames.maxPeriodRatio",
@@ -256,7 +256,7 @@
       ],
       "decision": "D1",
       "reason": "Reanimated's worklet runtime applies the animated props of the churn on the Android UI thread, which no change in the engine's write path removes",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
     },
     {
       "gate": "frames.maxMs",
@@ -266,28 +266,28 @@
       ],
       "decision": "D1",
       "reason": "Reanimated's worklet runtime applies the animated props of the churn on the Android UI thread, which no change in the engine's write path removes",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
     },
     {
       "gate": "list.virtual300.mountMs",
       "device": "R58Y90KNGRP",
       "decision": "D9",
       "reason": "22 to 33 ms against 10 under the gate protocol (six idle frames before the mount); the work itself is about 9 ms on warm cores, and placement, clock and idle redraw do not explain the cold spread; pinning and ADPF had no effect",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'The windowed list's cold mount on the A16 (2 November 2026, branch feat/svelte-native-list2)'"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'The windowed list's cold mount on the A16 (2 November 2026, branch feat/svelte-native-list2)'"
     },
     {
       "gate": "boot.warm.p90",
       "device": "R58Y90KNGRP",
       "decision": "D9",
       "reason": "the warm p90 is the phone's tail, another process's GC on a big core and the system_server window-manager lock; the phone has fast and slow days (round 2 read about 50 ms faster in the same interleaved hour, median 370 to 318 ms)",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'Boot on the phone, round 2: where the slow launches come from (2 November 2026, Samsung A16)' and 'round 3'"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'Boot on the phone, round 2: where the slow launches come from (2 November 2026, Samsung A16)' and 'round 3'"
     },
     {
       "gate": "boot.cold.p90",
       "device": "R58Y90KNGRP",
       "decision": "D9",
       "reason": "the cold p90 is the phone's tail, another process's GC on a big core and the system_server window-manager lock; the phone has fast and slow days (round 2 read about 50 ms faster in the same interleaved hour, median 370 to 318 ms)",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'Boot on the phone, round 2: where the slow launches come from (2 November 2026, Samsung A16)' and 'round 3'"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'Boot on the phone, round 2: where the slow launches come from (2 November 2026, Samsung A16)' and 'round 3'"
     },
     {
       "gate": "frames.droppedPct",
@@ -300,7 +300,7 @@
       "maxLateIntervals": 2,
       "decision": "D9",
       "reason": "the first interval of the window (19 to 27 ms in the D9 evidence): the scenario's own 48 withRepeat animations start in one Worklets message on the UI thread, pacing them was vetoed; covered up to 2 late intervals (that one plus the allowance every scenario has), no further",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
     },
     {
       "gate": "frames.maxPeriodRatio",
@@ -313,7 +313,7 @@
       "maxLateIntervals": 2,
       "decision": "D9",
       "reason": "the first interval of the window (19 to 27 ms in the D9 evidence): the scenario's own 48 withRepeat animations start in one Worklets message on the UI thread, pacing them was vetoed; covered up to 2 late intervals (that one plus the allowance every scenario has), no further",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
     },
     {
       "gate": "gestures.frames.droppedPct",
@@ -323,7 +323,7 @@
       ],
       "decision": "1 Nov first touch",
       "reason": "the first touch of a process runs react-native-gesture-handler's first worklet and class initialisation (25 ms for the first DOWN on a little core); a warm-up touch did not help",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'The first touch of a process (1 November 2026)'"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'The first touch of a process (1 November 2026)'"
     },
     {
       "gate": "gestures.frames.maxPeriodRatio",
@@ -333,7 +333,7 @@
       ],
       "decision": "1 Nov first touch",
       "reason": "the first touch of a process runs react-native-gesture-handler's first worklet and class initialisation (25 ms for the first DOWN on a little core); a warm-up touch did not help",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'The first touch of a process (1 November 2026)'"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'The first touch of a process (1 November 2026)'"
     },
     {
       "gate": "gestures.frames.maxMs",
@@ -343,7 +343,7 @@
       ],
       "decision": "1 Nov first touch",
       "reason": "the first touch of a process runs react-native-gesture-handler's first worklet and class initialisation (25 ms for the first DOWN on a little core); a warm-up touch did not help",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'The first touch of a process (1 November 2026)'"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'The first touch of a process (1 November 2026)'"
     },
     {
       "gate": "gestures.frames.droppedPct",
@@ -391,7 +391,7 @@
       "maxMs": 23,
       "decision": "D11",
       "reason": "repeated short late intervals on the Galaxy A16's 90 Hz display: 2 to 4 late intervals in more than one run of ten, frames of 16 to 22 ms (one or two 90 Hz periods late, on time at 60 Hz); covered up to 4 late intervals and a 23 ms frame (two periods plus margin) in the judged runs, no further; churn-static moved to D18 (11 Nov 2026), which covers it up to 6",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'The Samsung's frame spread under D10 and D11 (9 November 2026)'; GOAL.md D11 (amended 9 Nov 2026)"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'The Samsung's frame spread under D10 and D11 (9 November 2026)'; GOAL.md D11 (amended 9 Nov 2026)"
     },
     {
       "gate": "frames.droppedPct",
@@ -404,7 +404,7 @@
       "maxMs": 23,
       "decision": "D11",
       "reason": "the plain and clipped 300-row lists show the same spread on the A16: a ten-run lab has a judged run with 2 late intervals about one time in five on any build (13 of 158 runs since 1 Nov, interleaved A/B old and new build equal); covered up to 2 late intervals and a 23 ms frame, no further",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'The Samsung's frame spread under D10 and D11 (9 November 2026)'; GOAL.md D11 (amended 9 Nov 2026)"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'The Samsung's frame spread under D10 and D11 (9 November 2026)'; GOAL.md D11 (amended 9 Nov 2026)"
     },
     {
       "gate": "frames.maxPeriodRatio",
@@ -416,7 +416,7 @@
       "maxMs": 23,
       "decision": "D11",
       "reason": "repeated short late intervals on the Galaxy A16's 90 Hz display: 2 to 4 late intervals in more than one run of ten, frames of 16 to 22 ms (one or two 90 Hz periods late, on time at 60 Hz); covered up to 4 late intervals and a 23 ms frame (two periods plus margin) in the judged runs, no further; churn-static moved to D18 (11 Nov 2026), which covers it up to 6",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'The Samsung's frame spread under D10 and D11 (9 November 2026)'; GOAL.md D11 (amended 9 Nov 2026)"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'The Samsung's frame spread under D10 and D11 (9 November 2026)'; GOAL.md D11 (amended 9 Nov 2026)"
     },
     {
       "gate": "frames.maxPeriodRatio",
@@ -429,7 +429,7 @@
       "maxMs": 23,
       "decision": "D11",
       "reason": "the plain and clipped 300-row lists show the same spread on the A16: a ten-run lab has a judged run with 2 late intervals about one time in five on any build (13 of 158 runs since 1 Nov, interleaved A/B old and new build equal); covered up to 2 late intervals and a 23 ms frame, no further",
-      "evidence": "packages/svelte-native/native/svelte-core/SPEC.md, 'The Samsung's frame spread under D10 and D11 (9 November 2026)'; GOAL.md D11 (amended 9 Nov 2026)"
+      "evidence": "packages/expo-svelte/native/svelte-core/SPEC.md, 'The Samsung's frame spread under D10 and D11 (9 November 2026)'; GOAL.md D11 (amended 9 Nov 2026)"
     },
     {
       "gate": "frames.droppedPct",
@@ -441,7 +441,7 @@
       "maxMs": 23,
       "decision": "D18",
       "reason": "Galaxy A16 frame noise late in a long session (main 9f7b524, 11 Nov 2026): in the judged runs of a ten-run lab, up to 6 late intervals of 16 to 18 ms in churn-static (D11 covers 4); an interleaved A/B of the scenario alone, 0.3.0 against main, 20 runs each, read 1.35 and 1.10 late intervals per run and none above 4, so the build did not regress; covered up to 6 late intervals and a 23 ms frame, no further",
-      "evidence": "packages/svelte-native/PLAN.md, 'Final build: main 9f7b524 (11 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261110T213019Z.json and qa/runs/lab-R58Y90KNGRP-20261110T221748Z.json (main's two labs; the A/B's runs in the same record); GOAL.md D18"
+      "evidence": "packages/expo-svelte/PLAN.md, 'Final build: main 9f7b524 (11 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261110T213019Z.json and qa/runs/lab-R58Y90KNGRP-20261110T221748Z.json (main's two labs; the A/B's runs in the same record); GOAL.md D18"
     },
     {
       "gate": "frames.droppedPct",
@@ -453,7 +453,7 @@
       "maxMs": 30,
       "decision": "D18",
       "reason": "Galaxy A16 frame noise late in a long session (main 9f7b524, 11 Nov 2026): input-120 had 2 late intervals in two runs of a ten-run lab (frames of 19 ms in the judged runs), and at most 1 in every run of the next lab of the same install; covered up to 2 late intervals and a 23 ms frame, no further; extended 12 Nov 2026 (user) to frames of 30 ms: on the final build main 36f207d the second ten-run lab read input-120 with 2 late intervals in three runs and frames to 30 ms, and an interleaved A/B against 9f7b524 (20 runs each, warm-up,input-120,list-300-virtual) read 9 and 5 late intervals with no run above 1",
-      "evidence": "packages/svelte-native/PLAN.md, 'Final build: main 9f7b524 (11 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261110T213019Z.json and qa/runs/lab-R58Y90KNGRP-20261110T221748Z.json (main's two labs; the A/B's runs in the same record); GOAL.md D18; packages/svelte-native/PLAN.md, 'Final build: main 36f207d (12 November 2026)', qa/runs/lab-R58Y90KNGRP-20261112T063329Z.json"
+      "evidence": "packages/expo-svelte/PLAN.md, 'Final build: main 9f7b524 (11 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261110T213019Z.json and qa/runs/lab-R58Y90KNGRP-20261110T221748Z.json (main's two labs; the A/B's runs in the same record); GOAL.md D18; packages/expo-svelte/PLAN.md, 'Final build: main 36f207d (12 November 2026)', qa/runs/lab-R58Y90KNGRP-20261112T063329Z.json"
     },
     {
       "gate": "frames.droppedPct",
@@ -465,7 +465,7 @@
       "maxMs": 23,
       "decision": "D18",
       "reason": "Galaxy A16 frame noise late in a long session (main 36f207d, 12 Nov 2026, user): the first of two ten-run labs read list-300-virtual with 2 late intervals in two runs (frames to 18 ms) and the second passed it; an interleaved A/B against 9f7b524, 20 runs each, read 6 and 7 late intervals with no run above 1, so the build did not regress; covered up to 2 late intervals and a 23 ms frame, no further",
-      "evidence": "packages/svelte-native/PLAN.md, 'Final build: main 36f207d (12 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261112T055604Z.json and qa/runs/lab-R58Y90KNGRP-20261112T063329Z.json (the final build's two labs; the A/B's runs in ~/.cache/final/ab/runs-final4-ab-20261112); GOAL.md D18"
+      "evidence": "packages/expo-svelte/PLAN.md, 'Final build: main 36f207d (12 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261112T055604Z.json and qa/runs/lab-R58Y90KNGRP-20261112T063329Z.json (the final build's two labs; the A/B's runs in ~/.cache/final/ab/runs-final4-ab-20261112); GOAL.md D18"
     },
     {
       "gate": "frames.maxPeriodRatio",
@@ -477,7 +477,7 @@
       "maxMs": 23,
       "decision": "D18",
       "reason": "Galaxy A16 frame noise late in a long session (main 9f7b524, 11 Nov 2026): in the judged runs of a ten-run lab, up to 6 late intervals of 16 to 18 ms in churn-static (D11 covers 4); an interleaved A/B of the scenario alone, 0.3.0 against main, 20 runs each, read 1.35 and 1.10 late intervals per run and none above 4, so the build did not regress; covered up to 6 late intervals and a 23 ms frame, no further",
-      "evidence": "packages/svelte-native/PLAN.md, 'Final build: main 9f7b524 (11 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261110T213019Z.json and qa/runs/lab-R58Y90KNGRP-20261110T221748Z.json (main's two labs; the A/B's runs in the same record); GOAL.md D18"
+      "evidence": "packages/expo-svelte/PLAN.md, 'Final build: main 9f7b524 (11 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261110T213019Z.json and qa/runs/lab-R58Y90KNGRP-20261110T221748Z.json (main's two labs; the A/B's runs in the same record); GOAL.md D18"
     },
     {
       "gate": "frames.maxPeriodRatio",
@@ -489,7 +489,7 @@
       "maxMs": 30,
       "decision": "D18",
       "reason": "Galaxy A16 frame noise late in a long session (main 9f7b524, 11 Nov 2026): input-120 had 2 late intervals in two runs of a ten-run lab (frames of 19 ms in the judged runs), and at most 1 in every run of the next lab of the same install; covered up to 2 late intervals and a 23 ms frame, no further; extended 12 Nov 2026 (user) to frames of 30 ms: on the final build main 36f207d the second ten-run lab read input-120 with 2 late intervals in three runs and frames to 30 ms, and an interleaved A/B against 9f7b524 (20 runs each, warm-up,input-120,list-300-virtual) read 9 and 5 late intervals with no run above 1",
-      "evidence": "packages/svelte-native/PLAN.md, 'Final build: main 9f7b524 (11 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261110T213019Z.json and qa/runs/lab-R58Y90KNGRP-20261110T221748Z.json (main's two labs; the A/B's runs in the same record); GOAL.md D18; packages/svelte-native/PLAN.md, 'Final build: main 36f207d (12 November 2026)', qa/runs/lab-R58Y90KNGRP-20261112T063329Z.json"
+      "evidence": "packages/expo-svelte/PLAN.md, 'Final build: main 9f7b524 (11 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261110T213019Z.json and qa/runs/lab-R58Y90KNGRP-20261110T221748Z.json (main's two labs; the A/B's runs in the same record); GOAL.md D18; packages/expo-svelte/PLAN.md, 'Final build: main 36f207d (12 November 2026)', qa/runs/lab-R58Y90KNGRP-20261112T063329Z.json"
     },
     {
       "gate": "frames.maxPeriodRatio",
@@ -501,7 +501,7 @@
       "maxMs": 23,
       "decision": "D18",
       "reason": "Galaxy A16 frame noise late in a long session (main 36f207d, 12 Nov 2026, user): the first of two ten-run labs read list-300-virtual with 2 late intervals in two runs (frames to 18 ms) and the second passed it; an interleaved A/B against 9f7b524, 20 runs each, read 6 and 7 late intervals with no run above 1, so the build did not regress; covered up to 2 late intervals and a 23 ms frame, no further",
-      "evidence": "packages/svelte-native/PLAN.md, 'Final build: main 36f207d (12 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261112T055604Z.json and qa/runs/lab-R58Y90KNGRP-20261112T063329Z.json (the final build's two labs; the A/B's runs in ~/.cache/final/ab/runs-final4-ab-20261112); GOAL.md D18"
+      "evidence": "packages/expo-svelte/PLAN.md, 'Final build: main 36f207d (12 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261112T055604Z.json and qa/runs/lab-R58Y90KNGRP-20261112T063329Z.json (the final build's two labs; the A/B's runs in ~/.cache/final/ab/runs-final4-ab-20261112); GOAL.md D18"
     }
   ],
   "gates": [

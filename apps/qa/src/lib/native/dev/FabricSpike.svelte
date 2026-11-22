@@ -6,9 +6,9 @@
   import { File, Paths } from "expo-file-system";
   import StressTile from "./StressTile.svelte";
   import { estimatePeriod, startFrameMonitor, stopFrameMonitor, summarizeFrames } from "./frames.ts";
-  import { AnimatedView, createSharedValue } from "@alfayez/svelte-native";
+  import { AnimatedView, createSharedValue } from "expo-svelte";
   import { FadeIn, FadeOut } from "react-native-reanimated";
-  import { ActivityIndicator, Image, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from "@alfayez/svelte-native/core";
+  import { ActivityIndicator, Image, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from "expo-svelte/core";
   import LeanText from "./lean/LeanText.svelte";
   import LeanView from "./lean/LeanView.svelte";
   type FabricStats = { engineInstalled?: boolean; lastFlushMs: number; lastCreated: number; payloadMs: number; createMs: number; appendMs: number; completeMs: number };
@@ -123,7 +123,7 @@
 </script>
 
 <View style={{ flex: 1, paddingTop: 64, paddingHorizontal: 24, gap: 12, backgroundColor: "#f6f6f7" }}>
-  <Text style={{ fontSize: 22, fontWeight: "600", color: "#191b1e" }}>Svelte Native · Fabric direct</Text>
+  <Text style={{ fontSize: 22, fontWeight: "600", color: "#191b1e" }}>Expo Svelte · Fabric direct</Text>
   <Text style={{ fontSize: 14, color: "#646970" }}>No React in this surface: Svelte nodes commit straight to the shadow tree.</Text>
   <Text style={{ fontSize: 13, color: "#191b1e" }}>{report}</Text>
   <View style={{ padding: 12, borderRadius: 10, backgroundColor: "#e4e6ea" }} onTouchEnd={() => { taps++; }} ref={(handle: unknown) => { probeTag = (handle as { tag?: number } | null)?.tag ?? 0; }}><Text style={{ fontSize: 13, color: "#191b1e" }}>Touch here · events received: {taps}</Text></View>

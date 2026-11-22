@@ -27,7 +27,7 @@ export type Symbolizer = {
 const hermesFrame = /^(.*?\bat\s+)(.*?)\s*\(address at\s+\S+?:(\d+):(\d+)\)\s*$/;
 const reactNativeFrame = /^(.*?)([^\s@]*)@(?:\S+?\.js:)?(\d+):(\d+)\s*$/;
 
-/** `packages/svelte-native/src/init.ts:65:11`, from a source position the map gives (its paths start at the repository root). */
+/** `packages/expo-svelte/src/init.ts:65:11`, from a source position the map gives (its paths start at the repository root). */
 function formatPosition(source: string, line: number, column: number): string {
 	return `${source.replace(/^\/+/, "")}:${line}:${column + 1}`;
 }

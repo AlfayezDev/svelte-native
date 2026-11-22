@@ -25,7 +25,7 @@ export const en = {
     startFailed: "The app could not start. Try again in a moment.",
   },
   home: {
-    title: "Svelte Native",
+    title: "Expo Svelte",
     description: "Svelte 5 components running as a native Android and iOS app, with no React and no WebView.",
   },
 };
@@ -44,7 +44,7 @@ export const ar = {
     startFailed: "تعذّر تشغيل التطبيق. حاول مرة أخرى بعد قليل.",
   },
   home: {
-    title: "Svelte Native",
+    title: "Expo Svelte",
     description: "مكوّنات Svelte 5 تعمل كتطبيق أصلي على Android وiOS، بلا React وبلا WebView.",
   },
 } satisfies Strings<typeof en>;

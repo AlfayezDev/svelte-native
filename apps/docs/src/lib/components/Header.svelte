@@ -13,7 +13,7 @@
 </script>
 
 <header class="header">
-	<a class="wordmark" href={resolve("/")}>Svelte Native</a>
+	<a class="wordmark" href={resolve("/")}>Expo Svelte</a>
 
 	<div class="actions">
 		<button class={["icon-button search-button", inDocs && "docs"]} type="button" aria-label="Search" aria-keyshortcuts="Control+K Meta+K" onclick={() => (search.open = true)}>

@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 
 // The QA-only native modules (the in-app touch injector, the iOS QA inspection and gesture trace, the view bench) are in the QA build and not
-// in the product build. The exclusion is a list in `app.config.ts` that the svelte-native plugin writes into settings.gradle and the Podfile;
+// in the product build. The exclusion is a list in `app.config.ts` that the expo-svelte plugin writes into settings.gradle and the Podfile;
 // here the autolinking CLI of the installed Expo resolves the module list with exactly that list, as Gradle and CocoaPods do. The list is
 // the one the native module smoke test uses too (qa/test/smoke.test.ts checks its smoke half): the product excludes the smoke test's
 // libraries and the QA modules, the QA app the libraries only, the smoke app nothing.
@@ -14,7 +14,7 @@ const app = resolve(import.meta.dirname, "../..");
 const require = createRequire(resolve(app, "package.json"));
 const autolinking = resolve(dirname(require.resolve("expo-modules-autolinking/package.json", { paths: [require.resolve("expo/package.json")] })), "bin/expo-modules-autolinking.js");
 
-/** The `autolinkingExclude` option `app.config.ts` gives the svelte-native plugin, for a build variant. */
+/** The `autolinkingExclude` option `app.config.ts` gives the expo-svelte plugin, for a build variant. */
 function configuredExclude(variant: "production" | "qa" | "smoke"): string[] {
 	const env: NodeJS.ProcessEnv = { ...process.env };
 	delete env.APP_VARIANT;
@@ -22,8 +22,8 @@ function configuredExclude(variant: "production" | "qa" | "smoke"): string[] {
 	const run = spawnSync(process.execPath, ["-e", "import('./app.config.ts').then((m) => console.log(JSON.stringify(m.default.plugins)))"], { cwd: app, env, encoding: "utf8" });
 	if (run.status !== 0) throw new Error(`app.config.ts did not evaluate: ${run.stderr}`);
 	const plugins = JSON.parse(run.stdout) as (string | [string, { autolinkingExclude?: string[] }])[];
-	const entry = plugins.find((plugin): plugin is [string, { autolinkingExclude?: string[] }] => Array.isArray(plugin) && plugin[0] === "@alfayez/svelte-native");
-	if (!entry) throw new Error("app.config.ts does not configure the svelte-native plugin");
+	const entry = plugins.find((plugin): plugin is [string, { autolinkingExclude?: string[] }] => Array.isArray(plugin) && plugin[0] === "expo-svelte");
+	if (!entry) throw new Error("app.config.ts does not configure the expo-svelte plugin");
 	return entry[1].autolinkingExclude ?? [];
 }
 
@@ -41,10 +41,10 @@ const classes = (result: Resolved) => result.modules.flatMap((module) => (module
 const packages = (result: Resolved) => result.modules.map((module) => module.packageName);
 
 const qaOnly = ["svelte-qa-android", "svelte-qa-ios", "view-bench"];
-/** The library's own native modules are linked from the installed package, as an app outside this repository gets them (packages/svelte-native/expo-module.config.json). */
-const library = "@alfayez/svelte-native";
-const libraryDirectory = dirname(require.resolve("@alfayez/svelte-native/package.json"));
-/** The library's native code is one pod and one Gradle project (packages/svelte-native/native/svelte-core). */
+/** The library's own native modules are linked from the installed package, as an app outside this repository gets them (packages/expo-svelte/expo-module.config.json). */
+const library = "expo-svelte";
+const libraryDirectory = dirname(require.resolve("expo-svelte/package.json"));
+/** The library's native code is one pod and one Gradle project (packages/expo-svelte/native/svelte-core). */
 const libraryPods = ["SvelteCore"];
 const libraryProjects = ["svelte-core"];
 const { smokeOnlyPackages } = require("./qa/smoke-packages.cjs") as { smokeOnlyPackages: string[] };

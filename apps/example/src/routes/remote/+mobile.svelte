@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Text, TextInput } from "@alfayez/svelte-native";
-  import { configureRemote, remoteHost } from "@alfayez/svelte-native/remote";
+  import { Text, TextInput } from "expo-svelte";
+  import { configureRemote, remoteHost } from "expo-svelte/remote";
   import Button from "#lib/components/Button.svelte";
   import RemoteExamples from "#lib/components/native/RemoteExamples.svelte";
   import Page from "#lib/components/Page.svelte";
@@ -8,8 +8,8 @@
   import { text, theme } from "#lib/theme.svelte.ts";
 
   // SvelteKit's remote functions (`query`, `command`, `form`) called from a screen. The functions live in a `*.remote.ts` module, here
-  // src/lib/remote/notes.remote.ts, and run on a SvelteKit server; the app only needs to know where it is. The host is `extra.svelteNative.remote`
-  // in the app config (app.config.ts writes it from `SVELTE_NATIVE_REMOTE_ORIGIN`), and `configureRemote({ origin })` sets it while the app runs.
+  // src/lib/remote/notes.remote.ts, and run on a SvelteKit server; the app only needs to know where it is. The host is `extra.expoSvelte.remote`
+  // in the app config (app.config.ts writes it from `EXPO_SVELTE_REMOTE_ORIGIN`), and `configureRemote({ origin })` sets it while the app runs.
   // Without a host a remote function throws when it is called, so this screen says so and shows the examples only when there is one.
   let origin = $state(remoteHost().origin);
   let typed = $state("");
@@ -26,7 +26,7 @@
 </script>
 
 <Page title="Remote functions" intro="A remote function is a function that runs on your SvelteKit server and is called from the app like a local one. The app sends the call over HTTP and gets the result back, with the loading and error state a screen needs.">
-  <Section title="Host" note={origin ? "Calls go to this server." : "This build has no host, so no remote function can run. Build with SVELTE_NATIVE_REMOTE_ORIGIN=https://your-server, or enter an origin here."}>
+  <Section title="Host" note={origin ? "Calls go to this server." : "This build has no host, so no remote function can run. Build with EXPO_SVELTE_REMOTE_ORIGIN=https://your-server, or enter an origin here."}>
     <Text selectable style={text.body}>{origin ?? "No host"}</Text>
     <TextInput
       bind:value={typed}

@@ -1,9 +1,9 @@
 {
-	"name": "@svelte-native/docs",
+	"name": "@expo-svelte/docs",
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
-	"description": "The Svelte Native documentation site: a static SvelteKit app that renders the guide in ../../docs.",
+	"description": "The Expo Svelte documentation site: a static SvelteKit app that renders the guide in ../../docs.",
 	"scripts": {
 		"prepare": "svelte-kit sync",
 		"dev": "vite dev",

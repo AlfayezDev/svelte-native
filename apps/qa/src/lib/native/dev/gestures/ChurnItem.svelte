@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
-  import { View, createSharedValue, Gesture } from "@alfayez/svelte-native";
+  import { View, createSharedValue, Gesture } from "expo-svelte";
 
   /** The view `gestures-churn` mounts and unmounts: three gestures in a Simultaneous, all on the UI thread or all on the JavaScript thread (`js`). */
   let { js, mounted, unmounted }: { js: boolean; mounted: () => void; unmounted: () => void } = $props();

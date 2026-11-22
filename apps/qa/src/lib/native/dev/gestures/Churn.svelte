@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import { requireOptionalNativeModule } from "expo-modules-core";
-  import { Text, View, createSharedValue } from "@alfayez/svelte-native";
+  import { Text, View, createSharedValue } from "expo-svelte";
   import { theme } from "../../state.svelte.ts";
   import ChurnItem from "./ChurnItem.svelte";
   import { CHURN_ROUNDS, type Session } from "../gestures-lab.ts";
@@ -14,7 +14,7 @@
   let { session }: { session: Session } = $props();
   createSharedValue(0); // loads Reanimated before the first gesture is made
 
-  /** The gesture host's counts (`fabricStats().gestures` of `@alfayez/svelte-native/app`, which the host publishes on `globalThis.__svelteFabric`; importing the module would pull the renderer into the app's type check). */
+  /** The gesture host's counts (`fabricStats().gestures` of `expo-svelte/app`, which the host publishes on `globalThis.__svelteFabric`; importing the module would pull the renderer into the app's type check). */
   const hostStats = () => (globalThis as { __svelteFabric?: { stats(): { gestures: { records: number; handlers: number; eventHandlers: number } | null } } }).__svelteFabric?.stats().gestures ?? null;
   const engine = requireOptionalNativeModule<{ stats?: () => Record<string, number> | null }>("SvelteEngine");
   let round = $state(0);

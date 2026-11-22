@@ -9,7 +9,7 @@ video: text-input
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Screen, Text, TextInput, View } from '@alfayez/svelte-native';
+	import { Screen, Text, TextInput, View } from 'expo-svelte';
 
 	let name = $state('');
 </script>
@@ -79,7 +79,7 @@ A form that moves from field to field when the user presses return:
 
 ```svelte
 <script lang="ts">
-	import { TextInput, View } from '@alfayez/svelte-native';
+	import { TextInput, View } from 'expo-svelte';
 
 	let email = $state('');
 	let password = $state('');
@@ -119,5 +119,5 @@ A form that moves from field to field when the user presses return:
 
 - Put a form in a [`KeyboardAvoidingView`](keyboard-avoiding-view) so the keyboard doesn't cover the field being edited.
 - In a [`ScrollView`](scroll-view), set `keyboardShouldPersistTaps="handled"`: otherwise the first tap on a button while the keyboard is open only closes the keyboard.
-- `Keyboard.dismiss()` from `@alfayez/svelte-native/platform` closes the keyboard from code.
+- `Keyboard.dismiss()` from `expo-svelte/platform` closes the keyboard from code.
 - A remote function's `form` gives the props of a field to spread onto a `TextInput`: see [loading data](loading-data).

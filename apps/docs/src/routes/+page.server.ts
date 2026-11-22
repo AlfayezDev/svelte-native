@@ -2,7 +2,7 @@ import { SITE_URL } from "#lib/base-path";
 import { renderCode } from "#lib/docs.server";
 
 const EXAMPLE = `<script lang="ts">
-	import { Pressable, Screen, Text, View } from '@alfayez/svelte-native';
+	import { Pressable, Screen, Text, View } from 'expo-svelte';
 
 	let taps = $state(0);
 </script>

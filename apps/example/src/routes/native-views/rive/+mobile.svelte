@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Text } from "@alfayez/svelte-native";
-  import { Rive, type RiveHandle } from "@alfayez/svelte-native/foreign";
+  import { Text } from "expo-svelte";
+  import { Rive, type RiveHandle } from "expo-svelte/foreign";
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";

@@ -9,7 +9,7 @@ video: scroll-view
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Screen, ScrollView, Text, View } from '@alfayez/svelte-native';
+	import { Screen, ScrollView, Text, View } from 'expo-svelte';
 
 	const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 </script>
@@ -61,7 +61,7 @@ It also takes the other props of React Native's [`ScrollView`](https://reactnati
 
 ```svelte
 <script lang="ts">
-	import { Pressable, ScrollView, Text } from '@alfayez/svelte-native';
+	import { Pressable, ScrollView, Text } from 'expo-svelte';
 
 	let scroller: { scrollTo(options: { y: number; animated?: boolean }): void } | null = null;
 </script>

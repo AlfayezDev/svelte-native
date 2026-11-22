@@ -2,7 +2,7 @@
 // (`vite.config.ts`, `server.warmup`, `remote-lab.ts`), `vite preview` and builds have neither it nor the `remote` flag, and the lab's native page calls it exactly
 // as a web page would. Nothing here is a secret or needs a login: the state is a few counters and a list of names, and the dev server listens on the LAN
 // (`host: true`) with all the routes of the app, which are as reachable as these.
-// packages/svelte-native/README.md, "Remote functions", lists what to check on a device.
+// packages/expo-svelte/README.md, "Remote functions", lists what to check on a device.
 import { command, form, getRequestEvent, prerender, query, requested } from "$app/server";
 import { error, invalid, redirect } from "@sveltejs/kit";
 import * as v from "valibot";

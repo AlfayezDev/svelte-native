@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, untrack } from "svelte";
-  import { SafeAreaView, Screen, ScrollView, Text, View } from "@alfayez/svelte-native";
+  import { SafeAreaView, Screen, ScrollView, Text, View } from "expo-svelte";
   import { nativeLabEnabled, nativeSmokeEnabled, theme } from "#lib/native/state.svelte.ts";
   import Button from "#lib/native/components/Button.svelte";
   import { smokeModules, runSmoke } from "#lib/native/dev/smoke.ts";

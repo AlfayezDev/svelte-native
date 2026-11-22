@@ -13,6 +13,12 @@ export type Mode = 'single-process' | 'multi-process';
  */
 export type EncryptionType = 'AES-128' | 'AES-256';
 /**
+ * Configures how MMKV should handle recoverable storage errors.
+ * - `discard-on-error`: Discards data when MMKV detects a CRC or file-length error.
+ * - `recover-on-error`: Attempts to recover data when MMKV detects a CRC or file-length error.
+ */
+export type RecoveryStrategy = 'discard-on-error' | 'recover-on-error';
+/**
  * Used for configuration of a single MMKV instance.
  */
 export interface Configuration {
@@ -91,6 +97,12 @@ export interface Configuration {
      * @default false
      */
     compareBeforeSet?: boolean;
+    /**
+     * Configure how MMKV should handle recoverable storage errors.
+     *
+     * @default undefined
+     */
+    recoveryStrategy?: RecoveryStrategy;
 }
 export interface MMKVFactory extends HybridObject<{
     ios: 'c++';

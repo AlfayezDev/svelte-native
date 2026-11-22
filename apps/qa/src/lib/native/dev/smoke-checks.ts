@@ -156,7 +156,7 @@ export const checks: Check[] = [
 			const text = "Expo Svelte";
 			const encoded = base64.fromByteArray(ascii(text));
 			const decoded = String.fromCharCode(...base64.toByteArray(encoded));
-			expect(encoded === "U3ZlbHRlIE5hdGl2ZQ==" && decoded === text && base64.atob(base64.btoa(text)) === text, `encoded ${encoded}, decoded ${decoded}`);
+			expect(encoded === "RXhwbyBTdmVsdGU=" && decoded === text && base64.atob(base64.btoa(text)) === text, `encoded ${encoded}, decoded ${decoded}`);
 			return `fromByteArray "${text}" = ${encoded}, toByteArray and atob(btoa()) round trip`;
 		},
 	},

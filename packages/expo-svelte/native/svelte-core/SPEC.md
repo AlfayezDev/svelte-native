@@ -2198,7 +2198,7 @@ The Android and iOS columns are the results each check is written to give, from 
 | `expo-device` | `expo-device` 57.0.2 | js | `modelName`, `osName`, `isDevice`, `getDeviceTypeAsync` | ok | ok | nothing |
 | `get-random-values` | `react-native-get-random-values` 2.0.0 (`~2.0.0`, nested under `apps/qa`: another package pins 1.11.0) | js+direct | the import installs `crypto.getRandomValues`, filled for a `Uint8Array(16)`; `RNGetRandomValues.getRandomBase64(16)` by name | ok | ok | 2.x's JavaScript prefers `ExpoCrypto` when `expo` is present, so its own API alone would not reach its module; the module is called by name |
 | `quick-crypto` | `react-native-quick-crypto` 1.1.3 | js | `randomBytes(16)`, `createHash("sha256")` of `abc` compared with `ba7816bf…15ad` | ok | ok | plugin `{ sodiumEnabled: true }` as in production (libsodium on both platforms); needs Nitro, `@craftzdog/react-native-buffer`, `readable-stream` |
-| `quick-base64` | `react-native-quick-base64` 2.2.2 | js | `fromByteArray` of `Expo Svelte` = `U3ZlbHRlIE5hdGl2ZQ==`, `toByteArray`, `atob(btoa())` | ok | ok | nothing |
+| `quick-base64` | `react-native-quick-base64` 2.2.2 | js | `fromByteArray` of `Expo Svelte` = `RXhwbyBTdmVsdGU=`, `toByteArray`, `atob(btoa())` | ok | ok | nothing |
 | `nitro` | `react-native-nitro-modules` 0.35.10 (`^0.35.6`) | js | `NitroModules.version`, `buildType`, `getAllHybridObjectNames()` | ok | ok | nothing; MMKV and quick-crypto register their objects |
 | `launch-arguments` | `react-native-launch-arguments` 4.1.1 | js | `LaunchArguments.value()` | ok | ok | nothing (an empty object without launch extras) |
 | `localization` | `expo-localization` 57.0.2 (shared) | js | `getLocales()`, `getCalendars()` | ok | ok | already in the product |

@@ -18,5 +18,5 @@ Third-party code, copied into this package (VENDORING.md). Nothing here is edite
 ## Local changes
 
 - `vendor-patches/react-native-reanimated/0001-engine-views-and-direct-props.patch` (sha256 `4316654f8fff4be7db8b6963ebd088b4c84edbf8e9123cd2b2145ee299b20efa`), applied with `patch -p1` after the unpack
-- `vendor-patches/react-native-reanimated/0002-worklets-is-the-copy-beside-it.patch` (sha256 `bede8cff3d5bc61c28bc803e934cd0287d521ac3627caba8e6fa039d39c496e7`), applied with `patch -p1` after the unpack
+- `vendor-patches/react-native-reanimated/0002-worklets-is-the-copy-beside-it.patch` (sha256 `b0de1f0153ba41f29cb331e1c0f4904221890a45f34dcece607385a2852a9fe5`), applied with `patch -p1` after the unpack
 - `vendor-patches/react-native-reanimated/0003-android-synchronous-props-on-by-default.patch` (sha256 `815dad641b08734716430761d48c7c1ab83e7c4192c8f14e590b2a57b3e4fcb4`), applied with `patch -p1` after the unpack

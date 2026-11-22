@@ -76,7 +76,7 @@ A page with `video: list` shows, under its header, a recording of the feature on
 `BASE_PATH` is the subpath the site is served from, and it is read at build time. Leave it unset to serve from the root of a domain. For GitHub Pages, which serves a project at `/<repository>`:
 
 ```sh
-BASE_PATH=/expo-svelte pnpm --dir apps/docs build
+BASE_PATH=/svelte-native pnpm --dir apps/docs build
 ```
 
 A site served from a directory (not from GitHub Pages) needs its server to find the prerendered files. For nginx:

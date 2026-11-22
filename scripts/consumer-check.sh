@@ -175,7 +175,7 @@ st_source_tarball() {
   cd "$package"
   cap pnpm pack --pack-destination "$tarballs"
   local tgz
-  tgz=$(ls "$tarballs"/alfayez-expo-svelte-*.tgz)
+  tgz=$(ls "$tarballs"/expo-svelte-*.tgz)
   echo "packed: $tgz ($(stat -c %s "$tgz") bytes, $(tar tzf "$tgz" | wc -l) files)"
   local listing
   listing=$(tar tzf "$tgz")
@@ -222,7 +222,7 @@ st_template() {
 st_install() {
   cd "$app"
   local library
-  if [ "$mode" = tarball ]; then library=$(ls "$tarballs"/alfayez-expo-svelte-*.tgz); else library="$git_url#$git_ref&path:packages/expo-svelte"; fi
+  if [ "$mode" = tarball ]; then library=$(ls "$tarballs"/expo-svelte-*.tgz); else library="$git_url#$git_ref&path:packages/expo-svelte"; fi
   echo "+ pnpm add $library $(ls "$tarballs"/svelte-*.tgz)"
   cap pnpm add "${pnpm_flags[@]}" "$library" "$(ls "$tarballs"/svelte-*.tgz)"
   echo "package.json: \"expo-svelte\": \"$(spec_of expo-svelte)\""

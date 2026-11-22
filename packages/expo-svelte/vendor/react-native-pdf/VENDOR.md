@@ -16,4 +16,4 @@ Third-party code, copied into this package (VENDORING.md). Nothing here is edite
 ## Local changes
 
 - `vendor-patches/react-native-pdf/0001-deliver-every-message.patch` (sha256 `106b7cb70a12e7a81696216d27c6bcd62cec8f3ca9810112dfc154db430571ee`), applied with `patch -p1` after the unpack
-- `vendor-patches/react-native-pdf/0002-find-react-native-from-the-app.patch` (sha256 `ab338a38427d7dad8782a37713055f7c8ddab64f1d517e46ec8e98ddbb514b66`), applied with `patch -p1` after the unpack
+- `vendor-patches/react-native-pdf/0002-find-react-native-from-the-app.patch` (sha256 `429cfc8777b99a378bc3265fe2d4f21ccfc8d9596d3329c213b64a8d3b092ee1`), applied with `patch -p1` after the unpack

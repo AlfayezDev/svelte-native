@@ -147,7 +147,7 @@ ssh ovh-root 'rm -rf /var/lib/svelte-qa/runner/_work/_temp/* && find /var/lib/sv
 # Gradle: stop its daemons, drop the caches that a build refills (the next build is a cold one: 15 to 30 minutes)
 ssh ovh-root 'pkill -u svelte-qa -f GradleDaemon; rm -rf /var/lib/svelte-qa/gradle/caches /var/lib/svelte-qa/gradle/daemon'
 # the workspace itself (the next run clones again and builds from nothing)
-ssh ovh-root 'rm -rf /var/lib/svelte-qa/runner/_work/expo-svelte'
+ssh ovh-root 'rm -rf /var/lib/svelte-qa/runner/_work/svelte-native'
 # the emulator's data (the next boot is a first boot; reinstall happens on its own)
 ssh ovh-root 'systemctl stop svelte-qa-emulator && rm -rf /var/lib/svelte-qa/avd/svelte-qa.avd/*.qcow2 && systemctl start svelte-qa-emulator'
 ```

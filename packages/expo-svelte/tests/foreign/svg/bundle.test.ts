@@ -35,7 +35,7 @@ async function buildSvgEntry(): Promise<Bundle> {
         if (args.pluginData?.skip) return undefined;
         return builder.resolve(args.path, { kind: args.kind, resolveDir: args.resolveDir, importer: args.importer, pluginData: { skip: true } });
       });
-      builder.onResolve({ filter: /^(react|react-dom|react-native|expo|@react-native|@react-native-community|react-native-[\w-]+|expo-[\w-]+)(\/|$)/ }, (args) => {
+      builder.onResolve({ filter: /^(react|react-dom|react-native|expo|@react-native|@react-native-community|react-native-[\w-]+|expo-(?!svelte\/)[\w-]+)(\/|$)/ }, (args) => {
         if (args.pluginData?.skip) return undefined;
         externals.add(args.path);
         return { path: args.path, external: true };

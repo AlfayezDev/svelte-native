@@ -9,7 +9,6 @@ Expo Svelte is a way to write Android and iOS apps as Svelte 5 components that r
 **You need**
 
 - Node 24 LTS (24.3 or newer), Node 22.17 or newer, or Node 26 or newer, and pnpm 12.3.4 or newer. **Not Node 25**: a fresh install takes React Native tools that exclude it, and `pnpm add` stops with `ERR_PNPM_UNSUPPORTED_ENGINE` ([troubleshooting](docs/60-appendix/20-troubleshooting.md#pnpm-stops-during-install)). `expo-svelte doctor` checks both once the library is installed.
-- Read access to this private repository over SSH: be a collaborator, with your SSH key on your GitHub account (`ssh -T git@github.com` should greet you by name).
 - To run on Android: Android Studio's SDK (platform 36, NDK 27.1.12297006, CMake 3.22.1), a JDK 17, and a phone with USB debugging or an emulator. To run on iOS: a Mac with Xcode, and a simulator or an iPhone.
 - It builds your own native app (a debug build that loads its JavaScript from Metro), not Expo Go: Expo Go cannot load the library's native modules.
 
@@ -25,8 +24,6 @@ pnpm android        # or: pnpm ios
 
 `npx sv create` makes a SvelteKit project (minimal, TypeScript, pnpm). `pnpm add` installs the library from npm (`next` is the newest release candidate). `expo-svelte init` then turns the project into an Expo Svelte one: the dependencies, the patches, the Metro and Expo config, the Vite plugin and a first native screen, followed by `pnpm install` and the doctor. Run it with `--dry-run` first to see the plan, and again whenever you like: it changes nothing a second time. The first `pnpm android` / `pnpm ios` builds the native app, which can take ten minutes or more the first time. The web app is still there: `pnpm dev`.
 
-If `pnpm add` stops with `ERR_PNPM_GIT_RESOLVE_FAILED` (pnpm fetches GitHub dependencies over HTTPS even for an SSH address), tell git once to use SSH for this account: `git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.com/AlfayezDev/"`.
-
 **The guide** is in [docs/](docs/10-getting-started/10-introduction.md), and published at <https://svelte-native.alfayez.dev>. It has the shape of SvelteKit's: getting started (what it is, creating a project, project structure, coming from the web), core concepts (routing, styling, loading data, state), a page for every component, native features (native libraries and views, SVG, animation, gestures, platform APIs, updates), building and releasing, troubleshooting, and a reference for the command line, the configuration and every module. `apps/docs` is the site; [its README](apps/docs/README.md) says how to add a page.
 
 **The showcase** is `apps/example`, one short screen per feature (its [README](apps/example/README.md) lists them). From a checkout: `pnpm install --frozen-lockfile`, then `pnpm --dir apps/example android` or `ios`. A [release](https://github.com/AlfayezDev/svelte-native/releases) may also have a prebuilt Android APK attached, when a release has one (`adb install -r <file>.apk`).
@@ -40,7 +37,6 @@ If `pnpm add` stops with `ERR_PNPM_GIT_RESOLVE_FAILED` (pnpm fetches GitHub depe
 - EAS Build on Expo's servers is not tried, and push notification delivery is not tested end to end.
 - The Svelte compiler is an unmerged pull request, [pinned](https://github.com/sveltejs/svelte/pull/18042) to one commit; the Svelte you install is that build, not the registry's, and the web side of the app runs on a pinned SvelteKit prerelease (3.1.1).
 - Expo SDK 57 and React Native 0.86 only.
-- `expo-svelte` is a placeholder name and will change before a public release.
 
 **Found a bug?** [Open an issue](https://github.com/AlfayezDev/svelte-native/issues/new?template=bug.yml); the form asks for what is needed, including the output of `pnpm exec expo-svelte doctor`. If an install fails, start with [troubleshooting](docs/60-appendix/20-troubleshooting.md).
 
@@ -86,7 +82,7 @@ A failed run: the job log names the step; `ci.yml` runs every check of a job eve
 
 ## Release
 
-A release is a tag `v<version>` on a commit of `main` that is green in `ci.yml` and `consumer.yml`. Apps depend on the tag (`pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v<version>&path:packages/expo-svelte"`); the GitHub Release is its notes and a convenience tarball. A machine that reaches the private repository only with an SSH key needs one git setting first, because pnpm resolves a `github.com` dependency over HTTPS whatever the specifier says: `git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.com/AlfayezDev/"` (without it `pnpm add` stops with `ERR_PNPM_GIT_RESOLVE_FAILED`; the package README, "Install in an app", has the details).
+A release is a tag `v<version>` on a commit of `main` that is green in `ci.yml` and `consumer.yml`, and the package published to npm from that tag: `pnpm --dir packages/expo-svelte pack`, then `npm publish expo-svelte-<version>.tgz` (the package's `publishConfig` makes it public and puts a release candidate on the `next` tag; a stable release is published with `--tag latest`). Apps install it from npm (`pnpm add expo-svelte@next`); the GitHub Release is its notes and the same tarball.
 
 1. Set `"version"` in `packages/expo-svelte/package.json` (`0.3.0`; a pre-release is `0.3.0-rc.1`, which the release marks as a pre-release).
 2. In `packages/expo-svelte/CHANGELOG.md`, move what is under `## Unreleased` under a new heading `## 0.3.0 - YYYY-MM-DD` and leave `## Unreleased` empty. The text under the version's heading is the release notes verbatim (`scripts/release-notes.sh 0.3.0` prints it).
@@ -99,4 +95,4 @@ A release is a tag `v<version>` on a commit of `main` that is green in `ci.yml` 
    git push origin v0.3.0
    ```
 
-`release.yml` then runs the CI checks, refuses a tag that is not `v` plus the package's version or whose version has no changelog section, and creates the Release with the notes and `alfayez-expo-svelte-0.3.0.tgz`. A re-run of the workflow for the same tag replaces the notes and the files. A release made by mistake: `gh release delete v0.3.0 --cleanup-tag`, fix, tag again (do not move a tag an app may have installed: release `0.3.1` instead).
+`release.yml` then runs the CI checks, refuses a tag that is not `v` plus the package's version or whose version has no changelog section, and creates the Release with the notes and `expo-svelte-0.3.0.tgz`. A re-run of the workflow for the same tag replaces the notes and the files. A release made by mistake: `gh release delete v0.3.0 --cleanup-tag`, fix, tag again (do not move a tag an app may have installed: release `0.3.1` instead).

@@ -1,8 +1,8 @@
 name: Release
 
 # A tag `v<version>` makes a GitHub Release: the CI checks run first (ci.yml), then the release is created with the CHANGELOG section of
-# the version as its notes and the `pnpm pack` tarball of packages/expo-svelte attached. Apps do not install the tarball: they depend on the
-# tag itself (pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/expo-svelte"); the tarball is a convenience.
+# the version as its notes and the `pnpm pack` tarball of packages/expo-svelte attached: the tarball that is published to npm, where apps
+# install it from (pnpm add expo-svelte@next).
 # The steps for the person who releases: README.md, "Release".
 
 on:

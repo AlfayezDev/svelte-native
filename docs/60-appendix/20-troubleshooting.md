@@ -20,21 +20,6 @@ pnpm exec expo-svelte doctor
 | `… is not applied` | Run `pnpm exec expo-svelte init` again, which copies the current patches, then `pnpm install`. |
 | `metro.config.cjs does not mention withExpoSvelte` | Wrap your Metro config in `withExpoSvelte` ([Configuration](configuration#metroconfigcjs)). |
 
-## pnpm cannot read the repository
-
-```
-ERR_PNPM_GIT_RESOLVE_FAILED
-… git ls-remote failed: fatal: could not read Username for 'https://github.com': terminal prompts disabled
-```
-
-The repository is private, and pnpm fetches GitHub dependencies over HTTPS even when you give it an SSH address. Tell git to use SSH for this account, once:
-
-```sh
-git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.com/AlfayezDev/"
-```
-
-Later installs need the same setting: without it, `pnpm install` fails with `ERR_PNPM_GIT_FETCH_FAILED`. If it still fails, check that `ssh -T git@github.com` greets you by name. If it doesn't, your SSH key isn't on your GitHub account, or you don't have access to the repository yet.
-
 ## pnpm stops during install
 
 ### ERR_PNPM_UNSUPPORTED_ENGINE

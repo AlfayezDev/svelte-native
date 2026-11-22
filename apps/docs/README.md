@@ -1,4 +1,4 @@
-# Svelte Native documentation site
+# Expo Svelte documentation site
 
 A static SvelteKit app (`@sveltejs/adapter-static`, every page prerendered) that renders the guide in [`docs/`](../../docs). The Markdown files there are the single source of truth: this app reads them at build time and does not copy them.
 
@@ -52,7 +52,7 @@ A section's `index.md`: `title`, and optionally `description` and `icon` (a Luci
 
 - A code block can start with `<!--- file: src/routes/+mobile.svelte --->` (or `/// file: package.json`). The line is dropped from the code and shown as the file name over the block. Highlighted languages: `sh`, `svelte`, `ts`, `js`, `json`, `yaml`, `kotlin`, `css`, `html`; any other (`tree`) is plain text. Every block has a Copy button.
 - A block marked `terminal` is a terminal with a tab for each package manager: ```` ```sh terminal ````. Write its commands the npm way and the site shows each as the four managers spell it, and remembers the reader's choice for every terminal. Translated: `npx` (`yarn dlx`, `pnpm dlx`, `bunx`; `-y` is dropped), `npm install` / `i` / `add` with `-D`, `-E` and `-g` (`yarn add`, `pnpm add`, `bun add`; globally `yarn global add`, `pnpm add -g`, `bun add -g`), `npm uninstall`, `npm run <script>` (`yarn run`, `pnpm run`, `bun run`; the `--` before the script's flags is dropped), `npm test` (`bun run test`: `bun test` is Bun's own test runner), `npm ci` (`install --frozen-lockfile`), `npm init`, `npm create`, variables in front (`CI=1 npm install`) and `&&`. Lines that are not npm commands (`cd my-app`, comments) are the same in all four.
-  A block with no npm command has no tabs, and neither has one with a command that has no faithful translation (a flag the others lack, such as `--legacy-peer-deps`; a pipe; `sudo npm ...`; a yarn, pnpm or bun command written by hand): it is shown as written. Use `terminal` only for commands that work with any package manager: Svelte Native itself needs pnpm, so its own commands stay in plain `sh` blocks.
+  A block with no npm command has no tabs, and neither has one with a command that has no faithful translation (a flag the others lack, such as `--legacy-peer-deps`; a pipe; `sudo npm ...`; a yarn, pnpm or bun command written by hand): it is shown as written. Use `terminal` only for commands that work with any package manager: Expo Svelte itself needs pnpm, so its own commands stay in plain `sh` blocks.
 - A quote that starts with `**info**`, `**warning**`, `**important**`, `**success**` or `**error**` is a callout: `> **warning** Don't start Metro with CI=1.` GitHub's `> [!NOTE]`, `[!TIP]`, `[!WARNING]`, `[!IMPORTANT]` and `[!CAUTION]` make the same five.
 - An image alone in a paragraph is a figure, and its title is the caption: `![Alt text](/images/screen.png "The caption")`. A path that starts with `/` is a file of `static/` (and is prefixed with `BASE_PATH`).
 - Link to another page by its slug: `(routing)`, or `(styling#light-and-dark-mode)` for a heading. The guide doesn't link into the repository: the site is self-contained.
@@ -76,14 +76,14 @@ A page with `video: list` shows, under its header, a recording of the feature on
 `BASE_PATH` is the subpath the site is served from, and it is read at build time. Leave it unset to serve from the root of a domain. For GitHub Pages, which serves a project at `/<repository>`:
 
 ```sh
-BASE_PATH=/svelte-native pnpm --dir apps/docs build
+BASE_PATH=/expo-svelte pnpm --dir apps/docs build
 ```
 
 A site served from a directory (not from GitHub Pages) needs its server to find the prerendered files. For nginx:
 
 ```nginx
 server {
-	root /var/www/svelte-native;           # the contents of apps/docs/build
+	root /var/www/expo-svelte;           # the contents of apps/docs/build
 	absolute_redirect off;
 
 	location / {

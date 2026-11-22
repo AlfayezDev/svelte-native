@@ -32,15 +32,15 @@ const tree = (nodes: { text?: string; desc?: string; pkg: string }[]) =>
 describe("the home screen is the first screen of the production variant", () => {
 	test("it reads its title and its line of description, in both languages the app has (the title is the same in both)", () => {
 		expect(homeLabels()).toEqual([
-			"Svelte Native",
+			"Expo Svelte",
 			"Svelte 5 components running as a native Android and iOS app, with no React and no WebView.",
 			"مكوّنات Svelte 5 تعمل كتطبيق أصلي على Android وiOS، بلا React وبلا WebView.",
 		]);
 	});
 	test("only the app's own window counts", () => {
-		expect(isHomeScreen(tree([{ text: "Svelte Native", pkg: productPackage }]))).toBe(true);
+		expect(isHomeScreen(tree([{ text: "Expo Svelte", pkg: productPackage }]))).toBe(true);
 		expect(isHomeScreen(tree([{ desc: "مكوّنات Svelte 5 تعمل كتطبيق أصلي على Android وiOS، بلا React وبلا WebView.", pkg: productPackage }]))).toBe(true);
-		expect(isHomeScreen(tree([{ text: "Svelte Native", pkg: "io.example.svelteqa" }]))).toBe(false);
+		expect(isHomeScreen(tree([{ text: "Expo Svelte", pkg: "io.example.svelteqa" }]))).toBe(false);
 		expect(isHomeScreen(tree([{ text: "Loading", pkg: productPackage }, { text: "System UI isn't responding", pkg: "android" }]))).toBe(false);
 	});
 });
@@ -175,7 +175,7 @@ esac
 		chmodSync(join(bin, "adb"), 0o755);
 		return { bin, log, logcat };
 	}
-	const homeScreen = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" package="${packageLine}" content-desc="" bounds="[0,0][1080,2400]"><node index="0" text="Svelte Native" class="android.view.View" package="${packageLine}" content-desc="" clickable="true" enabled="true" bounds="[0,0][100,100]" /></node></hierarchy>`;
+	const homeScreen = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" package="${packageLine}" content-desc="" bounds="[0,0][1080,2400]"><node index="0" text="Expo Svelte" class="android.view.View" package="${packageLine}" content-desc="" clickable="true" enabled="true" bounds="[0,0][100,100]" /></node></hierarchy>`;
 	const spinner = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" package="${packageLine}" content-desc="" bounds="[0,0][1080,2400]"><node index="0" text="" content-desc="Loading" class="android.view.View" package="${packageLine}" bounds="[0,0][100,100]" /></node></hierarchy>`;
 	const crash = ["11-01 12:00:05.000  4242  4290 E AndroidRuntime: FATAL EXCEPTION: mqt_v_js", `11-01 12:00:05.001  4242  4290 E AndroidRuntime: Process: ${packageLine}, PID: 4242`, "11-01 12:00:05.002  4242  4290 E AndroidRuntime: com.facebook.react.common.JavascriptException: src/lib/native/dev/ is not in this app"].join("\n");
 

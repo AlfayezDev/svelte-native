@@ -1,8 +1,8 @@
 name: Release
 
 # A tag `v<version>` makes a GitHub Release: the CI checks run first (ci.yml), then the release is created with the CHANGELOG section of
-# the version as its notes and the `pnpm pack` tarball of packages/svelte-native attached. Apps do not install the tarball: they depend on the
-# tag itself (pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native"); the tarball is a convenience.
+# the version as its notes and the `pnpm pack` tarball of packages/expo-svelte attached. Apps do not install the tarball: they depend on the
+# tag itself (pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/expo-svelte"); the tarball is a convenience.
 # The steps for the person who releases: README.md, "Release".
 
 on:
@@ -44,14 +44,14 @@ jobs:
       - name: The tag names the package's version, and the changelog has it
         id: version
         run: |
-          version=$(node -p 'require("./packages/svelte-native/package.json").version')
+          version=$(node -p 'require("./packages/expo-svelte/package.json").version')
           if [ "$TAG" != "v$version" ]; then
-            echo "::error title=Tag and version differ::the tag is $TAG, packages/svelte-native/package.json says $version. Set the version, commit, and tag that commit as v$version."
+            echo "::error title=Tag and version differ::the tag is $TAG, packages/expo-svelte/package.json says $version. Set the version, commit, and tag that commit as v$version."
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           bash scripts/release-notes.sh "$version" > "$RUNNER_TEMP/notes.md" || {
-            echo "::error title=No changelog entry::packages/svelte-native/CHANGELOG.md has no non-empty '## $version' section"
+            echo "::error title=No changelog entry::packages/expo-svelte/CHANGELOG.md has no non-empty '## $version' section"
             exit 1
           }
           echo "release notes: $(wc -l < "$RUNNER_TEMP/notes.md") lines"
@@ -60,7 +60,7 @@ jobs:
       - name: Pack the library
         run: |
           mkdir "$RUNNER_TEMP/assets"
-          pnpm --dir packages/svelte-native pack --pack-destination "$RUNNER_TEMP/assets"
+          pnpm --dir packages/expo-svelte pack --pack-destination "$RUNNER_TEMP/assets"
           cd "$RUNNER_TEMP/assets"
           sha256sum -- *.tgz | tee SHA256SUMS
           ls -l
@@ -70,7 +70,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          flags=(--title "@alfayez/svelte-native $VERSION" --notes-file "$RUNNER_TEMP/notes.md")
+          flags=(--title "expo-svelte $VERSION" --notes-file "$RUNNER_TEMP/notes.md")
           # 0.3.0-rc.1 is a pre-release; it is never the "latest" release.
           case "$VERSION" in *-*) flags+=(--prerelease) ;; esac
           if gh release view "$TAG" >/dev/null 2>&1; then

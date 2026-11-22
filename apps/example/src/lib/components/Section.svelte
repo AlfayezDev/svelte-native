@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { Text, View } from "@alfayez/svelte-native";
+  import { Text, View } from "expo-svelte";
   import { text, theme } from "#lib/theme.svelte.ts";
 
   // One labelled example: a heading, an optional note, and a card holding the live example (`children`).

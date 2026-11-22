@@ -47,11 +47,11 @@ jobs:
 
       - name: ESLint (library)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: pnpm --dir packages/svelte-native lint
+        run: pnpm --dir packages/expo-svelte lint
 
       - name: svelte-check (library)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: pnpm --dir packages/svelte-native typecheck
+        run: pnpm --dir packages/expo-svelte typecheck
 
       - name: ESLint (QA app)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
@@ -92,19 +92,19 @@ jobs:
       # (dist/node and dist/types must be what the build writes). Some tests start Metro or esbuild, so Bun's 5 s per test is too short on a hosted runner.
       - name: Library tests
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        working-directory: packages/svelte-native
+        working-directory: packages/expo-svelte
         run: bun test --timeout 60000
 
       # After the tests, so that the dist test judged the committed files; the build then writes the same bytes, or the commit forgot it.
       - name: Build dist/node and dist/types and compare them with the commit
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: |
-          pnpm --dir packages/svelte-native build
-          changed=$(git status --porcelain -- packages/svelte-native/dist)
+          pnpm --dir packages/expo-svelte build
+          changed=$(git status --porcelain -- packages/expo-svelte/dist)
           if [ -n "$changed" ]; then
-            echo "::error title=dist is stale::run 'pnpm --dir packages/svelte-native build' and commit packages/svelte-native/dist"
+            echo "::error title=dist is stale::run 'pnpm --dir packages/expo-svelte build' and commit packages/expo-svelte/dist"
             echo "$changed"
-            git --no-pager diff --stat -- packages/svelte-native/dist
+            git --no-pager diff --stat -- packages/expo-svelte/dist
             exit 1
           fi
 
@@ -157,26 +157,26 @@ jobs:
       # own Pan source. g++ with the address and undefined-behaviour sanitizers, kotlinc 2.1.20.
       - name: Engine host checks
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: bash packages/svelte-native/native/svelte-core/android/src/test/engine.sh
+        run: bash packages/expo-svelte/native/svelte-core/android/src/test/engine.sh
 
       # The blur view's rules (intensity, tints, colours, radius, the size of its backdrop picture), kotlinc only.
       - name: Blur view host checks
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: bash packages/svelte-native/native/svelte-core/android/src/test/blur.sh
+        run: bash packages/expo-svelte/native/svelte-core/android/src/test/blur.sh
 
       # The Android side of push that needs no device: the message mapping, the launch-message and opened rule, the de-duplication of taps, the events kept for a
       # JavaScript that is not listening, the background wait and its limit, the enabled flag every entry asks first, and that Firebase is compile-time only, svelte-core's
       # manifest declares nothing of push, and the module and config plugin agree with src/push/client.ts. kotlinc only.
       - name: Push host checks
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: bash packages/svelte-native/native/svelte-core/android/src/test/push.sh
+        run: bash packages/expo-svelte/native/svelte-core/android/src/test/push.sh
 
       # The Android side of location that needs no device: which providers a request tries (the fused provider from API 31, the GPS only with the precise permission), the permission's
       # state, the payloads, the registry of watches, the enabled flag every call asks first, and that no Google library is part of it and the module and config plugin agree with
       # src/geolocation.ts. kotlinc only.
       - name: Location host checks
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: bash packages/svelte-native/native/svelte-core/android/src/test/location.sh
+        run: bash packages/expo-svelte/native/svelte-core/android/src/test/location.sh
 
   docs:
     name: Documentation site

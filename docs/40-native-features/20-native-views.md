@@ -3,13 +3,13 @@ title: Native views
 video: native-views
 ---
 
-Some libraries give you a view that the platform draws: an image with a placeholder and a disk cache, a blur, a video player, a map. `@alfayez/svelte-native/foreign` has Svelte components for the common ones. Each mounts the library's native view directly, with the library's own props, and none of them loads React.
+Some libraries give you a view that the platform draws: an image with a placeholder and a disk cache, a blur, a video player, a map. `expo-svelte/foreign` has Svelte components for the common ones. Each mounts the library's native view directly, with the library's own props, and none of them loads React.
 
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Screen, Text } from '@alfayez/svelte-native';
-	import { LinearGradient } from '@alfayez/svelte-native/foreign';
+	import { Screen, Text } from 'expo-svelte';
+	import { LinearGradient } from 'expo-svelte/foreign';
 </script>
 
 <Screen title="Gradient">
@@ -26,14 +26,14 @@ Some libraries give you a view that the platform draws: an image with a placehol
 
 ## Turning a library on
 
-Svelte Native carries the libraries on this page, and an app links only the ones it uses. List each one under `libraries` in the plugin's options, then prebuild and build, because each one adds native code:
+Expo Svelte carries the libraries on this page, and an app links only the ones it uses. List each one under `libraries` in the plugin's options, then prebuild and build, because each one adds native code:
 
 ```ts
 /// file: app.config.ts
 export default {
 	// ...
 	plugins: [
-		['@alfayez/svelte-native', {
+		['expo-svelte', {
 			libraries: {
 				'expo-linear-gradient': true,
 				'react-native-maps': { androidGoogleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY }
@@ -50,12 +50,12 @@ pnpm android
 
 A library is `true`, or the options of the library's own Expo config plugin (`react-native-maps` takes its Google Maps keys, `expo-video` takes `supportsPictureInPicture`, `expo-image` takes `disableLibdav1d`). The plugin runs it for you, so the options never go in `plugins`. `false` is the same as leaving the library out.
 
-You install nothing. Don't add these packages to `package.json` (the prebuild and `svelte-native doctor` refuse an app that does), and don't list their plugins in `plugins`.
+You install nothing. Don't add these packages to `package.json` (the prebuild and `expo-svelte doctor` refuse an app that does), and don't list their plugins in `plugins`.
 
 An app that doesn't list a library doesn't carry it: its native code isn't in the build (on iOS it isn't even compiled, so an app without `react-native-maps` has no map or location code that App Store Connect would ask a purpose string for), and its JavaScript isn't in the bundle. Importing the component is fine. Using it throws a message that says how to turn the library on:
 
 ```
-react-native-maps is not in this app: turn it on with `libraries: { "react-native-maps": true }` in the @alfayez/svelte-native plugin options (app.json or app.config.*), then prebuild and build the app again
+react-native-maps is not in this app: turn it on with `libraries: { "react-native-maps": true }` in the expo-svelte plugin options (app.json or app.config.*), then prebuild and build the app again
 ```
 
 | Library | Components |
@@ -78,9 +78,9 @@ react-native-maps is not in this app: turn it on with `libraries: { "react-nativ
 | any other Expo module | [`ExpoView`, `defineExpoView`](#any-expo-view) |
 | anything else | [`ForeignView`](#foreignview) |
 
-The last two rows are libraries Svelte Native doesn't carry: install those the usual way (see [Native libraries](native-libraries)). `react-native-svg` isn't in the list because Svelte Native carries it itself and turns it on for every app; its components are in the main entry (see [SVG](svg)).
+The last two rows are libraries Expo Svelte doesn't carry: install those the usual way (see [Native libraries](native-libraries)). `react-native-svg` isn't in the list because Expo Svelte carries it itself and turns it on for every app; its components are in the main entry (see [SVG](svg)).
 
-Four of these libraries are patched, and the copies Svelte Native carries already have their patches: see [Patches](#patches).
+Four of these libraries are patched, and the copies Expo Svelte carries already have their patches: see [Patches](#patches).
 
 Every component takes the usual layout and accessibility props of a [`View`](view) (`style`, `accessibilityLabel`, `testID`, ...) besides its own. `ref` gives a handle: the host handle (`tag`, `measure`, ...) or, where the library has them, its functions.
 
@@ -92,7 +92,7 @@ An image with `expo-image`'s extras: a placeholder (a blurhash or thumbhash), a 
 
 ```svelte
 <script lang="ts">
-	import { ExpoImage } from '@alfayez/svelte-native/foreign';
+	import { ExpoImage } from 'expo-svelte/foreign';
 </script>
 
 <ExpoImage
@@ -118,12 +118,12 @@ The library's static functions (`prefetch`, the cache functions) are reached thr
 
 ### ExpoBlurView and BlurTargetView
 
-`ExpoBlurView` is `expo-blur`'s view, for its own props. For a blur with nothing to install, use Svelte Native's [`BlurView`](blur-view). `ExpoBlurView` blurs what is behind it. On iOS that's all you need. On Android, the real blur draws what a `BlurTargetView` holds: put the content to blur in the target, and give the target's `ref` handle to `blurTarget`. Without a target, Android draws a translucent tint instead (`blurMethod="none"`, the default).
+`ExpoBlurView` is `expo-blur`'s view, for its own props. For a blur with nothing to install, use Expo Svelte's [`BlurView`](blur-view). `ExpoBlurView` blurs what is behind it. On iOS that's all you need. On Android, the real blur draws what a `BlurTargetView` holds: put the content to blur in the target, and give the target's `ref` handle to `blurTarget`. Without a target, Android draws a translucent tint instead (`blurMethod="none"`, the default).
 
 ```svelte
 <script lang="ts">
-	import { Text, View } from '@alfayez/svelte-native';
-	import { BlurTargetView, ExpoBlurView } from '@alfayez/svelte-native/foreign';
+	import { Text, View } from 'expo-svelte';
+	import { BlurTargetView, ExpoBlurView } from 'expo-svelte/foreign';
 
 	const fill = { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 } as const;
 	let target = $state<{ tag: number } | null>(null);
@@ -182,8 +182,8 @@ The gradient fills the view and the children are drawn above it. Round the corne
 
 ```svelte
 <script lang="ts">
-	import { Pressable, Text } from '@alfayez/svelte-native';
-	import { Video, type VideoHandle } from '@alfayez/svelte-native/foreign';
+	import { Pressable, Text } from 'expo-svelte';
+	import { Video, type VideoHandle } from 'expo-svelte/foreign';
 
 	let paused = $state(false);
 	let seconds = $state(0);
@@ -221,11 +221,11 @@ The `ref` handle has `seek(time)`, `pause()`, `resume()`, `setVolume(volume)`, `
 
 ### VideoView
 
-`expo-video`'s view. Create the player with `createVideoPlayer`, which Svelte Native exports for it (it's `expo-video`'s own function, with no React in it), and pass the player as `player`:
+`expo-video`'s view. Create the player with `createVideoPlayer`, which Expo Svelte exports for it (it's `expo-video`'s own function, with no React in it), and pass the player as `player`:
 
 ```svelte
 <script lang="ts">
-	import { createVideoPlayer, VideoView } from '@alfayez/svelte-native/foreign';
+	import { createVideoPlayer, VideoView } from 'expo-svelte/foreign';
 
 	const player = createVideoPlayer({ uri: 'https://example.com/clip.mp4' });
 	player.play();
@@ -250,7 +250,7 @@ Plays a Lottie animation.
 
 ```svelte
 <script lang="ts">
-	import { LottieView, type LottieHandle } from '@alfayez/svelte-native/foreign';
+	import { LottieView, type LottieHandle } from 'expo-svelte/foreign';
 	import pulse from '../../assets/pulse.json';
 
 	let player: LottieHandle | null = null;
@@ -276,7 +276,7 @@ Plays a Rive animation, with its state machines.
 
 ```svelte
 <script lang="ts">
-	import { Rive, type RiveHandle } from '@alfayez/svelte-native/foreign';
+	import { Rive, type RiveHandle } from 'expo-svelte/foreign';
 
 	let rive: RiveHandle | null = null;
 </script>
@@ -306,9 +306,9 @@ The system date and time picker. iOS has a view, `DateTimePicker`. Android has d
 
 ```svelte
 <script lang="ts">
-	import { Pressable, Text } from '@alfayez/svelte-native';
-	import { DateTimePicker, openDatePicker } from '@alfayez/svelte-native/foreign';
-	import { Platform } from '@alfayez/svelte-native/platform';
+	import { Pressable, Text } from 'expo-svelte';
+	import { DateTimePicker, openDatePicker } from 'expo-svelte/foreign';
+	import { Platform } from 'expo-svelte/platform';
 
 	let date = $state(new Date());
 </script>
@@ -332,8 +332,8 @@ Shows a PDF document. Turning `react-native-pdf` on turns `react-native-blob-uti
 
 ```svelte
 <script lang="ts">
-	import { Text } from '@alfayez/svelte-native';
-	import { Pdf } from '@alfayez/svelte-native/foreign';
+	import { Text } from 'expo-svelte';
+	import { Pdf } from 'expo-svelte/foreign';
 
 	let page = $state(1);
 	let pages = $state(0);
@@ -365,7 +365,7 @@ A web page inside your screen, with `react-native-webview`.
 
 ```svelte
 <script lang="ts">
-	import { WebView } from '@alfayez/svelte-native/foreign';
+	import { WebView } from 'expo-svelte/foreign';
 </script>
 
 <WebView
@@ -391,8 +391,8 @@ A map with `react-native-maps`. iOS draws Apple Maps. Android draws Google Maps,
 
 ```svelte
 <script lang="ts">
-	import { Pressable, Text } from '@alfayez/svelte-native';
-	import { MapView, Marker, type MapHandle } from '@alfayez/svelte-native/foreign';
+	import { Pressable, Text } from 'expo-svelte';
+	import { MapView, Marker, type MapHandle } from 'expo-svelte/foreign';
 
 	const london = { latitude: 51.5072, longitude: -0.1276, latitudeDelta: 0.2, longitudeDelta: 0.2 };
 	const paris = { latitude: 48.8566, longitude: 2.3522, latitudeDelta: 0.2, longitudeDelta: 0.2 };
@@ -418,8 +418,8 @@ Draws views into an image. `ViewShot` is a `View` whose `ref` handle has `captur
 
 ```svelte
 <script lang="ts">
-	import { Image, Pressable, Text, View } from '@alfayez/svelte-native';
-	import { ViewShot } from '@alfayez/svelte-native/foreign';
+	import { Image, Pressable, Text, View } from 'expo-svelte';
+	import { ViewShot } from 'expo-svelte/foreign';
 
 	let shot: { capture(): Promise<string> } | null = null;
 	let picture = $state<string | null>(null);
@@ -453,8 +453,8 @@ Android draws a `View`'s shadow from `elevation` only. `ShadowedView` draws the 
 
 ```svelte
 <script lang="ts">
-	import { Text } from '@alfayez/svelte-native';
-	import { ShadowedView, shadowStyle } from '@alfayez/svelte-native/foreign';
+	import { Text } from 'expo-svelte';
+	import { ShadowedView, shadowStyle } from 'expo-svelte/foreign';
 </script>
 
 <ShadowedView style={[{ padding: 20, borderRadius: 16, backgroundColor: '#ffffff' }, shadowStyle({ color: '#000000', opacity: 0.2, radius: 12, offset: [0, 4] })]}>
@@ -470,8 +470,8 @@ A `Text` whose string a worklet can set on the UI thread, for numbers that chang
 
 ```svelte
 <script lang="ts">
-	import { createSharedValue, withTiming } from '@alfayez/svelte-native';
-	import { AnimateableText } from '@alfayez/svelte-native/foreign';
+	import { createSharedValue, withTiming } from 'expo-svelte';
+	import { AnimateableText } from 'expo-svelte/foreign';
 
 	const count = createSharedValue(0);
 	count.value = withTiming(100, { duration: 2000 });
@@ -489,8 +489,8 @@ An Expo library without a component above (`expo-camera`, say) needs no wrapper.
 ```svelte
 <!--- file: src/routes/camera/+mobile.svelte --->
 <script lang="ts">
-	import { Pressable, Text } from '@alfayez/svelte-native';
-	import { defineExpoView, type ExpoViewHandle } from '@alfayez/svelte-native/foreign';
+	import { Pressable, Text } from 'expo-svelte';
+	import { defineExpoView, type ExpoViewHandle } from 'expo-svelte/foreign';
 	import type { CameraNativeProps, CameraViewRef } from 'expo-camera';
 
 	const CameraView = defineExpoView<CameraNativeProps, CameraViewRef>('ExpoCamera');
@@ -538,7 +538,7 @@ Native views work inside [`List`](list) rows, sheets and modals.
 
 ## Patches
 
-On Android, React Native can drop an event of a native view when JavaScript is busy and a newer event of the same name arrives from the same view. For a progress stream that's fine; for a "loaded" message it's a lost event. The copies of four libraries that Svelte Native carries are patched so that their one-off events are always delivered:
+On Android, React Native can drop an event of a native view when JavaScript is busy and a newer event of the same name arrives from the same view. For a progress stream that's fine; for a "loaded" message it's a lost event. The copies of four libraries that Expo Svelte carries are patched so that their one-off events are always delivered:
 
 | Library | Version |
 | --- | --- |
@@ -547,4 +547,4 @@ On Android, React Native can drop an event of a native view when JavaScript is b
 | `react-native-pdf` | 7.0.3 |
 | `react-native-video` | 6.19.3 |
 
-You do nothing: the patches are in the library's copies (`vendor-patches/` lists them, and each copy's `VENDOR.md` says what changed). `svelte-native doctor` checks that they are there. Earlier versions of Svelte Native asked an app to declare these patches in `pnpm-workspace.yaml`: remove those entries when you move the libraries to `libraries`.
+You do nothing: the patches are in the library's copies (`vendor-patches/` lists them, and each copy's `VENDOR.md` says what changed). `expo-svelte doctor` checks that they are there. Earlier versions of Expo Svelte asked an app to declare these patches in `pnpm-workspace.yaml`: remove those entries when you move the libraries to `libraries`.

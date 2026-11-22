@@ -4,8 +4,8 @@
 		"sourceMap": true,
 		"target": "ES2022",
 		"strict": true,
-		// The library is checked against its source here (the `svelte-native-source` condition of its exports map), so an edit to it needs no rebuild.
-		"customConditions": ["svelte-native-source"],
+		// The library is checked against its source here (the `expo-svelte-source` condition of its exports map), so an edit to it needs no rebuild.
+		"customConditions": ["expo-svelte-source"],
 		"paths": {
 			"#lib/*": ["./src/lib/*"]
 		}
@@ -14,7 +14,7 @@
 		"node_modules",
 		"build",
 		".svelte-kit",
-		".svelte-native",
+		".expo-svelte",
 		"src/lib/native",
 		"src/routes/**/+mobile.svelte",
 		"src/routes/**/+layout.mobile.svelte",

@@ -14,7 +14,7 @@ import { parseSmokeBody, parseSmokeCompletion, parseSmokeResults } from "../pars
 import { moduleResults, parseSmokeResultsFile } from "../commands/ios-smoke.ts";
 import { ascii, decodeBase64, encodeBase64, hex, looksRandom } from "../../src/lib/native/dev/smoke-bytes.ts";
 import { smokeModules } from "../../src/lib/native/dev/smoke-rules.ts";
-import { alwaysLinkedPackages } from "../../../../packages/svelte-native/src/vendored.ts";
+import { alwaysLinkedPackages } from "../../../../packages/expo-svelte/src/vendored.ts";
 import { formatSmokeLine as format, formatSmokeSummary as summarize, oneLine, type SmokePath } from "../../src/lib/native/dev/smoke-log.ts";
 
 /** The packages only the smoke app links or bundles: the CommonJS file app.config.ts and react-native.config.js read. */
@@ -130,7 +130,7 @@ describe("the byte helpers", () => {
 			expect(encodeBase64(bytes)).toBe(expected);
 			expect(Array.from(decodeBase64(expected))).toEqual(Array.from(bytes));
 		}
-		expect(encodeBase64(ascii("Svelte Native"))).toBe("U3ZlbHRlIE5hdGl2ZQ==");
+		expect(encodeBase64(ascii("Expo Svelte"))).toBe("U3ZlbHRlIE5hdGl2ZQ==");
 		expect(() => decodeBase64("ab$d")).toThrow(/not base64/);
 	});
 	test("hex and the randomness check", () => {
@@ -284,7 +284,7 @@ const listed = [...smokeModules];
 const table = JSON.parse(readFileSync(join(platformDir, "qa/smoke-modules.json"), "utf8")) as { modules: { id: string; packages: string[]; link: string; shared: boolean; platforms: string[] }[] };
 const packageJson = JSON.parse(readFileSync(join(platformDir, "package.json"), "utf8")) as { dependencies: Record<string, string>; devDependencies: Record<string, string> };
 /** The library's own package.json: the packages it carries itself (`libraryVendoredPackages`) are no one's dependency, and none is one of its peers. */
-const libraryPackageJson = JSON.parse(readFileSync(join(platformDir, "../../packages/svelte-native/package.json"), "utf8")) as { peerDependencies: Record<string, string> };
+const libraryPackageJson = JSON.parse(readFileSync(join(platformDir, "../../packages/expo-svelte/package.json"), "utf8")) as { peerDependencies: Record<string, string> };
 
 describe("the pinned list, the module table and the checks agree", () => {
 	test("gates.json pins exactly the modules the page checks, for both platforms, in the order they run", () => {
@@ -306,7 +306,7 @@ describe("the pinned list, the module table and the checks agree", () => {
 		expect(used["@react-native-firebase/app"]).toBe("^24.0.0");
 		expect(used["@sentry/react-native"]).toBe("~7.11.0");
 		expect(used["@intercom/intercom-react-native"]).toBe("10.7.0");
-		// The packages the library carries itself (packages/svelte-native/VENDORING.md) are not stand-ins here any more: the smoke app takes the vendored copy, so no variant lists them, and the table has the modules without a package
+		// The packages the library carries itself (packages/expo-svelte/VENDORING.md) are not stand-ins here any more: the smoke app takes the vendored copy, so no variant lists them, and the table has the modules without a package
 		// (the nitro, mmkv, quick-crypto and quick-base64 ones; the animation, gesture and svg packages have no module of the smoke test). The list is the library's own: its always-linked packages (the optional libraries are the app's to turn on), except hermes-intl, which has no module in the smoke test.
 		expect([...libraryVendoredPackages].toSorted()).toEqual(alwaysLinkedPackages.map((vendored) => vendored.name).filter((name) => name !== "hermes-intl").toSorted());
 		for (const name of libraryVendoredPackages) {
@@ -355,12 +355,12 @@ describe("three apps: the product and the QA app link the product's native modul
 	}
 	/** The `autolinkingExclude` the Svelte native plugin gets from app.config.ts for a variant: what it writes into settings.gradle and the Podfile. */
 	function configuredExclude(variant: keyof typeof variantEnv): string[] {
-		const plugin = config(variant).plugins.find((entry) => pluginName(entry) === "@alfayez/svelte-native") as [string, { autolinkingExclude: string[] }];
+		const plugin = config(variant).plugins.find((entry) => pluginName(entry) === "expo-svelte") as [string, { autolinkingExclude: string[] }];
 		return plugin[1].autolinkingExclude;
 	}
 	/** The optional libraries the library carries that a variant turns on (`libraries` of the Svelte native plugin's options, which the evaluated config keeps), and the Expo modules among them. */
 	function libraries(variant: keyof typeof variantEnv): { names: string[]; expo: string[] } {
-		const plugin = config(variant).plugins.find((entry) => pluginName(entry) === "@alfayez/svelte-native") as [string, { libraries?: Record<string, unknown> }];
+		const plugin = config(variant).plugins.find((entry) => pluginName(entry) === "expo-svelte") as [string, { libraries?: Record<string, unknown> }];
 		const names = Object.entries(plugin[1].libraries ?? {}).filter(([, value]) => value !== false).map(([name]) => name);
 		return { names, expo: names.filter((name) => /^expo-/.test(name)) };
 	}
@@ -372,8 +372,8 @@ describe("three apps: the product and the QA app link the product's native modul
 		const flags = configuredExclude(variant).flatMap((name) => ["--exclude", name]);
 		const env = { APP_VARIANT: variantEnv[variant], EXPO_NO_TELEMETRY: "1", CI: "1" };
 		const on = libraries(variant);
-		const cli = join(platformDir, "../../packages/svelte-native/dist/node/cli.js");
-		const vendor = (name: string) => join(platformDir, "../../packages/svelte-native/vendor", name);
+		const cli = join(platformDir, "../../packages/expo-svelte/dist/node/cli.js");
+		const vendor = (name: string) => join(platformDir, "../../packages/expo-svelte/vendor", name);
 		// What React Native's own config command prints (Expo's), and the same through the library's command: the first is what the app's dependencies give, the second what the build links.
 		const raw = JSON.parse(run("node", [autolinking, "react-native-config", "--json", "--platform", platform, ...flags], env)) as { dependencies: Record<string, unknown> };
 		const rn = JSON.parse(run("node", [cli, `${platform}-autolinking`, ...on.names.flatMap((name) => ["--link", name]), "node", autolinking, "react-native-config", "--json", "--platform", platform, ...flags], env)) as { dependencies: Record<string, unknown> };
@@ -403,8 +403,8 @@ describe("three apps: the product and the QA app link the product's native modul
 			expect([...qa.rn].toSorted()).toEqual([...product.rn].toSorted());
 			expect([...smoke.all].filter((name) => !qa.all.has(name)).toSorted()).toEqual(smokeOnlyFor(platform).toSorted());
 			expect([...qa.all].filter((name) => !smoke.all.has(name))).toEqual([]);
-			// What the product (and so the QA app) keeps: Expo's own modules, the shared packages, and the library's native modules (one package, `@alfayez/svelte-native`: the engine on Android, the screens pod on iOS) the app ships.
-			const kept = ["expo-secure-store", "expo-localization", "expo-constants", "expo-asset", "expo-splash-screen", "expo-system-ui", "@alfayez/svelte-native"];
+			// What the product (and so the QA app) keeps: Expo's own modules, the shared packages, and the library's native modules (one package, `expo-svelte`: the engine on Android, the screens pod on iOS) the app ships.
+			const kept = ["expo-secure-store", "expo-localization", "expo-constants", "expo-asset", "expo-splash-screen", "expo-system-ui", "expo-svelte"];
 			for (const name of kept) expect([name, qa.expo.includes(name)]).toEqual([name, true]);
 			for (const name of ["react-native-reanimated", "react-native-webview", "react-native-maps"]) expect([name, qa.rn.includes(name)]).toEqual([name, true]);
 			// Expo's own autolinker finds none of the library's vendored packages in the app's dependencies (`react-native-quick-base64` is still in node_modules, for the Buffer package, and found there; so are gesture handler,
@@ -443,7 +443,7 @@ describe("three apps: the product and the QA app link the product's native modul
 		const plugins = config("smoke").plugins.map(pluginName);
 		expect(smokePlugins.filter((name) => !plugins.includes(name))).toEqual([]);
 		// libsodium for `crypto`: the production app's `["react-native-quick-crypto", { sodiumEnabled: true }]` is an option of the library's plugin now, on in the smoke app alone. No app lists quick-crypto's own plugin: the package is not installed.
-		const sodiumOf = (variant: keyof typeof variantEnv) => (config(variant).plugins.find((entry) => pluginName(entry) === "@alfayez/svelte-native") as [string, { sodiumEnabled?: boolean }])[1].sodiumEnabled;
+		const sodiumOf = (variant: keyof typeof variantEnv) => (config(variant).plugins.find((entry) => pluginName(entry) === "expo-svelte") as [string, { sodiumEnabled?: boolean }])[1].sodiumEnabled;
 		expect([sodiumOf("production"), sodiumOf("qa"), sodiumOf("smoke")]).toEqual([undefined, undefined, true]);
 		for (const variant of ["production", "qa", "smoke"] as const) expect([variant, config(variant).plugins.map(pluginName).includes("react-native-quick-crypto")]).toEqual([variant, false]);
 		expect(config("smoke").android.googleServicesFile).toBe("./qa/firebase-fake/google-services.json");

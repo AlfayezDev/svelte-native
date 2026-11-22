@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Image, Text, View } from "@alfayez/svelte-native";
+  import { Image, Text, View } from "expo-svelte";
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
@@ -67,7 +67,7 @@
   }
   async function shareDocs() {
     try {
-      await navigator.share({ title: "Svelte Native", text: "Web APIs on the device", url: "https://svelte-native.alfayez.dev/docs/web-apis" });
+      await navigator.share({ title: "Expo Svelte", text: "Web APIs on the device", url: "https://svelte-native.alfayez.dev/docs/web-apis" });
     } catch (error) {
       if (!(error instanceof Error && error.name === "AbortError")) report(error);
     }

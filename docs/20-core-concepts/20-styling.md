@@ -8,7 +8,7 @@ There is no CSS engine on the device. Each component takes a `style` prop: a pla
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Text, View } from '@alfayez/svelte-native';
+	import { Text, View } from 'expo-svelte';
 </script>
 
 <View style={{ padding: 20, gap: 8, borderRadius: 16, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e5e5ea' }}>
@@ -23,7 +23,7 @@ A style is a value like any other. Keep one in a constant, compute it with `$der
 
 ```svelte
 <script lang="ts">
-	import { Pressable, Text } from '@alfayez/svelte-native';
+	import { Pressable, Text } from 'expo-svelte';
 
 	const card = { padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#e5e5ea' };
 	let selected = $state(false);
@@ -43,7 +43,7 @@ To share styles across screens, export the objects from a module in `src/lib`.
 
 ## Classes
 
-`class` takes Tailwind's utilities and classes of your own. Svelte Native compiles your CSS file to React Native styles when Metro starts: no CSS runs on the device, and a class becomes the same style object you'd write by hand. Without the setup below, `class` does nothing, and a warning in development says so.
+`class` takes Tailwind's utilities and classes of your own. Expo Svelte compiles your CSS file to React Native styles when Metro starts: no CSS runs on the device, and a class becomes the same style object you'd write by hand. Without the setup below, `class` does nothing, and a warning in development says so.
 
 ```svelte
 <View class="flex-row items-center gap-3 rounded-2xl bg-white p-4 dark:bg-zinc-900">
@@ -53,7 +53,7 @@ To share styles across screens, export the objects from a module in `src/lib`.
 
 ### Set up classes
 
-Install Tailwind, at the version Svelte Native is made for:
+Install Tailwind, at the version Expo Svelte is made for:
 
 ```sh
 pnpm add -D tailwindcss@4.3.3
@@ -71,12 +71,12 @@ Give its path to Metro, and restart Metro:
 ```js
 /// file: metro.config.cjs
 const { getDefaultConfig } = require('expo/metro-config');
-const { withSvelteNative } = require('@alfayez/svelte-native/metro');
+const { withExpoSvelte } = require('expo-svelte/metro');
 
-module.exports = withSvelteNative(getDefaultConfig(__dirname), { css: 'src/global.css' });
+module.exports = withExpoSvelte(getDefaultConfig(__dirname), { css: 'src/global.css' });
 ```
 
-There is nothing to import. Metro writes the compiled classes to `.svelte-native/` when it starts, and again when you save a file under `src/` or the CSS file, and the screens that use them change in place. `svelte-native css src/global.css` runs the same compile by hand.
+There is nothing to import. Metro writes the compiled classes to `.expo-svelte/` when it starts, and again when you save a file under `src/` or the CSS file, and the screens that use them change in place. `expo-svelte css src/global.css` runs the same compile by hand.
 
 ### Writing classes
 
@@ -158,13 +158,13 @@ React Native's [View style props](https://reactnative.dev/docs/view-style-props)
 
 What you don't colour follows the app's light or dark mode on its own. A screen without a background takes the one of its stack, or of the screen it is in (a tab's screens look as the screen of the tab bar does), and when there is none, the system's: white or black on iOS (a modal or a sheet that takes the system's is a dark grey in the dark mode, as iOS draws them), Material's surface on Android. A transparent modal, and a screen inside one or inside a `<Modal transparent>`, has none. A `Text` or a `TextInput` without a colour has the system's text colour: black or white on iOS, Material's near-black or near-white on Android. A transparent modal stays transparent.
 
-The mode is the app's, set by `userInterfaceStyle` in `app.json`. Expo's default is `"light"`: the app stays light whatever the system says. `"automatic"` follows the system, and `"dark"` stays dark. `svelte-native init` writes `"automatic"` in the `app.json` it creates. The library's plugin applies it on Android too, where Expo leaves it to `expo-system-ui` (an app that has that package keeps its way).
+The mode is the app's, set by `userInterfaceStyle` in `app.json`. Expo's default is `"light"`: the app stays light whatever the system says. `"automatic"` follows the system, and `"dark"` stays dark. `expo-svelte init` writes `"automatic"` in the `app.json` it creates. The library's plugin applies it on Android too, where Expo leaves it to `expo-system-ui` (an app that has that package keeps its way).
 
 Your own colours are yours to switch. `colorScheme.current` is `'light'` or `'dark'`, and anything that reads it (a template, a `$derived`, an `$effect`) updates when the user switches:
 
 ```svelte
 <script lang="ts">
-	import { colorScheme, Text, View } from '@alfayez/svelte-native';
+	import { colorScheme, Text, View } from 'expo-svelte';
 
 	const dark = $derived(colorScheme.current === 'dark');
 </script>
@@ -174,11 +174,11 @@ Your own colours are yours to switch. `colorScheme.current` is `'light'` or `'da
 </View>
 ```
 
-`svelte-native init` writes a small theme, `src/lib/theme.ts`, built on the same idea. Its `theme.colors` is the light or the dark palette:
+`expo-svelte init` writes a small theme, `src/lib/theme.ts`, built on the same idea. Its `theme.colors` is the light or the dark palette:
 
 ```ts
 /// file: src/lib/theme.ts
-import { colorScheme } from '@alfayez/svelte-native';
+import { colorScheme } from 'expo-svelte';
 
 const light = { background: '#f2f2f7', surface: '#ffffff', text: '#000000', secondaryText: '#6c6c70', accent: '#007aff', onAccent: '#ffffff' };
 const dark: typeof light = { background: '#000000', surface: '#1c1c1e', text: '#ffffff', secondaryText: '#98989f', accent: '#0a84ff', onAccent: '#ffffff' };
@@ -196,7 +196,7 @@ Give the root stack your background (the screens of the stacks inside it, a tab'
 <!--- file: src/routes/+layout.mobile.svelte --->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Stack } from '@alfayez/svelte-native';
+	import { Stack } from 'expo-svelte';
 	import { theme } from '#lib/theme.ts';
 
 	let { children }: { children: Snippet } = $props();

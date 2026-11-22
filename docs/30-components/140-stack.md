@@ -10,7 +10,7 @@ video: routing
 <!--- file: src/routes/+layout.mobile.svelte --->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Stack, colorScheme } from '@alfayez/svelte-native';
+	import { Stack, colorScheme } from 'expo-svelte';
 
 	let { children }: { children: Snippet } = $props();
 </script>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Screen, ScrollView, Tabs, Text, View, type TabItem } from "@alfayez/svelte-native";
+  import { Screen, ScrollView, Tabs, Text, View, type TabItem } from "expo-svelte";
   import { nativeLabEnabled, theme } from "#lib/native/state.svelte.ts";
   import { attachHandler, gestureProbe } from "#lib/native/dev/gesture-probe.ts";
 

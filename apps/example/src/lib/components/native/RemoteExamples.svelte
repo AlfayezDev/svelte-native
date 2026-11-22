@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Text, TextInput, View } from "@alfayez/svelte-native";
-  import { native } from "@alfayez/svelte-native/remote";
+  import { Text, TextInput, View } from "expo-svelte";
+  import { native } from "expo-svelte/remote";
   import Button from "#lib/components/Button.svelte";
   import Section from "#lib/components/Section.svelte";
   import { addNote, hello, listNotes, visit, visits } from "#lib/remote/notes.remote.ts";
@@ -8,7 +8,7 @@
 
   // The part of the Remote functions screen that calls the server. It is a component of its own because calling a remote function without a host
   // throws: the screen shows it only once a host is set. `hello("...")` is a query, `visit()` a command, `addNote` a form.
-  const greeting = hello("Svelte Native");
+  const greeting = hello("Expo Svelte");
   const counter = visits();
   const notes = listNotes();
   const add = native(addNote); // the same object, typed for native inputs

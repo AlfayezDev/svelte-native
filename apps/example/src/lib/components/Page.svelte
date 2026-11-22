@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ComponentProps, Snippet } from "svelte";
-  import { SafeAreaView, Screen, ScrollView, Text } from "@alfayez/svelte-native";
+  import { SafeAreaView, Screen, ScrollView, Text } from "expo-svelte";
   import { text } from "#lib/theme.svelte.ts";
 
   // The frame of a feature screen: the native header with the title, a few plain sentences about the feature, then the examples

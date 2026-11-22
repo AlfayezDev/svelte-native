@@ -245,9 +245,9 @@ describe("what the release bundle may hold", () => {
 	const sources = [
 		"/node_modules/react/index.js", "/node_modules/react/cjs/react.production.js", "/node_modules/react-native/Libraries/Core/setUpGlobals.js",
 		"/node_modules/react-native-svg/src/lib/extract/extractProps.ts", "/node_modules/expo-image-picker/src/ImagePicker.ts", "/node_modules/react-native-reanimated/src/hook/useSharedValue.ts",
-		// The libraries the package carries are in the bundle from its `vendor/` folder (in the workspace) or from `node_modules/@alfayez/svelte-native/vendor/` (installed).
-		"/packages/svelte-native/vendor/react-native-svg/src/lib/extract/extractProps.ts", "/node_modules/@alfayez/svelte-native/vendor/react-native-svg/src/lib/extract/extractTransform.ts",
-		"/packages/svelte-native/vendor/react-native-reanimated/src/hook/useSharedValue.ts",
+		// The libraries the package carries are in the bundle from its `vendor/` folder (in the workspace) or from `node_modules/expo-svelte/vendor/` (installed).
+		"/packages/expo-svelte/vendor/react-native-svg/src/lib/extract/extractProps.ts", "/node_modules/expo-svelte/vendor/react-native-svg/src/lib/extract/extractTransform.ts",
+		"/packages/expo-svelte/vendor/react-native-reanimated/src/hook/useSharedValue.ts",
 	];
 	test("react's own files are counted, the library extractors of react-native-svg and unrelated packages are not forbidden", () => {
 		const result = analyseSources(sources);
@@ -264,7 +264,7 @@ describe("what the release bundle may hold", () => {
 	});
 
 	test("react-native-svg's elements are forbidden from the library's copy of it as well (vendor/), in the workspace and installed", () => {
-		for (const path of ["/home/x/svelte-native/packages/svelte-native/vendor/react-native-svg/src/elements/Svg.tsx", "/app/node_modules/@alfayez/svelte-native/vendor/react-native-svg/src/elements/Path.tsx"]) {
+		for (const path of ["/home/x/expo-svelte/packages/expo-svelte/vendor/react-native-svg/src/elements/Svg.tsx", "/app/node_modules/expo-svelte/vendor/react-native-svg/src/elements/Path.tsx"]) {
 			expect([path, analyseSources([path]).forbidden.map((value) => value.library)]).toEqual([path, ["svg"]]);
 		}
 	});
@@ -280,7 +280,7 @@ describe("what the release bundle may hold", () => {
 	});
 
 	test("the built-in blur's wrapper reaches no expo-blur file: not the library's wrappers of it, their view config or the package, in any file it imports", () => {
-		const source = join(resolve(platformDir, "../.."), "packages/svelte-native/src");
+		const source = join(resolve(platformDir, "../.."), "packages/expo-svelte/src");
 		const read = (path: string) => (existsSync(path) ? readFileSync(path, "utf8") : undefined);
 		const { files, packages } = importClosure(join(source, "components/BlurView.svelte"), read);
 		// the wrapper's own files: the container `View`, the class and props helpers, the foreign-view naming (and what that reads)

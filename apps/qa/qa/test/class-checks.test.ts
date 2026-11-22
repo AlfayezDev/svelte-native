@@ -9,7 +9,7 @@ import { htmlCheckNames } from "../../src/lib/native/dev/html-checks.ts";
 import { transitionCheckNames } from "../../src/lib/native/dev/transition-checks.ts";
 import { allSides, classCheckNames, classStyle, expectations, flattenStyle, isColor, mdBreakpoint, parseColor, sentStyle, sides, sky500, white, zinc400, zinc900, type Style } from "../../src/lib/native/dev/class-checks.ts";
 import type { GatesFile } from "../lib/gates.ts";
-import { platformDir, svelteNativeCli } from "../lib/paths.ts";
+import { platformDir, expoSvelteCli } from "../lib/paths.ts";
 import { sample } from "./sample.ts";
 
 /**
@@ -113,7 +113,7 @@ type Table = { classes: Record<string, Rule[]> };
 const made: string[] = [];
 afterAll(() => { for (const directory of made) rmSync(directory, { recursive: true, force: true }); });
 
-/** The table the build makes from the app's CSS and the probe, in a project of its own (the app's `.svelte-native/` is not touched) with the repository's Tailwind linked in: `svelte-native css`, the command Metro runs for the `css` option (run by Bun, which runs the library's TypeScript as the library's own tests do). */
+/** The table the build makes from the app's CSS and the probe, in a project of its own (the app's `.expo-svelte/` is not touched) with the repository's Tailwind linked in: `expo-svelte css`, the command Metro runs for the `css` option (run by Bun, which runs the library's TypeScript as the library's own tests do). */
 async function builtTable(): Promise<Table> {
 	const root = mkdtempSync(join(tmpdir(), "native-qa-classes-"));
 	made.push(root);
@@ -122,8 +122,8 @@ async function builtTable(): Promise<Table> {
 	symlinkSync(dirname(createRequire(import.meta.url).resolve("tailwindcss/package.json")), join(root, "node_modules/tailwindcss"));
 	copyFileSync(join(platformDir, "src/global.css"), join(root, "src/global.css"));
 	copyFileSync(join(platformDir, "src/lib/native/dev/ClassProbe.svelte"), join(root, "src/lib/ClassProbe.svelte"));
-	const built = spawnSync(process.execPath, [svelteNativeCli, "css", "src/global.css", "--variant", "qa", "--json"], { cwd: root, encoding: "utf8" });
-	if (built.status !== 0) throw new Error(`svelte-native css failed: ${built.stderr.slice(0, 400)}`);
+	const built = spawnSync(process.execPath, [expoSvelteCli, "css", "src/global.css", "--variant", "qa", "--json"], { cwd: root, encoding: "utf8" });
+	if (built.status !== 0) throw new Error(`expo-svelte css failed: ${built.stderr.slice(0, 400)}`);
 	const { file } = JSON.parse(built.stdout) as { file: string };
 	return ((await import(pathToFileURL(file).href)) as { default: Table }).default;
 }

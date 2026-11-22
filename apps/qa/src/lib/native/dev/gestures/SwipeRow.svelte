@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Text, View, AnimatedView, createSharedValue, runOnJS, withSpring, Gesture } from "@alfayez/svelte-native";
+  import { Text, View, AnimatedView, createSharedValue, runOnJS, withSpring, Gesture } from "expo-svelte";
   import { theme } from "../../state.svelte.ts";
   import { ROW_THRESHOLD, type Probe, type Session } from "../gestures-lab.ts";
 

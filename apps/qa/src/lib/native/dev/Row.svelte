@@ -4,7 +4,7 @@
 </script>
 <script lang="ts">
   import { onMount, untrack } from "svelte";
-  import { Text, View } from "@alfayez/svelte-native";
+  import { Text, View } from "expo-svelte";
   import type { RowHandle } from "./model.svelte.ts";
   import { theme } from "../state.svelte.ts";
   import Field from "./Field.svelte";

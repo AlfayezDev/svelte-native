@@ -7,7 +7,7 @@
 
   // Svelte's own transitions and animations, written as on the web: `in:`, `out:`, `transition:` with `svelte/transition`, `animate:flip` in a keyed
   // `{#each}`, on HTML elements (the build turns them into native views, texts and pressables). Svelte decides when they run and works out their frames;
-  // Svelte Native plays them on the UI thread, so a busy JavaScript thread does not make them stutter: try "Busy for 1 s" while one runs.
+  // Expo Svelte plays them on the UI thread, so a busy JavaScript thread does not make them stutter: try "Busy for 1 s" while one runs.
   let shown = $state(true);
   let open = $state(false);
   let items = $state([1, 2, 3, 4, 5]);

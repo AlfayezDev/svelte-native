@@ -2,23 +2,23 @@
 title: Configuration
 ---
 
-What `svelte-native init` writes, file by file, and the options of the Vite, Metro and Expo plugins. Every change is an ordinary edit: you can make them by hand, in any order, then run `pnpm install` and `pnpm exec svelte-native doctor`.
+What `expo-svelte init` writes, file by file, and the options of the Vite, Metro and Expo plugins. Every change is an ordinary edit: you can make them by hand, in any order, then run `pnpm install` and `pnpm exec expo-svelte doctor`.
 
 ## package.json
 
-`init` pins the Svelte and SvelteKit that Svelte Native needs, adds the packages React Native needs, and adds `main` and four scripts:
+`init` pins the Svelte and SvelteKit that Expo Svelte needs, adds the packages React Native needs, and adds `main` and four scripts:
 
 ```json
 /// file: package.json
 {
 	"scripts": {
-		"native": "svelte-native dev",
-		"android": "svelte-native android",
-		"ios": "svelte-native ios",
-		"check-setup": "svelte-native doctor"
+		"native": "expo-svelte dev",
+		"android": "expo-svelte android",
+		"ios": "expo-svelte ios",
+		"check-setup": "expo-svelte doctor"
 	},
 	"dependencies": {
-		"@alfayez/svelte-native": "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native",
+		"expo-svelte": "0.4.0-rc.10",
 		"expo": "57.0.30",
 		"expo-constants": "57.0.22",
 		"react": "19.2.7",
@@ -28,16 +28,16 @@ What `svelte-native init` writes, file by file, and the options of the Vite, Met
 		"@sveltejs/kit": "3.1.1",
 		"svelte": "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5"
 	},
-	"main": ".svelte-native/entry.ts"
+	"main": ".expo-svelte/entry.ts"
 }
 ```
 
 - `svelte` is a build of Svelte with a custom-renderer export, from a [pull request](https://github.com/sveltejs/svelte/pull/18042) that isn't merged yet. The registry's Svelte has the same version number but not that export. The web app compiles with this build too.
 - `@sveltejs/kit` is exact, because a patch is made for that version. A native-only app doesn't need SvelteKit at all.
 - The other versions are exact for the same reason. `react` is there because React Native needs it; your code doesn't use it.
-- `crypto` ([`crypto`](web-apis#crypto): react-native-quick-crypto, and the base64 module it asks for), the `Intl` APIs Hermes lacks (`hermes-intl`), [`localStorage`](web-apis#storage) (MMKV, which shares the Nitro runtime with quick-crypto), and the gestures, the animation and the [SVG components](svg) of the main entry (`react-native-gesture-handler`, `react-native-reanimated`, `react-native-worklets` and `react-native-svg`) are made of native packages that the library carries itself: they are copied into `@alfayez/svelte-native`, which links them (with its fixes already applied), so none of them is a dependency of the app. An app that lists one is refused (the prebuild stops, and `svelte-native doctor` fails): remove it from `package.json`, install again and build again. A library you add that asks for one of them as a peer dependency gets the library's copy; your package manager may warn about the missing peer, and that is expected.
-- `main` points at the entry point Svelte Native generates. Without it, Expo looks for `expo/AppEntry.js`.
-- Nothing else is needed for animations: the fast path Svelte Native uses for them on Android is on in the library's copy of Reanimated. (An older app has a `reanimated` entry with `staticFeatureFlags` for it; you can delete it, and what it sets still wins.)
+- `crypto` ([`crypto`](web-apis#crypto): react-native-quick-crypto, and the base64 module it asks for), the `Intl` APIs Hermes lacks (`hermes-intl`), [`localStorage`](web-apis#storage) (MMKV, which shares the Nitro runtime with quick-crypto), and the gestures, the animation and the [SVG components](svg) of the main entry (`react-native-gesture-handler`, `react-native-reanimated`, `react-native-worklets` and `react-native-svg`) are made of native packages that the library carries itself: they are copied into `expo-svelte`, which links them (with its fixes already applied), so none of them is a dependency of the app. An app that lists one is refused (the prebuild stops, and `expo-svelte doctor` fails): remove it from `package.json`, install again and build again. A library you add that asks for one of them as a peer dependency gets the library's copy; your package manager may warn about the missing peer, and that is expected.
+- `main` points at the entry point Expo Svelte generates. Without it, Expo looks for `expo/AppEntry.js`.
+- Nothing else is needed for animations: the fast path Expo Svelte uses for them on Android is on in the library's copy of Reanimated. (An older app has a `reanimated` entry with `staticFeatureFlags` for it; you can delete it, and what it sets still wins.)
 - `dev`, `build`, `preview` and `check` stay the web app's. Don't name a script `doctor`: `pnpm doctor` is pnpm's own command.
 
 ## pnpm-workspace.yaml
@@ -54,8 +54,8 @@ overrides:
   expo-modules-core: 57.0.23
   "@react-native/metro-config": 0.86.3
 patchedDependencies:
-  "@sveltejs/kit@3.1.1": patches/svelte-native/@sveltejs__kit@3.1.1.patch
-  expo-modules-core@57.0.23: patches/svelte-native/expo-modules-core@57.0.23.patch
+  "@sveltejs/kit@3.1.1": patches/expo-svelte/@sveltejs__kit@3.1.1.patch
+  expo-modules-core@57.0.23: patches/expo-svelte/expo-modules-core@57.0.23.patch
 ```
 
 - `allowBuilds` lets esbuild run its install script. Without it, pnpm stops with `ERR_PNPM_IGNORED_BUILDS`.
@@ -64,30 +64,30 @@ patchedDependencies:
 
 ## Patches
 
-Svelte Native depends on small changes to a few packages. The ones you install ship with the library as pnpm patches, each made for one exact version (a package the library carries itself, such as gesture handler, Reanimated and worklets, or a view library, is patched in its copy instead: you declare nothing for it):
+Expo Svelte depends on small changes to a few packages. The ones you install ship with the library as pnpm patches, each made for one exact version (a package the library carries itself, such as gesture handler, Reanimated and worklets, or a view library, is patched in its copy instead: you declare nothing for it):
 
 | Package | Needed | What the patch changes |
 | --- | --- | --- |
 | `@sveltejs/kit` 3.1.1 | when SvelteKit is installed | SvelteKit leaves `+mobile.svelte` files alone |
 | `expo-modules-core` 57.0.23 | always | Android: Expo modules start faster |
 
-pnpm applies a patch only from your own project, and reads the files before it installs anything, so `init` copies them from the library into `patches/svelte-native/` and lists the ones for packages you have. Don't point `patchedDependencies` into `node_modules`: a fresh install would fail before the files exist.
+pnpm applies a patch only from your own project, and reads the files before it installs anything, so `init` copies them from the library into `patches/expo-svelte/` and lists the ones for packages you have. Don't point `patchedDependencies` into `node_modules`: a fresh install would fail before the files exist.
 
-After every upgrade of Svelte Native, run `pnpm exec svelte-native init` again: it replaces the copies that changed. An old copy still applies, but without the fix. Most patches change native code, so build the app again afterwards.
+After every upgrade of Expo Svelte, run `pnpm exec expo-svelte init` again: it replaces the copies that changed. An old copy still applies, but without the fix. Most patches change native code, so build the app again afterwards.
 
-The view libraries Svelte Native carries (`lottie-react-native`, `react-native-maps`, `react-native-pdf` and `react-native-video` among them) are patched in the library's own copies, so there is nothing to declare for them: see [Native views](native-views#patches).
+The view libraries Expo Svelte carries (`lottie-react-native`, `react-native-maps`, `react-native-pdf` and `react-native-video` among them) are patched in the library's own copies, so there is nothing to declare for them: see [Native views](native-views#patches).
 
 ## metro.config.cjs
 
 ```js
 /// file: metro.config.cjs
 const { getDefaultConfig } = require('expo/metro-config');
-const { withSvelteNative } = require('@alfayez/svelte-native/metro');
+const { withExpoSvelte } = require('expo-svelte/metro');
 
-module.exports = withSvelteNative(getDefaultConfig(__dirname));
+module.exports = withExpoSvelte(getDefaultConfig(__dirname));
 ```
 
-`withSvelteNative(config, options?)` adds the Svelte compiler, the route table and the remote functions to Expo's Metro config. No `babel.config.js` is needed. Its options:
+`withExpoSvelte(config, options?)` adds the Svelte compiler, the route table and the remote functions to Expo's Metro config. No `babel.config.js` is needed. Its options:
 
 | Option | Default | What it does |
 | --- | --- | --- |
@@ -100,17 +100,17 @@ module.exports = withSvelteNative(getDefaultConfig(__dirname));
 
 ## vite.config.ts
 
-SvelteKit's plugin is replaced by Svelte Native's, which wraps it. What you passed to `sveltekit()` becomes `kit`, and the config becomes a function of the mode:
+SvelteKit's plugin is replaced by Expo Svelte's, which wraps it. What you passed to `sveltekit()` becomes `kit`, and the config becomes a function of the mode:
 
 ```ts
 /// file: vite.config.ts
 import adapter from '@sveltejs/adapter-auto';
-import { svelteNative } from '@alfayez/svelte-native/vite';
+import { expoSvelte } from 'expo-svelte/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig(({ mode }) => ({
 	plugins: [
-		svelteNative({
+		expoSvelte({
 			target: mode === 'native' ? 'native' : 'web',
 			kit: {
 				// what you passed to sveltekit(), as it was
@@ -147,20 +147,20 @@ The library ships type declarations, and an app's type checker (`tsc`, `svelte-c
 		"userInterfaceStyle": "automatic",
 		"android": { "package": "dev.example.myapp" },
 		"ios": { "bundleIdentifier": "dev.example.myapp" },
-		"plugins": ["@alfayez/svelte-native"]
+		"plugins": ["expo-svelte"]
 	}
 }
 ```
 
 `"userInterfaceStyle": "automatic"` lets the app follow the system's light or dark mode; Expo's default, `"light"`, keeps it light. `init` writes it only in an `app.json` it creates. The plugin applies the style on Android as Expo does on iOS (`android.userInterfaceStyle` wins there), unless the app has `expo-system-ui`, which does it itself.
 
-The plugin is named by the package's own name: Expo loads the package's `app.plugin.js`. (`@alfayez/svelte-native/app.plugin` is that same file. `@alfayez/svelte-native/expo`, the plugin's path in 0.4.0-rc.6 and before, was removed in 0.4.0-rc.7 and no longer resolves: write the package's name in its place.) If your app is configured in code, `app.config.ts`, add it there. It takes options as a second element:
+The plugin is named by the package's own name: Expo loads the package's `app.plugin.js`. (`expo-svelte/app.plugin` is that same file. `expo-svelte/expo`, the plugin's path in 0.4.0-rc.6 and before, was removed in 0.4.0-rc.7 and no longer resolves: write the package's name in its place.) If your app is configured in code, `app.config.ts`, add it there. It takes options as a second element:
 
 ```ts
 /// file: app.config.ts
 export default {
 	expo: {
-		plugins: [['@alfayez/svelte-native', { remote: { origin: 'https://app.example.com' } }]]
+		plugins: [['expo-svelte', { remote: { origin: 'https://app.example.com' } }]]
 	}
 };
 ```
@@ -168,7 +168,7 @@ export default {
 | Option | What it does |
 | --- | --- |
 | `remote` | `{ origin, base?, appDir? }`: the SvelteKit server your [remote functions](loading-data#remote-functions) call. An `http:` origin also allows plain HTTP to it. |
-| `libraries` | The native view libraries the app uses, from the ones Svelte Native carries: `{ 'expo-image': true, 'react-native-maps': { androidGoogleMapsApiKey } }`. See [Libraries](#libraries). |
+| `libraries` | The native view libraries the app uses, from the ones Expo Svelte carries: `{ 'expo-image': true, 'react-native-maps': { androidGoogleMapsApiKey } }`. See [Libraries](#libraries). |
 | `androidOnDemandViewManagers` | Android: create a package's views on first use instead of at startup, by the package's class name: `{ "com.brentvatne.react.ReactVideoPackage": ["RCTVideo"] }`. Shortens startup when you link libraries with many views. The entries of a library you didn't turn on are ignored. |
 | `autolinkingExclude` | Packages and local modules to leave out of this build's native code. |
 | `sodiumEnabled` | `true` adds libsodium to [`crypto`](web-apis#crypto) (XSalsa20 and the other libsodium ciphers, which OpenSSL lacks): the option of the same name that react-native-quick-crypto's own Expo plugin took. An app that listed that plugin, `['react-native-quick-crypto', { sodiumEnabled: true }]`, removes it and sets the option here. Off by default; it makes the iOS build download and compile libsodium. |
@@ -178,7 +178,7 @@ Run `expo prebuild` after changing the plugin's options ([Development builds](de
 
 ### Libraries
 
-Svelte Native carries the native view libraries of [Native views](native-views) (`expo-image`, `expo-blur`, `expo-linear-gradient`, `expo-conic-gradient`, `expo-video`, `react-native-video`, `lottie-react-native`, `rive-react-native`, `@react-native-community/datetimepicker`, `react-native-pdf` with `react-native-blob-util`, `react-native-webview`, `react-native-maps`, `react-native-view-shot`, `react-native-fast-shadow` and `react-native-animateable-text`). An app turns on the ones it uses; nothing is installed.
+Expo Svelte carries the native view libraries of [Native views](native-views) (`expo-image`, `expo-blur`, `expo-linear-gradient`, `expo-conic-gradient`, `expo-video`, `react-native-video`, `lottie-react-native`, `rive-react-native`, `@react-native-community/datetimepicker`, `react-native-pdf` with `react-native-blob-util`, `react-native-webview`, `react-native-maps`, `react-native-view-shot`, `react-native-fast-shadow` and `react-native-animateable-text`). An app turns on the ones it uses; nothing is installed.
 
 ```ts
 /// file: app.config.ts
@@ -186,7 +186,7 @@ export default {
 	expo: {
 		plugins: [
 			[
-				'@alfayez/svelte-native',
+				'expo-svelte',
 				{
 					libraries: {
 						'expo-image': true,
@@ -200,9 +200,9 @@ export default {
 };
 ```
 
-Each value is `true`, `false` (the same as leaving the library out) or the options of the library's own Expo config plugin, which Svelte Native runs from the library's copy. A library without a config plugin takes no options. The prebuild refuses a name that isn't one of the libraries, and an app that lists a library in its `package.json` or in `plugins`: remove it there, and give its options here.
+Each value is `true`, `false` (the same as leaving the library out) or the options of the library's own Expo config plugin, which Expo Svelte runs from the library's copy. A library without a config plugin takes no options. The prebuild refuses a name that isn't one of the libraries, and an app that lists a library in its `package.json` or in `plugins`: remove it there, and give its options here.
 
-A library that is on is linked on Android and iOS, bundled by Metro and configured by its plugin. One that is off is none of those: its native code isn't in the build (on iOS it isn't even compiled), Metro gives its name a stub, and its components say how to turn it on. `pnpm exec svelte-native doctor` lists the libraries that are on. Run `expo prebuild` after changing the option.
+A library that is on is linked on Android and iOS, bundled by Metro and configured by its plugin. One that is off is none of those: its native code isn't in the build (on iOS it isn't even compiled), Metro gives its name a stub, and its components say how to turn it on. `pnpm exec expo-svelte doctor` lists the libraries that are on. Run `expo prebuild` after changing the option.
 
 ### capabilities.push
 
@@ -215,7 +215,7 @@ export default {
 		android: { package: 'dev.example.myapp' },
 		plugins: [
 			[
-				'@alfayez/svelte-native',
+				'expo-svelte',
 				{
 					capabilities: {
 						push: {

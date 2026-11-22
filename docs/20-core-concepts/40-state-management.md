@@ -29,7 +29,7 @@ export function add(item: { id: string; name: string }) {
 ```svelte
 <!--- file: src/routes/cart/+mobile.svelte --->
 <script lang="ts">
-	import { Screen, Text } from '@alfayez/svelte-native';
+	import { Screen, Text } from 'expo-svelte';
 	import { cart } from '#lib/cart.svelte.ts';
 </script>
 
@@ -50,7 +50,7 @@ State that belongs to one part of the app, a signed-in user or one workspace, ca
 <!--- file: src/routes/+layout.mobile.svelte --->
 <script lang="ts">
 	import { setContext, type Snippet } from 'svelte';
-	import { Stack } from '@alfayez/svelte-native';
+	import { Stack } from 'expo-svelte';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -70,7 +70,7 @@ A screen reads it with `getContext('session')`. A screen presented as a modal or
 There is no `localStorage` on a phone. To keep data when the app closes, use a native storage library and load it when the app starts:
 
 - [`expo-secure-store`](https://docs.expo.dev/versions/latest/sdk/securestore/) for secrets, such as a session token
-- `localStorage` for everything else, or `@alfayez/svelte-native/mmkv` for more than strings: both are MMKV, which comes with the library ([Web APIs](web-apis#storage)), so there is nothing to install
+- `localStorage` for everything else, or `expo-svelte/mmkv` for more than strings: both are MMKV, which comes with the library ([Web APIs](web-apis#storage)), so there is nothing to install
 
 [Native libraries](native-libraries) explains how to install them.
 

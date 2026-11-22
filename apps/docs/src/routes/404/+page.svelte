@@ -3,7 +3,7 @@
 </script>
 
 <svelte:head>
-	<title>Page not found • Svelte Native</title>
+	<title>Page not found • Expo Svelte</title>
 	<meta name="robots" content="noindex" />
 </svelte:head>
 

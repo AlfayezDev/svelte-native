@@ -1,7 +1,7 @@
 Pod::Spec.new do |s|
   s.name           = 'SvelteQA'
   s.version        = '0.1.0'
-  s.summary        = 'QA inspection of the Svelte Native lab on iOS'
+  s.summary        = 'QA inspection of the Expo Svelte lab on iOS'
   s.description    = 'The lab app asks it for a screenshot of its own window, a dump of the accessibility tree VoiceOver walks and the launch-to-first-frame times; qa/ on the harness side reads what it writes. Refuses to run outside the QA bundle.'
   s.license        = 'MIT'
   s.author         = 'Example'

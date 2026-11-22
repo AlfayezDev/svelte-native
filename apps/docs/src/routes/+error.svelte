@@ -4,7 +4,7 @@
 </script>
 
 <svelte:head>
-	<title>{page.status === 404 ? "Page not found" : "Something went wrong"} • Svelte Native</title>
+	<title>{page.status === 404 ? "Page not found" : "Something went wrong"} • Expo Svelte</title>
 	<meta name="robots" content="noindex" />
 </svelte:head>
 

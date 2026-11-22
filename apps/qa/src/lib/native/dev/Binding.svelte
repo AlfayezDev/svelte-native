@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getContext } from "svelte";
-  import { Text, View } from "@alfayez/svelte-native";
+  import { Text, View } from "expo-svelte";
   import { labContext, type LabContext } from "./model.svelte.ts";
   import { theme } from "../state.svelte.ts";
   import Field from "./Field.svelte";

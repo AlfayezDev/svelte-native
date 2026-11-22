@@ -7,9 +7,9 @@
 		"skipLibCheck": true,
 		"noEmit": true,
 		"allowImportingTsExtensions": true,
-		// This repository checks the library against its source (the `svelte-native-source` condition of its exports map), so an edit to `packages/svelte-native/src` needs no rebuild.
+		// This repository checks the library against its source (the `expo-svelte-source` condition of its exports map), so an edit to `packages/expo-svelte/src` needs no rebuild.
 		// An app outside it resolves `types` to the declarations in `dist/types`.
-		"customConditions": ["svelte-native-source"],
+		"customConditions": ["expo-svelte-source"],
 		"verbatimModuleSyntax": true,
 		"jsx": "react-jsx",
 		"types": ["react", "react-native", "node"],
@@ -18,5 +18,5 @@
 		}
 	},
 	"include": ["src/**/*.ts", "src/**/*.svelte", "app.config.ts"],
-	"exclude": ["node_modules", ".svelte-native"]
+	"exclude": ["node_modules", ".expo-svelte"]
 }

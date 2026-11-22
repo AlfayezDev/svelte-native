@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { BlurView, Text, View } from "@alfayez/svelte-native";
-  import { ExpoImage } from "@alfayez/svelte-native/foreign";
+  import { BlurView, Text, View } from "expo-svelte";
+  import { ExpoImage } from "expo-svelte/foreign";
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
@@ -8,7 +8,7 @@
   import { text } from "#lib/theme.svelte.ts";
   import photo from "../../../../assets/images/photo.png";
 
-  // `BlurView` is Svelte Native's own: it blurs whatever is behind it on the screen, with no other package and nothing to point it at.
+  // `BlurView` is Expo Svelte's own: it blurs whatever is behind it on the screen, with no other package and nothing to point it at.
   // `intensity` goes from 0 to 100 and `tint` sets the frost (`"light"`, `"dark"`, or `"default"`, which follows dark mode). Its children
   // are drawn sharp, on top. (expo-blur's view is `ExpoBlurView`, if you need its props.)
   const stripes = ["#e5484d", "#f5d90a", "#30a46c", "#0091ff", "#8e4ec6"];

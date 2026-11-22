@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { View, createSharedValue, withRepeat, withTiming, Circle, Defs, Path, Rect, Stop, Svg, SvgLinearGradient, SvgXml, SvgText } from "@alfayez/svelte-native";
+  import { View, createSharedValue, withRepeat, withTiming, Circle, Defs, Path, Rect, Stop, Svg, SvgLinearGradient, SvgXml, SvgText } from "expo-svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
   import { scroller, useDemo } from "#lib/demo.ts";

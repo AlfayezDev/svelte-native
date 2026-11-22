@@ -1,5 +1,5 @@
 import { defineConfig } from "vite";
-import { svelteNative } from "@alfayez/svelte-native/vite";
+import { expoSvelte } from "expo-svelte/vite";
 import { remoteLabModule, remoteLabServed } from "./remote-lab.ts";
 
 // The library's default variant (no `APP_VARIANT`) is `app`; this app's is `qa`.
@@ -17,7 +17,7 @@ export default defineConfig(({ mode, command, isPreview }) => {
 			...(remoteLab ? { warmup: { ssrFiles: [remoteLabModule] } } : {}),
 		},
 		plugins: [
-			svelteNative({
+			expoSvelte({
 				target: mode === "native" ? "native" : "web",
 				variant,
 				kit: {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
-  import { Text, View, AnimatedView, createSharedValue, runOnJS, withSpring, withTiming, Gesture } from "@alfayez/svelte-native";
+  import { Text, View, AnimatedView, createSharedValue, runOnJS, withSpring, withTiming, Gesture } from "expo-svelte";
   import { text, theme } from "#lib/theme.svelte.ts";
 
   // A row that is deleted by swiping it left. One Pan, on the UI thread: it follows the finger, and past 100 pt on release it asks the screen to

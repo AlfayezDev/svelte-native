@@ -3,9 +3,9 @@ title: Native libraries
 video: native-views
 ---
 
-The Expo and React Native ecosystem has libraries for most of what a phone can do: sensors, notifications, location, secure storage, haptics. Svelte Native can use the ones whose API is plain JavaScript functions. This page shows how to add one, and what to do when a library's API is React.
+The Expo and React Native ecosystem has libraries for most of what a phone can do: sensors, notifications, location, secure storage, haptics. Expo Svelte can use the ones whose API is plain JavaScript functions. This page shows how to add one, and what to do when a library's API is React.
 
-For libraries that draw a view (images, video, maps), see [Native views](native-views): Svelte Native carries the common ones, and an app turns on the ones it uses.
+For libraries that draw a view (images, video, maps), see [Native views](native-views): Expo Svelte carries the common ones, and an app turns on the ones it uses.
 
 ## Adding a library
 
@@ -14,7 +14,7 @@ Import the library's functions and call them, as you would in any JavaScript pro
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Pressable, Screen, Text } from '@alfayez/svelte-native';
+	import { Pressable, Screen, Text } from 'expo-svelte';
 	import * as Haptics from 'expo-haptics';
 </script>
 
@@ -39,16 +39,16 @@ pnpm android
 
 Libraries that have been loaded this way include `expo-notifications`, `expo-location`, `expo-secure-store`, `expo-web-browser`, `expo-file-system`, and `@react-native-async-storage/async-storage`. `react-native-mmkv` and `react-native-nitro-modules` are not on the list: the library carries both, and an app that installs either is refused.
 
-For push notifications, [Push notifications](push-notifications) compares the three ways and sets each one up: the library's own `@alfayez/svelte-native/push`, which your server sends to through Firebase and APNs directly; [React Native Firebase](push-notifications#with-react-native-firebase); and [`expo-notifications`](push-notifications#with-expo-notifications) with Expo's push service. An app uses one of them: the prebuild stops when `capabilities.push` is on beside one of the others.
+For push notifications, [Push notifications](push-notifications) compares the three ways and sets each one up: the library's own `expo-svelte/push`, which your server sends to through Firebase and APNs directly; [React Native Firebase](push-notifications#with-react-native-firebase); and [`expo-notifications`](push-notifications#with-expo-notifications) with Expo's push service. An app uses one of them: the prebuild stops when `capabilities.push` is on beside one of the others.
 
 ## Functions work, hooks don't
 
-There is no React in a Svelte Native app, so a library's React hooks can't run. Its plain functions can. For example, `expo-location`'s `getCurrentPositionAsync()` works, and its `useForegroundPermissions()` hook doesn't. Most Expo libraries offer both, and the hook is a thin wrapper around a function you can call yourself:
+There is no React in an Expo Svelte app, so a library's React hooks can't run. Its plain functions can. For example, `expo-location`'s `getCurrentPositionAsync()` works, and its `useForegroundPermissions()` hook doesn't. Most Expo libraries offer both, and the hook is a thin wrapper around a function you can call yourself:
 
 ```svelte
 <!--- file: src/routes/location/+mobile.svelte --->
 <script lang="ts">
-	import { Screen, Text } from '@alfayez/svelte-native';
+	import { Screen, Text } from 'expo-svelte';
 	import * as Location from 'expo-location';
 
 	let position = $state<Location.LocationObject | null>(null);
@@ -69,11 +69,11 @@ To keep a value up to date, put the library's subscription in an `$effect` and r
 
 ## Calling a native module directly
 
-When a library has no plain-JavaScript entry, or you wrote a native module yourself, call the module by name. `@alfayez/svelte-native/platform` has the two lookups React Native uses, and Expo modules work through `expo-modules-core` as usual:
+When a library has no plain-JavaScript entry, or you wrote a native module yourself, call the module by name. `expo-svelte/platform` has the two lookups React Native uses, and Expo modules work through `expo-modules-core` as usual:
 
 ```ts
 /// file: src/lib/native.ts
-import { nativeModule, turboModule } from '@alfayez/svelte-native/platform';
+import { nativeModule, turboModule } from 'expo-svelte/platform';
 import { requireNativeModule } from 'expo-modules-core';
 
 // A TurboModule, by name. Throws when the build doesn't have it.

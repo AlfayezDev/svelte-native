@@ -10,10 +10,9 @@
         "buildTypes": [],
         "libraryName": "rngesturehandler_codegen",
         "componentDescriptors": [
-          "RNGestureHandlerButtonComponentDescriptor",
-          "RNGestureHandlerRootViewComponentDescriptor"
+          "RNGestureHandlerDetectorComponentDescriptor"
         ],
-        "cmakeListsPath": "$PACKAGE/android/build/generated/source/codegen/jni/CMakeLists.txt",
+        "cmakeListsPath": "$PACKAGE/android/CMakeLists.txt",
         "cxxModuleCMakeListsModuleName": null,
         "cxxModuleCMakeListsPath": null,
         "cxxModuleHeaderName": null,
@@ -50,8 +49,10 @@
         "packageInstance": "new ReanimatedPackage()",
         "buildTypes": [],
         "libraryName": "rnreanimated",
-        "componentDescriptors": [],
-        "cmakeListsPath": "$PACKAGE/android/build/generated/source/codegen/jni/CMakeLists.txt",
+        "componentDescriptors": [
+          "REASharedTransitionBoundaryComponentDescriptor"
+        ],
+        "cmakeListsPath": "$PACKAGE/Common/NativeView/CMakeLists.txt",
         "cxxModuleCMakeListsModuleName": null,
         "cxxModuleCMakeListsPath": null,
         "cxxModuleHeaderName": null,

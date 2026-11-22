@@ -5,7 +5,7 @@
     "platforms": {
       "ios": {
         "podspecPath": "$PACKAGE/RNDateTimePicker.podspec",
-        "version": "9.1.0",
+        "version": "9.2.1",
         "configurations": [],
         "scriptPhases": []
       }
@@ -17,7 +17,7 @@
     "platforms": {
       "ios": {
         "podspecPath": "$PACKAGE/lottie-react-native.podspec",
-        "version": "7.3.8",
+        "version": "7.5.0",
         "configurations": [],
         "scriptPhases": []
       }
@@ -53,7 +53,7 @@
     "platforms": {
       "ios": {
         "podspecPath": "$PACKAGE/react-native-maps.podspec",
-        "version": "1.27.2",
+        "version": "1.29.11",
         "configurations": [],
         "scriptPhases": []
       }
@@ -89,7 +89,7 @@
     "platforms": {
       "ios": {
         "podspecPath": "$PACKAGE/react-native-view-shot.podspec",
-        "version": "5.1.0",
+        "version": "6.1.1",
         "configurations": [],
         "scriptPhases": []
       }
@@ -101,7 +101,7 @@
     "platforms": {
       "ios": {
         "podspecPath": "$PACKAGE/react-native-webview.podspec",
-        "version": "13.16.1",
+        "version": "14.0.1",
         "configurations": [],
         "scriptPhases": []
       }

@@ -4,7 +4,7 @@ title: Adding to an existing Expo app
 
 [Creating a project](creating-a-project) starts from SvelteKit. This page is for the other direction: you have an Expo app, and you want its screens written in Svelte. The result is a native-only app, with no web app, and it doesn't need SvelteKit or Vite.
 
-Your app must be on Expo SDK 57 (React Native 0.86) and use pnpm 12.3.4 or newer: Expo Svelte's patches are pnpm's, so a project on npm or Yarn moves to pnpm first. Use Node 24 LTS (24.3 or newer), Node 22.17 or newer, or Node 26 or newer, not Node 25 ([Troubleshooting](troubleshooting#pnpm-stops-during-install)).
+Your app must be on Expo SDK 58 (React Native 0.88) and use pnpm 12.3.4 or newer: Expo Svelte's patches are pnpm's, so a project on npm or Yarn moves to pnpm first. Use Node 24 LTS (24.3 or newer), Node 22.17 or newer, or Node 26 or newer, not Node 25 ([Troubleshooting](troubleshooting#pnpm-stops-during-install)).
 
 ## 1. Take the React app out of the way
 
@@ -25,8 +25,8 @@ The first install already needs these settings. If your project isn't a pnpm wor
 allowBuilds:
   esbuild: true
 overrides:
-  expo-modules-core: 57.0.23
-  "@react-native/metro-config": 0.86.3
+  expo-modules-core: 58.1.0
+  "@react-native/metro-config": 0.88.1
 ```
 
 [Configuration](configuration#pnpm-workspaceyaml) says why each is there.

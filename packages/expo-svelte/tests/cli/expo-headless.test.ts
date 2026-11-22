@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createRunOncePlugin } from "expo/config-plugins";
-import { applyAppDelegate, applyHeadlessApplication, applyHeadlessSettings, applyMainActivity, applyPodfileAutolinkingExclude, applyPodfileVendoredLinking, leaveOutOfAutoPlugins, headlessExcludedPackages, headlessPackageSource, onDemandPackageSource } from "../../src/expo.ts";
+import { applyAppDelegate, applySceneDelegate, applyHeadlessApplication, applyHeadlessSettings, applyMainActivity, applyPodfileAutolinkingExclude, applyPodfileVendoredLinking, leaveOutOfAutoPlugins, headlessExcludedPackages, headlessPackageSource, onDemandPackageSource } from "../../src/expo.ts";
 
 const application = `class MainApplication {
   override val reactHost: ReactHost by lazy {
@@ -19,13 +19,13 @@ const application = `class MainApplication {
   }
 }
 `;
-/** The `AppDelegate.swift` Expo's template generates (SDK 57, `expo/template.tgz`). */
+/** The `AppDelegate.swift` Expo's template generates (SDK 58, `expo/template.tgz`). */
 const appDelegate = `internal import Expo
 import React
 import ReactAppDependencyProvider
 
 @main
-class AppDelegate: ExpoAppDelegate {
+class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider {
   var window: UIWindow?
 
   var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
@@ -42,34 +42,9 @@ class AppDelegate: ExpoAppDelegate {
     reactNativeDelegate = delegate
     reactNativeFactory = factory
 
-#if os(iOS) || os(tvOS)
-    window = UIWindow(frame: UIScreen.main.bounds)
-    factory.startReactNative(
-      withModuleName: "main",
-      in: window,
-      launchOptions: launchOptions)
-#endif
-
+    // The window is created and React Native is started by \`SceneDelegate\` under the
+    // scene-based life cycle (required by the iOS 27 SDK).
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
-
-  // Linking API
-  public override func application(
-    _ app: UIApplication,
-    open url: URL,
-    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
-  ) -> Bool {
-    return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
-  }
-
-  // Universal Links
-  public override func application(
-    _ application: UIApplication,
-    continue userActivity: NSUserActivity,
-    restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
-  ) -> Bool {
-    let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
-    return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
   }
 }
 
@@ -90,9 +65,16 @@ class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
   }
 }
 `;
-/** The `MainActivity.kt` Expo's template generates (SDK 57, with the splash screen plugin's block). */
+/** The `SceneDelegate.swift` of the same template: the window is created and React Native started there. */
+const sceneDelegate = `internal import Expo
+
+@objc(SceneDelegate)
+class SceneDelegate: ExpoAppSceneDelegate {
+  // Extension point for config plugins.
+}
+`;
+/** The `MainActivity.kt` Expo's template generates (SDK 58). */
 const activity = `package io.example.app
-import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build
 import android.os.Bundle
@@ -106,9 +88,10 @@ import expo.modules.ReactActivityDelegateWrapper
 
 class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
-    // @generated begin expo-splashscreen - expo prebuild (DO NOT MODIFY) sync-f3ff59a738c56c9a6119210cb55f0b613eb8b6af
-    SplashScreenManager.registerOnActivity(this)
-    // @generated end expo-splashscreen
+    // Set the theme to AppTheme BEFORE onCreate to support
+    // coloring the background, status bar, and navigation bar.
+    // This is required for expo-splash-screen.
+    setTheme(R.style.AppTheme);
     super.onCreate(null)
   }
 
@@ -135,7 +118,7 @@ expoAutolinking.useExpoModules()
 
 type ConfigLike = Parameters<ReturnType<typeof createRunOncePlugin>>[0];
 
-/** The relevant lines of the Podfile Expo's template generates (SDK 57). */
+/** The relevant lines of the Podfile Expo's template generates (SDK 58). */
 const podfile = `target 'RasheedSvelteQA' do
   use_expo_modules!
 
@@ -215,11 +198,11 @@ describe("headless Android config", () => {
     expect(once).toContain("expo.modules.svelteengine.NavigationState.saveTo(outState)");
     expect(once).toContain("expo.modules.svelteengine.NavigationState.destroyed(isFinishing)");
     expect(once.indexOf("NavigationState.restoredFrom(savedInstanceState)")).toBeLessThan(once.indexOf("super.onCreate(null)"));
-    expect(once.indexOf("NavigationState.restoredFrom(savedInstanceState)")).toBeGreaterThan(once.indexOf("expo-splashscreen"));
+    expect(once.indexOf("NavigationState.restoredFrom(savedInstanceState)")).toBeGreaterThan(once.indexOf("setTheme(R.style.AppTheme)"));
     // The process was started for the screen (the boost holds until the first mount) and the first screen's indicator is built off the main
-    // thread: both after the template's splash screen registration and before its super.onCreate(null). The indicator takes the
-    // Application's theme (the engine's views do), so nothing here depends on the theme the splash screen sets on the Activity.
-    expect(once.indexOf("BootBoost.activityCreated()")).toBeGreaterThan(once.indexOf("expo-splashscreen"));
+    // thread: both after the template's setTheme(R.style.AppTheme) (the theme the splash screen needs) and before its super.onCreate(null). The indicator takes the
+    // Application's theme (the engine's views do), so nothing here depends on the theme set on the Activity.
+    expect(once.indexOf("BootBoost.activityCreated()")).toBeGreaterThan(once.indexOf("setTheme(R.style.AppTheme)"));
     expect(once.indexOf("ViewWarmup.begin(this)")).toBeGreaterThan(once.indexOf("BootBoost.activityCreated()"));
     expect(once.indexOf("ViewWarmup.begin(this)")).toBeLessThan(once.indexOf("super.onCreate(null)"));
     expect(once).toContain('putString("navigation", json)');
@@ -257,6 +240,30 @@ describe("headless Android config", () => {
     const once = applyAppDelegate(appDelegate);
     const older = once.replace("internal import SvelteCore //", "internal import SvelteNavigation //");
     expect(applyAppDelegate(older)).toBe(once);
+  });
+  test("SceneDelegate (Expo SDK 58's template: React Native starts there) answers the scene's state restoration and notes the saved activity before React Native starts, idempotently", () => {
+    const once = applySceneDelegate(sceneDelegate);
+    expect(once).toContain("func stateRestorationActivity(for scene: UIScene) -> NSUserActivity?");
+    expect(once).toContain("SvelteNavigationRestoration.stateRestorationActivity()");
+    expect(once).toContain("override func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions)");
+    expect(once).toContain("SvelteNavigationRestoration.sceneWillConnect(session.stateRestorationActivity)");
+    // The session is read before ExpoAppSceneDelegate starts React Native (its `willConnectTo` calls `startReactNative`).
+    expect(once.indexOf("sceneWillConnect(")).toBeLessThan(once.indexOf("super.scene(scene, willConnectTo: session, options: connectionOptions)"));
+    // The two imports follow the template's, the methods are the class's first members; UIKit is imported because the methods name its types.
+    expect(once).toContain("\ninternal import SvelteCore //");
+    expect(once).toContain("\nimport UIKit //");
+    expect(once.indexOf("import SvelteCore")).toBeGreaterThan(once.indexOf("internal import Expo"));
+    expect(once.indexOf("import SvelteCore")).toBeLessThan(once.indexOf("class SceneDelegate"));
+    expect(once.indexOf("class SceneDelegate")).toBeLessThan(once.indexOf("stateRestorationActivity(for scene"));
+    expect(once.indexOf("end of navigation state restoration")).toBeLessThan(once.indexOf("// Extension point for config plugins."));
+    // What was there is still there, once, and applying again changes nothing.
+    expect(once.replace(/\n {2}\/\/ Svelte native: navigation state restoration[\s\S]*?end of navigation state restoration/, "").replace(/^(?:internal )?import \w+ \/\/ Svelte native.*\n/gm, "")).toBe(sceneDelegate);
+    expect(applySceneDelegate(once)).toBe(once);
+    expect(once.match(/import SvelteCore/g)).toHaveLength(1);
+    expect(once.match(/import UIKit/g)).toHaveLength(1);
+  });
+  test("SceneDelegate: a file without the expected shape fails with a message", () => {
+    expect(() => applySceneDelegate("import UIKit\nclass SceneDelegate: UIResponder {}")).toThrow("could not find the imports and `class SceneDelegate: ExpoAppSceneDelegate` in SceneDelegate.swift");
   });
   test("AppDelegate: a template without the expected shape fails with a message", () => {
     expect(() => applyAppDelegate("import UIKit\n@main class AppDelegate: UIResponder {}")).toThrow("could not find the imports and `var reactNativeFactory: RCTReactNativeFactory?` in AppDelegate.swift");

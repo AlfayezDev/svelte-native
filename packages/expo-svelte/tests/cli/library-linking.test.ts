@@ -15,7 +15,7 @@ import { createProject } from "../support/project.ts";
  * generated `settings.gradle` and Podfile carry the decision. The entries are the ones Expo printed for the installed packages (`fixtures/vendored-autolinking/`).
  */
 const fixtures = resolve(import.meta.dirname, "fixtures/vendored-autolinking");
-const optionalReference = (platform: "android" | "ios"): Record<string, { root: string; name: string; platforms: Record<string, unknown> }> => JSON.parse(readFileSync(join(fixtures, `expo-sdk57-optional-${platform}.json`), "utf8"));
+const optionalReference = (platform: "android" | "ios"): Record<string, { root: string; name: string; platforms: Record<string, unknown> }> => JSON.parse(readFileSync(join(fixtures, `expo-sdk58-optional-${platform}.json`), "utf8"));
 const withRoot = (value: unknown, root: string): unknown => JSON.parse(JSON.stringify(value).replaceAll("$PACKAGE", root.replaceAll("\\", "\\\\")));
 
 const reactNative = optionalPackages.filter((vendored) => vendored.optional?.kind === "react-native").map((vendored) => vendored.name);

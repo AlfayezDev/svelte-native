@@ -9,16 +9,16 @@ import { createProject } from "../support/project.ts";
 
 /**
  * The packages the library carries (`src/vendored.ts`, VENDORING.md) in React Native's autolinking config. The reference entries in `fixtures/vendored-autolinking/` are what Expo's
- * own `react-native-config` printed for the packages installed in `apps/example` (SDK 57: `node --no-warnings --eval "require('expo/bin/autolinking')" expo-modules-autolinking
+ * own `react-native-config` printed for the packages installed in `apps/example` (SDK 58: `node --no-warnings --eval "require('expo/bin/autolinking')" expo-modules-autolinking
  * react-native-config --json --platform android|ios`, 18 November 2026, before they were vendored), with the package's directory written as `$PACKAGE`: the entries the library adds
- * must be those, with the directory of the copy. One file per batch of packages and platform: `expo-sdk57-<platform>.json` (the pilot's two), `expo-sdk57-crypto-<platform>.json`
- * (react-native-quick-crypto, react-native-quick-base64 and hermes-intl, captured from the same app with all three installed), `expo-sdk57-optional-<platform>.json` (the eleven React Native packages
- * among the optional libraries, which an app links only when it turns them on, captured the same way; the Expo modules among them have no entry) and `expo-sdk57-ui-<platform>.json` (gesture handler,
+ * must be those, with the directory of the copy. One file per batch of packages and platform: `expo-sdk58-<platform>.json` (the pilot's two), `expo-sdk58-crypto-<platform>.json`
+ * (react-native-quick-crypto, react-native-quick-base64 and hermes-intl, captured from the same app with all three installed), `expo-sdk58-optional-<platform>.json` (the eleven React Native packages
+ * among the optional libraries, which an app links only when it turns them on, captured the same way; the Expo modules among them have no entry) and `expo-sdk58-ui-<platform>.json` (gesture handler,
  * Worklets, Reanimated and svg, run in `apps/example` with the four installed).
  */
 const fixtures = resolve(import.meta.dirname, "fixtures/vendored-autolinking");
 const reference = (platform: "android" | "ios"): Record<string, unknown> =>
-  Object.assign({}, ...readdirSync(fixtures).filter((file) => new RegExp(`^expo-sdk57-(?:[a-z0-9]+-)*${platform}\\.json$`).test(file)).sort().map((file) => JSON.parse(readFileSync(join(fixtures, file), "utf8")) as Record<string, unknown>));
+  Object.assign({}, ...readdirSync(fixtures).filter((file) => new RegExp(`^expo-sdk58-(?:[a-z0-9]+-)*${platform}\\.json$`).test(file)).sort().map((file) => JSON.parse(readFileSync(join(fixtures, file), "utf8")) as Record<string, unknown>));
 const alwaysNames = alwaysLinkedPackages.map((vendored) => vendored.name);
 const withRoot = (value: unknown, root: string): unknown => JSON.parse(JSON.stringify(value).replaceAll("$PACKAGE", root.replaceAll("\\", "\\\\")));
 

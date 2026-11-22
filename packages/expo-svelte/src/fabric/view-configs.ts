@@ -423,7 +423,7 @@ const kinds: Record<Platform, Record<string, Kind>> = {
     },
     RCTModalHostView: {
       plain: `
-        allowSwipeDismissal animated animationType hardwareAccelerated identifier navigationBarTranslucent
+        allowSwipeDismissal animationType hardwareAccelerated identifier navigationBarTranslucent
         presentationStyle statusBarTranslucent supportedOrientations transparent visible
       `,
       events: "topDismiss topOrientationChange topRequestClose topShow",
@@ -522,7 +522,7 @@ const kinds: Record<Platform, Record<string, Kind>> = {
     },
     RCTModalHostView: {
       plain: `
-        allowSwipeDismissal animated animationType hardwareAccelerated identifier navigationBarTranslucent onDismiss
+        allowSwipeDismissal animationType hardwareAccelerated identifier navigationBarTranslucent onDismiss
         onOrientationChange onRequestClose onShow presentationStyle statusBarTranslucent supportedOrientations
         transparent visible
       `,

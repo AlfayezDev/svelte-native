@@ -35,12 +35,13 @@ async function buildSvgEntry(): Promise<Bundle> {
         if (args.pluginData?.skip) return undefined;
         return builder.resolve(args.path, { kind: args.kind, resolveDir: args.resolveDir, importer: args.importer, pluginData: { skip: true } });
       });
-      builder.onResolve({ filter: /^(react|react-dom|react-native|expo|@react-native|@react-native-community|react-native-[\w-]+|expo-(?!svelte\/)[\w-]+)(\/|$)/ }, (args) => {
+      // The library's own renderer before the rule for Expo's packages, whose `expo-` prefix its name has too.
+      builder.onResolve({ filter: /^expo-svelte\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../../../src/renderer.ts") }));
+      builder.onResolve({ filter: /^(react|react-dom|react-native|expo|@react-native|@react-native-community|react-native-[\w-]+|expo-[\w-]+)(\/|$)/ }, (args) => {
         if (args.pluginData?.skip) return undefined;
         externals.add(args.path);
         return { path: args.path, external: true };
       });
-      builder.onResolve({ filter: /^expo-svelte\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../../../src/renderer.ts") }));
       builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../../../src/environment.ts") }));
       builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
         contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code,

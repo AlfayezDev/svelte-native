@@ -7,7 +7,7 @@
  */
 import type { MMKV } from "#vendor/react-native-mmkv";
 import { type StorageBackend } from "./web-storage.js";
-/** The id of the MMKV instance behind `localStorage`: the name of its files. */
+/** The id of the MMKV instance behind `localStorage`: the name of its files. It keeps the package's name before 0.4.0-rc.10, so an app's stored values survive the rename. */
 export declare const LOCAL_STORAGE_ID = "svelte-native.local-storage";
 /**
  * The MMKV instance behind `localStorage`, created on the first call. What `localStorage` stores is in it, key for key, so a screen that wants more than strings (numbers, booleans,

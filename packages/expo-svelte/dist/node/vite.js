@@ -312,15 +312,15 @@ export const lab = ${lab};
 export const tree: StackNode = ${nodeOf(tree, "").trimStart()};
 `;
 }
-var FORMER_NAME = "@example/svelte-native";
+var FORMER_NAMES = ["@example/svelte-native", "@alfayez/svelte-native"];
 function staleEntry(source) {
   if (!/^import ['"]\.\/hooks['"];$/m.test(source)) return true;
   const manifest = JSON.parse(readFileSync(resolve2(packageRoot, "package.json"), "utf8"));
   const literal = (text) => text.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
   const patterns = Object.keys(manifest.exports);
   const exported = (key) => patterns.some((pattern) => pattern.includes("*") ? new RegExp(`^${pattern.split("*").map(literal).join(".*")}$`).test(key) : pattern === key);
-  for (const [, , name, subpath] of source.matchAll(new RegExp(`(['"])(${literal(manifest.name)}|${literal(FORMER_NAME)})((?:/[^'"]*)?)\\1`, "g"))) {
-    if (name === FORMER_NAME || !exported(subpath ? `.${subpath}` : ".")) return true;
+  for (const [, , name, subpath] of source.matchAll(new RegExp(`(['"])(${[manifest.name, ...FORMER_NAMES].map(literal).join("|")})((?:/[^'"]*)?)\\1`, "g"))) {
+    if (FORMER_NAMES.includes(name) || !exported(subpath ? `.${subpath}` : ".")) return true;
   }
   return false;
 }

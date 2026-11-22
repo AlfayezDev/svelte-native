@@ -1,11 +1,11 @@
-# react-native-maps 1.27.2 (vendored)
+# react-native-maps 1.29.11 (vendored)
 
-Third-party code, copied into this package (VENDORING.md). Nothing here is edited by hand: `node scripts/vendor.ts react-native-maps@1.27.2 --exclude dist/tsconfig.build.tsbuildinfo` (in packages/expo-svelte) writes this directory again, byte for byte.
+Third-party code, copied into this package (VENDORING.md). Nothing here is edited by hand: `node scripts/vendor.ts react-native-maps@1.29.11 --exclude dist/tsconfig.build.tsbuildinfo` (in packages/expo-svelte) writes this directory again, byte for byte.
 
-- Upstream: `react-native-maps` 1.27.2 on npm, repository https://github.com/react-native-maps/react-native-maps
-- Tarball: `npm pack react-native-maps@1.27.2`, 352881 bytes, 388 files
-- Integrity (npm's `dist.integrity`): `sha512-VKr+xZ2RZGHHJlY6KhlafvGSmK0dq/tUu5uhfJ7K9rwN5pUdubdugzMKGDU/16lXmQSg7xbClKhRctj3Pm5F5g==`
-- sha256: `5c118ad7813402e7763dd9b97c2068fdc1bfc46a45e698c0e8a3aa010b4591b0`
+- Upstream: `react-native-maps` 1.29.11 on npm, repository https://github.com/react-native-maps/react-native-maps
+- Tarball: `npm pack react-native-maps@1.29.11`, 364882 bytes, 396 files
+- Integrity (npm's `dist.integrity`): `sha512-fZNc6AINuPdHS2puudanNPd9ZMPPuerTHfy9HU6LbpOD+kB03SuOZRbOEYIOE2eSuUPYwLHvU8ys1RcSIxLYhA==`
+- sha256: `5874f46812fcf3b7a9fc17bd0fa775e3c0c4db711ce66d0bbec6c01fcca60e5e`
 - License: `LICENSE` from the tarball, sha256 `4099a1a5146930614f6c88cab3d38676d460e0e349f3743693ade20e4407587e`
 
 ## Left out

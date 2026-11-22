@@ -16,6 +16,10 @@ module GestureHandlerUtils
     end
 
     def react_native_worklets_package_dir()
+        # expo-svelte: Worklets is the copy beside this one in vendor/, which no package resolution from the app's directory would find.
+        copy = File.expand_path('../../react-native-worklets', __dir__)
+        return copy if File.exist?(File.join(copy, 'package.json'))
+
         return node_package_dir('react-native-worklets')
     end
 

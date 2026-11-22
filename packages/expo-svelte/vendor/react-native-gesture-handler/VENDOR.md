@@ -17,3 +17,4 @@ Third-party code, copied into this package (VENDORING.md). Nothing here is edite
 ## Local changes
 
 - `vendor-patches/react-native-gesture-handler/0001-root-recognizer-for-presented-screens.patch` (sha256 `2256f1204acf01972ee8ed6a642aaad629a57186fc6b5b30e464549e64407b8a`), applied with `patch -p1` after the unpack
+- `vendor-patches/react-native-gesture-handler/0002-worklets-is-the-copy-beside-it.patch` (sha256 `04472af8813e0bea34efb855c9598d59c852d54f0b34202489d41bd3f5c55cbf`), applied with `patch -p1` after the unpack

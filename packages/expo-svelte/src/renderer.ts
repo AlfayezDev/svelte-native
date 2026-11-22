@@ -282,6 +282,9 @@ export type Invalidation = "props" | "children" | "text" | "animation";
 let invalidationSink: ((node: NativeNode, reason: Invalidation) => void) | null = null;
 /** The host (see `fabric/`) hears every change through this sink. */
 export function setInvalidationSink(sink: ((node: NativeNode, reason: Invalidation) => void) | null): void { invalidationSink = sink; }
+let transitionSink: (() => void) | null = null;
+/** The host hears of a node that is given a transition (Svelte reads `element.inert` when it binds one), and holds its next commit for the animation Svelte starts a microtask later. */
+export function setTransitionSink(sink: (() => void) | null): void { transitionSink = sink; }
 
 /**
  * The members of a Web Animations `Animation` that Svelte's transitions and `animate:` use: they set `onfinish` and `effect`, read `playState` and `currentTime`, and call `cancel()`.
@@ -521,7 +524,10 @@ export class NativeNode {
   }
 
   /** `element.inert`: Svelte makes an element inert for the length of its outro, so it takes no clicks while it leaves. On a native node that is `pointerEvents: "none"`, over the node's own. */
-  get inert(): boolean { return this.dom?.inline?.pointerEvents === "none"; }
+  get inert(): boolean {
+    transitionSink?.();
+    return this.dom?.inline?.pointerEvents === "none";
+  }
   set inert(value: boolean) { this.setInline("pointerEvents", value ? "none" : ""); }
 
   /** `element.animate(keyframes, options)`: plays on the UI thread through Reanimated (`fabric/transitions.ts`); see `NativeAnimation`. */
@@ -648,10 +654,10 @@ const renderer = createRenderer<{
 }>({
   createFragment: () => new NativeNode("fragment"),
   createElement: (name) => new NativeNode("element", name),
-  createTextNode: (text) => new NativeNode("text", "", text),
+  createText: (text) => new NativeNode("text", "", text),
   createComment: (text) => new NativeNode("comment", "", text),
-  nodeType: (node) => node.kind,
-  getNodeValue: (node) => node.textValue,
+  getNodeType: (node) => node.kind,
+  getText: (node) => node.textValue,
   getAttribute: (node, name) => {
     const value = node.getProp(name);
     return value == null ? null : String(value);
@@ -659,13 +665,7 @@ const renderer = createRenderer<{
   setAttribute: (node, key, value: unknown) => node.setProp(key, value instanceof FunctionBox ? value.fn : value),
   removeAttribute: (node, key) => node.removeProp(key),
   hasAttribute: (node, key) => node.hasProp(key),
-  setText: (node, text) => {
-    if (node.kind === "text" || node.kind === "comment") node.setText(text);
-    else {
-      while (node.firstChild) unlink(node.firstChild);
-      if (text) link(node, new NativeNode("text", "", text), null);
-    }
-  },
+  setText: (node, text) => node.setText(text),
   getFirstChild: (node) => node.firstChild,
   getLastChild: (node) => node.lastChild,
   getNextSibling: (node) => node.nextSibling,

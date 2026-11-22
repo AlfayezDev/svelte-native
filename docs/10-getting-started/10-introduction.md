@@ -63,7 +63,7 @@ Not there yet:
 - Svelte transitions play on HTML elements only, and a few CSS properties, such as `filter`, don't animate: see [Svelte transitions](animation#svelte-transitions).
 - No DOM libraries, no React components, and no Expo dev client.
 - Building on Expo's servers (EAS Build) is untested.
-- Expo Svelte needs a build of Svelte from an [open pull request](https://github.com/sveltejs/svelte/pull/18042), and SvelteKit 3.1.1 exactly. `init` installs both.
+- Expo Svelte needs Svelte 5.59.1 and SvelteKit 3.4.0, exactly. `init` installs both.
 
 ## Next steps
 

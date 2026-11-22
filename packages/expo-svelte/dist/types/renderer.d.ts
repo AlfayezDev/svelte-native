@@ -129,6 +129,8 @@ export { hostStyleProps } from "./html-style.js";
 export type Invalidation = "props" | "children" | "text" | "animation";
 /** The host (see `fabric/`) hears every change through this sink. */
 export declare function setInvalidationSink(sink: ((node: NativeNode, reason: Invalidation) => void) | null): void;
+/** The host hears of a node that is given a transition (Svelte reads `element.inert` when it binds one), and holds its next commit for the animation Svelte starts a microtask later. */
+export declare function setTransitionSink(sink: (() => void) | null): void;
 /**
  * The members of a Web Animations `Animation` that Svelte's transitions and `animate:` use: they set `onfinish` and `effect`, read `playState` and `currentTime`, and call `cancel()`.
  * What plays one is the host (`fabric/transitions.ts`).
@@ -285,30 +287,10 @@ export declare class NativeNode {
     /** Drops the cached snapshot and reports the change to the host. */
     invalidate(reason?: Invalidation): void;
 }
-declare const renderer: {
-    createFragment(): NativeNode;
-    createElement(name: string): NativeNode;
-    createTextNode(data: string): NativeNode;
-    createComment(data: string): NativeNode;
-    nodeType(node: NativeNode): keyof {
-        fragment: any;
-        element: any;
-        text: any;
-        comment: any;
-    };
-    getNodeValue(node: NativeNode): string | null;
-    getAttribute(element: NativeNode, name: string): string | null;
-    setAttribute(element: NativeNode, key: string, value: any): void;
-    removeAttribute(element: NativeNode, name: string): void;
-    hasAttribute(element: NativeNode, name: string): boolean;
-    setText(node: NativeNode, text: string): void;
-    getFirstChild(element: NativeNode): NativeNode | null;
-    getLastChild(element: NativeNode): NativeNode | null;
-    getNextSibling(node: NativeNode): NativeNode | null;
-    insert(parent: NativeNode, element: NativeNode, anchor: NativeNode | null): void;
-    remove(node: NativeNode): void;
-    getParent(element: NativeNode): NativeNode | null;
-    addEventListener(target: NativeNode, type: string, handler: any, options?: any): void;
-    removeEventListener(target: NativeNode, type: string, handler: any, options?: any): void;
-};
+declare const renderer: import("svelte/renderer").Renderer<{
+    fragment: NativeNode;
+    element: NativeNode;
+    text: NativeNode;
+    comment: NativeNode;
+}>;
 export default renderer;

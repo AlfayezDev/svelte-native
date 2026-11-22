@@ -719,9 +719,11 @@ function classifySelector(selector) {
     const { name, end } = readIdent(text, 1);
     if (end === text.length && name !== "") return { kind: "class", className: name };
   }
-  return { kind: "unsupported", className: firstClass(text), reason: describeSelector(text) };
+  const last = /^:is\(:where\(\.(?:group|peer)\b/.test(text);
+  return { kind: "unsupported", className: classOf(text, last), reason: describeSelector(text) };
 }
-function firstClass(text) {
+function classOf(text, last = false) {
+  let found = null;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (c === "\\") i++;
@@ -733,11 +735,14 @@ function firstClass(text) {
       i = close < 0 ? text.length : close;
     } else if (c === ".") {
       const { name, end } = readIdent(text, i + 1);
-      if (name !== "") return name;
+      if (name !== "") {
+        if (!last) return name;
+        found = name;
+      }
       i = end;
     }
   }
-  return null;
+  return found;
 }
 function describeSelector(text) {
   const pseudo = [];
@@ -2241,7 +2246,7 @@ function convertCss(css, options = {}) {
 }
 
 // src/css/build.ts
-var TAILWIND_VERSION = "4.3.3";
+var TAILWIND_VERSION = "4.3.5";
 var SOURCE_EXTENSIONS = /* @__PURE__ */ new Set([".svelte", ".ts", ".js"]);
 var SKIPPED_DIRECTORIES = /* @__PURE__ */ new Set(["node_modules", ".expo-svelte"]);
 var LONGEST_CANDIDATE = 300;
@@ -2578,7 +2583,7 @@ function findKitRoot() {
   return kitRootCache;
 }
 function kitMissingMessage(what) {
-  return `${what} needs \`@sveltejs/kit\`, which is not installed (an optional peer dependency of expo-svelte: only remote functions and the web target use it). Install the version the package was written against: \`pnpm add @sveltejs/kit@3.1.1\`, and copy its patch (README, "Apply the patches").`;
+  return `${what} needs \`@sveltejs/kit\`, which is not installed (an optional peer dependency of expo-svelte: only remote functions and the web target use it). Install the version the package was written against: \`pnpm add @sveltejs/kit@3.4.0\`, and copy its patch (README, "Apply the patches").`;
 }
 function kitRoot(what = "The remote function runtime (`expo-svelte/remote`)") {
   const found = findKitRoot();
@@ -2617,12 +2622,9 @@ var import_node_fs5 = require("node:fs");
 var import_node_module4 = require("node:module");
 var import_node_path8 = require("node:path");
 var requiredSvelte = {
-  version: "5.56.7",
-  commit: "216f258068d93170a927ad4d27ee6864b0b305c5",
-  pullRequest: "https://github.com/sveltejs/svelte/pull/18042",
-  /** The preview build pkg.pr.new publishes for the commit; byte for byte the tarball in this repository's `vendor/`. */
-  preview: "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5",
-  vendored: "vendor/svelte-5.56.7-216f258.tgz"
+  version: "5.59.1",
+  /** The first release with custom renderers. */
+  firstWithRenderer: "5.59.0"
 };
 function inspectSvelte(from) {
   let manifestPath;
@@ -2635,17 +2637,12 @@ function inspectSvelte(from) {
   const manifest = JSON.parse((0, import_node_fs5.readFileSync)(manifestPath, "utf8"));
   const version = manifest.version ?? null;
   const exported = manifest.exports !== void 0 && "./renderer" in manifest.exports;
-  if (!exported || !(0, import_node_fs5.existsSync)((0, import_node_path8.join)(directory, "src/renderer/index.js"))) return { ok: false, version, directory, reason: "stock-release" };
+  if (!exported || !(0, import_node_fs5.existsSync)((0, import_node_path8.join)(directory, "src/renderer/index.js"))) return { ok: false, version, directory, reason: "no-renderer" };
   return { ok: true, version: version ?? "unknown", directory };
 }
 function customRendererMessage(inspection, what) {
-  const found = inspection.reason === "missing" ? "No `svelte` package can be resolved from it." : `The installed svelte${inspection.version ? ` ${inspection.version}` : ""} (${inspection.directory}) has no \`./renderer\` export, so it is a stock release and not the custom-renderer build.`;
-  return [
-    `${what} needs the custom-renderer build of Svelte (${requiredSvelte.pullRequest}, commit ${requiredSvelte.commit.slice(0, 7)}, version ${requiredSvelte.version}). ${found}`,
-    "Install that build in the app instead of svelte from the registry:",
-    `  pnpm add svelte@${requiredSvelte.preview}`,
-    `or the tarball in the library's repository (${requiredSvelte.vendored}), as \`"svelte": "file:<path to it>"\`. The same build must be the one the app's own \`svelte\` resolves to, so also drop any \`svelte\` override that points elsewhere.`
-  ].join("\n");
+  const found = inspection.reason === "missing" ? "No `svelte` package can be resolved from it." : `The installed svelte${inspection.version ? ` ${inspection.version}` : ""} (${inspection.directory}) has no \`./renderer\` export: custom renderers came with Svelte ${requiredSvelte.firstWithRenderer}.`;
+  return [`${what} needs Svelte ${requiredSvelte.version}, with custom renderers. ${found}`, "Install it from the registry:", `  pnpm add svelte@${requiredSvelte.version}`].join("\n");
 }
 function assertCustomRenderer(what, from) {
   const inspection = inspectSvelte(from);

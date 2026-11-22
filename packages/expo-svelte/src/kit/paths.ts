@@ -17,16 +17,19 @@ export const assets = "";
 /** The path of a file in `static/`, as SvelteKit builds it with no base: `/file`. A device has no `static` directory, so nothing serves this path; it is for code shared with the web. */
 export const asset: typeof Kit.asset = (file) => `${assets || base}/${file.startsWith("/") ? file.slice(1) : file}`;
 
+/** Whether a string starts with a scheme (`https:`) or an authority (`//example.com`), which SvelteKit's `resolve` refuses (`utils/url.js`, `has_scheme_or_authority`). */
+const hasSchemeOrAuthority = (text: string): boolean => /^[a-z][a-z\d+\-.]*:/i.test(text) || text.startsWith("//");
+
 /**
  * A route id with its parameters in place (`resolve("/blog/[slug]", { slug: "hello" })` is `/blog/hello`), or a pathname (`resolve("blog/hello")` is `/blog/hello`).
  * A search or a hash after a route id stays (`"/blog/[slug]?page=2"`). Optional (`[[x]]`) and rest (`[...x]`) parameters, `(group)` segments and the `[x+2f]`
- * escapes work as in SvelteKit; a route id that has a parameter and is given none throws, as does a missing, slashed or non-scalar value.
+ * escapes work as in SvelteKit; a route id that has a parameter and is given none throws, as does a missing, slashed or non-scalar value, and an absolute or protocol-relative URL.
  */
 export const resolve = ((...args: [string, Record<string, ParamValue | undefined>?]): string => {
   const [id, params] = args;
+  if (hasSchemeOrAuthority(id)) throw new Error(`Cannot use \`resolve(...)\` with an absolute or protocol-relative URL (got "${id}")`);
   if (!id.startsWith("/")) return `${base}/${id}`;
-  if (id.includes("[") && !params) throw new Error(`Missing params for dynamic route ID \`${id}\``);
-  return base + resolveRoute(id, params ?? {});
+  return base + resolveRoute(id, params);
 }) as typeof Kit.resolve;
 
 /** The route of `href`'s path: its id (SvelteKit's, with the groups: `/(app)/blog/[slug]`) and its parameters, or `null` when no screen of the app has that path. Rejects before the app has created its router. */

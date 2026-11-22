@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { closeWatchers, withExpoSvelte } from "../../../src/metro.ts";
 import { sourceFile } from "../../../src/package-root.ts";
 import { classesTableFile } from "../../../src/variant.ts";
-import { resetReports } from "../../../src/css/build.ts";
+import { resetReports, TAILWIND_VERSION } from "../../../src/css/build.ts";
 import { cssProject, removeCssProjects } from "../../support/css-project.ts";
 import { packageRoot } from "../../support/paths.ts";
 import { fakeConfig, resolveFrom, until, watchUntouched } from "../../support/metro.ts";
@@ -55,7 +55,7 @@ describe("with the css option", () => {
   });
 
   test("a build that cannot run fails the config with what to do", () => {
-    expect(() => withExpoSvelte(fakeConfig(cssProject({}, { tailwind: false })), { variant: "app", css: "src/global.css" })).toThrow(/needs Tailwind CSS in the app: pnpm add -D tailwindcss@4\.3\.3/);
+    expect(() => withExpoSvelte(fakeConfig(cssProject({}, { tailwind: false })), { variant: "app", css: "src/global.css" })).toThrow(`needs Tailwind CSS in the app: pnpm add -D tailwindcss@${TAILWIND_VERSION}`);
     expect(() => withExpoSvelte(fakeConfig(cssProject()), { variant: "app", css: "src/nothing.css" })).toThrow(/the css option names src\/nothing\.css, which is not a file/);
   });
 

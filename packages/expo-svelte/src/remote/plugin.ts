@@ -4,7 +4,7 @@
  * build), and, for an `http:` host (a development server), lets the app talk to it: Android blocks cleartext traffic and iOS App Transport
  * Security blocks `http:` to a named domain, unless the build says otherwise. An `https:` host changes nothing native.
  */
-import { withAndroidManifest, withInfoPlist, type ConfigPlugin } from "expo/config-plugins.js";
+import { withAndroidManifest, withInfoPlist, type ConfigPlugin } from "expo/config-plugins";
 import { EXTRA_KEY, normalizeAppDir, normalizeBase, normalizeOrigin, type RemoteHostConfig } from "./host.ts";
 
 /** `extra` with the validated host under `expoSvelte.remote`; every other key stays. */

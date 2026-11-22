@@ -27,11 +27,11 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { copyFile, mkdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { ExpoConfig } from "expo/config";
-// `.js` spelled out, as in `remote/plugin.ts`: Node's own module loader, which loads this file from its source in `tests/cli/remote-plugin.test.ts` ("loading"), resolves no `expo/config-plugins` without it.
+// `expo/config-plugins` spelled without an extension: `expo` 58's `exports` map (`./*` to `./*.js`) has no `./config-plugins.js`, so the `.js` spelling that `expo` 57 allowed does not resolve, in Node's loader (`tests/cli/remote-plugin.test.ts`, "loading") or Expo's.
 // The `with*` functions are plain exports of that CommonJS module, which Node's loader names. `AndroidConfig` is not: Expo defines it with a getter, which the CommonJS lexer of Node before 24
 // does not see ("Named export 'AndroidConfig' not found"), so its values come from the default import, which is the module's exports in every loader (Node, Bun, the bundle); its types stay a named import.
-import type { AndroidConfig } from "expo/config-plugins.js";
-import configPlugins, { withAndroidColors, withAndroidManifest, withAppBuildGradle, withAppDelegate, withDangerousMod, withInfoPlist, withPodfileProperties, withStringsXml } from "expo/config-plugins.js";
+import type { AndroidConfig } from "expo/config-plugins";
+import configPlugins, { withAndroidColors, withAndroidManifest, withAppBuildGradle, withAppDelegate, withDangerousMod, withInfoPlist, withPodfileProperties, withStringsXml } from "expo/config-plugins";
 import { apsEnvironmentEntitlement, checkPushConfig, findPushSecret, googleServicesPackages, otherPushLibraries, pushIsOn, pushSecretMessage, remoteNotificationMode } from "./push/config.ts";
 
 const { AndroidConfig: expoAndroid } = configPlugins;

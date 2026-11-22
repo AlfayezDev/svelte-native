@@ -1,5 +1,5 @@
 diff --git a/android/src/main/cpp/reanimated/android/NativeProxy.cpp b/android/src/main/cpp/reanimated/android/NativeProxy.cpp
-index 297ded4..7b876d9 100644
+index c9e9b87..57c2427 100644
 --- a/android/src/main/cpp/reanimated/android/NativeProxy.cpp
 +++ b/android/src/main/cpp/reanimated/android/NativeProxy.cpp
 @@ -11,6 +11,8 @@
@@ -28,7 +28,7 @@ index 297ded4..7b876d9 100644
  NativeProxy::NativeProxy(
      jni::alias_ref<NativeProxy::javaobject> jThis, // NOLINT //(performance-unnecessary-value-param)
      jsi::Runtime *rnRuntime,
-@@ -199,12 +211,38 @@ std::optional<std::unique_ptr<int[]>> NativeProxy::preserveMountedTags(std::vect
+@@ -209,12 +221,38 @@ std::optional<std::unique_ptr<int[]>> NativeProxy::preserveMountedTags(std::vect
  void NativeProxy::synchronouslyUpdateUIProps(
      const std::vector<int> &intBuffer,
      const std::vector<double> &doubleBuffer) {
@@ -72,10 +72,10 @@ index 297ded4..7b876d9 100644
  }
  
 diff --git a/android/src/main/cpp/reanimated/android/NativeProxy.h b/android/src/main/cpp/reanimated/android/NativeProxy.h
-index 5bc83ca..623cf7f 100644
+index 8448ad3..cd08d04 100644
 --- a/android/src/main/cpp/reanimated/android/NativeProxy.h
 +++ b/android/src/main/cpp/reanimated/android/NativeProxy.h
-@@ -19,6 +19,21 @@ namespace reanimated {
+@@ -20,6 +20,21 @@ namespace reanimated {
  using namespace facebook;
  using namespace facebook::jni;
  
@@ -97,7 +97,7 @@ index 5bc83ca..623cf7f 100644
  class NativeProxy : public jni::HybridClass<NativeProxy>, std::enable_shared_from_this<NativeProxy> {
   public:
    static auto constexpr kJavaDescriptor = "Lcom/swmansion/reanimated/NativeProxy;";
-@@ -48,6 +63,9 @@ class NativeProxy : public jni::HybridClass<NativeProxy>, std::enable_shared_fro
+@@ -49,6 +64,9 @@ class NativeProxy : public jni::HybridClass<NativeProxy>, std::enable_shared_fro
    void installJSIBindings();
    std::optional<std::unique_ptr<int[]>> preserveMountedTags(std::vector<int> &tags);
    void synchronouslyUpdateUIProps(const std::vector<int> &intBuffer, const std::vector<double> &doubleBuffer);
@@ -108,17 +108,22 @@ index 5bc83ca..623cf7f 100644
  
    double getAnimationTimestamp();
 diff --git a/android/src/main/java/com/swmansion/reanimated/NativeProxy.kt b/android/src/main/java/com/swmansion/reanimated/NativeProxy.kt
-index 48e3771..7b056cd 100644
+index 1c989e0..8efa761 100644
 --- a/android/src/main/java/com/swmansion/reanimated/NativeProxy.kt
 +++ b/android/src/main/java/com/swmansion/reanimated/NativeProxy.kt
-@@ -8,11 +8,14 @@ import com.facebook.jni.HybridData
+@@ -6,9 +6,11 @@ import android.provider.Settings
+ import android.util.Log
+ import com.facebook.jni.HybridData
  import com.facebook.proguard.annotations.DoNotStrip
++import com.facebook.react.bridge.JavaOnlyMap
  import com.facebook.react.bridge.NativeModule
  import com.facebook.react.bridge.ReactApplicationContext
-+import com.facebook.react.bridge.JavaOnlyMap
+ import com.facebook.react.bridge.UIManager
 +import com.facebook.react.bridge.ReadableType
+ import com.facebook.react.bridge.UIManagerListener
  import com.facebook.react.bridge.UiThreadUtil
  import com.facebook.react.common.annotations.FrameworkAPI
+@@ -16,6 +18,7 @@ import com.facebook.react.common.annotations.UnstableReactNativeAPI
  import com.facebook.react.fabric.FabricUIManager
  import com.facebook.react.turbomodule.core.CallInvokerHolderImpl
  import com.facebook.react.uimanager.IllegalViewOperationException
@@ -126,8 +131,8 @@ index 48e3771..7b056cd 100644
  import com.facebook.react.uimanager.UIManagerHelper
  import com.facebook.react.uimanager.common.UIManagerType
  import com.facebook.soloader.SoLoader
-@@ -245,12 +248,74 @@ open class NativeProxy {
-             }.apply { isAccessible = true }
+@@ -320,6 +323,66 @@ open class NativeProxy {
+         runCatching { mountingManager.javaClass.getMethod("getViewExists", Int::class.javaPrimitiveType) }.getOrNull()
      }
  
 +    // Example patch: opacity and translate/scale-only transforms are written straight to the
@@ -193,14 +198,15 @@ index 48e3771..7b056cd 100644
      @DoNotStrip
      fun synchronouslyUpdateUIProps(
          intBuffer: IntArray,
-         doubleBuffer: DoubleArray,
+@@ -327,6 +390,8 @@ open class NativeProxy {
      ) {
+         cssPlatformTransitionsManager.onPropsWrittenSynchronously()
          SynchronousPropsBufferParser.parse(intBuffer, doubleBuffer) { viewTag, props ->
 +            if (SvelteEngineHook.updater?.invoke(viewTag, props) == true) return@parse
 +            if (applySimpleProps(viewTag, props)) return@parse
-             if (BuildConfig.IS_REACT_NATIVE_86_OR_NEWER) {
-                 try {
-                     updatePropsSynchronouslyMethod.invoke(mountingManager, viewTag, props)
+             try {
+                 // The props stay in the registry, and the commit hook applies them to the shadow tree.
+                 if (getViewExistsMethod?.invoke(mountingManager, viewTag) == false) {
 diff --git a/android/src/main/java/com/swmansion/reanimated/SvelteEngineHook.kt b/android/src/main/java/com/swmansion/reanimated/SvelteEngineHook.kt
 new file mode 100644
 index 0000000..8d73b90

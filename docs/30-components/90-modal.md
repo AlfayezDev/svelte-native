@@ -19,7 +19,7 @@ video: pressable
 		<Text>Delete account</Text>
 	</Pressable>
 
-	<Modal visible={open} transparent animationType="fade" onRequestClose={() => (open = false)}>
+	<Modal visible={open} transparent animationType="fade" onRequestClose={() => { open = false; }}>
 		<View style={{ flex: 1, justifyContent: 'center', padding: 32, backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
 			<View style={{ gap: 12, padding: 20, borderRadius: 16, backgroundColor: '#ffffff' }}>
 				<Text style={{ fontSize: 18, fontWeight: '600' }}>Delete your account?</Text>
@@ -62,7 +62,7 @@ The modal's content is a layer of its own:
 - A [`Screen`](screen) inside a modal draws its own header there, instead of setting the header of the screen below. Use it for a full-screen modal with a title and a close button:
 
 ```svelte
-<Modal visible={open} animationType="slide" onRequestClose={() => (open = false)}>
+<Modal visible={open} animationType="slide" onRequestClose={() => { open = false; }}>
 	<Screen title="Filters" headerRight={done}>
 		<!-- ... -->
 	</Screen>

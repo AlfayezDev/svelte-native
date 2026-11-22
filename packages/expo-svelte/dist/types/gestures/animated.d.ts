@@ -66,7 +66,7 @@ export type UiPath = {
     sharedHandlers: SharedValue<Callbacks[] | null>;
     lastUpdateEvent: SharedValue<(Event | undefined)[]>;
 };
-/** `useSharedValue` twice and `useEvent` (a `WorkletEventHandler`) for the node's tag; the handlers are shared with `shareHandlers`. The first one also installs RNGH's UI runtime bindings. */
+/** `useSharedValue` twice and `useEvent` (a `WorkletEventHandler`) for the node's tag; the handlers are shared with `shareHandlers`. The host installs RNGH's UI runtime bindings before the first one (`fabric/gestures.ts`: this file is also what the public entry loads for `GestureStateManager`, and loads nothing of React Native). */
 export declare function createUiPath(tag: number): UiPath;
 /** The gestures were attached again (a different shape or thread): a new worklet over the same shared values, as `useEvent(..., rebuild)` does. */
 export declare function rebuildUiPath(path: UiPath): void;

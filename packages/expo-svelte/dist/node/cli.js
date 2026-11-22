@@ -678,6 +678,12 @@ function expoModulesCoreProblems(read2, patch) {
     ...inFile(read2, "src/NativeViewManagerAdapter.native.tsx", [["imports the native component registry when it loads", adapterLoadsRegistryLazily]], true)
   ];
 }
+function blobUtilProblems(read2) {
+  return inFile(read2, "android/build.gradle", [
+    ["still names `proguard-android.txt`, which AGP 9 refuses", (code) => !code.includes("getDefaultProguardFile('proguard-android.txt')")],
+    ["does not name `proguard-android-optimize.txt`", has("getDefaultProguardFile('proguard-android-optimize.txt')")]
+  ], true);
+}
 function riveProblems(read2) {
   return inFile(read2, "android/src/main/java/com/rivereactnative/RiveReactNativeView.kt", [
     ["an event still goes through the old architecture's event emitter (a soft exception for every event in a bridgeless app)", (code) => !code.includes("RCTEventEmitter")],
@@ -728,6 +734,7 @@ var init_patches = __esm({
       { package: "@sveltejs/kit", does: "SvelteKit leaves the `+mobile.svelte` files of a route directory alone", inspect: kitProblems },
       { package: "expo-modules-core", via: "expo", does: "Expo modules register lazily and the common ones are prewarmed (Android start)", inspect: expoModulesCoreProblems },
       { package: "lottie-react-native", vendored: true, does: "Lottie's events are delivered one by one (Android) and a load or failure before the emitter exists is kept (iOS)", inspect: lottieProblems },
+      { package: "react-native-blob-util", vendored: true, does: "the release build type names the optimizing Proguard file: Android Gradle plugin 9 refuses the default one (Android)", inspect: blobUtilProblems },
       { package: "react-native-gesture-handler", vendored: true, does: "the root gesture recognizer can be registered for the screens the library presents, and the podspec finds the Worklets copy beside it (iOS)", inspect: rnghProblems },
       { package: "react-native-maps", vendored: true, does: "the map's discrete events are delivered one by one, its streams still coalesce (Android); its iOS plugin points the Podfile at the library's copy", inspect: mapsProblems },
       { package: "react-native-pdf", vendored: true, does: "the pdf view's one event, which carries every message, no longer coalesces, and react-native is found from the app's directory (Android)", inspect: pdfProblems },
@@ -2512,7 +2519,7 @@ var init_requirements = __esm({
     };
     nodeAdvice = {
       repository: "install Node 25.0.0 or newer (the repository pins 25.0.0) and put it on the PATH",
-      app: "install Node 24 LTS (24.3 or newer; Node 22.17 or newer and Node 26 or newer work too) and put it on the PATH. Node 25 is not supported: a fresh install takes @react-native/metro-config 0.88, whose tools exclude it, and pnpm stops with ERR_PNPM_UNSUPPORTED_ENGINE (docs/60-appendix/20-troubleshooting.md)"
+      app: "install Node 24 LTS (24.3 or newer; Node 22.17 or newer and Node 26 or newer work too) and put it on the PATH. Node 25 is not supported: React Native 0.88 and its tools exclude it, and pnpm stops with ERR_PNPM_UNSUPPORTED_ENGINE (docs/60-appendix/20-troubleshooting.md)"
     };
   }
 });

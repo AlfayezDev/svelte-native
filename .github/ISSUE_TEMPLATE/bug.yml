@@ -65,9 +65,9 @@ body:
   - type: input
     id: library-ref
     attributes:
-      label: Library version (tag or commit)
-      description: The `#...` part of `expo-svelte` in your `package.json`, or the commit in `pnpm-lock.yaml`.
-      placeholder: "v0.3.0"
+      label: Library version
+      description: The version of `expo-svelte` in `pnpm-lock.yaml` (or the commit, for a git dependency).
+      placeholder: "0.4.0-rc.10"
     validations:
       required: true
   - type: textarea

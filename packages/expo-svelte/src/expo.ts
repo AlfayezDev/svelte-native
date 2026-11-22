@@ -364,7 +364,7 @@ const communityCall = "expoSvelteConfigCommand + expoSvelteCommunityCommand, exp
  * lock files include `settings.gradle` itself: React Native keeps the command's output until a lock file changes, and a changed `libraries` changes the `--link` arguments.
  */
 export function applyHeadlessSettings(contents: string, extra: readonly string[] = [], links?: LibraryLinks): string {
-  const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\((?:expoSvelteConfigCommand \+ )?expoAutolinking\.rnConfigCommand \+ expoSvelteExcludeArgs(?:, expoSvelteAppRoot\.asFile, expoSvelteLockFiles)?\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)")
+  const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\((?:(?:expoSvelte|svelteNative)ConfigCommand \+ )?expoAutolinking\.rnConfigCommand \+ (?:expoSvelte|svelteNative)ExcludeArgs(?:, (?:expoSvelte|svelteNative)AppRoot\.asFile, (?:expoSvelte|svelteNative)LockFiles)?\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)")
     .replace(`autolinkLibrariesFromCommand(${communityCall})`, "autolinkLibrariesFromCommand()");
   const anchor = /^extensions\.configure\(com\.facebook\.react\.ReactSettingsExtension\)/m.exec(stripped);
   if (!anchor || !stripped.includes("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)")) throw new Error("Svelte native could not find the autolinking block in settings.gradle");
@@ -416,7 +416,7 @@ export function applyPodfileAutolinkingExclude(contents: string, names: readonly
   const stripped = contents
     .replace(blockPattern(podfileBegin, podfileEnd), "")
     .replace(blockPattern(podfileCommandBegin, podfileCommandEnd), "")
-    .replace(/use_expo_modules!\((?:exclude: expo_svelte_exclude)?(?:, )?(?:searchPaths: [^\n]*?)?\)(?=[ \t]*$)/m, "use_expo_modules!");
+    .replace(/use_expo_modules!\((?:exclude: (?:expo_svelte|svelte_native)_exclude)?(?:, )?(?:searchPaths: [^\n]*?)?\)(?=[ \t]*$)/m, "use_expo_modules!");
   if (names.length === 0 && expoModules.length === 0) return stripped;
   const useAnchor = /^[ \t]*use_expo_modules!(?!\()[ \t]*$/m.exec(stripped);
   const commandAnchor = /^[ \t]*config = use_native_modules!\(config_command\)[ \t]*$/m.exec(stripped);

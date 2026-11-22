@@ -170,6 +170,14 @@ describe("settings.gradle", () => {
     expect(applyHeadlessSettings(once, [], libraryLinks([]))).toBe(applyHeadlessSettings(settings, [], libraryLinks([])));
     expect(applyHeadlessSettings(once, [], libraryLinks(["expo-video"]))).toBe(applyHeadlessSettings(settings, [], libraryLinks(["expo-video"])));
   });
+
+  test("a settings.gradle a prebuild of 0.4.0-rc.9 or before wrote (its variables named svelteNative…) is written as this release writes it", () => {
+    const links = libraryLinks(["expo-image", "react-native-maps"]);
+    const once = applyHeadlessSettings(settings, [], links);
+    const former = once.replaceAll("expoSvelte", "svelteNative");
+    expect(former).not.toBe(once);
+    expect(applyHeadlessSettings(former, [], links)).toBe(once);
+  });
 });
 
 describe("the Podfile", () => {
@@ -216,6 +224,14 @@ end
     expect(prebuild(first, ["expo-image", "react-native-maps"])).toBe(first);
     expect(prebuild(first, [])).toBe(prebuild(podfile, []));
     expect(prebuild(prebuild(podfile, []), ["expo-image", "react-native-maps"])).toBe(first);
+  });
+
+  test("a Podfile a prebuild of 0.4.0-rc.9 or before wrote (`svelte_native_exclude`) is written as this release writes it", () => {
+    const links = libraryLinks(["expo-image", "react-native-maps"]);
+    const first = applyPodfileVendoredLinking(applyPodfileAutolinkingExclude(podfile, [...links.expoOff], links.expo), links.reactNative);
+    const former = first.replaceAll("expo_svelte", "svelte_native").replaceAll("expoSvelte", "svelteNative");
+    expect(former).not.toBe(first);
+    expect(applyPodfileVendoredLinking(applyPodfileAutolinkingExclude(former, [...links.expoOff], links.expo), links.reactNative)).toBe(first);
   });
 });
 

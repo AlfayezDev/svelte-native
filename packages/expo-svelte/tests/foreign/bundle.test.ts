@@ -31,7 +31,7 @@ async function bundleForeignEntry(): Promise<Bundle> {
       name: "foreign-entry",
       setup(builder) {
         // Everything the app's bundler resolves from React Native or Expo is external here, and recorded: a library or React among them fails the test below.
-        builder.onResolve({ filter: /^(react|react-dom|react-native|expo|@react-native|@react-native-community|lottie-react-native|react-native-[\w-]+|expo-[\w-]+)(\/|$)/ }, (args) => {
+        builder.onResolve({ filter: /^(react|react-dom|react-native|expo|@react-native|@react-native-community|lottie-react-native|react-native-[\w-]+|expo-(?!svelte\/)[\w-]+)(\/|$)/ }, (args) => {
           externals.add(args.path);
           return { path: args.path, external: true };
         });

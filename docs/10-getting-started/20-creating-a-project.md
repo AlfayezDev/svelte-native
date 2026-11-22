@@ -26,15 +26,8 @@ The first `pnpm android` builds the native app, installs it on your phone or emu
 
 - **Node 24 LTS (24.3 or newer)**, Node 22.17 or newer, or Node 26 or newer. Not Node 25: React Native's tools refuse it, and `pnpm add` stops with `ERR_PNPM_UNSUPPORTED_ENGINE` ([Troubleshooting](troubleshooting#pnpm-stops-during-install)).
 - **pnpm 12.3.4 or newer.** Expo Svelte's patches are applied by pnpm, so npm, Yarn and Bun won't do.
-- **Access to the repository.** It's private: you need to be a collaborator, with your SSH key on your GitHub account. `ssh -T git@github.com` should greet you by name.
 - **For Android:** [Android Studio](https://developer.android.com/studio) with the Android SDK, a JDK 17, `ANDROID_HOME` set, and a phone with USB debugging or an emulator.
 - **For iOS:** a Mac with Xcode and CocoaPods, and a simulator or an iPhone.
-
-pnpm fetches GitHub dependencies over HTTPS, even when you give it an SSH address. If you reach GitHub with an SSH key only, tell git once to use SSH for this account:
-
-```sh
-git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.com/AlfayezDev/"
-```
 
 ## The commands
 

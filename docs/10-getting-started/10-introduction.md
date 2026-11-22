@@ -64,7 +64,6 @@ Not there yet:
 - No DOM libraries, no React components, and no Expo dev client.
 - Building on Expo's servers (EAS Build) is untested.
 - Expo Svelte needs a build of Svelte from an [open pull request](https://github.com/sveltejs/svelte/pull/18042), and SvelteKit 3.1.1 exactly. `init` installs both.
-- `expo-svelte` is a working name. The repository is private for now, and you install from it over SSH.
 
 ## Next steps
 

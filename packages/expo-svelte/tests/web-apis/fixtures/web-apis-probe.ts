@@ -116,11 +116,11 @@ result.local = {
   missing: local.getItem("nothing"),
   length: local.length,
   keys: Object.keys(local),
-  stored: [...(files.get("expo-svelte.local-storage")?.entries() ?? [])],
+  stored: [...(files.get("svelte-native.local-storage")?.entries() ?? [])],
   sameStorage: globals.localStorage === local,
 };
 local.setItem("", "empty key");
-result.emptyKey = { value: local.getItem(""), keys: Object.keys(local), stored: [...(files.get("expo-svelte.local-storage")?.keys() ?? [])].map((key) => JSON.stringify(key)) };
+result.emptyKey = { value: local.getItem(""), keys: Object.keys(local), stored: [...(files.get("svelte-native.local-storage")?.keys() ?? [])].map((key) => JSON.stringify(key)) };
 const session = globals.sessionStorage;
 session.setItem("theme", "light");
 result.session = { theme: session.getItem("theme"), localTheme: local.getItem("theme"), created: created.length, files: [...files.keys()] };

@@ -1,5 +1,5 @@
 /**
- * What `localStorage` is on the device: an MMKV instance (react-native-mmkv 4, a Nitro module, vendored: `vendor/react-native-mmkv`) with the id `expo-svelte.local-storage`, which keeps its
+ * What `localStorage` is on the device: an MMKV instance (react-native-mmkv 4, a Nitro module, vendored: `vendor/react-native-mmkv`) with the id `svelte-native.local-storage`, which keeps its
  * data in the app's files for good. The library is required, and the instance created, when the global `localStorage` is first read (`loadLocalStorage`), so an app that never
  * touches `localStorage` neither loads MMKV nor creates a file for it. It is created then, and not at the first call that reads or writes an item, so that a binary
  * without the native module is found out by the read, which answers `undefined` (`defineLazyGlobal`): `typeof localStorage` is a feature probe that works.
@@ -10,8 +10,8 @@ import type { MMKV } from "#vendor/react-native-mmkv";
 import { mark } from "./boot-marks.ts";
 import { createStorage, type StorageBackend } from "./web-storage.ts";
 
-/** The id of the MMKV instance behind `localStorage`: the name of its files. */
-export const LOCAL_STORAGE_ID = "expo-svelte.local-storage";
+/** The id of the MMKV instance behind `localStorage`: the name of its files. It keeps the package's name before 0.4.0-rc.10, so an app's stored values survive the rename. */
+export const LOCAL_STORAGE_ID = "svelte-native.local-storage";
 
 let instance: MMKV | undefined;
 

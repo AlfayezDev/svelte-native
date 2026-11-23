@@ -6,7 +6,7 @@
   import type { TextInput as NativeTextInput, TextInputProps } from "react-native";
   import type { HostHandle } from "../fabric/host.ts";
   import { htmlTextInput } from "../html-input.ts";
-  import { inputBlurred, inputFocused } from "../keyboard.ts";
+  import { inputBlurred, inputFocused, inputGone } from "../keyboard.ts";
   import { textInputProps } from "../text-input-props.ts";
   type Handle = NativeTextInput & Pick<HostHandle, "dispatchCommand">;
   type FocusEvent = Parameters<NonNullable<TextInputProps["onFocus"]>>[0];
@@ -19,8 +19,8 @@
   const resolveProps = createNativeProps();
   const html = $derived(nativeHtml ? htmlTextInput(attributes as Record<string, unknown>) : undefined);
   // React Native's record of the focused input, which `Keyboard.dismiss()` blurs (`keyboard.ts`), is kept from the focus and blur events with the
-  // input's handle, as React Native's `TextInput` keeps it. The first handle stays the one recorded: one given after the `ref` changed reaches the
-  // same view, but is another object.
+  // input's handle, as React Native's `TextInput` keeps it, and a focused input that is destroyed is blurred. The first handle stays the one
+  // recorded: one given after the `ref` changed reaches the same view, but is another object.
   let handle: Handle | null = null;
   const own = $derived.by(() => {
     const given = ref;
@@ -29,7 +29,7 @@
       given?.(instance);
     };
   });
-  onDestroy(() => { if (handle) inputBlurred(handle); });
+  onDestroy(() => { if (handle) inputGone(handle); });
   function recorded(props: TextInputProps): TextInputProps {
     const { onFocus, onBlur } = props;
     return {

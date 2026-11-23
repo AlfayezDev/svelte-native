@@ -4,11 +4,12 @@
   import Section from "#lib/components/Section.svelte";
   import { scroller, useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
-  import { Dimensions, Platform } from "expo-svelte/platform";
+  import { Dimensions, Keyboard, Platform } from "expo-svelte/platform";
 
   // What the platform tells the app. The library has `insets` (the safe area and the keyboard, as reactive state) and the options of `<Screen>`
   // for the system bars. The rest is React Native's own JavaScript modules, which `expo-svelte/platform` exports with their types:
-  // `Platform` (which OS) and `Dimensions` (the size of the screen); `Appearance` (light or dark) is read by the theme in src/lib/theme.svelte.ts.
+  // `Platform` (which OS), `Dimensions` (the size of the screen) and `Keyboard` (`dismiss()` closes it); `Appearance` (light or dark) is read by the
+  // theme in src/lib/theme.svelte.ts.
   // Read `insets` anywhere and the view updates when it changes, for example when the keyboard opens.
   const size = Dimensions.get("window");
   let hideStatusBar = $state(false);
@@ -49,7 +50,7 @@
       <Section title="Keyboard" note="Tap the field. insets reports the keyboard as soon as it opens.">
         <TextInput ref={(handle) => (field = handle)} placeholder="Tap to open the keyboard" placeholderTextColor={theme.colors.muted} accessibilityLabel="Keyboard test" style={{ minHeight: 48, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, color: theme.colors.text, fontSize: 16 }} />
         <Text style={text.body}>{insets.keyboardVisible ? `Open, ${Math.round(insets.keyboardHeight)} high` : "Closed"}</Text>
-        <Button label="Dismiss the keyboard" variant="secondary" onPress={() => field?.blur()} />
+        <Button label="Dismiss the keyboard" variant="secondary" onPress={() => Keyboard.dismiss()} />
       </Section>
 
       <Section title="Status bar" note="The statusBar option of Screen sets its style and can hide it. This screen asks for the style that fits the system's mode.">

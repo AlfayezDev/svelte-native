@@ -225,6 +225,13 @@ export function blobUtilProblems(read: Reader): string[] {
   ], true);
 }
 
+export function quickBase64Problems(read: Reader): string[] {
+  return inFile(read, "ios/QuickBase64Module.mm", [
+    ["still casts the bridge to `RCTCxxBridge`, which React Native 0.88 removed", (code) => !code.includes("(RCTCxxBridge *)")],
+    ["does not ask the bridge for its runtime", has("[(id<QuickBase64RuntimeOwner>)_bridge runtime]")],
+  ], true);
+}
+
 export function riveProblems(read: Reader): string[] {
   return inFile(read, "android/src/main/java/com/rivereactnative/RiveReactNativeView.kt", [
     ["an event still goes through the old architecture's event emitter (a soft exception for every event in a bridgeless app)", (code) => !code.includes("RCTEventEmitter")],

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import type { ForeignBundle, ForeignCheck, ForeignFile, ForeignLaunch, ForeignPlace, ForeignSkip, BuildFile, Metrics, Platform } from "./types.ts";
 import { loadGatesFile } from "./smoke.ts";
+import { sourcesOfMap, type RawSourceMap } from "./source-map.ts";
 
 /**
  * The foreign run (`native-qa foreign`, SPEC.md, "Foreign views", "Device verification of the libraries"): the lab's `foreign-libraries` scenario
@@ -98,8 +99,7 @@ export function analyseSources(sources: readonly string[]): Pick<ForeignBundle, 
 
 /** The bundle a source map describes: its sources analysed. */
 export async function bundleOfMap(path: string): Promise<Omit<ForeignBundle, "matchesBuild">> {
-	const map = JSON.parse(await readFile(path, "utf8")) as { sources?: string[] };
-	const sources = map.sources ?? [];
+	const sources = sourcesOfMap(JSON.parse(await readFile(path, "utf8")) as RawSourceMap);
 	return { map: path, sources: sources.length, ...analyseSources(sources) };
 }
 

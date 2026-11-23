@@ -23,8 +23,8 @@ test("a node's gesture attaches after the commit, with the engine hook first; up
 
   app.set([{ id: "a", gesture: G.Pan().onUpdate(w()).activeOffsetX([-10, 10]) }]);
   await settle(m);
-  expect(names(world().calls)).toEqual(["createGestureHandler", "attachGestureHandler", "updateGestureHandler", "flushOperations"]);
-  expect(world().log.filter((line) => line !== "completeRoot")).toEqual(["enableGestures", "listen onGestureHandlerEvent", "listen onGestureHandlerStateChange", "native createGestureHandler", "native attachGestureHandler", "native updateGestureHandler", "native flushOperations"]);
+  expect(names(world().calls)).toEqual(["createGestureHandler", "attachGestureHandler", "setGestureHandlerConfig", "configureRelations", "flushOperations"]);
+  expect(world().log.filter((line) => line !== "completeRoot")).toEqual(["enableGestures", "listen onGestureHandlerEvent", "listen onGestureHandlerStateChange", "native createGestureHandler", "native attachGestureHandler", "native setGestureHandlerConfig", "native configureRelations", "native flushOperations"]);
   expect(world().log.indexOf("completeRoot")).toBeLessThan(world().log.indexOf("native createGestureHandler"));
   const node = byId(61, "a");
   const tag = tagOf();
@@ -45,7 +45,7 @@ test("a node's gesture attaches after the commit, with the engine hook first; up
   app.set([{ id: "a", gesture: G.Pan().onUpdate(w()).activeOffsetX([-4, 4]).minDistance(2) }]);
   await settle(m);
   const update = take();
-  expect(names(update)).toEqual(["updateGestureHandler", "flushOperations"]);
+  expect(names(update)).toEqual(["setGestureHandlerConfig", "configureRelations", "flushOperations"]);
   expect(update[0]?.[1]).toBe(tag);
   expect(update[0]?.[2]).toMatchObject({ activeOffsetXStart: -4, activeOffsetXEnd: 4, minDist: 2 });
   expect(shared.writes).toHaveLength(2); // the new gesture's callbacks replace the old ones in the shared value
@@ -82,7 +82,7 @@ test("a changed shape, count or thread attaches again: drop, create, a rebuilt e
   app.set([{ id: "a", gesture: G.Tap().onEnd(w()) }]); // another handler
   await settle(m);
   let calls = take();
-  expect(names(calls)).toEqual(["dropGestureHandler", "createGestureHandler", "attachGestureHandler", "updateGestureHandler", "flushOperations"]);
+  expect(names(calls)).toEqual(["dropGestureHandler", "createGestureHandler", "attachGestureHandler", "setGestureHandlerConfig", "configureRelations", "flushOperations"]);
   expect(calls[0]).toEqual(["dropGestureHandler", first]);
   expect(calls[1]?.[1]).toBe("TapGestureHandler");
   const second = calls[1]?.[2] as number;
@@ -94,7 +94,7 @@ test("a changed shape, count or thread attaches again: drop, create, a rebuilt e
   app.set([{ id: "a", gesture: G.Race(G.Tap().onEnd(w()), G.Pan().onEnd(w())) }]); // another count
   await settle(m);
   calls = take();
-  expect(names(calls)).toEqual(["dropGestureHandler", "createGestureHandler", "createGestureHandler", "attachGestureHandler", "attachGestureHandler", "updateGestureHandler", "updateGestureHandler", "flushOperations"]);
+  expect(names(calls)).toEqual(["dropGestureHandler", "createGestureHandler", "createGestureHandler", "attachGestureHandler", "attachGestureHandler", "setGestureHandlerConfig", "configureRelations", "setGestureHandlerConfig", "configureRelations", "flushOperations"]);
   expect(m.fabricStats().gestures).toEqual({ records: 1, handlers: 2, eventHandlers: 1 });
 
   app.set([{ id: "a", gesture: G.Race(G.Tap().onEnd(j()), G.Pan().onEnd(j())) }]); // the thread changed to JS
@@ -127,7 +127,7 @@ test("removing the attribute detaches; the node stays and a new gesture gets fre
   app.set([{ id: "a", gesture }]); // the same object again, free since the detach
   await settle(m);
   const again = take();
-  expect(names(again)).toEqual(["createGestureHandler", "attachGestureHandler", "updateGestureHandler", "flushOperations"]);
+  expect(names(again)).toEqual(["createGestureHandler", "attachGestureHandler", "setGestureHandlerConfig", "configureRelations", "flushOperations"]);
   expect(again[0]?.[2]).not.toBe(first);
 });
 
@@ -139,16 +139,18 @@ test("relations by tag across nodes: a gesture that mounts later updates the one
   await settle(m);
   const panTag = tagOf();
   let calls = take();
-  expect(calls.at(-2)).toEqual(["updateGestureHandler", panTag, { waitFor: [], simultaneousHandlers: [], blocksHandlers: [] }]); // nothing to name yet
+  expect(calls.at(-2)).toEqual(["configureRelations", panTag, { waitFor: [], simultaneousHandlers: [], blocksHandlers: [] }]); // nothing to name yet
 
   app.set([{ id: "pan", gesture: pan }, { id: "scroll", gesture: scroll }]);
   await settle(m);
   calls = take();
   const scrollTag = calls.find((call) => call[0] === "createGestureHandler")?.[2] as number;
-  expect(names(calls)).toEqual(["createGestureHandler", "attachGestureHandler", "updateGestureHandler", "updateGestureHandler", "flushOperations"]);
-  const updates = Object.fromEntries(calls.filter((call) => call[0] === "updateGestureHandler").map((call) => [call[1] as number, call[2]]));
-  expect(updates[panTag]).toEqual({ waitFor: [scrollTag], simultaneousHandlers: [scrollTag], blocksHandlers: [scrollTag] });
-  expect(updates[scrollTag]).toMatchObject({ waitFor: [], disallowInterruption: true });
+  expect(names(calls)).toEqual(["createGestureHandler", "attachGestureHandler", "setGestureHandlerConfig", "configureRelations", "setGestureHandlerConfig", "configureRelations", "flushOperations"]);
+  const relations = Object.fromEntries(calls.filter((call) => call[0] === "configureRelations").map((call) => [call[1] as number, call[2]]));
+  const configs = Object.fromEntries(calls.filter((call) => call[0] === "setGestureHandlerConfig").map((call) => [call[1] as number, call[2]]));
+  expect(relations[panTag]).toEqual({ waitFor: [scrollTag], simultaneousHandlers: [scrollTag], blocksHandlers: [scrollTag] });
+  expect(relations[scrollTag]).toEqual({ waitFor: [], simultaneousHandlers: [], blocksHandlers: [] });
+  expect(configs[scrollTag]).toMatchObject({ disallowInterruption: true });
 });
 
 test("relations between nodes of one commit are sent once, with both tags known", async () => {
@@ -157,8 +159,8 @@ test("relations between nodes of one commit are sent once, with both tags known"
   app.set([{ id: "pan", gesture: G.Pan().onUpdate(w()).requireExternalGestureToFail(scroll) }, { id: "scroll", gesture: scroll }]);
   await settle(m);
   const calls = world().calls;
-  expect(callsOf("updateGestureHandler")).toHaveLength(2);
-  expect(callsOf("updateGestureHandler")[0]?.[2]).toMatchObject({ waitFor: [tagOf(1)] });
+  expect(callsOf("configureRelations")).toHaveLength(2);
+  expect(callsOf("configureRelations")[0]?.[2]).toMatchObject({ waitFor: [tagOf(1)] });
   expect(names(calls).filter((name) => name === "flushOperations")).toHaveLength(1);
 });
 
@@ -233,7 +235,7 @@ test("enabled(false) is a config key like any other: sent on create and on updat
   take();
   app.set([{ id: "a", gesture: G.Pan().onUpdate(w()).enabled(true) }]);
   await settle(m);
-  expect(take()).toEqual([["updateGestureHandler", tag, { waitFor: [], simultaneousHandlers: [], blocksHandlers: [], enabled: true }], ["flushOperations"]]);
+  expect(take()).toEqual([["setGestureHandlerConfig", tag, { enabled: true }], ["configureRelations", tag, { waitFor: [], simultaneousHandlers: [], blocksHandlers: [] }], ["flushOperations"]]);
 });
 
 test("the engine hook runs once, before the first attach; without the engine module (iOS) there is none", async () => {
@@ -371,7 +373,7 @@ for (const { name, initial, before, after, to } of handOvers) {
     app.set(after(gesture));
     await settle(m);
     const calls = take();
-    expect(names(calls)).toEqual(["dropGestureHandler", "createGestureHandler", "attachGestureHandler", "updateGestureHandler", "flushOperations"]);
+    expect(names(calls)).toEqual(["dropGestureHandler", "createGestureHandler", "attachGestureHandler", "setGestureHandlerConfig", "configureRelations", "flushOperations"]);
     expect(calls[0]).toEqual(["dropGestureHandler", first]);
     expect(calls[2]?.[2]).toBe(byId(61, to)?.tag);
     expect(m.fabricStats().gestures).toEqual({ records: 1, handlers: 1, eventHandlers: 1 });
@@ -389,9 +391,9 @@ test("attaching again a composition that keeps its gesture objects sends each ha
   app.set([{ id: "a", gesture: G.Simultaneous(pan, tap, G.Fling().onEnd(j())) }]);
   await settle(m);
   const calls = take();
-  expect(names(calls)).toEqual(["dropGestureHandler", "dropGestureHandler", "createGestureHandler", "createGestureHandler", "createGestureHandler", "attachGestureHandler", "attachGestureHandler", "attachGestureHandler", "updateGestureHandler", "updateGestureHandler", "updateGestureHandler", "flushOperations"]);
+  expect(names(calls)).toEqual(["dropGestureHandler", "dropGestureHandler", "createGestureHandler", "createGestureHandler", "createGestureHandler", "attachGestureHandler", "attachGestureHandler", "attachGestureHandler", "setGestureHandlerConfig", "configureRelations", "setGestureHandlerConfig", "configureRelations", "setGestureHandlerConfig", "configureRelations", "flushOperations"]);
   const tags = calls.filter((call) => call[0] === "createGestureHandler").map((call) => call[2] as number);
-  for (const call of calls.filter((entry) => entry[0] === "updateGestureHandler")) {
+  for (const call of calls.filter((entry) => entry[0] === "configureRelations")) {
     const others = tags.filter((tag) => tag !== call[1]);
     expect((call[2] as { simultaneousHandlers?: number[] }).simultaneousHandlers?.slice().sort()).toEqual(others.slice().sort());
   }

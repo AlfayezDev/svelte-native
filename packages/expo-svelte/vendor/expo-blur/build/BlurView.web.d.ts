@@ -1,7 +1,7 @@
 import { View } from 'react-native';
 import type { BlurViewProps } from './BlurView.types';
 declare const BlurView: import("react").ForwardRefExoticComponent<{
-    blurTarget?: import("react").RefObject<View | null>;
+    blurTarget?: import("react").RefObject<import("react").ComponentRef<typeof View> | null>;
     tint?: import("./BlurView.types").BlurTint;
     intensity?: number;
     blurReductionFactor?: number;
@@ -11,4 +11,3 @@ declare const BlurView: import("react").ForwardRefExoticComponent<{
     setNativeProps: (props: BlurViewProps) => void;
 }>>;
 export default BlurView;
-//# sourceMappingURL=BlurView.web.d.ts.map

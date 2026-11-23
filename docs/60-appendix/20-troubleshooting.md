@@ -16,7 +16,7 @@ pnpm exec expo-svelte doctor
 | --- | --- |
 | `node 25.0.0 does not satisfy ^22.17.0 \|\| ^24.3.0 \|\| >=26.0.0` | Switch to Node 24 LTS (24.3 or newer), Node 22.17 or newer, or Node 26 or newer. See [below](#pnpm-stops-during-install) for why not Node 25. |
 | `svelte … has no custom renderers: it has no ./renderer export` | Your Svelte is older than 5.59.0. Run `pnpm exec expo-svelte init`, which installs the Svelte Expo Svelte needs. |
-| `react 19.2.6 does not satisfy 19.2.7`, or another version | Install the exact version it names. Each patch is made for one version. |
+| `react 19.2.6 does not satisfy 19.3.0`, or another version | Install the exact version it names. Each patch is made for one version. |
 | `… is not applied` | Run `pnpm exec expo-svelte init` again, which copies the current patches, then `pnpm install`. |
 | `metro.config.cjs does not mention withExpoSvelte` | Wrap your Metro config in `withExpoSvelte` ([Configuration](configuration#metroconfigcjs)). |
 
@@ -28,7 +28,7 @@ pnpm exec expo-svelte doctor
 Unsupported engine for @react-native/babel-plugin-codegen@0.88.1: wanted: {"node":"^22.13.0 || ^24.3.0 || >= 26.0.0"} (current: {"node":"25.0.0"})
 ```
 
-You are on Node 25. A fresh install takes React Native tools whose newest versions exclude Node 25, and the project created by `sv` tells pnpm to stop on that. It happens at the first `pnpm add`, before `expo-svelte init` can pin those tools, so `init` can't prevent it. Switch to Node 24 LTS (24.3 or newer; `mise use node@24`, `nvm install 24`, or the installer from nodejs.org), Node 22.17 or newer, or Node 26 or newer, and run `pnpm add` again.
+You are on Node 25. React Native 0.88 and the tools it installs exclude Node 25 (`^22.13.0 || ^24.3.0 || >=26.0.0`), and the project created by `sv` tells pnpm to stop on that. It happens at the first `pnpm add`, before `expo-svelte init` can run, so `init` can't prevent it. Switch to Node 24 LTS (24.3 or newer; `mise use node@24`, `nvm install 24`, or the installer from nodejs.org), Node 22.17 or newer, or Node 26 or newer, and run `pnpm add` again.
 
 On Node 22 before 22.17, the package named is `@sveltejs/kit`. The fix is the same.
 
@@ -102,7 +102,7 @@ Gradle needs a JDK 17 and the Android SDK packages the project asks for: platfor
 | `capabilities.push.android needs googleServicesFile` | Give the path of `google-services.json`, or leave `android` out for an app with no push on Android. |
 | `capabilities.push.android needs android.package in the Expo config` | Set `android.package`: the Google services file is checked against it. |
 | `capabilities.push.ios.mode must be "development" or "production"` | It is the `aps-environment` entitlement: `"development"` for a build signed for development, `"production"` for TestFlight and the App Store. |
-| `Svelte native could not find the imports and factory.startReactNative(…) in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift` | The app uses Expo's scene-based iOS template, which push doesn't support yet ([Push notifications](push-notifications#on-ios)). |
+| `Svelte native could not find the imports, let factory = ExpoReactNativeFactory(…) and return super.application(…) in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift` | The `AppDelegate.swift` is not the one Expo SDK 58's template writes, which the push patch needs ([Push notifications](push-notifications#on-ios)). Prebuild again with `--clean`, or restore the template's file. |
 
 A build that runs and logs `[Svelte push] push is not part of this app's build` doesn't have the native package: `push.permission` reads `"denied"` and `push.subscribe` resolves with `null`. Install the package, turn `capabilities.push` on, and make a new native build. An over-the-air update can't add it.
 

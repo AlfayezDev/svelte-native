@@ -17,7 +17,6 @@ export default class BlurView extends React.Component<BlurViewProps, BlurViewSta
     _maybeWarnAboutBlurMethod(): void;
     _updateBlurTargetId: () => void;
     _getBlurMethod(): BlurMethod;
-    render(): import("react/jsx-runtime").JSX.Element;
+    render(): React.JSX.Element;
 }
 export {};
-//# sourceMappingURL=BlurView.d.ts.map

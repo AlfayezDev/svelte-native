@@ -115,14 +115,24 @@ test("JS thread: the state manager of a touch callback warns that it works on th
   }
 });
 
-test("UI thread: a touch callback's state manager calls Reanimated's setGestureState with the handler's tag", async () => {
+test("UI thread: a touch callback's state manager calls the `_setGestureStateSync` RNGH's module installs, with the handler's tag", async () => {
   const m = await load({ fixture: "gesture-fixture.svelte" });
+  // The UI runtime's global, as the module's native side leaves it; the test's worklets run in this process.
+  const scope = globalThis as { _setGestureStateSync?: (tag: number, state: number) => void };
+  scope._setGestureStateSync = (tag, state) => { (anim().gestureStates ??= []).push([tag, state]); };
   const app = m.startSurface(53, m.Fixture, {}) as unknown as { set(items: unknown[]): void };
   app.set([{ id: "box", gesture: m.gestures.Gesture.Manual().onTouchesDown(worklet((_event: unknown, manager: { begin(): void; activate(): void; fail(): void; end(): void }) => { manager.begin(); manager.activate(); manager.end(); manager.fail(); })) }]);
   await settle(m);
   const tag = callsOf("createGestureHandler")[0]?.[2] as number;
-  anim().eventHandlers?.[0]?.worklet(touch(tag, 1));
-  expect(anim().gestureStates).toEqual([[tag, 2], [tag, 4], [tag, 5], [tag, 1]]);
+  // The first gesture on the UI thread asked the module to install its bindings, with the UI runtime's holder in the global for the length of the call.
+  expect(world().uiBindings).toEqual([{ uiRuntimeHolder: true }]);
+  expect((globalThis as { __RNGH_UI_WORKLET_RUNTIME_HOLDER?: unknown }).__RNGH_UI_WORKLET_RUNTIME_HOLDER).toBeUndefined();
+  try {
+    anim().eventHandlers?.[0]?.worklet(touch(tag, 1));
+    expect(anim().gestureStates).toEqual([[tag, 2], [tag, 4], [tag, 5], [tag, 1]]);
+  } finally {
+    delete scope._setGestureStateSync;
+  }
 });
 
 test("UI thread: a callback that is not a worklet is reported, not called", async () => {

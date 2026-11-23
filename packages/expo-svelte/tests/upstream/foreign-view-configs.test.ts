@@ -188,12 +188,12 @@ const expoViews: {
   /** The registration names of the view's events, or null for none; unset when the test does not look. */
   events?: string[] | null;
 }[] = [
-  { library: "expo-blur", views: ["ExpoBlurTargetView", "ExpoBlurView"], file: "expo-blur/android/src/main/java/expo/modules/blur/BlurModule.kt", view: "ExpoBlurView", props: ["blurMethod", "blurReductionFactor", "blurTargetId", "intensity", "tint"], exact: true },
+  { library: "expo-blur", views: ["ExpoBlurTargetView", "ExpoBlurView"], file: "expo-blur/android/src/main/java/expo/modules/blur/BlurModule.kt", view: "ExpoBlurView", props: ["blurMethod", "blurReductionFactor", "blurTargetId", "borderRadii", "intensity", "tint"], exact: true },
   { library: "expo-conic-gradient", file: "expo-conic-gradient/android/src/main/java/expo/modules/conicgradient/ConicGradientModule.kt", view: "", props: ["angle", "center", "colors", "locations"], exact: true, events: null },
   { library: "expo-linear-gradient", file: "expo-linear-gradient/android/src/main/java/expo/modules/lineargradient/LinearGradientModule.kt", view: "", props: ["borderRadii", "colors", "dither", "endPoint", "locations", "startPoint"], exact: true, events: null },
   {
     library: "expo-image", file: "expo-image/android/src/main/java/expo/modules/image/ExpoImageModule.kt", view: "",
-    props: ["source", "placeholder", "contentFit", "contentPosition", "transition", "tintColor", "cachePolicy", "priority", "recyclingKey", "blurRadius", "autoplay", "allowDownscaling", "decodeFormat"], exact: false,
+    props: ["source", "placeholder", "contentFit", "contentPosition", "transition", "tintColor", "cachePolicy", "priority", "recyclingKey", "blurRadius", "autoplay", "allowDownscaling", "decodeFormat", "svgVariables"], exact: false,
     events: ["onLoadStart", "onProgress", "onError", "onLoad", "onDisplay"],
   },
   { library: "the library's own SvelteBlur", views: ["SvelteBlurView"], file: "../packages/expo-svelte/native/svelte-core/android/src/main/java/expo/modules/svelteblur/SvelteBlurModule.kt", view: "SvelteBlurView", props: ["intensity", "tint"], exact: true, events: null },
@@ -280,12 +280,12 @@ test("the on-demand view manager names are the ones the packages register", asyn
   expect(svgManagers.length).toBe(29);
   expect([...listed["com.horcrux.svg.SvgPackage"]].sort()).toEqual([...svgManagers].sort());
   expect(source(`${svg}/SvgPackage.java`)).toMatch(/class SvgPackage extends BaseReactPackage implements ViewManagerOnDemandReactPackage/);
-  // The gesture handler's package creates both of its managers as a set (`createViewManagers`); the names are the ones its sources declare.
+  // The gesture handler's package creates its three managers as a set (`createViewManagers`: the root view, the button and, since 3.x, the detector); the names are the ones its sources declare.
   const handler = "react-native-gesture-handler/android/src/main/java/com/swmansion/gesturehandler";
-  const handlerManagers = ["RNGestureHandlerRootViewManager", "RNGestureHandlerButtonViewManager"].map((manager) => /const val REACT_CLASS = "(\w+)"/.exec(source(`${handler}/react/${manager}.kt`))?.[1]);
+  const handlerManagers = ["RNGestureHandlerRootViewManager", "RNGestureHandlerButtonViewManager", "RNGestureHandlerDetectorViewManager"].map((manager) => /const val REACT_CLASS = "(\w+)"/.exec(source(`${handler}/react/${manager}.kt`))?.[1]);
   expect(handlerManagers.every((name) => name !== undefined)).toBe(true);
   expect([...listed["com.swmansion.gesturehandler.RNGestureHandlerPackage"]].sort()).toEqual([...handlerManagers].sort());
-  expect(source(`${handler}/RNGestureHandlerPackage.kt`)).toContain("RNGestureHandlerRootViewManager(), RNGestureHandlerButtonViewManager()");
+  expect(source(`${handler}/RNGestureHandlerPackage.kt`)).toMatch(/createViewManagers\(reactContext: ReactApplicationContext\) = listOf<ViewManager<\*, \*>>\(\s*RNGestureHandlerRootViewManager\(\),\s*RNGestureHandlerButtonViewManager\(\),\s*RNGestureHandlerDetectorViewManager\(\),?\s*\)/);
   // react-native-view-shot and react-native-blob-util have no view, so nothing of theirs is deferred.
   for (const key of Object.keys(listed)) expect(key).not.toMatch(/viewshot|ReactNativeBlobUtil/);
 });

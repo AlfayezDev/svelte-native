@@ -176,20 +176,24 @@ describe("push is on only where the config plugin turned it on: SvelteCore is in
 describe("a push that wakes the app mounts no screen (rule 2)", () => {
   test("the AppDelegate patch calls the helper by the name and the labels the Swift defines, with the closures it takes", () => {
     expect(background).toContain("public enum SveltePushBackgroundLaunch {");
-    expect(background).toContain("public static func start(_ application: UIApplication, host: () -> Void, surface: @escaping () -> Void)");
+    expect(background).toContain("public static func start(_ application: UIApplication, host: @escaping () -> Void)");
     const patched = applyPushAppDelegate(expoTemplateAppDelegate());
     expect(patched).toContain("SveltePushBackgroundLaunch.start(\n      application,\n      host: {");
-    expect(patched).toContain("      },\n      surface: { [self] in\n");
-    expect(patched).toContain("internal import SvelteCore // Svelte native: push, the first screen of a launch in the background (generated, do not edit)");
-    expect(patched.split("\n").filter((line) => line.includes("Svelte native: push, the first screen of a launch in the background") && line.startsWith("internal import "))).toHaveLength(1);
+    expect(patched).toContain("      })\n    // Svelte native: end of the launch in the background");
+    expect(patched).toContain("internal import SvelteCore // Svelte native: push, a launch in the background starts the React host and no screen (generated, do not edit)");
+    expect(patched.split("\n").filter((line) => line.includes("Svelte native: push, a launch in the background starts the React host") && line.startsWith("internal import "))).toHaveLength(1);
   });
 
-  test("a launch in the foreground makes the call at once, and one in the background starts the host and waits for the first didBecomeActive, once", () => {
-    expect(background).toContain("guard application.applicationState == .background else {\n      surface()\n      return\n    }");
+  test("a launch in the foreground does nothing here (the scene starts React Native), and one in the background starts the host, which the scene's start reuses when the user opens the app", () => {
+    // Under scenes the state is `background` in didFinishLaunching for every launch (seen on the simulator with SDK 58's template: state 2, no scene, then `inactive` with one scene
+    // a main-queue turn later), so the decision is the next turn's and it asks for a connected scene.
+    expect(background).not.toContain("application.applicationState == .background");
+    expect(background).toContain("DispatchQueue.main.async {\n      guard application.connectedScenes.isEmpty else { return }");
     expect(background).toContain("host()");
-    expect(background.indexOf("host()")).toBeLessThan(background.indexOf("addObserver(forName: UIApplication.didBecomeActiveNotification"));
-    expect(background).toContain("NotificationCenter.default.removeObserver(token)");
-    expect(background.split("surface()").length - 1).toBe(2);
+    expect(background.split("host()").length - 1).toBe(1);
+    // No surface is made here: no `surface` closure, no wait for the first didBecomeActive.
+    expect(background).not.toContain("surface()");
+    expect(background).not.toContain("didBecomeActiveNotification");
   });
 
   test("the helper lives in the SvelteCore pod, which the AppDelegate imports (internal, as Expo's generated provider does) only for an app with push", () => {

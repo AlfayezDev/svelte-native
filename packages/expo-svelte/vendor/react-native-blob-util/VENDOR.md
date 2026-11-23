@@ -14,4 +14,4 @@ Third-party code, copied into this package (VENDORING.md). Nothing here is edite
 
 ## Local changes
 
-None.
+- `vendor-patches/react-native-blob-util/0001-the-optimizing-proguard-file.patch` (sha256 `c663dbecdf8ceace84fd0011a82b47c546af522dc6f3593e446a28033f2a88ca`), applied with `patch -p1` after the unpack

@@ -62,6 +62,8 @@ export function pickerParameters(options: DatePickerOptions): Record<string, unk
   const { value, mode = "date", display, minimumDate, maximumDate, is24Hour, minuteInterval, timeZoneName, timeZoneOffsetInMinutes, firstDayOfWeek, testID, title, initialInputMode, fullscreen, startOnYearSelection } = options;
   if (!(value instanceof Date)) throw new Error("`value` must be an instance of Date");
   if (minimumDate && maximumDate && minimumDate > maximumDate) throw new Error(`minimumDate (${minimumDate.toISOString()}) is after maximumDate (${maximumDate.toISOString()})`);
+  // 9.2 validates the dialog's options as the iOS component's: the two zone options exclude each other.
+  if (timeZoneName != null && timeZoneOffsetInMinutes != null) throw new Error("`timeZoneName` and `timeZoneOffsetInMinutes` cannot be specified at the same time");
   // The native modules know two displays; the others the library accepts ("clock", "calendar") are "default" to them.
   const shown = display === "spinner" ? "spinner" : "default";
   const buttons = dialogButtons(options);

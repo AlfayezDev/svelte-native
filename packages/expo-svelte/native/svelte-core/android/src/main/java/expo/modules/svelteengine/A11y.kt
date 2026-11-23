@@ -22,7 +22,7 @@ import expo.modules.svelteengine.views.NodeState
 import com.facebook.react.R as ReactR
 
 /**
- * Accessibility exposure of the common props (SPEC.md, "Accessibility props"), the way React Native 0.86's Android views publish
+ * Accessibility exposure of the common props (SPEC.md, "Accessibility props"), the way React Native 0.88's Android views publish
  * them (`BaseViewManager` for what is set on the view, `ReactAccessibilityDelegate` for what a service reads from the node):
  * - `accessibilityLabel` -> contentDescription, joined with "busy", "mixed" and the value's text as `updateViewContentDescription` does;
  * - `accessible` -> focusable + important, `importantForAccessibility` as given, `accessibilityLiveRegion` as given;

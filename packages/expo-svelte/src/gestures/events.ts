@@ -72,7 +72,7 @@ function onGestureHandlerEvent(event: NativeEvent): void {
       case TouchEventType.TOUCHES_DOWN: callbacks.onTouchesDown?.(event, manager); break;
       case TouchEventType.TOUCHES_MOVE: callbacks.onTouchesMove?.(event, manager); break;
       case TouchEventType.TOUCHES_UP: callbacks.onTouchesUp?.(event, manager); break;
-      case TouchEventType.TOUCHES_CANCELLED: callbacks.onTouchesCancelled?.(event, manager); break;
+      case TouchEventType.TOUCHES_CANCEL: callbacks.onTouchesCancelled?.(event, manager); break;
     }
   } else {
     // An update of an active gesture.

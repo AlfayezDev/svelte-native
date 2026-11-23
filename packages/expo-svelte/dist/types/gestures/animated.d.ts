@@ -5,7 +5,7 @@
  * `handlerTag` in a shared value of the attached gestures' callbacks and runs the one the event calls for. `useEvent` is
  * `new WorkletEventHandler(...)` plus a ref, so the registration here is the same code.
  *
- * The constants below are copies (`State`, `TouchEventType`, `CALLBACK_TYPE`): a worklet captures its closure by value, and
+ * The constants below are copies (`State`, `TouchEventType`, `CallbackType`): a worklet captures its closure by value, and
  * a re-exported module object is a poor thing to serialise; `copiedConstants` below lists them by RNGH's names, and the last test of
  * `tests/gestures/config.test.ts` compares that list with RNGH's own modules, bundled apart from this file.
  * Loaded after Reanimated (the host loads both on the first gesture), so the imports below are Reanimated's own functions.
@@ -15,7 +15,7 @@ import { WorkletEventHandler } from "../fabric/reanimated-internals.js";
 import type { GestureType } from "./rngh.js";
 type Event = Record<string, any>;
 type Callbacks = Record<string, any>;
-/** The numbers above by the names RNGH's `State`, `TouchEventType` and `CALLBACK_TYPE` give them: what the test that pins them reads. */
+/** The numbers above by the names RNGH's `State`, `TouchEventType` and `CallbackType` give them: what the test that pins them reads. */
 export declare const copiedConstants: {
     State: {
         UNDETERMINED: number;
@@ -30,9 +30,9 @@ export declare const copiedConstants: {
         TOUCHES_DOWN: number;
         TOUCHES_MOVE: number;
         TOUCHES_UP: number;
-        TOUCHES_CANCELLED: number;
+        TOUCHES_CANCEL: number;
     };
-    CALLBACK_TYPE: {
+    CallbackType: {
         UNDEFINED: number;
         BEGAN: number;
         START: number;
@@ -43,7 +43,7 @@ export declare const copiedConstants: {
         TOUCHES_DOWN: number;
         TOUCHES_MOVE: number;
         TOUCHES_UP: number;
-        TOUCHES_CANCELLED: number;
+        TOUCHES_CANCEL: number;
     };
 };
 /** `GestureStateManager.create`: the handle a touch callback uses to begin, activate, fail or end the gesture from the UI thread. */
@@ -66,7 +66,7 @@ export type UiPath = {
     sharedHandlers: SharedValue<Callbacks[] | null>;
     lastUpdateEvent: SharedValue<(Event | undefined)[]>;
 };
-/** `useSharedValue` twice and `useEvent` (a `WorkletEventHandler`) for the node's tag; the handlers are shared with `shareHandlers`. */
+/** `useSharedValue` twice and `useEvent` (a `WorkletEventHandler`) for the node's tag; the handlers are shared with `shareHandlers`. The host installs RNGH's UI runtime bindings before the first one (`fabric/gestures.ts`: this file is also what the public entry loads for `GestureStateManager`, and loads nothing of React Native). */
 export declare function createUiPath(tag: number): UiPath;
 /** The gestures were attached again (a different shape or thread): a new worklet over the same shared values, as `useEvent(..., rebuild)` does. */
 export declare function rebuildUiPath(path: UiPath): void;

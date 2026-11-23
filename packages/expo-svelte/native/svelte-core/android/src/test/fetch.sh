@@ -2,7 +2,7 @@
 # Host checks of the logic behind the SvelteFetch module: the HTTP client wiring, redirects, the body buffer and its backpressure, aborts, Blob segments, object
 # URLs, file fetches, UTF-8, against the repository's test server (tests/web-apis/fetch/support/server.ts, started here on a free port) and the Encoding standard's own results
 # (vectors.ts, which the runtime's TextDecoder and TextEncoder make). No device, no Android SDK. Needs kotlinc, java, bun and node, and the OkHttp and Okio jars
-# React Native 0.86 builds against: found in the Gradle cache, or named by OKHTTP_JAR and OKIO_JAR. Usage: src/test/fetch.sh (or src/test/run.sh for all the host checks)
+# React Native 0.88 builds against: found in the Gradle cache, or named by OKHTTP_JAR and OKIO_JAR. Usage: src/test/fetch.sh (or src/test/run.sh for all the host checks)
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 package="$(cd "$here/../../../../.." && pwd)"

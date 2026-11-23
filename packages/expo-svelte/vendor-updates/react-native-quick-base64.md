@@ -21,7 +21,7 @@ The newest 2.x within quick-crypto's peer range.
 
 ## Local changes
 
-None.
+- `vendor-patches/react-native-quick-base64/0001-the-runtime-without-rctcxxbridge.patch` (iOS): React Native 0.88 removed `RCTCxxBridge`, which the module's `install` cast the bridge to for the JavaScript runtime. The bridge a module is given is the bridgeless `RCTBridgeProxy`, which still answers `runtime`, so the patch asks it through a small protocol. Drop it when an update reads the runtime another way (3.x is a C++ TurboModule and has no such method).
 
 ## What the library relies on
 

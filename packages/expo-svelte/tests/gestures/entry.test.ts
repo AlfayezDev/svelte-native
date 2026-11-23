@@ -25,11 +25,18 @@ test("the entry exports the builders, the sugar, the constants and worklets' run
   expect(ran).toBe(5);
 
   // `GestureStateManager.create` is the worklet that asks Reanimated to change a handler's state.
-  const manager = entry.GestureStateManager.create(9);
-  manager.activate();
-  manager.end();
-  expect(manager.handlerTag).toBe(9);
-  expect(anim().gestureStates).toEqual([[9, 4], [9, 5]]);
+  // RNGH 3 installs `_setGestureStateSync` on the UI runtime (`installUiRuntimeBindings`); the test stands in for it.
+  const scope = globalThis as { _setGestureStateSync?: (tag: number, state: number) => void };
+  scope._setGestureStateSync = (tag, state) => { (anim().gestureStates ??= []).push([tag, state]); };
+  try {
+    const manager = entry.GestureStateManager.create(9);
+    manager.activate();
+    manager.end();
+    expect(manager.handlerTag).toBe(9);
+    expect(anim().gestureStates).toEqual([[9, 4], [9, 5]]);
+  } finally {
+    delete scope._setGestureStateSync;
+  }
 });
 
 test("a Gesture object builds RNGH's gestures: composition, relations and config come out as RNGH's", async () => {

@@ -74,6 +74,9 @@ export function createMockMMKV(config = { id: 'mmkv.default' }) {
         trim: () => {
             // no-op
         },
+        checkContentChanged: () => {
+            // no-op
+        },
         name: 'MMKV',
         dispose: () => { },
         equals: () => {

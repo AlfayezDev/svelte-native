@@ -16,6 +16,8 @@
     surfaceType?: "surfaceView" | "textureView";
     ref?: (handle: unknown) => void;
     nativeControls?: boolean;
+    /** Android: whether the native controller shows itself at once (default true); expo-video 58. */
+    controllerAutoShow?: boolean;
     contentFit?: "contain" | "cover" | "fill";
     onFirstFrameRender?: () => void;
     onFullscreenEnter?: () => void;

@@ -23,6 +23,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var metro_exports = {};
 __export(metro_exports, {
   INITIALIZE_CORE: () => INITIALIZE_CORE,
+  LEAN_IMPORTS: () => LEAN_IMPORTS,
   LITE_ORIGINS: () => LITE_ORIGINS,
   NODE_CRYPTO: () => NODE_CRYPTO,
   QUICK_CRYPTO: () => QUICK_CRYPTO,
@@ -2746,22 +2747,22 @@ var react = "react-native";
 var expo = "expo";
 var optionalLibraries = [
   // Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module, so they have no `android` or `ios` entry here.
-  { name: "expo-blur", version: "57.0.3", optional: { kind: expo } },
+  { name: "expo-blur", version: "58.0.6", optional: { kind: expo } },
   { name: "expo-conic-gradient", version: "0.2.1", optional: { kind: expo } },
-  { name: "expo-image", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
-  { name: "expo-linear-gradient", version: "57.0.2", optional: { kind: expo } },
-  { name: "expo-video", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+  { name: "expo-image", version: "58.0.18", optional: { kind: expo, plugin: "app.plugin.js" } },
+  { name: "expo-linear-gradient", version: "58.0.4", optional: { kind: expo } },
+  { name: "expo-video", version: "58.0.14", optional: { kind: expo, plugin: "app.plugin.js" } },
   // React Native packages: an entry of the autolinking config for each platform.
   {
     name: "@react-native-community/datetimepicker",
-    version: "9.1.0",
+    version: "9.2.1",
     android: { packageImportPath: "import com.reactcommunity.rndatetimepicker.RNDateTimePickerPackage;", packageInstance: "new RNDateTimePickerPackage()" },
     ios: { podspec: "RNDateTimePicker.podspec" },
     optional: { kind: react, plugin: "app.plugin.js" }
   },
   {
     name: "lottie-react-native",
-    version: "7.3.8",
+    version: "7.5.0",
     android: { packageImportPath: "import com.airbnb.android.react.lottie.LottiePackage;", packageInstance: "new LottiePackage()", componentDescriptors: ["LottieAnimationViewComponentDescriptor"] },
     ios: { podspec: "lottie-react-native.podspec" },
     optional: { kind: react }
@@ -2795,7 +2796,7 @@ var optionalLibraries = [
   },
   {
     name: "react-native-maps",
-    version: "1.27.2",
+    version: "1.29.11",
     android: {
       packageImportPath: "import com.rnmaps.maps.MapsPackage;",
       packageInstance: "new MapsPackage()",
@@ -2833,14 +2834,14 @@ var optionalLibraries = [
   },
   {
     name: "react-native-view-shot",
-    version: "5.1.0",
+    version: "6.1.1",
     android: { packageImportPath: "import fr.greweb.reactnativeviewshot.RNViewShotPackage;", packageInstance: "new RNViewShotPackage()" },
     ios: { podspec: "react-native-view-shot.podspec" },
     optional: { kind: react }
   },
   {
     name: "react-native-webview",
-    version: "13.16.1",
+    version: "14.0.1",
     android: { packageImportPath: "import com.reactnativecommunity.webview.RNCWebViewPackage;", packageInstance: "new RNCWebViewPackage()", componentDescriptors: ["RNCWebViewComponentDescriptor"] },
     ios: { podspec: "react-native-webview.podspec" },
     optional: { kind: react }
@@ -2866,7 +2867,7 @@ var vendoredPackages = [
   },
   {
     name: "react-native-mmkv",
-    version: "4.3.1",
+    version: "4.3.2",
     android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
     ios: { podspec: "NitroMmkv.podspec" }
   },
@@ -2893,26 +2894,33 @@ var vendoredPackages = [
   },
   {
     name: "react-native-gesture-handler",
-    version: "2.32.0",
-    // The two components of its codegen (`RNGestureHandlerButton`, `RNGestureHandlerRootView`); `libraryName` is `codegenConfig.name`.
-    android: { packageImportPath: "import com.swmansion.gesturehandler.RNGestureHandlerPackage;", packageInstance: "new RNGestureHandlerPackage()", componentDescriptors: ["RNGestureHandlerButtonComponentDescriptor", "RNGestureHandlerRootViewComponentDescriptor"] },
+    version: "3.3.0",
+    // The one component descriptor and the CMake file its `react-native.config.js` names (`RNGestureHandlerDetector`: the shadow node of `shared/shadowNodes`, and `android/CMakeLists.txt`
+    // builds it with the codegen's); the button and the root view are the codegen's alone and need no registration. `libraryName` is `codegenConfig.name`.
+    android: { packageImportPath: "import com.swmansion.gesturehandler.RNGestureHandlerPackage;", packageInstance: "new RNGestureHandlerPackage()", componentDescriptors: ["RNGestureHandlerDetectorComponentDescriptor"], cmakeListsPath: "android/CMakeLists.txt" },
     ios: { podspec: "RNGestureHandler.podspec" }
   },
   {
     name: "react-native-worklets",
-    version: "0.10.1",
+    version: "0.13.0",
     android: { packageImportPath: "import com.swmansion.worklets.WorkletsPackage;", packageInstance: "new WorkletsPackage()" },
     ios: { podspec: "RNWorklets.podspec" }
   },
   {
     name: "react-native-reanimated",
-    version: "4.5.1",
-    android: { packageImportPath: "import com.swmansion.reanimated.ReanimatedPackage;", packageInstance: "new ReanimatedPackage()" },
+    version: "4.7.1",
+    // The one component of its `react-native.config.js` (the shared-transition boundary) and its codegen CMake file, which is in the sources and not below `android/build/` (a test reads both from the copy).
+    android: {
+      packageImportPath: "import com.swmansion.reanimated.ReanimatedPackage;",
+      packageInstance: "new ReanimatedPackage()",
+      componentDescriptors: ["REASharedTransitionBoundaryComponentDescriptor"],
+      cmakeListsPath: "Common/NativeView/CMakeLists.txt"
+    },
     ios: { podspec: "RNReanimated.podspec" }
   },
   {
     name: "react-native-svg",
-    version: "15.15.4",
+    version: "15.16.0",
     // The 29 components of its `react-native.config.js`, and its codegen CMake file, which is in the sources and not below `android/build/` (a test reads both from the copy).
     android: {
       packageImportPath: "import com.horcrux.svg.SvgPackage;",
@@ -3087,6 +3095,9 @@ var RENDERER_STUBS = {
   "react-native/Libraries/Renderer/shims/createReactNativeComponentClass.js": "./fabric/component-class-stub.ts",
   "react-native/Libraries/ReactNative/AppRegistry.js": "./fabric/app-registry.ts",
   "react-native/Libraries/ReactNative/AppRegistryImpl.js": "./fabric/app-registry.ts"
+};
+var LEAN_IMPORTS = {
+  "expo-video/build/resolveAssetSource.js": "./fabric/expo-video-asset-source.ts"
 };
 var watchers = /* @__PURE__ */ new Set();
 function closeWatchers() {
@@ -3273,7 +3284,7 @@ function withExpoSvelte(config, options = {}) {
         const stubbedFile = stubForFile(result.filePath);
         if (stubbedFile !== null) return { type: "sourceFile", filePath: stubbedFile };
         if (result.filePath.endsWith("push.svelte.ts") && pushOff(platform) && realOr(result.filePath) === pushClient) return { type: "sourceFile", filePath: pushAbsent };
-        const stub2 = Object.entries(RENDERER_STUBS).find(([suffix]) => result.filePath.endsWith(suffix));
+        const stub2 = Object.entries(RENDERER_STUBS).find(([suffix]) => result.filePath.endsWith(suffix)) ?? Object.entries(LEAN_IMPORTS).find(([suffix]) => result.filePath.endsWith(suffix));
         if (stub2) return { type: "sourceFile", filePath: sourceFile(stub2[1]) };
         if (INITIALIZE_CORE.test(result.filePath)) return { type: "sourceFile", filePath: sourceFile("init.ts") };
       }
@@ -3297,6 +3308,7 @@ function withExpoSvelte(config, options = {}) {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   INITIALIZE_CORE,
+  LEAN_IMPORTS,
   LITE_ORIGINS,
   NODE_CRYPTO,
   QUICK_CRYPTO,

@@ -1,6 +1,6 @@
 import type { Snippet } from "svelte";
 import type { ClassProps } from "../classes.js";
-import type { ScrollView as NativeScrollView, ScrollViewProps } from "react-native";
+import type { ScrollViewInstance as NativeScrollView, ScrollViewProps } from "react-native";
 import type { HostHandle } from "../fabric/host.js";
 import type { GestureProps } from "../gestures/types.js";
 type $$ComponentProps = Omit<ScrollViewProps, "children"> & GestureProps & {

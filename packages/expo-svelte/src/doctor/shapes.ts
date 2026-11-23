@@ -98,7 +98,7 @@ export function lottieProblems(read: Reader): string[] {
   return [...android, ...ios];
 }
 
-// ---- react-native-gesture-handler: the manager the iOS screens ask to register the root recognizer ----
+// ---- react-native-gesture-handler: the manager the iOS screens ask to register the root recognizer, and the podspec that finds the Worklets copy ----
 
 /** The declarations the patch adds to the manager, as whole source lines (`tests/upstream/react-native-gesture-handler-patch.test.ts` looks for the same lines in the patch file). */
 export const rnghAdditions: Record<string, readonly string[]> = {
@@ -110,7 +110,17 @@ export const rnghAdditions: Record<string, readonly string[]> = {
 export const rnghUses = ["RNGHViewHasSurfaceTouchHandler(touchHandlerView)"] as const;
 export const rnghRegistration = /\[self registerViewWithGestureRecognizerAttachedIfNeeded:view\];/;
 
+/** The podspec's helper looks for the Worklets copy beside the package before it asks Node (`0002-worklets-is-the-copy-beside-it.patch`): the pod links Worklets, and gesture handler 3's state manager works on the UI runtime, only when it finds one. */
+export const rnghWorkletsLookup = "File.expand_path('../../react-native-worklets', __dir__)";
+
 export function rnghProblems(read: Reader): string[] {
+  return [
+    ...inFile(read, "scripts/gesture_handler_utils.rb", [["does not look for the Worklets copy beside the package", has(rnghWorkletsLookup)]], true),
+    ...rnghManagerProblems(read),
+  ];
+}
+
+function rnghManagerProblems(read: Reader): string[] {
   return Object.entries(rnghAdditions).flatMap(([path, lines]) =>
     inFile(read, path, [
       ...lines.map((line): Check => [`does not have \`${line.split("\n")[0]}\``, has(line)]),
@@ -205,6 +215,27 @@ export function expoModulesCoreProblems(read: Reader, patch: string): string[] {
     ...inFile(read, "android/src/main/java/expo/modules/adapters/react/NativeModulesProxy.java", [["cannot build the interop registry in the background", has("startInteropInBackground")]], true),
     ...inFile(read, "src/NativeViewManagerAdapter.native.tsx", [["imports the native component registry when it loads", adapterLoadsRegistryLazily]], true),
   ];
+}
+
+/** react-native-blob-util's Gradle file names AGP's default Proguard file that AGP 9 (React Native 0.88, Expo SDK 58) refuses: it carries `-dontoptimize`, so the optimizing one is named. */
+export function blobUtilProblems(read: Reader): string[] {
+  return inFile(read, "android/build.gradle", [
+    ["still names `proguard-android.txt`, which AGP 9 refuses", (code) => !code.includes("getDefaultProguardFile('proguard-android.txt')")],
+    ["does not name `proguard-android-optimize.txt`", has("getDefaultProguardFile('proguard-android-optimize.txt')")],
+  ], true);
+}
+
+export function nitroProblems(read: Reader): string[] {
+  return inFile(read, "ios/turbomodule/NativeNitroModules+NewArch.mm", [
+    ["has no `installJSIBindingsWithRuntime:callInvoker:`, the only overload React Native 0.87 and later call", has("installJSIBindingsWithRuntime:(jsi::Runtime&)runtime callInvoker:")],
+  ], true);
+}
+
+export function quickBase64Problems(read: Reader): string[] {
+  return inFile(read, "ios/QuickBase64Module.mm", [
+    ["still casts the bridge to `RCTCxxBridge`, which React Native 0.88 removed", (code) => !code.includes("(RCTCxxBridge *)")],
+    ["does not ask the bridge for its runtime", has("[(id<QuickBase64RuntimeOwner>)_bridge runtime]")],
+  ], true);
 }
 
 export function riveProblems(read: Reader): string[] {

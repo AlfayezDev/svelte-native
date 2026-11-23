@@ -42,6 +42,7 @@ __export(expo_exports, {
   applyPodfileAutolinkingExclude: () => applyPodfileAutolinkingExclude,
   applyPodfileSodium: () => applyPodfileSodium,
   applyPodfileVendoredLinking: () => applyPodfileVendoredLinking,
+  applySceneDelegate: () => applySceneDelegate,
   assertNoVendoredOriginals: () => assertNoVendoredOriginals,
   baselineProfile: () => baselineProfile,
   default: () => expo_default,
@@ -400,7 +401,7 @@ async function syncNative(root, options = {}) {
 var import_node_fs3 = require("node:fs");
 var import_promises = require("node:fs/promises");
 var import_node_path4 = require("node:path");
-var import_config_plugins = __toESM(require("expo/config-plugins.js"), 1);
+var import_config_plugins = __toESM(require("expo/config-plugins"), 1);
 
 // src/push/common.ts
 var isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -690,50 +691,55 @@ function pushSettings(push, appPackage, projectRoot) {
   if (ios) settings.ios = ios;
   return settings;
 }
-var holdBegin = "    // Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
-var holdOpen = "      surface: { [self] in";
-var holdClose = "      })";
-var holdEnd = "    // Svelte native: end of the first screen of a launch in the background";
-var holdImportComment = "// Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
+var holdBegin = "    // Svelte native: push, a launch in the background starts the React host and no screen (generated, do not edit)";
+var holdEnd = "    // Svelte native: end of the launch in the background";
+var oldHoldBegin = "    // Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
+var oldHoldOpen = "      surface: { [self] in";
+var oldHoldClose = "      })";
+var oldHoldEnd = "    // Svelte native: end of the first screen of a launch in the background";
+var holdImportComment = "// Svelte native: push, a launch in the background starts the React host and no screen (generated, do not edit)";
 var holdImport = `internal import SvelteCore ${holdImportComment}`;
+var oldHoldImportComment = "// Svelte native: push, the first screen of a launch in the background (generated, do not edit)";
 var escapeText = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-var holdHead = new RegExp(`\\n${escapeText(holdBegin)}\\n[\\s\\S]*?${escapeText(holdOpen)}(?=\\n)`);
-var holdTail = new RegExp(`\\n${escapeText(holdClose)}\\n${escapeText(holdEnd)}(?=\\n)`);
-var holdImportLine = new RegExp(`^internal import (?:SvelteCore|SveltePush) ${escapeText(holdImportComment)}\\n`, "m");
+var holdBlock = new RegExp(`\\n${escapeText(holdBegin)}\\n[\\s\\S]*?${escapeText(holdEnd)}\\n(?=\\n)`);
+var oldHoldHead = new RegExp(`\\n${escapeText(oldHoldBegin)}\\n[\\s\\S]*?${escapeText(oldHoldOpen)}(?=\\n)`);
+var oldHoldTail = new RegExp(`\\n${escapeText(oldHoldClose)}\\n${escapeText(oldHoldEnd)}(?=\\n)`);
+var holdImportLine = new RegExp(`^internal import (?:SvelteCore|SveltePush) (?:${escapeText(holdImportComment)}|${escapeText(oldHoldImportComment)})\\n`, "m");
 function removePushAppDelegate(contents) {
-  return contents.replace(holdHead, "").replace(holdTail, "").replace(holdImportLine, "");
+  return contents.replace(holdBlock, "").replace(oldHoldHead, "").replace(oldHoldTail, "").replace(holdImportLine, "");
 }
 function applyPushAppDelegate(contents) {
   const stripped = removePushAppDelegate(contents);
   const imports = [...stripped.matchAll(/^(?:(?:internal|public|package|private|fileprivate) |@_exported |@preconcurrency )*import [\w.]+[ \t]*$/gm)];
   const lastImport = imports.at(-1);
-  const call = /^[ \t]*factory\.startReactNative\([^)]*\)[ \t]*$/m.exec(stripped);
   const launching = /_ application: UIApplication,\s*didFinishLaunchingWithOptions launchOptions: \[UIApplication\.LaunchOptionsKey: Any\]\?/.test(stripped);
-  if (!lastImport || !call || !launching || !/withModuleName: "[^"]+",\s*in: window,\s*launchOptions: launchOptions\)/.test(call[0])) {
+  const factory = /^[ \t]*let factory = ExpoReactNativeFactory\(delegate: \w+\)[ \t]*$/m.test(stripped);
+  const last = /^[ \t]*return super\.application\(application, didFinishLaunchingWithOptions: launchOptions\)[ \t]*$/m.exec(stripped);
+  if (!lastImport || !launching || !factory || !last) {
     throw new Error(
-      "Svelte native could not find the imports and `factory.startReactNative(withModuleName: …, in: window, launchOptions: launchOptions)` in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift. Push needs the call to keep a launch in the background (a silent push) from mounting the first screen."
+      "Svelte native could not find the imports, `let factory = ExpoReactNativeFactory(delegate: …)` and `return super.application(application, didFinishLaunchingWithOptions: launchOptions)` in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift. Push needs them to start the React host in a launch in the background (a silent push)."
     );
   }
-  const head = [
+  const block = [
     holdBegin,
     "    SveltePushBackgroundLaunch.start(",
     "      application,",
     "      host: {",
     // `-initializeReactHostWithLaunchOptions:bundleConfiguration:devMenuConfiguration:` reaches Swift as `initializeReactHost(launchOptions:…)`
-    // (the compiler of Xcode 26.5 says so; `withLaunchOptions:` does not compile).
+    // (the compiler of Xcode 26.5 says so; `withLaunchOptions:` does not compile). Its dev menu configuration may not be nil, and `RCTDevMenuConfiguration.default()` is nil in a
+    // release build (React Native has no dev menu there) and has no nullability, so Swift would unwrap it and stop the app: a plain one stands in for it there.
     "        factory.rootViewFactory.initializeReactHost(",
     "          launchOptions: launchOptions,",
     "          bundleConfiguration: factory.bundleConfiguration,",
-    "          devMenuConfiguration: factory.devMenuConfiguration ?? RCTDevMenuConfiguration.default())",
-    "      },",
-    holdOpen,
+    "          devMenuConfiguration: factory.devMenuConfiguration ?? (RCTDevMenuConfiguration.default() as RCTDevMenuConfiguration?) ?? RCTDevMenuConfiguration())",
+    "      })",
+    holdEnd,
+    "",
     ""
   ].join("\n");
-  const tail = ["", holdClose, holdEnd].join("\n");
-  const callEnd = call.index + call[0].length;
   const importEnd = lastImport.index + lastImport[0].length;
   return `${stripped.slice(0, importEnd)}
-${holdImport}${stripped.slice(importEnd, call.index)}${head}${call[0]}${tail}${stripped.slice(callEnd)}`;
+${holdImport}${stripped.slice(importEnd, last.index)}${block}${stripped.slice(last.index)}`;
 }
 function withPushIos(config, mode) {
   const existing = config.ios?.entitlements?.[apsEnvironmentEntitlement];
@@ -949,22 +955,22 @@ var react = "react-native";
 var expo = "expo";
 var optionalLibraries = [
   // Expo modules: found by Expo's autolinker through `expo-module.config.json`, which lists the Android class and the Swift module, so they have no `android` or `ios` entry here.
-  { name: "expo-blur", version: "57.0.3", optional: { kind: expo } },
+  { name: "expo-blur", version: "58.0.6", optional: { kind: expo } },
   { name: "expo-conic-gradient", version: "0.2.1", optional: { kind: expo } },
-  { name: "expo-image", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
-  { name: "expo-linear-gradient", version: "57.0.2", optional: { kind: expo } },
-  { name: "expo-video", version: "57.0.5", optional: { kind: expo, plugin: "app.plugin.js" } },
+  { name: "expo-image", version: "58.0.18", optional: { kind: expo, plugin: "app.plugin.js" } },
+  { name: "expo-linear-gradient", version: "58.0.4", optional: { kind: expo } },
+  { name: "expo-video", version: "58.0.14", optional: { kind: expo, plugin: "app.plugin.js" } },
   // React Native packages: an entry of the autolinking config for each platform.
   {
     name: "@react-native-community/datetimepicker",
-    version: "9.1.0",
+    version: "9.2.1",
     android: { packageImportPath: "import com.reactcommunity.rndatetimepicker.RNDateTimePickerPackage;", packageInstance: "new RNDateTimePickerPackage()" },
     ios: { podspec: "RNDateTimePicker.podspec" },
     optional: { kind: react, plugin: "app.plugin.js" }
   },
   {
     name: "lottie-react-native",
-    version: "7.3.8",
+    version: "7.5.0",
     android: { packageImportPath: "import com.airbnb.android.react.lottie.LottiePackage;", packageInstance: "new LottiePackage()", componentDescriptors: ["LottieAnimationViewComponentDescriptor"] },
     ios: { podspec: "lottie-react-native.podspec" },
     optional: { kind: react }
@@ -998,7 +1004,7 @@ var optionalLibraries = [
   },
   {
     name: "react-native-maps",
-    version: "1.27.2",
+    version: "1.29.11",
     android: {
       packageImportPath: "import com.rnmaps.maps.MapsPackage;",
       packageInstance: "new MapsPackage()",
@@ -1036,14 +1042,14 @@ var optionalLibraries = [
   },
   {
     name: "react-native-view-shot",
-    version: "5.1.0",
+    version: "6.1.1",
     android: { packageImportPath: "import fr.greweb.reactnativeviewshot.RNViewShotPackage;", packageInstance: "new RNViewShotPackage()" },
     ios: { podspec: "react-native-view-shot.podspec" },
     optional: { kind: react }
   },
   {
     name: "react-native-webview",
-    version: "13.16.1",
+    version: "14.0.1",
     android: { packageImportPath: "import com.reactnativecommunity.webview.RNCWebViewPackage;", packageInstance: "new RNCWebViewPackage()", componentDescriptors: ["RNCWebViewComponentDescriptor"] },
     ios: { podspec: "react-native-webview.podspec" },
     optional: { kind: react }
@@ -1069,7 +1075,7 @@ var vendoredPackages = [
   },
   {
     name: "react-native-mmkv",
-    version: "4.3.1",
+    version: "4.3.2",
     android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
     ios: { podspec: "NitroMmkv.podspec" }
   },
@@ -1096,26 +1102,33 @@ var vendoredPackages = [
   },
   {
     name: "react-native-gesture-handler",
-    version: "2.32.0",
-    // The two components of its codegen (`RNGestureHandlerButton`, `RNGestureHandlerRootView`); `libraryName` is `codegenConfig.name`.
-    android: { packageImportPath: "import com.swmansion.gesturehandler.RNGestureHandlerPackage;", packageInstance: "new RNGestureHandlerPackage()", componentDescriptors: ["RNGestureHandlerButtonComponentDescriptor", "RNGestureHandlerRootViewComponentDescriptor"] },
+    version: "3.3.0",
+    // The one component descriptor and the CMake file its `react-native.config.js` names (`RNGestureHandlerDetector`: the shadow node of `shared/shadowNodes`, and `android/CMakeLists.txt`
+    // builds it with the codegen's); the button and the root view are the codegen's alone and need no registration. `libraryName` is `codegenConfig.name`.
+    android: { packageImportPath: "import com.swmansion.gesturehandler.RNGestureHandlerPackage;", packageInstance: "new RNGestureHandlerPackage()", componentDescriptors: ["RNGestureHandlerDetectorComponentDescriptor"], cmakeListsPath: "android/CMakeLists.txt" },
     ios: { podspec: "RNGestureHandler.podspec" }
   },
   {
     name: "react-native-worklets",
-    version: "0.10.1",
+    version: "0.13.0",
     android: { packageImportPath: "import com.swmansion.worklets.WorkletsPackage;", packageInstance: "new WorkletsPackage()" },
     ios: { podspec: "RNWorklets.podspec" }
   },
   {
     name: "react-native-reanimated",
-    version: "4.5.1",
-    android: { packageImportPath: "import com.swmansion.reanimated.ReanimatedPackage;", packageInstance: "new ReanimatedPackage()" },
+    version: "4.7.1",
+    // The one component of its `react-native.config.js` (the shared-transition boundary) and its codegen CMake file, which is in the sources and not below `android/build/` (a test reads both from the copy).
+    android: {
+      packageImportPath: "import com.swmansion.reanimated.ReanimatedPackage;",
+      packageInstance: "new ReanimatedPackage()",
+      componentDescriptors: ["REASharedTransitionBoundaryComponentDescriptor"],
+      cmakeListsPath: "Common/NativeView/CMakeLists.txt"
+    },
     ios: { podspec: "RNReanimated.podspec" }
   },
   {
     name: "react-native-svg",
-    version: "15.15.4",
+    version: "15.16.0",
     // The 29 components of its `react-native.config.js`, and its codegen CMake file, which is in the sources and not below `android/build/` (a test reads both from the copy).
     android: {
       packageImportPath: "import com.horcrux.svg.SvgPackage;",
@@ -1283,7 +1296,7 @@ function normalizeAppDir(value) {
 }
 
 // src/remote/plugin.ts
-var import_config_plugins2 = require("expo/config-plugins.js");
+var import_config_plugins2 = require("expo/config-plugins");
 function remoteExtra(extra, remote) {
   const host = { origin: normalizeOrigin(remote.origin), base: normalizeBase(remote.base), appDir: normalizeAppDir(remote.appDir) };
   return { ...extra, [EXTRA_KEY]: { ...extra?.[EXTRA_KEY], remote: host } };
@@ -1388,6 +1401,8 @@ var delegateBegin = "  // Svelte native: navigation state restoration (generated
 var delegateEnd = "  // Svelte native: end of navigation state restoration";
 var delegateImport = "internal import SvelteCore // Svelte native: navigation state restoration (generated, do not edit)";
 var delegateImportLine = /^internal import \w+ \/\/ Svelte native: navigation state restoration \(generated, do not edit\)\n/m;
+var sceneUiKitImport = "import UIKit // Svelte native: navigation state restoration (generated, do not edit)";
+var sceneImportLines = /^(?:internal )?import \w+ \/\/ Svelte native: navigation state restoration \(generated, do not edit\)\n/gm;
 var gradleBegin = "// Svelte native: headless autolinking excludes (generated, do not edit)";
 var gradleEnd = "// Svelte native: end of headless autolinking excludes";
 var libraryPackage = "expo-svelte";
@@ -1452,7 +1467,7 @@ function applyHeadlessApplication(contents, onDemand = {}) {
   ].join("\n");
   const start = [
     startBegin,
-    "    // Expo modules register lazily on first use (patched expo-modules-core; see patches/expo-modules-core@57.0.23.patch).",
+    "    // Expo modules register lazily on first use (patched expo-modules-core; see patches/expo-modules-core@58.1.0.patch).",
     '    System.setProperty("expo.modules.lazy", "true")',
     "    // The patch's prewarm thread (app context and boot-time modules built off the pool thread) stays off until a phone A/B and a cold-start soak clear it.",
     '    System.setProperty("expo.modules.prewarm", "false")',
@@ -1562,6 +1577,31 @@ function applyAppDelegate(contents) {
   return `${stripped.slice(0, importEnd)}
 ${delegateImport}${stripped.slice(importEnd, propertyEnd)}
 ${block}${stripped.slice(propertyEnd)}`;
+}
+function applySceneDelegate(contents) {
+  const stripped = contents.replace(blockPattern(delegateBegin, delegateEnd), "").replace(sceneImportLines, "");
+  const imports = [...stripped.matchAll(/^(?:(?:internal|public|package|private|fileprivate) |@_exported |@preconcurrency )*import [\w.]+[ \t]*$/gm)];
+  const lastImport = imports.at(-1);
+  const declaration = /^[ \t]*(?:(?:public|open|final|internal) )*class \w+[ \t]*:[ \t]*ExpoAppSceneDelegate\b[^{\n]*\{[ \t]*$/m.exec(stripped);
+  if (!lastImport || !declaration) throw new Error("Svelte native could not find the imports and `class SceneDelegate: ExpoAppSceneDelegate` in SceneDelegate.swift");
+  const block = [
+    delegateBegin,
+    "  func stateRestorationActivity(for scene: UIScene) -> NSUserActivity? {",
+    "    SvelteNavigationRestoration.stateRestorationActivity()",
+    "  }",
+    "",
+    "  override func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {",
+    "    SvelteNavigationRestoration.sceneWillConnect(session.stateRestorationActivity)",
+    "    super.scene(scene, willConnectTo: session, options: connectionOptions)",
+    "  }",
+    delegateEnd
+  ].join("\n");
+  const declarationEnd = declaration.index + declaration[0].length;
+  const importEnd = lastImport.index + lastImport[0].length;
+  return `${stripped.slice(0, importEnd)}
+${delegateImport}
+${sceneUiKitImport}${stripped.slice(importEnd, declarationEnd)}
+${block}${stripped.slice(declarationEnd)}`;
 }
 var communityCall = "expoSvelteConfigCommand + expoSvelteCommunityCommand, expoSvelteAppRoot.asFile, expoSvelteLockFiles";
 function applyHeadlessSettings(contents, extra = [], links) {
@@ -1867,6 +1907,16 @@ var withExpoSvelte = (config, options) => {
     config2.modResults.contents = applyAppDelegate(config2.modResults.contents);
     return config2;
   });
+  config = (0, import_config_plugins3.withDangerousMod)(config, ["ios", async (config2) => {
+    const root = config2.modRequest.platformProjectRoot;
+    const folders = (await (0, import_promises2.readdir)(root, { withFileTypes: true }).catch(() => [])).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+    for (const folder of folders) {
+      const file = (0, import_node_path8.join)(root, folder, "SceneDelegate.swift");
+      const contents = await (0, import_promises2.readFile)(file, "utf8").catch(() => void 0);
+      if (contents !== void 0) await (0, import_promises2.writeFile)(file, applySceneDelegate(contents));
+    }
+    return config2;
+  }]);
   config = (0, import_config_plugins3.withMainApplication)(config, (config2) => {
     if (config2.modResults.language !== "kt") throw new Error("Svelte native requires Expo's Kotlin MainApplication");
     config2.modResults.contents = applyHeadlessApplication(applyFeatureFlags(config2.modResults.contents, androidFeatureFlagsFor(options)), onDemandForLibraries(options?.androidOnDemandViewManagers, links.enabled));
@@ -1907,6 +1957,7 @@ function baselineProfile() {
   applyPodfileAutolinkingExclude,
   applyPodfileSodium,
   applyPodfileVendoredLinking,
+  applySceneDelegate,
   assertNoVendoredOriginals,
   baselineProfile,
   defaultAndroidFeatureFlags,

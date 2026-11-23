@@ -53,7 +53,7 @@ Because the library has native code of its own, your app is a build of your own,
 
 ## What works today
 
-Expo Svelte targets Expo SDK 57 and React Native 0.86, on Android and iOS phones. The same project still builds for the web through SvelteKit.
+Expo Svelte targets Expo SDK 58 and React Native 0.88, on Android and iOS phones. The same project still builds for the web through SvelteKit.
 
 Not there yet:
 

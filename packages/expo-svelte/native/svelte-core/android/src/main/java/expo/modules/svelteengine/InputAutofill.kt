@@ -4,7 +4,7 @@ import androidx.autofill.HintConstants
 
 /**
  * The autofill hint of each `autoComplete` name a text input takes on Android: React Native's own table (`ReactTextInputManager.REACT_PROPS_AUTOFILL_HINTS_MAP`,
- * 0.86.3), which `src/test/run.sh` compares with this one entry by entry (`InputRulesCheck`). The JavaScript side turns HTML's tokens into these names first
+ * 0.88.1), which `src/test/run.sh` compares with this one entry by entry (`InputRulesCheck`). The JavaScript side turns HTML's tokens into these names first
  * (`src/text-input-props.ts`: `new-password` is `password-new`, `one-time-code` is `sms-otp`). A name that is not here turns autofill off for the field
  * (`InputRules.autofillMode`).
  */

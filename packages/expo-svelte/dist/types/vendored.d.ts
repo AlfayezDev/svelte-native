@@ -78,7 +78,7 @@ export type AutolinkingDependency = {
     platforms: Record<string, unknown>;
 };
 /**
- * What `react-native-config` (Expo's, SDK 57) prints for the package if it were installed, with the paths of the vendored copy: `root` and `sourceDir` (Android) or `podspecPath` (iOS)
+ * What `react-native-config` (Expo's, SDK 58) prints for the package if it were installed, with the paths of the vendored copy: `root` and `sourceDir` (Android) or `podspecPath` (iOS)
  * are in `vendor/<name>/`, the rest is what the package's files say (its version; `libraryName` is `codegenConfig.name`, else the `libraryName` of the `react { }` block in
  * `android/build.gradle`; the generated codegen CMake file is below `android/build/` unless the registry says where it is) or what the registry records. `undefined` when the
  * package has nothing for the platform.

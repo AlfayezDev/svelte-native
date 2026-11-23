@@ -106,8 +106,8 @@ describe("a patch that is not applied", () => {
   });
 
   test("a package that comes with expo is pinned by an override, not added as a dependency", () => {
-    const { checks } = check({ versions: { "expo-modules-core": "57.0.25" } });
-    const failure = find(checks, `expo-modules-core 57.0.25 is installed, the patch is for exactly ${patchVersion("expo-modules-core")}`);
+    const { checks } = check({ versions: { "expo-modules-core": "58.1.1" } });
+    const failure = find(checks, `expo-modules-core 58.1.1 is installed, the patch is for exactly ${patchVersion("expo-modules-core")}`);
     expect(failure?.status).toBe("fail");
     expect(failure?.fix).toContain(`\`overrides:\` with \`expo-modules-core: ${patchVersion("expo-modules-core")}\` in pnpm-workspace.yaml`);
     expect(failure?.fix).toContain("ERR_PNPM_UNUSED_PATCH");
@@ -150,21 +150,24 @@ describe("the packages the library carries", () => {
     expect(vendoredChecks(checks).filter((entry) => entry.status !== "pass").map((entry) => [entry.status, entry.message])).toEqual([["skip", expect.stringContaining("could not read the app's config")]]);
     // The libraries the package patches in its own copies (`vendor-patches/`) are looked at there, each as applied.
     const patched = patchSpecs.filter((spec) => spec.vendored);
-    expect(patched).toHaveLength(8);
+    expect(patched).toHaveLength(11);
     for (const spec of patched) expect(find(checks, `${spec.package}: ${spec.does} (in ${library.name}'s copy)`)?.status, spec.package).toBe("pass");
     expect(vendoredChecks(checks)).toHaveLength(alwaysLinkedPackages.length + 2 + patched.length);
   });
 
   describe("the patches of a copy (vendor-patches/, applied by scripts/vendor.ts) are looked for in the copy's files", () => {
-    const patched = ["react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"];
+    const patched = ["react-native-gesture-handler", "react-native-reanimated", "react-native-worklets", "react-native-blob-util", "react-native-quick-base64", "react-native-nitro-modules"];
     /** The files of each copy that the doctor's check reads (`shapes.ts`). */
     const shapeFiles: Record<string, string[]> = {
-      "react-native-gesture-handler": ["apple/RNGestureHandlerManager.h", "apple/RNGestureHandlerManager.mm"],
+      "react-native-gesture-handler": ["apple/RNGestureHandlerManager.h", "apple/RNGestureHandlerManager.mm", "scripts/gesture_handler_utils.rb"],
       "react-native-reanimated": [
         "android/src/main/java/com/swmansion/reanimated/SvelteEngineHook.kt", "android/src/main/java/com/swmansion/reanimated/NativeProxy.kt", "android/src/main/cpp/reanimated/android/NativeProxy.cpp",
         "android/src/main/cpp/reanimated/android/NativeProxy.h", "scripts/validate-worklets-version.js", "src/featureFlags/staticFlags.json",
       ],
       "react-native-worklets": ["lib/module/runLoop/uiRuntime/requestAnimationFrame.js", "src/runLoop/uiRuntime/requestAnimationFrame.ts"],
+      "react-native-blob-util": ["android/build.gradle"],
+      "react-native-quick-base64": ["ios/QuickBase64Module.mm"],
+      "react-native-nitro-modules": ["ios/turbomodule/NativeNitroModules+NewArch.mm"],
     };
     /** A library directory with the repository's copies (the one that is edited as far as the doctor reads it: its package.json and the files of its patch), `edit` made to one file of it. */
     function libraryWith(name: string, file: string, edit: (text: string) => string) {
@@ -190,9 +193,13 @@ describe("the packages the library carries", () => {
     }
     const cases: [string, string, string, string, string][] = [
       ["react-native-gesture-handler", "apple/RNGestureHandlerManager.mm", "registerRootViewGestureRecognizerIfAttachedBelow", "x", "RNGestureHandlerManager.mm"],
+      ["react-native-gesture-handler", "scripts/gesture_handler_utils.rb", "File.expand_path('../../react-native-worklets', __dir__)", "File.expand_path('../../react-native-svg', __dir__)", "does not look for the Worklets copy beside the package"],
       ["react-native-reanimated", "src/featureFlags/staticFlags.json", '"ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true', '"ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": false', "synchronous Android update off"],
       ["react-native-reanimated", "scripts/validate-worklets-version.js", "../../react-native-worklets/package.json", "react-native-worklets/package.json", "still looks for react-native-worklets by name"],
       ["react-native-worklets", "src/runLoop/uiRuntime/requestAnimationFrame.ts", "let frameRequested = false;", "", "does not request a native frame on demand"],
+      ["react-native-blob-util", "android/build.gradle", "proguard-android-optimize.txt", "proguard-android.txt", "still names `proguard-android.txt`, which AGP 9 refuses"],
+      ["react-native-quick-base64", "ios/QuickBase64Module.mm", "[(id<QuickBase64RuntimeOwner>)_bridge runtime]", "((RCTCxxBridge *)_bridge).runtime", "still casts the bridge to `RCTCxxBridge`"],
+      ["react-native-nitro-modules", "ios/turbomodule/NativeNitroModules+NewArch.mm", "installJSIBindingsWithRuntime:(jsi::Runtime&)runtime callInvoker:", "installJSIBindingsWithRuntime:(jsi::Runtime&)runtime withInvoker:", "has no `installJSIBindingsWithRuntime:callInvoker:`"],
     ];
     for (const [name, file, from, to, said] of cases) {
       test(`${name}: ${file} without the patch fails the copy, naming what is missing`, () => {
@@ -227,7 +234,7 @@ describe("the packages the library carries", () => {
       expect(failed(checks)).toHaveLength(1);
     }
     // In devDependencies too: the build links what the config command finds, wherever package.json lists it.
-    const { checks } = check({ files: { "package.json": JSON.stringify({ name: "fake-app", dependencies: { [library.name]: "*" }, devDependencies: { "react-native-mmkv": "4.3.1" } }) } });
+    const { checks } = check({ files: { "package.json": JSON.stringify({ name: "fake-app", dependencies: { [library.name]: "*" }, devDependencies: { "react-native-mmkv": "4.3.2" } }) } });
     expect(find(checks, "react-native-mmkv is a dependency of the app")?.status).toBe("fail");
   });
 
@@ -313,7 +320,7 @@ describe("finding an installed package", () => {
     const isolated = makeFakeApp({ without: ["expo", "expo-modules-core"] });
     apps.push(isolated);
     const store = join(isolated, "node_modules/.pnpm/expo@1/node_modules");
-    for (const [name, version] of [["expo", "57.0.30"], ["expo-modules-core", `${patchVersion("expo-modules-core")}`]] as const) {
+    for (const [name, version] of [["expo", "58.0.26"], ["expo-modules-core", `${patchVersion("expo-modules-core")}`]] as const) {
       mkdirSync(join(store, name), { recursive: true });
       writeFileSync(join(store, name, "package.json"), JSON.stringify({ name, version }));
     }
@@ -327,9 +334,9 @@ describe("finding an installed package", () => {
 
 describe("versions", () => {
   test("react-native, expo and react must satisfy the library's peers", () => {
-    const { checks } = check({ versions: { "react-native": "0.85.1", expo: "57.1.0", react: "19.2.6" } });
+    const { checks } = check({ versions: { "react-native": "0.85.1", expo: "58.1.0", react: "19.2.6" } });
     expect(failed(checks).map((entry) => entry.message).sort()).toEqual([
-      `expo 57.1.0 does not satisfy ~${peerVersion("expo")}`,
+      `expo 58.1.0 does not satisfy ~${peerVersion("expo")}`,
       `react 19.2.6 does not satisfy ${peerVersion("react")}`,
       `react-native 0.85.1 does not satisfy ${peerVersion("react-native")}`,
     ]);
@@ -356,8 +363,8 @@ describe("versions", () => {
 
   test("semver ranges", () => {
     const table: [string, string, boolean][] = [
-      ["57.0.30", "~57.0.27", true], ["57.0.26", "~57.0.27", false], ["57.1.0", "~57.0.27", false], ["8.1.4", "^8.1.4", true], ["8.9.0", "^8.1.4", true], ["9.0.0", "^8.1.4", false],
-      ["0.2.1", "~0.2.1", true], ["0.3.0", "~0.2.1", false], ["0.2.5", "^0.2.1", true], ["0.3.0", "^0.2.1", false], ["0.0.4", "^0.0.3", false], ["19.2.7", "19.2.7", true], ["19.2.8", "19.2.7", false],
+      ["58.0.30", "~58.0.26", true], ["58.0.25", "~58.0.26", false], ["58.1.0", "~58.0.26", false], ["8.1.4", "^8.1.4", true], ["8.9.0", "^8.1.4", true], ["9.0.0", "^8.1.4", false],
+      ["0.2.1", "~0.2.1", true], ["0.3.0", "~0.2.1", false], ["0.2.5", "^0.2.1", true], ["0.3.0", "^0.2.1", false], ["0.0.4", "^0.0.3", false], ["19.3.0", "19.3.0", true], ["19.3.1", "19.3.0", false],
       ["3.0.0-next.27", "3.0.0-next.27", true], ["3.0.0-next.28", "3.0.0-next.27", false], ["3.0.0", "3.0.0-next.27", false], ["3.0.0-next.28", "^3.0.0-next.27", true], ["3.0.0-next.26", "^3.0.0-next.27", false],
       ["3.1.0-next.1", "^3.0.0-next.27", false], ["2.0.0-beta.1", "^1.0.0", false], ["1.5.0", "1.x", true], ["2.0.0", "1.x", false], ["1.2.9", "1.2", true], ["1.3.0", "1.2", false], ["5.0.0", "*", true],
       ["1.5.0", ">=1.2.0 <2.0.0", true], ["2.0.0", ">=1.2.0 <2.0.0", false], ["1.0.0", "^1.0.0 || ^2.0.0", true], ["2.4.0", "^1.0.0 || ^2.0.0", true], ["3.0.0", "^1.0.0 || ^2.0.0", false], ["1.5.0", ">= 1.2.0", true],
@@ -584,7 +591,7 @@ describe("the report and the exit status", () => {
     const out = output();
     expect(runDoctor(root, [], out, { ...tools })).toBe(1);
     const text = out.text();
-    expect(text).toMatch(/ {2}FAIL {2}react 19\.0\.0 does not satisfy 19\.2\.7\n {8}fix: pnpm add react@19\.2\.7\n/);
+    expect(text).toMatch(/ {2}FAIL {2}react 19\.0\.0 does not satisfy 19\.3\.0\n {8}fix: pnpm add react@19\.3\.0\n/);
     expect(text).toMatch(/ {2}FAIL {2}@sveltejs\/kit@3\.4\.0 is not applied: .*\n {8}src\/core\/sync\/create_manifest_data\/index\.js: does not skip the \+mobile files of a route directory\n(?: {8}.*\n)* {8}fix: /);
     expect(text).toMatch(/2 failed/);
   });

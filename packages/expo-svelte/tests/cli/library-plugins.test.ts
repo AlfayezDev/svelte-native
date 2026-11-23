@@ -149,8 +149,8 @@ describe("collisions", () => {
   });
 
   test("an app whose package.json lists a library is refused before anything is written, whether the library is on or not", () => {
-    expect(() => assertNoVendoredOriginals(app({ "react-native-maps": "1.27.2" }))).toThrow(collisionMessage(["react-native-maps"]));
-    expect(() => assertNoVendoredOriginals(app({ "expo-image": "~57.0.5", "lottie-react-native": "~7.3.8" }))).toThrow("includes expo-image 57.0.5 and lottie-react-native 7.3.8; remove them from");
+    expect(() => assertNoVendoredOriginals(app({ "react-native-maps": "1.29.11" }))).toThrow(collisionMessage(["react-native-maps"]));
+    expect(() => assertNoVendoredOriginals(app({ "expo-image": "~58.0.18", "lottie-react-native": "~7.5.0" }))).toThrow("includes expo-image 58.0.18 and lottie-react-native 7.5.0; remove them from");
     expect(() => assertNoVendoredOriginals(app({ "expo-camera": "~57.0.6" }))).not.toThrow();
   });
 });

@@ -190,5 +190,5 @@ export function missingGlobals(target: Record<string, unknown> = globalThis as u
 /** Throws, naming each missing global, when the environment cannot run SvelteKit's client files. */
 export function assertEnvironment(): void {
   const missing = missingGlobals();
-  if (missing.length > 0) throw new Error(`Remote functions need ${missing.join(", ")}, which this JavaScript environment does not define. Expo SDK 57 installs them (expo/src/winter, and the streams polyfill Expo's Metro adds); check that the app runs through Expo's Metro config.`);
+  if (missing.length > 0) throw new Error(`Remote functions need ${missing.join(", ")}, which this JavaScript environment does not define. Expo installs them (expo/src/winter, and the streams polyfill Expo's Metro adds); check that the app runs through Expo's Metro config.`);
 }

@@ -300,7 +300,8 @@ void encodeImage(Out &o, const ShadowView &view) {
   o.begin(kImageResizeMode);
   b.putInt(static_cast<int32_t>(p.resizeMode));
   o.begin(kImageTint);
-  o.optColor(p.tintColor);
+  // React Native 0.88 keeps an unset tint apart from an explicit null one (`std::optional`); the engine has one "no tint".
+  o.optColor(p.tintColor.value_or(SharedColor{}));
   if (!p.sources.empty() && !p.sources[0].headers.empty()) {
     const auto &h = p.sources[0].headers;
     o.begin(kImageHeaders);

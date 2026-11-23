@@ -544,42 +544,68 @@ describe("capabilities.push on Android: Firebase Messaging, the service, the per
 
 describe("capabilities.push on iOS: a push that wakes the app mounts no screen", () => {
   const template = expoTemplateAppDelegate();
-  /** The call the wrapper holds, as Expo's template writes it. */
-  const call = '    factory.startReactNative(\n      withModuleName: "main",\n      in: window,\n      launchOptions: launchOptions)';
+  /** The block as the plugin writes it, before the template's last line of `didFinishLaunching`. */
+  const block = [
+    "    // Svelte native: push, a launch in the background starts the React host and no screen (generated, do not edit)",
+    "    SveltePushBackgroundLaunch.start(",
+    "      application,",
+    "      host: {",
+    "        factory.rootViewFactory.initializeReactHost(",
+    "          launchOptions: launchOptions,",
+    "          bundleConfiguration: factory.bundleConfiguration,",
+    "          devMenuConfiguration: factory.devMenuConfiguration ?? (RCTDevMenuConfiguration.default() as RCTDevMenuConfiguration?) ?? RCTDevMenuConfiguration())",
+    "      })",
+    "    // Svelte native: end of the launch in the background",
+  ].join("\n");
 
-  test("the template's startReactNative call is wrapped and not changed: it runs in its place in a launch in the foreground, and when the app is active in one in the background", () => {
+  test("Expo SDK 58's template starts React Native from the scene, so the AppDelegate gets a block that starts the React host in a launch in the background, before it returns", () => {
+    expect(template).not.toContain("startReactNative");
     const once = applyPushAppDelegate(template);
-    // The call stands between the helper's two halves, character for character.
-    expect(once).toContain(`      surface: { [self] in\n${call}\n      })\n    // Svelte native: end of the first screen of a launch in the background\n`);
-    // The host is what the first startReactNative would start before it made the surface: the factory's own root view factory, with the bundle and dev menu the factory would pass.
-    expect(once).toContain("factory.rootViewFactory.initializeReactHost(\n          launchOptions: launchOptions,\n          bundleConfiguration: factory.bundleConfiguration,\n          devMenuConfiguration: factory.devMenuConfiguration ?? RCTDevMenuConfiguration.default())");
-    expect(once).toContain("SveltePushBackgroundLaunch.start(\n      application,\n      host: {");
-    // After the window is made, before the template's last line, inside the `#if` that guards them both, and with the import of the module that holds the helper.
-    expect(once.indexOf("window = UIWindow(frame: UIScreen.main.bounds)")).toBeLessThan(once.indexOf("SveltePushBackgroundLaunch.start("));
-    expect(once.indexOf("end of the first screen of a launch in the background")).toBeLessThan(once.indexOf("#endif"));
-    expect(once.indexOf("#endif")).toBeLessThan(once.indexOf("return super.application(application, didFinishLaunchingWithOptions: launchOptions)"));
+    expect(once).toContain(`${block}\n\n    return super.application(application, didFinishLaunchingWithOptions: launchOptions)`);
+    // After the factory exists, before the template's last line, and with the import of the module that holds the helper.
+    expect(once.indexOf("let factory = ExpoReactNativeFactory(delegate: delegate)")).toBeLessThan(once.indexOf("SveltePushBackgroundLaunch.start("));
+    expect(once.indexOf("reactNativeFactory = factory")).toBeLessThan(once.indexOf("SveltePushBackgroundLaunch.start("));
+    expect(once.indexOf("end of the launch in the background")).toBeLessThan(once.indexOf("return super.application(application, didFinishLaunchingWithOptions: launchOptions)"));
     // `SveltePushBackgroundLaunch` is in the SvelteCore pod, and the import is `internal` as the navigation patch's own import of the same module is (Expo's generated provider imports
     // every module that way, and a plain import of the same module in the app target is ambiguous): one line, with a comment that tells it from the navigation patch's.
-    expect(once).toMatch(/^internal import SvelteCore \/\/ Svelte native: push, the first screen of a launch in the background \(generated, do not edit\)$/m);
-    expect(once.match(/^.*import .*$/gm)?.filter((line) => line.includes("SveltePush") || /import SvelteCore/.test(line))).toEqual(["internal import SvelteCore // Svelte native: push, the first screen of a launch in the background (generated, do not edit)"]);
+    expect(once).toMatch(/^internal import SvelteCore \/\/ Svelte native: push, a launch in the background starts the React host and no screen \(generated, do not edit\)$/m);
+    expect(once.match(/^.*import .*$/gm)?.filter((line) => line.includes("SveltePush") || /import SvelteCore/.test(line))).toEqual(["internal import SvelteCore // Svelte native: push, a launch in the background starts the React host and no screen (generated, do not edit)"]);
     expect(once.indexOf("import SvelteCore")).toBeGreaterThan(once.indexOf("import ReactAppDependencyProvider"));
     expect(once.indexOf("import SvelteCore")).toBeLessThan(once.indexOf("@main"));
   });
 
-  test("taking the wrapper away gives the template back, and applying again changes nothing", () => {
+  test("taking the block away gives the template back, and applying again changes nothing", () => {
     const once = applyPushAppDelegate(template);
-    expect(once.replace(/\n {4}\/\/ Svelte native: push, the first screen[\s\S]*?surface: \{ \[self\] in(?=\n)/, "").replace(/\n {6}\}\)\n {4}\/\/ Svelte native: end of the first screen of a launch in the background(?=\n)/, "").replace(/^internal import SvelteCore .*push.*\n/m, "")).toBe(template);
+    expect(removePushAppDelegate(once)).toBe(template);
     expect(applyPushAppDelegate(once)).toBe(once);
     expect(once.match(/import SvelteCore/g)).toHaveLength(1);
     expect(once.match(/SveltePushBackgroundLaunch\.start\(/g)).toHaveLength(1);
-    expect(once.match(/factory\.startReactNative\(/g)).toHaveLength(1);
   });
 
-  test("what an older version wrote is replaced and not kept beside the new wrapper", () => {
+  test("what an older version wrote is replaced and not kept beside the new block", () => {
     const once = applyPushAppDelegate(template);
     const older = once.replace("bundleConfiguration: factory.bundleConfiguration,", "bundleConfiguration: RCTBundleConfiguration.default(),");
     expect(older).not.toBe(once);
     expect(applyPushAppDelegate(older)).toBe(once);
+    // The wrapper of SDK 57's template (the call to `startReactNative` held by a closure) is cleaned as well.
+    const wrapped = `${template}`.replace("    return super.application(", [
+      "    // Svelte native: push, the first screen of a launch in the background (generated, do not edit)",
+      "    SveltePushBackgroundLaunch.start(",
+      "      application,",
+      "      host: { factory.rootViewFactory.initializeReactHost(launchOptions: launchOptions, bundleConfiguration: factory.bundleConfiguration, devMenuConfiguration: RCTDevMenuConfiguration.default()) },",
+      "      surface: { [self] in",
+      "    factory.startReactNative(withModuleName: \"main\", in: window, launchOptions: launchOptions)",
+      "      })",
+      "    // Svelte native: end of the first screen of a launch in the background",
+      "    return super.application(",
+    ].join("\n"));
+    // What stays is the template's own call, which the old wrapper held and which is not the plugin's to remove: nothing of the wrapper is left, and the new block is there once.
+    const cleaned = removePushAppDelegate(wrapped);
+    for (const gone of ["SveltePushBackgroundLaunch", "surface:", "Svelte native: push, the first screen", "Svelte native: end of the first screen"]) expect(cleaned, gone).not.toContain(gone);
+    expect(cleaned).toContain("factory.startReactNative(");
+    const renewed = applyPushAppDelegate(wrapped);
+    expect(renewed.match(/SveltePushBackgroundLaunch\.start\(/g)).toHaveLength(1);
+    expect(renewed).not.toContain("surface:");
   });
 
   test("an AppDelegate that the separate package's version of the plugin patched is cleaned and patched again: its import of the module `SveltePush` goes, SvelteCore's takes its place", () => {
@@ -598,21 +624,20 @@ describe("capabilities.push on iOS: a push that wakes the app mounts no screen",
     // The two blocks sit in different places (the property section, the launch), so the order the mods run in does not matter.
     expect(applyPushAppDelegate(navigationFirst)).toBe(navigationFirst);
     expect(applyAppDelegate(pushFirst)).toBe(pushFirst);
-    expect(navigationFirst.replace(/^internal import Svelte(?:Core|Push) .*\n/gm, "").replace(/\n {2}\/\/ Svelte native: navigation state restoration[\s\S]*?end of navigation state restoration/, "").replace(/\n {4}\/\/ Svelte native: push, the first screen[\s\S]*?surface: \{ \[self\] in(?=\n)/, "").replace(/\n {6}\}\)\n {4}\/\/ Svelte native: end of the first screen of a launch in the background(?=\n)/, "")).toBe(template);
+    expect(removePushAppDelegate(navigationFirst).replace(/^internal import SvelteCore .*\n/gm, "").replace(/\n {2}\/\/ Svelte native: navigation state restoration[\s\S]*?end of navigation state restoration/, "")).toBe(template);
     expect(pushFirst.split("\n").length).toBe(navigationFirst.split("\n").length);
   });
 
-  test("a template without the call, or with a call it was not written for, stops the prebuild and says what it looked for", () => {
+  test("a template without the place it was written for stops the prebuild and says what it looked for", () => {
     for (const changed of [
-      template.replace("factory.startReactNative(", "factory.start("),
-      template.replace("launchOptions: launchOptions)\n#endif", "launchOptions: nil)\n#endif"),
-      template.replace('withModuleName: "main",', "withModuleName: moduleName(),"),
+      template.replace("let factory = ExpoReactNativeFactory(delegate: delegate)", "let factory = makeFactory(delegate)"),
+      template.replace("return super.application(application, didFinishLaunchingWithOptions: launchOptions)", "return true"),
       template.replace("_ application: UIApplication,\n    didFinishLaunchingWithOptions", "_ app: UIApplication,\n    didFinishLaunchingWithOptions"),
       "import UIKit\n@main class AppDelegate: UIResponder {}",
     ]) {
       const error = thrown(() => applyPushAppDelegate(changed));
-      expect(error.message).toStartWith("Svelte native could not find the imports and `factory.startReactNative(withModuleName: …, in: window, launchOptions: launchOptions)` in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift.");
-      expect(error.message).toContain("Push needs the call");
+      expect(error.message).toStartWith("Svelte native could not find the imports, `let factory = ExpoReactNativeFactory(delegate: …)` and `return super.application(application, didFinishLaunchingWithOptions: launchOptions)` in application(_:didFinishLaunchingWithOptions:) of AppDelegate.swift.");
+      expect(error.message).toContain("Push needs them");
     }
   });
 

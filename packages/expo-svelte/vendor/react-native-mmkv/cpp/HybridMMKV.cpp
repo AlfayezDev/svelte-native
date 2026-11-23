@@ -29,7 +29,8 @@ HybridMMKV::HybridMMKV(const Configuration& config) : HybridObject(TAG) {
                         .aes256 = useAes256Encryption,
                         .cryptKey = encryptionKeyPtr,
                         .rootPath = rootPathPtr,
-                        .enableCompareBeforeSet = compareBeforeSet};
+                        .enableCompareBeforeSet = compareBeforeSet,
+                        .recover = getRecoveryStrategy(config)};
 
   bool hasEncryptionKey = encryptionKey.size() > 0;
   Logger::log(LogLevel::Info, TAG, "Creating MMKV instance \"%s\"... (Path: %s, Encrypted: %s)", config.id.c_str(), rootPath.c_str(),
@@ -80,6 +81,10 @@ double HybridMMKV::getSize() {
 
 double HybridMMKV::getByteSize() {
   return instance->actualSize();
+}
+
+size_t HybridMMKV::getExternalMemorySize() noexcept {
+  return instance != nullptr ? instance->actualSize() : 0;
 }
 
 bool HybridMMKV::getIsReadOnly() {
@@ -224,6 +229,10 @@ void HybridMMKV::trim() {
   instance->clearMemoryCache();
 }
 
+void HybridMMKV::checkContentChanged() {
+  instance->checkContentChanged();
+}
+
 Listener HybridMMKV::addOnValueChangedListener(const std::function<void(const std::string& /* key */)>& onValueChanged) {
   // Add listener
   auto mmkvID = instance->mmapID();
@@ -246,6 +255,20 @@ MMKVMode HybridMMKV::getMMKVMode(const Configuration& config) {
       return ::mmkv::MMKV_MULTI_PROCESS;
   }
   throw std::runtime_error("Invalid MMKV Mode value!");
+}
+
+std::optional<MMKVRecoverStrategic> HybridMMKV::getRecoveryStrategy(const Configuration& config) {
+  if (!config.recoveryStrategy.has_value()) {
+    return std::nullopt;
+  }
+
+  switch (config.recoveryStrategy.value()) {
+    case RecoveryStrategy::DISCARD_ON_ERROR:
+      return MMKVRecoverStrategic::OnErrorDiscard;
+    case RecoveryStrategy::RECOVER_ON_ERROR:
+      return MMKVRecoverStrategic::OnErrorRecover;
+  }
+  throw std::runtime_error("Invalid MMKV RecoveryStrategy value!");
 }
 
 double HybridMMKV::importAllFrom(const std::shared_ptr<HybridMMKVSpec>& other) {

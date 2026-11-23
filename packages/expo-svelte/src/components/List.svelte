@@ -1,7 +1,7 @@
 <script lang="ts" generics="T">
   import { untrack, onDestroy, type Snippet } from "svelte";
   import type {} from "../elements.d.ts";
-  import type { ScrollView as NativeScrollView, ScrollViewProps, ViewStyle, LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from "react-native";
+  import type { ScrollViewInstance as NativeScrollView, ScrollViewProps, ViewStyle, LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from "react-native";
   import ScrollView from "./ScrollView.svelte";
 
   type Scroller = { dispatchCommand(name: string, args: unknown[]): void };

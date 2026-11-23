@@ -27,6 +27,8 @@ export type ImageTransition = {
   duration?: number;
   timing?: "ease-in-out" | "ease-in" | "ease-out" | "linear";
   effect?: string | null;
+  /** Skips the transition when an image first appears from a cache hit (expo-image 58): `memory` for the in-memory cache, `all` for any cache hit. */
+  skipOnCacheHit?: "none" | "memory" | "all" | null;
 };
 export type SFSymbolEffect = string | { effect: string; [option: string]: unknown };
 /** A loaded image the native module returned (`Image.loadAsync`): the registry id of the shared object stands for it. */
@@ -145,6 +147,22 @@ export function resolveSfEffect(effect: SFSymbolEffect | readonly SFSymbolEffect
   return (Array.isArray(effect) ? effect : [effect]).map((item: SFSymbolEffect) => (typeof item === "string" ? { effect: item } : item));
 }
 
+/**
+ * `svgVariables` as the native view takes them (`resolveSvgVariables` of expo-image 58's `Image.tsx`): the values of the SVG's CSS custom properties, numbers as strings. A key
+ * that does not start with two dashes is not a custom property and is ignored by the native side, which a development build says.
+ */
+export function resolveSvgVariables(svgVariables: Record<string, string | number> | null | undefined): Record<string, string> | null {
+  if (svgVariables == null) return null;
+  return Object.fromEntries(
+    Object.entries(svgVariables).map(([name, value]) => {
+      if (typeof __DEV__ !== "undefined" && __DEV__ && !name.startsWith("--")) {
+        console.warn(`The \`svgVariables\` key "${name}" is not a CSS custom property and will be ignored. Custom properties start with two dashes, so use "--${name}" if that is what the SVG declares.`);
+      }
+      return [name, String(value)];
+    }),
+  );
+}
+
 /** What the Svelte component takes: expo-image's `ImageProps`, with the props a plain `View` takes next to them. */
 export type ExpoImageProps = {
   style?: unknown;
@@ -159,6 +177,8 @@ export type ExpoImageProps = {
   loadingIndicatorSource?: ImageSource | null;
   sfEffect?: SFSymbolEffect | readonly SFSymbolEffect[] | null;
   tintColor?: string | null;
+  /** Values of the CSS custom properties an SVG source refers to with `var()`; numbers are given as text. */
+  svgVariables?: Record<string, string | number> | null;
   accessibilityLabel?: string;
   alt?: string;
   [prop: string]: unknown;
@@ -171,7 +191,7 @@ export type ExpoImageProps = {
  * its platform only: `elevation` on Android, `shadow...` on iOS.
  */
 export function expoImageProps(props: ExpoImageProps, resolveAsset: ResolveAsset, platform: "android" | "ios" = currentPlatform()): Record<string, unknown> {
-  const { style, source, placeholder, contentFit, contentPosition, transition, fadeDuration, resizeMode: resizeModeProp, defaultSource, loadingIndicatorSource, sfEffect, tintColor, accessibilityLabel, alt, ...rest } = props;
+  const { style, source, placeholder, contentFit, contentPosition, transition, fadeDuration, resizeMode: resizeModeProp, defaultSource, loadingIndicatorSource, sfEffect, tintColor, svgVariables, accessibilityLabel, alt, ...rest } = props;
   const { resizeMode: resizeModeStyle, fontWeight, color, fontSize, tintColor: styleTint, ...restStyle } = flattenStyle(style);
   // Shadows behave differently on each platform (`ExpoImage.render`): Android draws `elevation`, iOS the `shadow...` props, and each loses the other's.
   if (platform === "android") for (const key of ["shadowColor", "shadowOffset", "shadowOpacity", "shadowRadius"]) delete restStyle[key];
@@ -190,6 +210,7 @@ export function expoImageProps(props: ExpoImageProps, resolveAsset: ResolveAsset
     contentPosition: resolveContentPosition(contentPosition),
     transition: resolveTransition(transition, fadeDuration),
     sfEffect: resolveSfEffect(sfEffect),
+    svgVariables: resolveSvgVariables(svgVariables),
     tintColor: (isSFSymbol && color && !tintColor ? color : tintColor) || styleTint,
     symbolWeight: isSFSymbol ? (typeof fontWeight === "number" ? String(fontWeight) : fontWeight) : null,
     symbolSize: isSFSymbol && fontSize ? fontSize : null,

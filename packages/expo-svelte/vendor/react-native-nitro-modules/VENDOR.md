@@ -15,4 +15,4 @@ Third-party code, copied into this package (VENDORING.md). Nothing here is edite
 
 ## Local changes
 
-None.
+- `vendor-patches/react-native-nitro-modules/0001-the-install-overload-of-react-native-0.87.patch` (sha256 `a21f38cebb01e41cd10359c1f071539e918687a351b1dab5c954cd54f3efdda8`), applied with `patch -p1` after the unpack

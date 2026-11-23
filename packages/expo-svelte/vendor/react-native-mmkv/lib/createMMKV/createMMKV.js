@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { addMemoryWarningListener } from '../addMemoryWarningListener/addMemoryWarningListener';
+import { addContentChangedListener } from '../addContentChangedListener/addContentChangedListener';
 import { isTest } from '../isTest';
 import { createMockMMKV } from './createMockMMKV';
 import { getMMKVFactory, getPlatformContext } from '../getMMKVFactory';
@@ -26,5 +27,7 @@ export function createMMKV(configuration) {
     const mmkv = factory.createMMKV(config);
     // Add a hook that trims the storage when we get a memory warning
     addMemoryWarningListener(mmkv);
+    // Check for updates from app extensions/App Clips/background services when the app becomes active
+    addContentChangedListener(mmkv);
     return mmkv;
 }

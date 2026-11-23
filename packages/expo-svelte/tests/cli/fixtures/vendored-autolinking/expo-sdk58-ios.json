@@ -1,0 +1,26 @@
+{
+  "react-native-nitro-modules": {
+    "root": "$PACKAGE",
+    "name": "react-native-nitro-modules",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/NitroModules.podspec",
+        "version": "0.35.10",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  },
+  "react-native-mmkv": {
+    "root": "$PACKAGE",
+    "name": "react-native-mmkv",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/NitroMmkv.podspec",
+        "version": "4.3.2",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  }
+}

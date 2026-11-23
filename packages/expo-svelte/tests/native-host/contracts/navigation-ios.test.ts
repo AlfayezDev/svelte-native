@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { applyAppDelegate } from "../../../src/expo.ts";
+import { applyAppDelegate, applySceneDelegate } from "../../../src/expo.ts";
+import { expoTemplateSceneDelegate } from "../../cli/support/app-delegate.ts";
 
 // Swift cannot be compiled here, so what ties the three pieces of the iOS restore together is read from their sources: JavaScript (`fabric/host.ts`)
 // calls the module by the names it defines, the AppDelegate patch (`applyAppDelegate`) calls the enum it defines, and both modules are autolinked.
@@ -22,14 +23,21 @@ describe("the iOS navigation module's sources agree with each other", () => {
     }
   });
 
-  test("the AppDelegate patch calls the four functions the Swift enum defines, with the arity it defines them with", () => {
+  test("the AppDelegate patch calls the four functions the Swift enum defines, and the SceneDelegate patch the two of the scene, with the arity it defines them with", () => {
     const enumBody = swift.slice(swift.indexOf("public enum SvelteNavigationRestoration"), swift.indexOf("final class NavigationStore"));
     for (const name of ["shouldSave", "encode", "shouldRestore", "didDecode"]) {
       expect(enumBody).toMatch(new RegExp(`public static func ${name}\\(_ coder: NSCoder\\)`));
       expect(delegate).toContain(`SvelteNavigationRestoration.${name}(coder)`);
     }
     expect(delegate).toContain("internal import SvelteCore");
-    expect(swift.match(/public static func /g)).toHaveLength(4);
+    // The scene's two: asked when the app enters the background, and told which activity the connecting session carries.
+    expect(enumBody).toContain("public static func stateRestorationActivity() -> NSUserActivity?");
+    expect(enumBody).toContain("public static func sceneWillConnect(_ activity: NSUserActivity?)");
+    const scene = applySceneDelegate(expoTemplateSceneDelegate());
+    expect(scene).toContain("SvelteNavigationRestoration.stateRestorationActivity()");
+    expect(scene).toContain("SvelteNavigationRestoration.sceneWillConnect(session.stateRestorationActivity)");
+    expect(scene).toContain("internal import SvelteCore");
+    expect(swift.match(/public static func /g)).toHaveLength(6);
   });
 
   test("the module is listed for autolinking, and the AppDelegate imports the pod it is in", () => {

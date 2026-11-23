@@ -98,6 +98,21 @@ private fun fadeAt(name: String, fade: TransitionRules.Fade?, ms: Float, progres
 
 private fun motions() {
   val r = TransitionRules
+  // The fade-through (the default push and pop) lets the stack draw both screens whole under a veil (EngineStack.system): that holds only while one of the
+  // two is out of sight whenever the other is part faded, at every point of the movement.
+  for (kind in r.KIND_DEFAULT..r.KIND_FADE_FROM_BOTTOM) for (push in listOf(true, false)) {
+    val m = r.motion(kind, push) ?: continue
+    expect("kind $kind ${if (push) "push" else "pop"} is a fade-through only for the default", m.fadeThrough, kind == r.KIND_DEFAULT)
+    if (!m.fadeThrough) continue
+    var overlap = 0
+    for (i in 0..1000) {
+      val p = i / 1000f
+      val top = m.top!!.at(p * m.durationMs, p)
+      val under = m.under!!.at(p * m.durationMs, p)
+      if (top > 0f && top < 1f && under > 0f || under > 0f && under < 1f && top > 0f) overlap++
+    }
+    expect("the default ${if (push) "push" else "pop"} never shows one screen part faded while the other shows", overlap, 0)
+  }
   // Curves: accelerate_decelerate (Android's default) is half way at half the time; decelerate_quint and accelerate_quint are 1-(1-t)^5 and t^5.
   near("accelerate_decelerate at 0.5", r.curve(r.ACCELERATE_DECELERATE, 0.5f), 0.5f)
   near("accelerate_decelerate at 0.25", r.curve(r.ACCELERATE_DECELERATE, 0.25f), 0.1464466f)
@@ -273,7 +288,17 @@ private fun sources(screen: String, stack: String) {
   expect("a pop goes on from where a gesture left the screen", system.contains("distance >= 0f -> max(distance, from)") && system.contains("else -> min(distance, from)"), true)
   expect("the screen below goes back in place when the transition ends or is cut short", system.contains("under.translationX = 0f") && system.contains("putBack()"), true)
   expect("a transition that lands puts the scale back", system.substringAfter("s.landing = {").contains("s.scaleX = 1f"), true)
-  expect("the screen below fades as its motion says, unless the stack hid it meanwhile", system.contains("if (underFade != null && !under.hidden) under.alpha = underFade.at(ms, p)"), true)
+  expect("the screen below fades as its motion says, unless the stack hid it meanwhile",
+    system.contains("if (underFade != null && !under.hidden) {") && system.contains("val shown = underFade.at(ms, p)") &&
+      system.contains("if (veiled) fade(under, shown, under.silhouette) else under.alpha = shown"), true)
+  // #111: a fade-through draws the two screens whole under a veil, with no layer; a scaled screen (a back gesture) or one with no opaque surface keeps them.
+  expect("a fade-through holds no layer, unless a screen is scaled or not opaque",
+    system.contains("val veiled = m.fadeThrough && under != null && s.scaleX == 1f && opaque(s) && opaque(under)") && system.contains("if (!veiled) s.holdLayer()") &&
+      system.contains("if (!veiled) under.holdLayer()") && system.contains("var underHeld = under != null && !veiled") && system.contains("if (!veiled) s.releaseLayer()"), true)
+  expect("the screen on top fades under the veil in a fade-through", system.contains("if (veiled) fade(s, shown, under?.silhouette) else s.alpha = shown"), true)
+  expect("the veil goes when the transition ends, lands or puts the screen below back, and a cut keeps how far the screen had faded",
+    system.contains("if (cancelled && s.veil > 0f) s.alpha *= 1f - s.veil") && system.split("s.veil = 0f").size - 1 == 2 && system.contains("under.veil = 0f"), true)
+  expect("a screen the stack hides or shows has no veil", screen.substringAfter("fun setHidden(").substringBefore("\n  }").contains("veil = 0f"), true)
   expect("the stack draws the coming screen's surface under both when the one below fades (the push's, for a pop that goes on from it)", system.contains("under.silhouette = if (underFade == null) null else if (entering || resumed) s else under"), true)
   expect("a pop takes over a push's fade only on the way back", system.contains("m.under?.let { if (entering) it else TransitionRules.resumedFade(it, from, distance) }"), true)
   // The screen below's alpha is written twice (a frame's and putBack's), both leaving a screen the stack hid alone; its visibility is the stack's refresh() to set.
@@ -283,6 +308,13 @@ private fun sources(screen: String, stack: String) {
   expect("its layer is held for the transition and let go at its end", system.contains("under.holdLayer()") && system.split("releaseUnder()").size - 1 == 3 && system.contains("if (!underHeld) return"), true)
   val drawChild = stack.substringAfter("override fun drawChild(").substringBefore("\n  /** The strip in")
   expect("the surface is drawn before the screen below, across the stack", drawChild.indexOf("drawSurface(canvas, it, 0f, width.toFloat(), 1f, REACH_ACROSS)") in 0 until drawChild.indexOf("super.drawChild("), true)
+  expect("the veil is laid over the screen after it is drawn, where it is", drawChild.indexOf("s.veilOf?.let {") > drawChild.indexOf("super.drawChild(") &&
+    drawChild.contains("drawSurface(canvas, it, s.left + s.translationX, s.right + s.translationX, s.veil, REACH_ACROSS, s.top + s.translationY)"), true)
+  expect("a veiled screen's strip is drawn as faded as the screen", draw.contains("s.alpha * (1f - s.veil)"), true)
+  val surface = stack.substringAfter("private fun drawSurface(").substringBefore("\n  private fun fillEdge(")
+  expect("the surface is drawn as composited bands, once each", surface.contains("for (band in TransitionRules.bands(fills)) fillEdge(canvas, band.color, alpha, x0, band.top, x1, band.bottom)") &&
+    Regex("fillEdge\\(").findAll(surface).count() == 1, true)
+  expect("a screen with rounded corners is not taken as opaque", stack.contains("if (d is GradientDrawable && (d.cornerRadius > 0f || d.cornerRadii != null)) return false"), true)
   expect("a screen moved as the one below another's transition is freed first", system.contains("freeUnder(s)") && system.contains("freeUnder(under)"), true)
   val dismiss = stack.substringAfter("internal fun dismissTop(").substringBefore("\n  /** JavaScript did not remove")
   expect("a gesture's exit goes right: across the width but for a default or activity screen, unless the edge swipe took it past 96 dp",
@@ -296,8 +328,48 @@ private fun sources(screen: String, stack: String) {
   expect("a re-inserted screen starts unscaled", insert2.contains("child.scaleX = 1f"), true)
 }
 
+/**
+ * The surface a fade-through's veil lays over a screen is its fills composited band by band and drawn once ([TransitionRules.bands], #111): laid at an
+ * opacity, that is the opacity of what the fills make together. Each fill drawn at the opacity would let a white background through a dark header.
+ */
+private fun surfaces() {
+  val r = TransitionRules
+  val white = 0xFFFFFFFF.toInt(); val dark = 0xFF202020.toInt()
+  val plain = r.bands(listOf(TransitionRules.Fill(0f, 2340f, white, 1f), TransitionRules.Fill(200f, 2340f, white, 1f), TransitionRules.Fill(0f, 200f, dark, 1f)))
+  expect("a white screen with a dark header is two bands, the header's dark and the rest white",
+    plain.map { "${it.top.toInt()}-${it.bottom.toInt()} ${Integer.toHexString(it.color)}" }, listOf("0-200 ff202020", "200-2340 ffffffff"))
+  val translucent = r.bands(listOf(TransitionRules.Fill(0f, 2340f, white, 1f), TransitionRules.Fill(0f, 200f, 0x80000000.toInt(), 1f)))
+  expect("a half-black header over white is one grey band", Integer.toHexString(translucent.first().color), "ff7f7f7f")
+  expect("a fill made transparent by its view's alpha leaves the band under it", r.bands(listOf(TransitionRules.Fill(0f, 100f, white, 1f), TransitionRules.Fill(0f, 100f, dark, 0f))).single().color, white)
+  // Against a per-pixel reference: random fills over an opaque background, every band's colour is what the fills make at a row inside it.
+  val random = java.util.Random(111)
+  var worst = 0
+  repeat(200) {
+    val fills = mutableListOf(TransitionRules.Fill(0f, 1000f, 0xFF000000.toInt() or random.nextInt(0x1000000), 1f))
+    repeat(1 + random.nextInt(5)) {
+      val y0 = random.nextInt(1000).toFloat(); val y1 = y0 + 1 + random.nextInt(400)
+      fills.add(TransitionRules.Fill(y0, minOf(y1, 1000f), random.nextInt(), random.nextFloat()))
+    }
+    for (band in r.bands(fills)) {
+      val y = (band.top + band.bottom) / 2
+      var a = 0.0; var c = DoubleArray(3)
+      for (f in fills) if (f.top <= y && f.bottom >= y) {
+        val sa = (f.color ushr 24) / 255.0 * f.alpha
+        val ch = intArrayOf((f.color shr 16) and 0xff, (f.color shr 8) and 0xff, f.color and 0xff)
+        c = DoubleArray(3) { ch[it] / 255.0 * sa + c[it] * (1 - sa) }
+        a = sa + a * (1 - sa)
+      }
+      expect("a band over an opaque background is opaque", band.color ushr 24, 255)
+      val got = intArrayOf((band.color shr 16) and 0xff, (band.color shr 8) and 0xff, band.color and 0xff)
+      for (k in 0..2) worst = maxOf(worst, abs(got[k] - (c[k] / a * 255).toInt()))
+    }
+  }
+  expect("bands match the per-pixel composite within one step", worst <= 1, true)
+}
+
 fun main(args: Array<String>) {
   timing()
+  surfaces()
   curve()
   motions()
   screens()

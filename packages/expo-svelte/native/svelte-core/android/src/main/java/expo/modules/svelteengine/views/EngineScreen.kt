@@ -69,6 +69,12 @@ open class EngineScreen(context: Context) : EngineView(context) {
   internal var extendsEdge = false
   /** While this screen is the one below a transition that fades it ([EngineStack.system]): the screen whose surface the stack draws under it, the one coming. */
   internal var silhouette: EngineScreen? = null
+  /**
+   * In a fade-through ([EngineStack.system]) the screen is drawn whole, with no layer, and the stack lays [veilOf]'s surface over it at this opacity: 1 minus
+   * how far the screen has faded in. 0 when nothing is laid over it.
+   */
+  internal var veil = 0f
+  internal var veilOf: EngineScreen? = null
   /** Where the running transition lands and what its end does; the stack runs it when it leaves the window mid-transition. */
   internal var landing: (() -> Unit)? = null
 
@@ -84,6 +90,7 @@ open class EngineScreen(context: Context) : EngineView(context) {
   fun setHidden(hidden: Boolean) {
     if (this.hidden == hidden) return
     this.hidden = hidden
+    veil = 0f
     if (hidden) {
       if (hasFocus()) clearFocus()
       alpha = 0f
@@ -136,7 +143,8 @@ open class EngineScreen(context: Context) : EngineView(context) {
 
   /**
    * Renders the screen into a hardware layer while something moves it (a transition, a drag), so each frame composites a
-   * texture instead of replaying every row and text of the screen. Holds are counted: overlapping movements share the layer,
+   * texture instead of replaying every row and text of the screen. The default push and pop (a fade-through) take none: they
+   * draw the screens whole under a veil ([veil], [EngineStack.system]). Holds are counted: overlapping movements share the layer,
    * and the layer type goes back to none when the last one lets go, so no layer outlives the movement and later content
    * changes are drawn the ordinary way.
    */

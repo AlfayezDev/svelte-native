@@ -4,6 +4,10 @@ Notable changes to `expo-svelte` (named `@alfayez/svelte-native` up to 0.4.0-rc.
 
 ## Unreleased
 
+### Fixed
+
+- On Android, the default push and pop no longer render the two screens into full-screen hardware layers: the screens are drawn whole and the stack fades them by laying the surface they fade against over them, which looks the same. The first push of a session spent 20 to 40 ms of one frame building those layers on a Galaxy A16; its worst frame there is now 31 to 34 ms instead of 42 to 55 ms, and later pushes' worst frames are 14 to 20 ms instead of 19 to 26 ms. About 20 ms of the first push's longest frame remains: the GPU driver's own first-time work for a second screen, which a layer warmed ahead does not avoid. A screen scaled by predictive back, a screen with a background that is not an opaque colour, and the other `animation` values keep their layers (#111).
+
 ## 0.4.0-rc.11 - 2026-11-23
 
 ### Changed

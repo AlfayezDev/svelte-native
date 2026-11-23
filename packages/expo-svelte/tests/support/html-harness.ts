@@ -18,6 +18,8 @@ export const host = {
   get roots(): Record<number, FakeNode[]> { return binding.roots; },
   set roots(roots: Record<number, FakeNode[]>) { binding.roots = roots; },
   warnings: [] as string[],
+  /** What the host asked of the binding (`dispatchCommand <tag> <name> <args>`, ...), since the binding was made. */
+  get calls(): string[] { return binding.calls; },
 };
 export const fake = binding.fake;
 
@@ -92,8 +94,11 @@ const aliases: Plugin = {
   },
 };
 
-/** `fixture` is the path of a page (absolute, or relative to `tests/`); without one, the page of `components/fixtures/html-root-fixture.svelte` under a router. */
-export async function load(fixture = resolve(tests, "components/fixtures/html-root-fixture.svelte")) {
+/**
+ * `fixture` is the path of a page (absolute, or relative to `tests/`); without one, the page of `components/fixtures/html-root-fixture.svelte` under a router. `plugins` resolve
+ * modules before the stubs do (React Native's own, for a test that runs them).
+ */
+export async function load(fixture = resolve(tests, "components/fixtures/html-root-fixture.svelte"), plugins: Plugin[] = []) {
   const built = await bundle({
     entry: `import Fixture from ${JSON.stringify(isAbsolute(fixture) ? fixture : `./${fixture}`)};
         import '../src/css/load-table.ts';
@@ -101,7 +106,7 @@ export async function load(fixture = resolve(tests, "components/fixtures/html-ro
         import { tick } from 'svelte';
         import { __setColorScheme } from 'react-native/Libraries/Utilities/Appearance';
         export { startSurface, stopSurface, tick, Fixture, __setColorScheme };`,
-    stubs, viewConfigs: "pass-through", converters: false, lower: { html: true }, plugins: [aliases], cacheKey: "html-harness",
+    stubs, viewConfigs: "pass-through", converters: false, lower: { html: true }, plugins: [...plugins, aliases], cacheKey: ["html-harness", ...plugins.map((plugin) => plugin.name)].join(" "),
     esbuild: { mainFields: [], nodePaths: [nodeModules] },
   });
   host.warnings = [...built.warnings];

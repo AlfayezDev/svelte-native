@@ -169,6 +169,37 @@ private fun screens() {
   near("half way, half way", TransitionRules.underX(-540f, -1080f), 540f)
 }
 
+/** A pop that takes over a push before the screen on top has faded in: the screen below is never fainter than the push left it, so never blank. */
+private fun resume() {
+  val r = TransitionRules
+  val shift = 252f // 96 dp at 2.625
+  val push = r.motion(r.KIND_DEFAULT, true)!!.under!!
+  val pop = r.motion(r.KIND_DEFAULT, false)!!.under!!
+  // The push has moved the screen on top (1 - done) of the way back to its place, and faded the screen below to push.at(done).
+  for (done in listOf(0f, 0.02f, 0.1f, 0.2f, 0.3f, 0.34f)) {
+    val fade = r.resumedFade(pop, (1f - done) * shift, shift)
+    val left = push.at(0f, done)
+    near("a pop at ${done * 100} % of the push starts the screen below where the push left it (${"%.2f".format(left)})", fade.at(0f, 0f), left)
+    near("and has it whole at 35 % of the pop", fade.at(0f, r.FADE_THROUGH), 1f)
+    var faintest = 1f
+    for (i in 0..1000) faintest = minOf(faintest, fade.at(0f, i / 1000f))
+    near("and never fainter than that", faintest, left)
+    // The screen on top has not faded in yet, so the screen below is all there is to see: it is there from the first frame of the pop.
+    near("with nothing on top yet", r.fadeIn(done), 0f)
+  }
+  // With the table's pop the screen below is at 0 for the same 35 %, and the screen on top is not there either.
+  near("the table's pop has nothing there at 20 % of the pop", pop.at(0f, 0.2f), 0f)
+  // Otherwise the pop is the table's: a push that is done, one more than 35 % there, a crossfade, a push that does not move the screens.
+  expect("a settled push's pop is the table's", r.resumedFade(pop, 0f, shift), pop)
+  expect("so is one cut after the screen on top began to fade in", r.resumedFade(pop, 0.5f * shift, shift), pop)
+  expect("and so is one from the left (a negative shift) cut after that", r.resumedFade(pop, 0.5f * -1080f, -1080f), pop)
+  val crossfade = r.motion(r.KIND_FADE, false)!!.under!!
+  expect("a crossfade is not touched", r.resumedFade(crossfade, 0.9f * shift, shift), crossfade)
+  expect("a motion that does not move the screens is not touched", r.resumedFade(pop, 10f, 0f), pop)
+  // A negative shift (the screens moving the other way) has the same share.
+  near("a push cut at 10 % with a negative shift starts the screen below as the push left it", r.resumedFade(pop, -0.9f * 1080f, -1080f).at(0f, 0f), push.at(0f, 0.1f))
+}
+
 /** The framework's own files: each number of TransitionRules against the attribute it comes from. */
 private fun framework(res: File) {
   fun attrs(file: String, tag: String): Map<String, String> {
@@ -233,7 +264,7 @@ private fun sources(screen: String, stack: String) {
   val exit = stack.substringAfter("private fun exitTo(").substringBefore("\n  }\n")
   expect("a paired exit runs it with the screen that will be on top", exit.contains("if (TransitionRules.paired(kind)) {") && exit.contains("system(s, if (moveUnder)"), true)
   val system = stack.substringAfter("private fun system(").substringBefore("\n  private fun animate(")
-  for (call in listOf("TransitionRules.motion(kind, entering)", "TransitionRules.curve(m.curve, f)", "TransitionRules.underX(s.translationX, distance)", "setDuration(m.durationMs)", "it.at(ms, p)", "underFade.at(ms, p)"))
+  for (call in listOf("TransitionRules.motion(kind, entering)", "TransitionRules.curve(m.curve, f)", "TransitionRules.underX(s.translationX, distance)", "setDuration(m.durationMs)", "it.at(ms, p)", "underFade.at(ms, p)", "TransitionRules.resumedFade(it, from, distance)"))
     expect("the transition uses $call", system.contains(call), true)
   val draw = stack.substringAfter("private fun drawEdge(").substringBefore("\n  private fun fillEdge(")
   expect("the strip is the one TransitionRules gives", draw.contains("TransitionRules.stripStart(") && draw.contains("TransitionRules.stripEnd("), true)
@@ -243,7 +274,10 @@ private fun sources(screen: String, stack: String) {
   expect("the screen below goes back in place when the transition ends or is cut short", system.contains("under.translationX = 0f") && system.contains("putBack()"), true)
   expect("a transition that lands puts the scale back", system.substringAfter("s.landing = {").contains("s.scaleX = 1f"), true)
   expect("the screen below fades as its motion says, unless the stack hid it meanwhile", system.contains("if (underFade != null && !under.hidden) under.alpha = underFade.at(ms, p)"), true)
-  expect("the stack draws the coming screen's surface under both when the one below fades", system.contains("under.silhouette = if (underFade == null) null else if (entering) s else under"), true)
+  expect("the stack draws the coming screen's surface under both when the one below fades (the push's, for a pop that goes on from it)", system.contains("under.silhouette = if (underFade == null) null else if (entering || resumed) s else under"), true)
+  expect("a pop takes over a push's fade only on the way back", system.contains("m.under?.let { if (entering) it else TransitionRules.resumedFade(it, from, distance) }"), true)
+  // The screen below's alpha is written twice (a frame's and putBack's), both leaving a screen the stack hid alone; its visibility is the stack's refresh() to set.
+  expect("the transition writes the screen below's alpha only where it checks hidden, and never its visibility", Regex("under\\.alpha\\s*=").findAll(system).count() == 2 && !system.contains("under.visibility"), true)
   expect("the screen below is whole again after (hidden if a push hid it)", system.contains("under.silhouette = null") && system.contains("under.alpha = if (under.hidden) 0f else 1f"), true)
   // `releaseUnder()` is defined once and called twice (the animator's end, the landing); it lets go only once.
   expect("its layer is held for the transition and let go at its end", system.contains("under.holdLayer()") && system.split("releaseUnder()").size - 1 == 3 && system.contains("if (!underHeld) return"), true)
@@ -267,6 +301,7 @@ fun main(args: Array<String>) {
   curve()
   motions()
   screens()
+  resume()
   sources(File(args[0]).readText(), File(args[1]).readText())
   codes(File(args[0]).readText(), File(args[2]).readText())
   val res = args.getOrNull(3)?.let { File(it) }

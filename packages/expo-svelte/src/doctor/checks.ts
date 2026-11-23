@@ -9,6 +9,7 @@ import { nodeAdvice, requirements } from "./requirements.ts";
 import { findPackage, readerFor, readJson, type InstalledPackage } from "./resolve.ts";
 import { satisfies } from "./semver.ts";
 import { appPluginOptions, checkLibraries, LibrariesConfigError } from "../libraries.ts";
+import { requiredSvelte } from "../svelte-build.ts";
 import { collisionMessage, declaredVendored, vendoredPackages, vendoredRoot } from "../vendored.ts";
 
 export type Status = "pass" | "fail" | "skip" | "unknown";
@@ -67,10 +68,10 @@ function library(context: Context, name: string, version: string, appPackage: Re
     : { group: "build integration", status: "fail", message: `${name} is not a dependency of the app (${join(context.appRoot, "package.json")})`, fix: `add it to the app's dependencies (README: "Install in an app"), or run \`pnpm exec expo-svelte init\`` };
 }
 
-/** The renderer build of Svelte: the `./renderer` export and the compiler option the library compiles with. */
+/** Svelte with custom renderers (5.59.0 or newer): the `./renderer` export and the compiler option the library compiles with. */
 function svelte(context: Context, peers: Record<string, unknown>): Check {
   const installed = findPackage("svelte", context.appRoot);
-  const fix = "install the custom-renderer build of Svelte (sveltejs/svelte#18042, commit 216f258, 5.56.7): `pnpm exec expo-svelte init` does it (docs/10-getting-started/20-creating-a-project.md), or by hand, README \"Install in an app\"";
+  const fix = `install svelte ${requiredSvelte.version} from the registry: \`pnpm exec expo-svelte init\` does it (docs/10-getting-started/20-creating-a-project.md), or by hand, README "Install in an app"`;
   if (!installed) return { group: "svelte", status: "fail", message: "svelte is not installed", fix };
   const entry = record(installed.json.exports)["./renderer"];
   const target = text(entry) ?? text(record(entry).default);
@@ -86,7 +87,7 @@ function svelte(context: Context, peers: Record<string, unknown>): Check {
     return {
       group: "svelte",
       status: "fail",
-      message: `svelte ${installed.version} is the stock Svelte: ${!exported ? "it has no ./renderer export" : "its compiler has no customRenderer option"} (${installed.directory})`,
+      message: `svelte ${installed.version} has no custom renderers: ${!exported ? "it has no ./renderer export" : "its compiler has no customRenderer option"} (${installed.directory})`,
       fix,
     };
   }

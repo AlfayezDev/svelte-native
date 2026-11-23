@@ -2,7 +2,7 @@ package expo.modules.svelteengine
 
 /** Decoded records of the view kinds 5..9 (SPEC-views.md). Reset together with the owning [PropSet]. */
 class ViewProps {
-  // TextInput 40..50
+  // TextInput 40..51
   var fontSize = 14f
   var hasColor = false
   var color = 0
@@ -44,6 +44,9 @@ class ViewProps {
   var autoComplete: String? = null
   var importantForAutofill = 0
   var showSoftInputOnFocus = InputRules.AUTO_CORRECT_KEEP
+  /** Record 51: whether JavaScript has an `onContentSizeChange` and an `onScroll` handler, as `InputRules` codes (-1 not part of the update, 0 removed, 1 there). */
+  var onContentSizeChange = InputRules.AUTO_CORRECT_KEEP
+  var onScroll = InputRules.AUTO_CORRECT_KEEP
 
   // Switch 60..65
   var switchValue = false
@@ -98,6 +101,7 @@ class ViewProps {
     stateText = null; stateCount = 0
     selection = InputRules.SELECTION_KEEP; selectionStart = -1; selectionEnd = -1
     autoComplete = null; importantForAutofill = 0; showSoftInputOnFocus = InputRules.AUTO_CORRECT_KEEP
+    onContentSizeChange = InputRules.AUTO_CORRECT_KEEP; onScroll = InputRules.AUTO_CORRECT_KEEP
     switchValue = false; enabled = true; hasThumb = false; thumb = 0
     hasTrackFalse = false; trackFalse = 0; hasTrackTrue = false; trackTrue = 0; hasTrackTint = false; trackTint = 0
     spinnerStyle = 0; animating = true; hasSpinnerColor = false; spinnerColor = 0; indeterminate = false; progress = 0f
@@ -145,6 +149,7 @@ object PropsViews {
         v.autoComplete = if (ops[i] >= 0) strings[ops[i]] else null
         v.importantForAutofill = ops[i + 1]; v.showSoftInputOnFocus = ops[i + 2]; i += 3
       }
+      51 -> { v.onContentSizeChange = ops[i]; v.onScroll = ops[i + 1]; i += 2 }
       60 -> v.switchValue = ops[i++] == 1
       61 -> v.enabled = ops[i++] == 1
       62 -> { v.hasThumb = ops[i] == 1; v.thumb = ops[i + 1]; i += 2 }

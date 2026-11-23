@@ -42,7 +42,8 @@ java -cp "$work/a11y-live-check.jar" expo.modules.svelteengine.A11yLiveCheckKt
 g++ -std=c++20 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined "$here/cpp/AutoCorrectCodeTest.cpp" -o "$work/autocorrect-test"
 "$work/autocorrect-test"
 
-# The text input's autoCorrect tri-state, against React Native's own setAutoCorrect; showSoftInputOnFocus, selection, and the autofill hints against React Native's table.
+# The text input's autoCorrect tri-state, against React Native's own setAutoCorrect; showSoftInputOnFocus, selection, and the autofill hints against React Native's table;
+# onContentSizeChange and onScroll: when a view watches, when a watcher sends, and the events against React Native's watchers.
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/InputRules.kt" \
   "$here/kotlin/expo/modules/svelteengine/InputRulesCheck.kt" -include-runtime -d "$work/input-rules-check.jar"
 java -cp "$work/input-rules-check.jar" expo.modules.svelteengine.InputRulesCheckKt \
@@ -50,7 +51,12 @@ java -cp "$work/input-rules-check.jar" expo.modules.svelteengine.InputRulesCheck
   "$here/../main/java/expo/modules/svelteengine/views/EngineInput.kt" \
   "$here/../main/cpp/AutoCorrectCode.h" \
   "$here/../main/java/expo/modules/svelteengine/InputAutofill.kt" \
-  "$here/../main/cpp/PropsEncoderViews.cpp"
+  "$here/../main/cpp/PropsEncoderViews.cpp" \
+  "$rn/ReactAndroid/src/main/java/com/facebook/react/views/textinput/ReactTextContentSizeWatcher.kt" \
+  "$rn/ReactAndroid/src/main/java/com/facebook/react/views/textinput/ReactTextScrollWatcher.kt" \
+  "$rn/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ScrollEvent.kt" \
+  "$here/../main/cpp/InputEvents.cpp" \
+  "$here/../main/java/expo/modules/svelteengine/ViewEvents.kt"
 
 # What a header and a sheet decide from measurements that are not there yet (the first layout of a screen runs detached): the bar's offset, when a header lays out
 # again, when a layout puts a sheet at its rest. The sources of EngineHeader, EngineSheet and EngineStack are read for the calls that use them.
@@ -60,8 +66,9 @@ java -cp "$work/chrome-check.jar" expo.modules.svelteengine.ChromeRulesCheckKt "
   "$here/../main/java/expo/modules/svelteengine/views/EngineSheet.kt" "$here/../main/java/expo/modules/svelteengine/views/EngineStack.kt"
 
 # The transitions between two screens of a stack (SPEC.md, "Navigation"): the default's fade-through, every motion of the table against react-native-screens'
-# values, the movement and android_activity's fades against the framework's own files when an Android SDK is there, how the two screens move together, the strip
-# each one uncovers. The sources of EngineScreen and EngineStack are read for the calls that pick the motion and keep the state right when it is cut short.
+# values, the movement and android_activity's fades against the framework's own files when an Android SDK is there, how the two screens move and fade together
+# (a pop that takes over a push before the new screen has faded in brings the screen below back from where the push left it), the strip each one uncovers. The
+# sources of EngineScreen and EngineStack are read for the calls that pick the motion and keep the state right when it is cut short.
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/TransitionRules.kt" \
   "$here/kotlin/expo/modules/svelteengine/TransitionRulesCheck.kt" -include-runtime -d "$work/transition-check.jar"
 java -cp "$work/transition-check.jar" expo.modules.svelteengine.TransitionRulesCheckKt "$here/../main/java/expo/modules/svelteengine/views/EngineScreen.kt" \

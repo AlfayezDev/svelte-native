@@ -41,8 +41,8 @@ export type FakeApp = {
   files?: Record<string, string | null>;
   /** Declare the patches in a pnpm-workspace.yaml (the app's own copies in patches/expo-svelte). Default true. */
   declared?: boolean;
-  /** The stock Svelte: no ./renderer export. */
-  stockSvelte?: boolean;
+  /** A Svelte before custom renderers (5.59.0): no ./renderer export. */
+  oldSvelte?: boolean;
 };
 
 /** A version a peer's range names; for `*` (any version, as `@babel/core` is asked for) the one the repository has installed. */
@@ -68,9 +68,9 @@ export function makeFakeApp(options: FakeApp = {}): string {
   }
   // The runtime `polyfills.ts` imports from expo by path.
   if (!without.has("expo")) for (const file of ["index.ts", "runtime.native.ts"]) put(`node_modules/expo/src/winter/${file}`, "export {};\n");
-  stub("svelte", peerVersion("svelte"), options.stockSvelte ? { exports: { ".": "./src/index.js" } } : { exports: { ".": "./src/index.js", "./renderer": { default: "./src/renderer/index.js" } } });
-  put("node_modules/svelte/src/compiler/validate-options.js", options.stockSvelte ? "export const options = {};\n" : "export const options = { experimental: { customRenderer: true } };\n");
-  if (!options.stockSvelte) put("node_modules/svelte/src/renderer/index.js", "export {};\n");
+  stub("svelte", peerVersion("svelte"), options.oldSvelte ? { exports: { ".": "./src/index.js" } } : { exports: { ".": "./src/index.js", "./renderer": { default: "./src/renderer/index.js" } } });
+  put("node_modules/svelte/src/compiler/validate-options.js", options.oldSvelte ? "export const options = {};\n" : "export const options = { experimental: { customRenderer: true } };\n");
+  if (!options.oldSvelte) put("node_modules/svelte/src/renderer/index.js", "export {};\n");
 
   for (const patch of patchFiles()) {
     if (without.has(patch.package)) continue;

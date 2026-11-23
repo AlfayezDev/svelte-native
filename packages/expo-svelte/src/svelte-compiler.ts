@@ -3,6 +3,7 @@ import { readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type * as SvelteCompiler from "svelte/compiler";
+import { requiredSvelte } from "./svelte-build.ts";
 
 const require = nodeModule.createRequire(import.meta.url);
 
@@ -12,10 +13,9 @@ const require = nodeModule.createRequire(import.meta.url);
  * It is loaded from its sources. Metro loads the transformer as CommonJS, and under `require` the `svelte/compiler` export is Svelte's prebuilt bundle (`compiler/index.js`), which this
  * file's second step cannot reach; `import` resolves the export to the sources, so only a CommonJS load shows the difference (`tests/package/node-modules.test.ts`). Node `require`s an ES module from 22.12.
  *
- * The custom-renderer build refuses `transition:`, `in:`, `out:` and `animate:` on any element (`e.incompatible_with_custom_renderer`, in the two visitors that analyse them), and the
- * library plays them on native elements, so the two refusals are removed from the sources as Node loads them (`acceptDirectives`, through a synchronous module hook). This does not depend on
- * what the app's package manager did to Svelte: a pnpm patch is applied to a package of the registry but not, with pnpm 12 and a fresh store, to the one that `pkg.pr.new` serves (the
- * guide's install), and an app has no reason to carry one.
+ * Svelte's compiler refuses `transition:`, `in:`, `out:` and `animate:` on any element it compiles for a custom renderer (`e.incompatible_with_custom_renderer`, in the two visitors that analyse
+ * them), and the library plays them on native elements, so the two refusals are removed from the sources as Node loads them (`acceptDirectives`, through a synchronous module hook). This does not
+ * depend on what the app's package manager did to Svelte: an app installs the registry's `svelte` as the guide says, and has no reason to carry a patch of it.
  */
 let compiler: typeof SvelteCompiler | null = null;
 export function svelteCompiler(): typeof SvelteCompiler {
@@ -29,7 +29,7 @@ export function svelteCompiler(): typeof SvelteCompiler {
 const VISITORS = "src/compiler/phases/2-analyze/visitors";
 const REFUSAL = "incompatible_with_custom_renderer";
 
-/** The blocks of the two visitors that refuse the directives, exactly as Svelte 5.56.7's custom-renderer build has them (tabs, and the blank line after). */
+/** The blocks of the two visitors that refuse the directives, exactly as Svelte 5.59.1 has them (tabs, and the blank line after). */
 const REFUSALS: Record<string, string> = {
   "TransitionDirective.js":
     "\tif (custom_renderer) {\n\t\tconst directive = node.intro && node.outro ? '`transition:`' : node.intro ? '`in:`' : '`out:`';\n\t\te.incompatible_with_custom_renderer(node, directive);\n\t}\n\n",
@@ -47,7 +47,7 @@ export function acceptDirectives(file: string, source: string): string {
   if (!source.includes(block)) {
     throw new Error(
       `expo-svelte: ${file} of the installed Svelte refuses \`transition:\`, \`in:\`, \`out:\` and \`animate:\` on a custom renderer in a form this version of the library does not know how to remove ` +
-        "(Svelte was updated: the library is written against the custom-renderer build 5.56.7 at commit 216f258, which the guide installs).",
+        `(Svelte was updated: the library is written against Svelte ${requiredSvelte.version}, which the guide installs).`,
     );
   }
   const accepted = source.replace(block, "");

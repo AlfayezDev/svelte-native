@@ -50,8 +50,8 @@ Turns the SvelteKit project into an Expo Svelte one. It prints a plan, makes the
 ```
 expo-svelte init: /home/you/my-app
 
-  edit    package.json                       "main", svelte (the custom-renderer build), @sveltejs/kit 3.1.1 (exact: …), 8 dependencies, scripts, …
-  edit    pnpm-workspace.yaml                overrides: expo-modules-core, @react-native/metro-config; patchedDependencies: @sveltejs/kit@3.1.1, …
+  edit    package.json                       "main", svelte 5.59.1 (exact: …), @sveltejs/kit 3.4.0 (exact: …), 8 dependencies, scripts, …
+  edit    pnpm-workspace.yaml                overrides: expo-modules-core, @react-native/metro-config; patchedDependencies: @sveltejs/kit@3.4.0, …
   create  patches/expo-svelte/             6 patch files from the installed library
   create  metro.config.cjs                   withExpoSvelte(getDefaultConfig(__dirname))
   create  app.json                           my-app, dev.example.myapp
@@ -83,7 +83,7 @@ The web app is still there, and works as before:
 pnpm dev
 ```
 
-It now compiles with the same Svelte build as the native app, and runs on SvelteKit 3.1.1.
+It now compiles with the same Svelte as the native app, and runs on SvelteKit 3.4.0.
 
 ## Next steps
 

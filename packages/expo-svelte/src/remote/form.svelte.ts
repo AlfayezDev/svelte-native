@@ -4,7 +4,7 @@
 /**
  * `form` for a native app: the client half of SvelteKit's remote `form` without a `<form>` element.
  *
- * Ported from `@sveltejs/kit/src/runtime/client/remote-functions/form.svelte.js` (3.1.1; compared with 3.0.0-next.27 when the pin moved: the messages moved to SvelteKit's message modules, and `for(key)` instances are held from inside the effect). What is the same: the state (`fields`,
+ * Ported from `@sveltejs/kit/src/runtime/client/remote-functions/form.svelte.js` (3.4.0, the file of 3.1.1 unchanged; compared with 3.0.0-next.27 when the pin moved: the messages moved to SvelteKit's message modules, and `for(key)` instances are held from inside the effect). What is the same: the state (`fields`,
  * `result`, `pending`, `submitted`), validation (`preflight`, `validate`, the server's issues merged with the client's), the request
  * (`remote_request`, the binary form format and `.updates(...)` of SvelteKit's own files), `for(key)` instances, `enhance`. What differs, because
  * a native screen has no DOM:
@@ -505,7 +505,8 @@ export function form(id: string) {
               attempt.updates = () => { throw new Error("With an enhance callback, call .updates(...) on the submit() inside it."); };
             } else {
               const sent = send(data, true);
-              attempt = sent.then(async (ok) => { if (ok) { await tick(); reset(); } return ok; }) as Submission;
+              // Accepted: the form starts again, unless it was reset while the request was out (and maybe holds a new draft since), which this reset would erase.
+              attempt = sent.then(async (ok) => { if (ok) { await tick(); if (reset_epoch === reset_id) reset(); } return ok; }) as Submission;
               attempt.updates = (...updates) => { sent.updates(...updates); return attempt; };
             }
           } catch (caught) {

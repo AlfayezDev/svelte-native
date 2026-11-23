@@ -595,22 +595,29 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
    * [entering]) or goes (a pop) from wherever it is. When the motion moves the screen below, it moves the other way, kept a distance from [s] by the same
    * animator ([TransitionRules.underX]); when it fades it, the stack draws the coming screen's surface under both ([drawChild]). A screen that moves less than
    * the width is drawn on across the strip it uncovers. A cancelled transition puts the screen below back in place and whole; one that takes over (a pop
-   * during the push) moves it again from where the screens were, in the same frame.
+   * during the push) moves and fades it again from where the screens were, in the same frame: how far the push had faded it is read from where the screen on
+   * top is ([TransitionRules.resumedFade]).
    */
   private fun system(s: EngineScreen, below: EngineScreen?, entering: Boolean, kind: Int, done: () -> Unit) {
     val m = TransitionRules.motion(kind, entering) ?: run { done(); return }
     // The screen below takes part when the motion moves or fades it.
     val under = below?.takeIf { m.moveUnder || m.under != null }
-    val underFade = m.under
     s.holdLayer()
     freeUnder(s)
     cancelRunning(s)
+    val vertical = m.vertical
+    val distance = distance(m) * m.direction
+    val from = if (vertical) s.translationY else s.translationX
+    // A pop that takes over a push in its first 35 % brings the screen below back from where the push had faded it, not from nothing.
+    val underFade = m.under?.let { if (entering) it else TransitionRules.resumedFade(it, from, distance) }
+    val resumed = underFade !== m.under
     if (under != null) {
       freeUnder(under)
       if (under.running != null) land(under)
       under.mover = s
       under.extendsEdge = m.extend && m.moveUnder
-      under.silhouette = if (underFade == null) null else if (entering) s else under
+      // The surface under a fade is the coming screen's; a pop that goes on from a push keeps that push's, so the background does not change at the cut.
+      under.silhouette = if (underFade == null) null else if (entering || resumed) s else under
       // It moves or fades too: composited from a layer for the transition, as the moving screen is.
       under.holdLayer()
     }
@@ -622,9 +629,6 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     }
     // Without a screen below taking part (a gesture has shown it in place) there is no strip to draw: the strip would cover what the gesture showed.
     s.extendsEdge = m.extend && under != null
-    val vertical = m.vertical
-    val distance = distance(m) * m.direction
-    val from = if (vertical) s.translationY else s.translationX
     // A pop goes on from where a gesture left the screen, never back towards its place.
     val to = when {
       entering -> 0f

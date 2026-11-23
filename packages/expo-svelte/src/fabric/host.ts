@@ -115,7 +115,7 @@ import { mergeHostProps } from "../native-props.ts";
 import { applyAriaProps, isAriaKey } from "./accessibility.ts";
 import { foreignText, type ForeignText } from "./foreign-text.ts";
 import { assertComponent } from "./foreign-libraries.ts";
-import renderer, { InstantAnimation, NativeNode, setAnimationDriver, setInvalidationSink, setRefSink, setUnlinkSink, type AnimationDriver, type Invalidation } from "../renderer.ts";
+import renderer, { InstantAnimation, NativeNode, setAnimationDriver, setInvalidationSink, setRefSink, setTransitionSink, setUnlinkSink, type AnimationDriver, type Invalidation } from "../renderer.ts";
 import { applyInlineStyle, effectiveStyle, parseOrigin, transformOps, transformRect, type Rect } from "./dom-style.ts";
 import { Pressability, type PressabilityConfig, type ResponderHandlers } from "./pressability.ts";
 import { createResponder } from "./responder.ts";
@@ -1202,7 +1202,21 @@ function onInvalidate(node: NativeNode, reason: Invalidation): void {
     if (!animationWaiting) { animationWaiting = true; flushScheduled = true; queueMicrotask(waitForAnimations); }
     return;
   }
-  if (!flushScheduled) { flushScheduled = true; queueMicrotask(flush); }
+  if (!flushScheduled) { flushScheduled = true; queueMicrotask(flushAfterSvelte); }
+}
+/**
+ * Whether a node has been given a transition since the last commit (the renderer says so, `setTransitionSink`). Svelte 5.59 starts a transition in a microtask of its own (`element.animate` is no longer
+ * called while the element's effect runs), queued after the first change of the element it is on, so a commit made by the first microtask would carry the element without the first frame of its
+ * transition, and a frame drawn between that commit and the next one shows the element whole. A commit that has such a node takes one more hop, which lets Svelte's microtask run first (the animation it
+ * starts holds the commit for its own hops: `waitForAnimations`).
+ */
+let transitionBound = false;
+const onTransition = (): void => { transitionBound = true; };
+function flushAfterSvelte(): void {
+  if (transitionBound) {
+    transitionBound = false;
+    queueMicrotask(flush);
+  } else flush();
 }
 const ANIMATION_HOPS = 3;
 let animationHops = 0;
@@ -1555,6 +1569,7 @@ export function startSurface<Props extends Record<string, unknown>>(rootTag: num
   if (!binding) throw new Error("nativeFabricUIManager is not installed; the Fabric host needs the new architecture");
   if (!handlerRegistered) { binding.registerEventHandler(dispatchEvent); handlerRegistered = true; }
   setInvalidationSink(onInvalidate);
+  setTransitionSink(onTransition);
   setUnlinkSink(onUnlink);
   setAnimationDriver(animationDriver);
   setRefSink(earlyRef);

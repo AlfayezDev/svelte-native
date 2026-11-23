@@ -1,6 +1,6 @@
 /// <reference path="./fabric/react-native-internals.d.ts" />
 /// <reference path="./kit/modules.d.ts" />
-import { flushSync, fork, getContext, onDestroy, setContext, untrack } from "svelte";
+import { fork, getContext, onDestroy, setContext, untrack } from "svelte";
 import { SvelteMap, SvelteURL } from "svelte/reactivity";
 import Platform from "react-native/Libraries/Utilities/Platform";
 import BackHandler from "react-native/Libraries/Utilities/BackHandler";
@@ -517,8 +517,8 @@ function createStore(tree: StackNode) {
     const { forward, routes } = untrack(() => {
       const operations = plan(stateOf(target), target, navigation);
       const forward = !inPlace(target, navigation) && operations.length > 0 && operations.every((operation) => operation.op === "push" || operation.op === "select");
-      // What `navigate` loads, and what the screens it makes render, loaded now: a fork renders the screens at once, and a module that arrives after it would render its page later, outside the fork,
-      // with its effects running at once (or, for a pane base, never: the pane stays on its loading placeholder).
+      // What `navigate` loads, and what the screens it makes render, loaded now: a fork renders the screens at once, and a module that arrives after it would render its page later
+      // (for a pane base, never: the pane stays on its loading placeholder).
       const routes: (PageRoute | RouteNode)[] = [target.page, ...paneBases(target), ...target.chain.map(({ node }) => node).filter((node) => node.layout)];
       if (forward) for (const route of routes) load(route);
       return { forward, routes };
@@ -589,7 +589,6 @@ function createStore(tree: StackNode) {
       await new Promise<void>((done) => setTimeout(done, 0));
       if (disposed || settled || superseded || navigations !== base || !routes.every((route) => { const slot = slots.get(route); return slot !== undefined && "modules" in slot; })) return resolveReady(false);
       try {
-        flushSync(); // a fork needs no change pending
         const before = navigations;
         const writes = stackWrites;
         try { forked = fork(() => navigate(href, navigation)); } finally { navigations = before; stackWrites = writes; }

@@ -1,2 +1,2 @@
 [test]
-preload = ["./tests/support/async-mode-setup.ts", "./tests/support/preload.ts"]
+preload = ["./tests/support/custom-renderer-setup.ts", "./tests/support/async-mode-setup.ts", "./tests/support/preload.ts"]

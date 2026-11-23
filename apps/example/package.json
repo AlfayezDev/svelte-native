@@ -19,7 +19,7 @@
 	},
 	"dependencies": {
 		"expo-svelte": "workspace:*",
-		"@sveltejs/kit": "3.1.1",
+		"@sveltejs/kit": "3.4.0",
 		"expo": "~58.0.26",
 		"expo-camera": "~58.0.14",
 		"expo-constants": "~58.0.16",
@@ -27,8 +27,8 @@
 		"expo-system-ui": "~58.0.7",
 		"react": "catalog:",
 		"react-native": "0.88.1",
-		"svelte": "file:../../vendor/svelte-5.56.7-216f258.tgz",
-		"tailwindcss": "4.3.3",
+		"svelte": "5.59.1",
+		"tailwindcss": "4.3.5",
 		"vite": "catalog:"
 	},
 	"devDependencies": {

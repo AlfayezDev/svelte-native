@@ -15,7 +15,7 @@ pnpm exec expo-svelte doctor
 | It says | Do this |
 | --- | --- |
 | `node 25.0.0 does not satisfy ^22.17.0 \|\| ^24.3.0 \|\| >=26.0.0` | Switch to Node 24 LTS (24.3 or newer), Node 22.17 or newer, or Node 26 or newer. See [below](#pnpm-stops-during-install) for why not Node 25. |
-| `svelte … is the stock Svelte: it has no ./renderer export` | You have the registry's Svelte. Run `pnpm exec expo-svelte init`, which installs the build Expo Svelte needs. |
+| `svelte … has no custom renderers: it has no ./renderer export` | Your Svelte is older than 5.59.0. Run `pnpm exec expo-svelte init`, which installs the Svelte Expo Svelte needs. |
 | `react 19.2.6 does not satisfy 19.3.0`, or another version | Install the exact version it names. Each patch is made for one version. |
 | `… is not applied` | Run `pnpm exec expo-svelte init` again, which copies the current patches, then `pnpm install`. |
 | `metro.config.cjs does not mention withExpoSvelte` | Wrap your Metro config in `withExpoSvelte` ([Configuration](configuration#metroconfigcjs)). |

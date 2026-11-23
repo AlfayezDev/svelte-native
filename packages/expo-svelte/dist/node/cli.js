@@ -858,12 +858,9 @@ var init_svelte_build = __esm({
   "src/svelte-build.ts"() {
     "use strict";
     requiredSvelte = {
-      version: "5.56.7",
-      commit: "216f258068d93170a927ad4d27ee6864b0b305c5",
-      pullRequest: "https://github.com/sveltejs/svelte/pull/18042",
-      /** The preview build pkg.pr.new publishes for the commit; byte for byte the tarball in this repository's `vendor/`. */
-      preview: "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5",
-      vendored: "vendor/svelte-5.56.7-216f258.tgz"
+      version: "5.59.1",
+      /** The first release with custom renderers. */
+      firstWithRenderer: "5.59.0"
     };
   }
 });
@@ -1301,9 +1298,9 @@ function planPackageJson(root2, original, patches2, options) {
     }
   }
   const svelteSpec = dependencies.svelte ?? devDependencies.svelte;
-  if (svelteSpec === void 0 || !(svelteSpec.startsWith("file:") || svelteSpec.startsWith("https://pkg.pr.new/svelte@"))) {
-    setDependency("svelte", requiredSvelte.preview, "devDependencies");
-    summary.push("svelte (the custom-renderer build)");
+  if (svelteSpec !== requiredSvelte.version) {
+    setDependency("svelte", requiredSvelte.version, "devDependencies");
+    summary.push(`svelte ${requiredSvelte.version} (exact: the version the library compiles with)`);
   }
   const hasKit = has2("@sveltejs/kit");
   const kitPatches = patches2.filter((patch) => patch.package === "@sveltejs/kit");
@@ -2626,7 +2623,7 @@ function library(context, name, version, appPackage) {
 }
 function svelte(context, peers) {
   const installed = findPackage("svelte", context.appRoot);
-  const fix = 'install the custom-renderer build of Svelte (sveltejs/svelte#18042, commit 216f258, 5.56.7): `pnpm exec expo-svelte init` does it (docs/10-getting-started/20-creating-a-project.md), or by hand, README "Install in an app"';
+  const fix = `install svelte ${requiredSvelte.version} from the registry: \`pnpm exec expo-svelte init\` does it (docs/10-getting-started/20-creating-a-project.md), or by hand, README "Install in an app"`;
   if (!installed) return { group: "svelte", status: "fail", message: "svelte is not installed", fix };
   const entry = record(installed.json.exports)["./renderer"];
   const target = text2(entry) ?? text2(record(entry).default);
@@ -2642,7 +2639,7 @@ function svelte(context, peers) {
     return {
       group: "svelte",
       status: "fail",
-      message: `svelte ${installed.version} is the stock Svelte: ${!exported ? "it has no ./renderer export" : "its compiler has no customRenderer option"} (${installed.directory})`,
+      message: `svelte ${installed.version} has no custom renderers: ${!exported ? "it has no ./renderer export" : "its compiler has no customRenderer option"} (${installed.directory})`,
       fix
     };
   }
@@ -2829,6 +2826,7 @@ var init_checks = __esm({
     init_resolve();
     init_semver();
     init_libraries();
+    init_svelte_build();
     init_vendored();
     text2 = (value) => typeof value === "string" ? value : void 0;
     EXPO_RUNTIME_FILES = ["src/winter/index.ts", "src/winter/runtime.native.ts"];
@@ -4258,9 +4256,11 @@ function classifySelector(selector) {
     const { name, end } = readIdent(text3, 1);
     if (end === text3.length && name !== "") return { kind: "class", className: name };
   }
-  return { kind: "unsupported", className: firstClass(text3), reason: describeSelector(text3) };
+  const last = /^:is\(:where\(\.(?:group|peer)\b/.test(text3);
+  return { kind: "unsupported", className: classOf(text3, last), reason: describeSelector(text3) };
 }
-function firstClass(text3) {
+function classOf(text3, last = false) {
+  let found = null;
   for (let i = 0; i < text3.length; i++) {
     const c = text3[i];
     if (c === "\\") i++;
@@ -4272,11 +4272,14 @@ function firstClass(text3) {
       i = close < 0 ? text3.length : close;
     } else if (c === ".") {
       const { name, end } = readIdent(text3, i + 1);
-      if (name !== "") return name;
+      if (name !== "") {
+        if (!last) return name;
+        found = name;
+      }
       i = end;
     }
   }
-  return null;
+  return found;
 }
 function describeSelector(text3) {
   const pseudo = [];
@@ -6143,7 +6146,7 @@ var init_build2 = __esm({
     init_variant();
     init_convert();
     init_watch_tree();
-    TAILWIND_VERSION = "4.3.3";
+    TAILWIND_VERSION = "4.3.5";
     SOURCE_EXTENSIONS = /* @__PURE__ */ new Set([".svelte", ".ts", ".js"]);
     SKIPPED_DIRECTORIES = /* @__PURE__ */ new Set(["node_modules", ".expo-svelte"]);
     LONGEST_CANDIDATE = 300;

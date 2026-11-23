@@ -45,7 +45,7 @@ describe("init in a fresh sv project", () => {
     expect(before).toContain('"dev": "vite dev"');
     const manifest = readJson(root, "package.json");
     expect(manifest.main).toBe(".expo-svelte/entry.ts");
-    expect(manifest.devDependencies.svelte).toBe(requiredSvelte.preview);
+    expect(manifest.devDependencies.svelte).toBe(requiredSvelte.version);
     expect(manifest.dependencies["expo-svelte"]).toBe(library);
     for (const [name, version] of Object.entries(appDependencies)) expect(manifest.dependencies[name], name).toBe(version);
     // The packages the library itself carries (vendor/, VENDORING.md) are installed by init no more than by the app, and an app that lists one is refused: `crypto` (react-native-quick-crypto and the base64 module it asks for),

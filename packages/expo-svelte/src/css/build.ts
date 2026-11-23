@@ -19,7 +19,7 @@ import type { ClassTable, Unsupported } from "./table.ts";
 import { watchTree } from "../watch-tree.ts";
 
 /** The Tailwind the converter is written against (the package's optional peer): the app installs this one. */
-export const TAILWIND_VERSION = "4.3.3";
+export const TAILWIND_VERSION = "4.3.5";
 
 /** Tailwind's CSS to a class table (`convert.ts`'s `convertCss`); the tests pass their own. */
 export type Converter = (css: string, options?: { remPx?: number }) => { table: ClassTable; unsupported: Unsupported[] };

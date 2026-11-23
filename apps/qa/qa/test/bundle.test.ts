@@ -42,7 +42,7 @@ const { smokeOnlyBundlePackages, libraryVendoredPackages } = createRequire(impor
  * elements, its route, the five checks with their runner and expectations, and the classes they add to the table (+44,721 together, not split; the first five were measured against main's earlier 5,811,760, so the
  * split is not exact to the byte). The production variant has no lab and no `css` option: 4,207,070 bytes in 906 modules, +209 over main's 4,206,861 at eda5a64, which is the `mergeHostProps` export of the library's
  * renderer entry that the checks read the host's props through (0.1 % over its own baseline below). Both were measured in a checkout whose installed Svelte had the library's patch applied to a scratch copy of the
- * compiler (`patches/svelte@5.56.7.patch`, which lets the compiler accept transitions with a custom renderer), the same bytes an install with the patch gives, because the patch changes the compiler and not what it emits.
+ * compiler (`patches/svelte@5.59.1.patch`, which lets the compiler accept transitions with a custom renderer), the same bytes an install with the patch gives, because the patch changes the compiler and not what it emits.
  *
  * Moved on 13 November 2026 (feat/exports-grouped), from 6,003,584 to 6,007,156 bytes (+3,572, 1,205 to 1,206 modules): the generated entry imports `expo-svelte/app` (one module that imports the boot modules and the Fabric host in the order it
  * imported them), and the main entry exports the animation, the gestures and the SVG components, which the QA app carried already for its lab. The product variant moved far more (see `productBaseline`): it is the variant that did not carry them.
@@ -51,6 +51,9 @@ const { smokeOnlyBundlePackages, libraryVendoredPackages } = createRequire(impor
  * `localStorage` (the JavaScript layer over the `SvelteFetch` module, the web `crypto` and `Storage` objects, `/mmkv`) and the lab's Web APIs screen and checks: 6,146,358 bytes in 1,239 modules (+139,202, 2.3 %). Then the four packages the library now requires
  * as peers, react-native-quick-crypto, react-native-mmkv, react-native-nitro-modules and react-native-quick-base64: they were the smoke test's libraries, which Metro stubbed in this variant, and `crypto` and `localStorage` read them, so the QA app
  * bundles the real ones (+938,646 bytes, 164 modules; quick-crypto's implementation of Node's crypto API and the modules it needs are most of it). The smoke app carried them already and does not move (9,173,998 bytes in 1,938 modules).
+ *
+ * Moved on 22 November 2026 (chore/svelte-from-npm), from 7,085,004 to 7,252,330 bytes (+167,326, 2.4 %; 1,403 to 1,424 modules): Svelte 5.59.1 from the registry replaces the build of the custom-renderer pull request. The same recipe read 7,136,198 bytes in 1,421 modules
+ * at ab649ba2 (main, with that build, 51,194 over the baseline above), so the new Svelte is +116,132 (1.6 %) and three modules of the same tree.
  *
  * Moved on 23 November 2026 (chore/expo-sdk-58, Expo SDK 58 with React Native 0.88 and React 19.3) to 7,364,481 bytes in 1,511 modules. Measured with this recipe on both trees the same day:
  * SDK 57 gave 7,136,179 bytes in 1,421 modules, so the move is +228,302 bytes (3.2 %). By package (source bytes): react-native +331,975 (179 to 271 modules: React Native 0.88's
@@ -67,6 +70,9 @@ const baseline = { commit: "Expo SDK 58 with React Native 0.88 (chore/expo-sdk-5
  *
  * Moved on 14 November 2026 (feat/native-fetch), from 4,505,761 to 5,586,438 bytes (+1,080,677, 24.0 %; 980 to 1,180 modules): the library's own `fetch`, `Blob`, `FormData`, `crypto` and `localStorage` (4,645,130 bytes in 1,014 modules, +139,369, 3.1 %: the
  * product has no lab, so this is the library's code alone), and the four required peers, which the product bundled as stubs before and bundles for real now (+941,308 bytes, 166 modules).
+ *
+ * Moved on 22 November 2026 (chore/svelte-from-npm), from 5,586,438 to 5,757,081 bytes (+170,643, 3.1 %; 1,180 to 1,200 modules), with the QA app's: Svelte 5.59.1 from the registry replaces the pull request's build. The same recipe read 5,636,916 bytes in 1,197 modules at
+ * ab649ba2 (main, with that build, 50,478 over the baseline above), so the new Svelte is +120,165 (2.1 %) and three modules.
  *
  * Moved on 23 November 2026 (chore/expo-sdk-58) to 5,883,502 bytes in 1,302 modules: SDK 57 measured the same day gave 5,636,897 bytes in 1,197 modules, so +246,605 (4.4 %),
  * nearly all React Native 0.88's own modules that InitializeCore needs now (react-native +331,975 source bytes, 179 to 271 modules), with the same smaller packages as above.

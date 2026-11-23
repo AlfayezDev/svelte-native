@@ -85,7 +85,7 @@ export function sourceOf(input: TransformInput): string {
 }
 
 let rendererChecked = false;
-/** The first `.svelte` file of a worker fails with the fix when the installed Svelte is the stock release, instead of with the compiler's message about an unknown `customRenderer` option. */
+/** The first `.svelte` file of a worker fails with the fix when the installed Svelte is older than 5.59.0 (no custom renderers), instead of with the compiler's message about an unknown `customRenderer` option. */
 function requireCustomRenderer(): void {
   if (rendererChecked) return;
   assertCustomRenderer("The Metro transformer of expo-svelte");

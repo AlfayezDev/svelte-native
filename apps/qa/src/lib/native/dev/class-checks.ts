@@ -8,7 +8,7 @@
  * the bundle (the class table), the resolver running on Hermes (the color scheme, the window width, the font size) and the template that applied it. One of them also reads the layout the native side made of
  * a class, because a style that never reached Yoga would pass all the others.
  *
- * The expected values are Tailwind 4.3.3's: its spacing scale is 0.25 rem (4 dp) a step, its colours oklch converted to sRGB by the build.
+ * The expected values are Tailwind 4.3.5's: its spacing scale is 0.25 rem (4 dp) a step, its colours oklch converted to sRGB by the build.
  */
 
 export type Style = Record<string, unknown>;
@@ -85,7 +85,7 @@ export function isColor(value: unknown, expected: string | Omit<Rgba, "a"> & { a
 const show = (style: Style, ...keys: string[]): string => keys.map((key) => `${key} ${JSON.stringify(style[key])}`).join(", ");
 const verdict = (passed: boolean, detail: string): Outcome => ({ passed, detail: passed ? "" : detail });
 
-/** Tailwind 4.3.3's sky-500 (`oklch(68.5% .169 237.323)`) as the build converts it to sRGB. */
+/** Tailwind 4.3.5's sky-500 (`oklch(68.5% .169 237.323)`) as the build converts it to sRGB. */
 export const sky500 = { r: 0, g: 166, b: 244 } as const;
 /** `white` and zinc-900 (`oklch(21% .006 285.885)`), the light and dark backgrounds of the scheme classes. */
 export const white = "#ffffff";

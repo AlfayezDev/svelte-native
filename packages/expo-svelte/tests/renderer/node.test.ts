@@ -32,10 +32,10 @@ test("children are linked in order, moved before anchors and removed", () => {
   expect(() => renderer.insert(parent, a, renderer.createElement("stranger"))).toThrow("anchor");
 });
 
-test("fragments insert all of their children and text replaces element content", () => {
+test("fragments insert all of their children and a text node changes its text", () => {
   const parent = renderer.createElement("native-view");
   const fragment = renderer.createFragment();
-  const x = renderer.createTextNode("x");
+  const x = renderer.createText("x");
   const y = renderer.createElement("y");
   renderer.insert(fragment, x, null);
   renderer.insert(fragment, y, null);
@@ -44,13 +44,9 @@ test("fragments insert all of their children and text replaces element content",
   renderer.insert(parent, fragment, anchor);
   expect(names(parent)).toEqual(["x", "y", "anchor"]);
   expect(fragment.firstChild).toBeNull();
-  expect(renderer.getNodeValue(anchor)).toBe("anchor");
+  expect(renderer.getText(anchor)).toBe("anchor");
   renderer.setText(x, "changed");
-  expect(renderer.getNodeValue(x)).toBe("changed");
-  renderer.setText(parent, "only text");
-  expect(parent.getSnapshot().children).toHaveLength(1);
-  expect(parent.getSnapshot().children[0].getSnapshot().text).toBe("only text");
-  expect(y.parent).toBeNull();
+  expect(renderer.getText(x)).toBe("changed");
 });
 
 test("attributes change snapshots only when values change", () => {
@@ -72,7 +68,7 @@ test("the invalidation sink hears each change with its reason", () => {
   setInvalidationSink((node, reason) => heard.push([node, reason]));
   try {
     const parent = renderer.createElement("native-view");
-    const text = renderer.createTextNode("before");
+    const text = renderer.createText("before");
     renderer.insert(parent, text, null);
     renderer.setAttribute(parent, "nativeProps", { style: {} });
     renderer.setText(text, "after");
@@ -102,7 +98,7 @@ test("dispatchers stay stable while listeners come and go", () => {
 test("nodes share one read-only empty props object and one empty children array until they are written to, and a write copies", () => {
   const first = renderer.createElement("native-view");
   const second = renderer.createElement("native-text");
-  const text = renderer.createTextNode("hello");
+  const text = renderer.createText("hello");
   const empty = first.getSnapshot();
   // Nothing allocated per node: the same frozen objects, whatever the kind.
   expect(second.getSnapshot().props).toBe(empty.props);

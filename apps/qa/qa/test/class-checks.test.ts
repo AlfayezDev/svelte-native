@@ -14,7 +14,7 @@ import { sample } from "./sample.ts";
 
 /**
  * The class checks of the native checks lab (`src/lib/native/dev/class-checks.ts`, `class-lab.ts`, `ClassProbe.svelte`): the device reads what a mounted view's classes became; here the host holds what it is
- * asked to expect against what the build makes of `src/global.css` (Tailwind 4.3.3 and the library's converter, the same code Metro runs), and holds the number of checks the gates pin against the page.
+ * asked to expect against what the build makes of `src/global.css` (Tailwind 4.3.5 and the library's converter, the same code Metro runs), and holds the number of checks the gates pin against the page.
  */
 const gates = JSON.parse(readFileSync(join(platformDir, "qa/gates.json"), "utf8")) as GatesFile;
 const source = (path: string) => readFileSync(join(platformDir, path), "utf8");

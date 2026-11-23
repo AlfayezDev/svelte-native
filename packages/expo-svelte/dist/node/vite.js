@@ -447,7 +447,7 @@ export const mobile = false;
 import { createRequire as createRequire2 } from "node:module";
 var require3 = createRequire2(import.meta.url);
 function kitMissingMessage(what) {
-  return `${what} needs \`@sveltejs/kit\`, which is not installed (an optional peer dependency of expo-svelte: only remote functions and the web target use it). Install the version the package was written against: \`pnpm add @sveltejs/kit@3.1.1\`, and copy its patch (README, "Apply the patches").`;
+  return `${what} needs \`@sveltejs/kit\`, which is not installed (an optional peer dependency of expo-svelte: only remote functions and the web target use it). Install the version the package was written against: \`pnpm add @sveltejs/kit@3.4.0\`, and copy its patch (README, "Apply the patches").`;
 }
 
 // src/svelte-build.ts
@@ -455,13 +455,21 @@ import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:f
 import { createRequire as createRequire3 } from "node:module";
 import { dirname as dirname2, join as join2 } from "node:path";
 var requiredSvelte = {
-  version: "5.56.7",
-  commit: "216f258068d93170a927ad4d27ee6864b0b305c5",
-  pullRequest: "https://github.com/sveltejs/svelte/pull/18042",
-  /** The preview build pkg.pr.new publishes for the commit; byte for byte the tarball in this repository's `vendor/`. */
-  preview: "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5",
-  vendored: "vendor/svelte-5.56.7-216f258.tgz"
+  version: "5.59.1",
+  /** The first release with custom renderers. */
+  firstWithRenderer: "5.59.0"
 };
+function before(version, release) {
+  const parse = (v) => {
+    const match = /^(\d+)\.(\d+)\.(\d+)(-)?/.exec(v);
+    return match ? [Number(match[1]), Number(match[2]), Number(match[3]), match[4] ? 0 : 1] : null;
+  };
+  const a = parse(version);
+  const b = parse(release);
+  if (!a) return true;
+  for (let i = 0; i < 4; i++) if (a[i] !== b[i]) return a[i] < b[i];
+  return false;
+}
 function inspectSvelte(from) {
   let manifestPath;
   try {
@@ -473,17 +481,14 @@ function inspectSvelte(from) {
   const manifest = JSON.parse(readFileSync2(manifestPath, "utf8"));
   const version = manifest.version ?? null;
   const exported = manifest.exports !== void 0 && "./renderer" in manifest.exports;
-  if (!exported || !existsSync3(join2(directory, "src/renderer/index.js"))) return { ok: false, version, directory, reason: "stock-release" };
+  if (!exported || !existsSync3(join2(directory, "src/renderer/index.js"))) return { ok: false, version, directory, reason: "no-renderer" };
+  if (version === null || before(version, requiredSvelte.firstWithRenderer)) return { ok: false, version, directory, reason: "before-release" };
   return { ok: true, version: version ?? "unknown", directory };
 }
 function customRendererMessage(inspection, what) {
-  const found = inspection.reason === "missing" ? "No `svelte` package can be resolved from it." : `The installed svelte${inspection.version ? ` ${inspection.version}` : ""} (${inspection.directory}) has no \`./renderer\` export, so it is a stock release and not the custom-renderer build.`;
-  return [
-    `${what} needs the custom-renderer build of Svelte (${requiredSvelte.pullRequest}, commit ${requiredSvelte.commit.slice(0, 7)}, version ${requiredSvelte.version}). ${found}`,
-    "Install that build in the app instead of svelte from the registry:",
-    `  pnpm add svelte@${requiredSvelte.preview}`,
-    `or the tarball in the library's repository (${requiredSvelte.vendored}), as \`"svelte": "file:<path to it>"\`. The same build must be the one the app's own \`svelte\` resolves to, so also drop any \`svelte\` override that points elsewhere.`
-  ].join("\n");
+  const installed = `The installed svelte${inspection.version ? ` ${inspection.version}` : ""} (${inspection.directory})`;
+  const found = inspection.reason === "missing" ? "No `svelte` package can be resolved from it." : inspection.reason === "no-renderer" ? `${installed} has no \`./renderer\` export: custom renderers came with Svelte ${requiredSvelte.firstWithRenderer}.` : `${installed} is from before Svelte ${requiredSvelte.firstWithRenderer}, the release with custom renderers: a build of the pull request (pkg.pr.new or a tarball) has a \`./renderer\` export with other method names.`;
+  return [`${what} needs Svelte ${requiredSvelte.version}, with custom renderers. ${found}`, "Install it from the registry:", `  pnpm add svelte@${requiredSvelte.version}`].join("\n");
 }
 function assertCustomRenderer(what, from) {
   const inspection = inspectSvelte(from);

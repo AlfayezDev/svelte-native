@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { findPackage } from "../../src/doctor/resolve.ts";
 import { removedSpecifiers } from "./support/removed-entries.ts";
 import { packageRoot, repoRoot } from "../support/paths.ts";
+import { copyStockSvelte } from "../support/stock-svelte.ts";
 
 // The package is installed by apps outside this repository, so its code runs from a `node_modules`, where Node refuses to load TypeScript
 // (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, Node 25 and 26). In this repository it works whatever is wrong, because the workspace link is
@@ -64,8 +65,8 @@ beforeAll(() => {
   // The dependencies are installed with the package; the peers (those this repository has) by the app. `@expo/config-plugins` is what Expo brings to a hoisted install, and the
   // tool the Expo plugin is loaded by. `@expo/metro-config` is not linked: the transformer finds it through `expo`, which is.
   for (const name of [...installedNames(), "@expo/config-plugins"]) link(name);
-  // The app's Svelte is the stock custom-renderer build, as the guide installs it (a URL install, which pnpm does not patch), and not this repository's, which a patch has changed for
-  // Bun: the transformer has to make that compiler accept the transition directives itself.
+  // The app's Svelte is the registry's, as the guide installs it, and not this repository's, which a patch has changed for Bun: the transformer has to make that compiler accept the
+  // transition directives itself.
   installStockSvelte(app);
 
   // The native-only app. `expo-modules-core` and the two `@types` packages are what a hoisted install has at the top: the library's source imports the first (a dependency of `expo`),
@@ -84,13 +85,11 @@ beforeAll(() => {
   for (const name of installedNames(["expo"])) link(name, strict);
 });
 
-/** Replaces the link to this repository's Svelte by an unpacked copy of the vendored tarball (the build as published, its compiler unpatched), with the dependencies it links in `into`. */
+/** Replaces the link to this repository's Svelte by a copy of it as published (its compiler unpatched), with the dependencies it links in `into`. */
 function installStockSvelte(into: string): void {
   const target = join(into, "node_modules/svelte");
   rmSync(target, { recursive: true, force: true });
-  mkdirSync(target, { recursive: true });
-  const unpack = Bun.spawnSync(["tar", "-xzf", join(repositoryRoot, "vendor/svelte-5.56.7-216f258.tgz"), "-C", target, "--strip-components=1"], { stdout: "pipe", stderr: "pipe" });
-  expect(unpack.stderr.toString() + unpack.exitCode).toMatch(/0$/);
+  copyStockSvelte(target);
   const repositorySvelte = findPackage("svelte", packageDirectory)?.directory ?? "";
   const dependencies = Object.keys((JSON.parse(readFileSync(join(target, "package.json"), "utf8")) as { dependencies: Record<string, string> }).dependencies);
   for (const name of dependencies) if (!existsSync(join(into, "node_modules", name))) link(name, into, repositorySvelte);
@@ -343,7 +342,7 @@ describe("an app that builds for native only: no @sveltejs/kit, no vite", () => 
     // The runtime's imports of SvelteKit's files, and a remote function module, are what need it.
     for (const message of [result.kitFromRuntime, result.kitInternal]) {
       expect(message).toContain("`@sveltejs/kit`, which is not installed");
-      expect(message).toContain("pnpm add @sveltejs/kit@3.1.1");
+      expect(message).toContain("pnpm add @sveltejs/kit@3.4.0");
     }
     expect(result.remoteModule).toContain("api.remote.ts is a remote function module");
     expect(result.remoteModule).toContain("needs `@sveltejs/kit`, which is not installed");
@@ -371,7 +370,7 @@ describe("an app that builds for native only: no @sveltejs/kit, no vite", () => 
     expect(skipped?.message).toContain("@sveltejs/kit");
     expect(skipped?.message).toMatch(/\bvite\b/);
     expect(report.checks.filter((check) => check.status === "fail" && /@sveltejs\/kit|\bvite\b/.test(check.message))).toEqual([]);
-    expect(report.checks.find((check) => check.message.includes("@sveltejs/kit@3.1.1: @sveltejs/kit is not installed (optional)"))?.status).toBe("skip");
+    expect(report.checks.find((check) => check.message.includes("@sveltejs/kit@3.4.0: @sveltejs/kit is not installed (optional)"))?.status).toBe("skip");
   });
 
   test("Metro bundles a minimal app for Android: the page, the library's own .svelte.ts modules from node_modules, hermes-intl, and nothing of SvelteKit or Vite", () => {

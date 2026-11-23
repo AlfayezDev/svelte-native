@@ -35,6 +35,7 @@ enum ViewPropId : int32_t {
   kInputStateText = 48,
   kInputSelection = 49,
   kInputAutofill = 50,
+  kInputEvents = 51,
   kSwitchValue = 60,
   kSwitchEnabled = 61,
   kSwitchThumb = 62,
@@ -131,6 +132,14 @@ int32_t autoCorrectCode(const AndroidTextInputProps &p) {
 // false until set, while React Native's default is true: the same raw-props code (InputRules.kt).
 int32_t softInputCode(const AndroidTextInputProps &p) {
   const folly::dynamic *raw = p.rawProps.isObject() ? p.rawProps.get_ptr("showSoftInputOnFocus") : nullptr;
+  const bool isBool = raw != nullptr && raw->isBool();
+  return autoCorrectOfRaw(raw != nullptr, isBool, isBool && raw->getBool());
+}
+
+// `onContentSizeChange` and `onScroll` are no typed props of Android's text input either. JavaScript sends `true` for a handler it has, and React Native gives the view a
+// watcher of each only while the prop is there, so the raw props say whether to send the events (record 51, the codes of `autoCorrect`: 1 there, 0 removed, -1 not part of this update).
+int32_t rawFlagCode(const AndroidTextInputProps &p, const char *key) {
+  const folly::dynamic *raw = p.rawProps.isObject() ? p.rawProps.get_ptr(key) : nullptr;
   const bool isBool = raw != nullptr && raw->isBool();
   return autoCorrectOfRaw(raw != nullptr, isBool, isBool && raw->getBool());
 }
@@ -235,6 +244,10 @@ void encodeInput(Out &o, const ShadowView &view, float scale) {
   b.putInt(p.autoComplete.empty() ? -1 : o.str(p.autoComplete));
   b.putInt(importantForAutofillCode(p.importantForAutofill));
   b.putInt(softInputCode(p));
+
+  o.begin(kInputEvents);
+  b.putInt(rawFlagCode(p, "onContentSizeChange"));
+  b.putInt(rawFlagCode(p, "onScroll"));
 }
 
 void encodeSwitch(Out &o, const ShadowView &view) {

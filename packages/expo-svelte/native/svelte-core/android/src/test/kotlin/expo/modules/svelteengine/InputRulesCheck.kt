@@ -7,7 +7,10 @@ import kotlin.system.exitProcess
  * setting a view keeps, so that an update that does not mention the prop leaves it and `false` stays different from unset.
  * Also `showSoftInputOnFocus`, `selection` and autofill (SPEC.md "TextInput: selection and autofill"): what record 50 does to the keyboard, when record 49 moves
  * the caret, and that the autofill hints are React Native's, entry by entry.
- * Usage: InputRulesCheck <ReactTextInputManager.kt> <EngineInput.kt> <AutoCorrectCode.h> <InputAutofill.kt> <PropsEncoderViews.cpp>   (src/test/run.sh)
+ * Also `onContentSizeChange` and `onScroll` (SPEC.md "TextInput: content size and scroll events"): when a view watches and when a watcher has something to send, and that the
+ * events say what React Native's watchers say.
+ * Usage: InputRulesCheck <ReactTextInputManager.kt> <EngineInput.kt> <AutoCorrectCode.h> <InputAutofill.kt> <PropsEncoderViews.cpp> <ReactTextContentSizeWatcher.kt>
+ *   <ReactTextScrollWatcher.kt> <ScrollEvent.kt> <InputEvents.cpp> <ViewEvents.kt>   (src/test/run.sh)
  */
 private var failures = 0
 private var checks = 0
@@ -97,14 +100,91 @@ private fun selectionAndAutofill() {
   expect("no name keeps the prop's mode", InputRules.autofillMode(null, false, InputRules.AUTOFILL_AUTO), InputRules.AUTOFILL_AUTO)
 }
 
+private fun watchers() {
+  expect("a handler turns the watcher on", InputRules.watchAfter(false, InputRules.AUTO_CORRECT_ON), true)
+  expect("an update without the prop keeps it on", InputRules.watchAfter(true, InputRules.AUTO_CORRECT_KEEP), true)
+  expect("an update without the prop keeps it off", InputRules.watchAfter(false, InputRules.AUTO_CORRECT_KEEP), false)
+  expect("a removed prop turns it off", InputRules.watchAfter(true, InputRules.AUTO_CORRECT_CLEARED), false)
+  expect("false turns it off", InputRules.watchAfter(true, InputRules.AUTO_CORRECT_OFF), false)
+  expect("the first size is new, a watcher having sent nothing", InputRules.differs(0, 0, 472, 63), true)
+  expect("the same size is not", InputRules.differs(472, 63, 472, 63), false)
+  expect("a taller content is", InputRules.differs(472, 63, 472, 126), true)
+  expect("a shorter content is", InputRules.differs(472, 126, 472, 63), true)
+  expect("a wider content is", InputRules.differs(472, 63, 480, 63), true)
+  expect("a scroll to an offset is", InputRules.differs(0, 0, 0, 80), true)
+  expect("a scroll back to the start is", InputRules.differs(0, 80, 0, 0), true)
+  expect("no scroll is not", InputRules.differs(0, 0, 0, 0), false)
+}
+
+/** React Native's watchers (the sources are the arguments): a boolean prop that is off by default, the size they report, when they send it, and the payload of a scroll. */
+private fun watchersAgainstReactNative(manager: String, contentSize: String, scroll: String, scrollEvent: String) {
+  val managerText = java.io.File(manager).readText().replace(Regex("\\s+"), " ")
+  expect("RN: onContentSizeChange is a boolean prop, off by default", managerText.contains("@ReactProp(name = \"onContentSizeChange\", defaultBoolean = false)"), true)
+  expect("RN: onScroll is a boolean prop, off by default", managerText.contains("@ReactProp(name = \"onScroll\", defaultBoolean = false)"), true)
+  val sizeText = java.io.File(contentSize).readText().replace(Regex("\\s+"), " ")
+  expect("RN: the content size is the layout between the paddings", sizeText.contains("contentWidth = (editText.compoundPaddingLeft + editText.layout.width + editText.compoundPaddingRight)") &&
+    sizeText.contains("contentHeight = (editText.compoundPaddingTop + editText.layout.height + editText.compoundPaddingBottom)"), true)
+  expect("RN: the size is the view's own while there is no layout", sizeText.contains("var contentWidth = editText.width var contentHeight = editText.height"), true)
+  expect("RN: it is sent when width or height is not the one sent last", sizeText.contains("if (contentWidth != previousContentWidth || contentHeight != previousContentHeight)"), true)
+  expect("RN: it is sent in dp", sizeText.contains("toDIPFromPixel(contentWidth.toFloat()), toDIPFromPixel(contentHeight.toFloat())"), true)
+  val scrollText = java.io.File(scroll).readText().replace(Regex("\\s+"), " ")
+  expect("RN: a scroll is sent when the offset is not the one sent last", scrollText.contains("if (previousHorizontal != horiz || previousVert != vert)"), true)
+  expect("RN: a scroll has the offset, no velocity and no content size, and the view's size", scrollText.contains("horiz.toFloat(), vert.toFloat(), 0f, // can't get x velocity 0f, // can't get y velocity 0, // can't get content width 0, // can't get content height editText.width, editText.height"), true)
+  val eventText = java.io.File(scrollEvent).readText().replace(Regex("\\s+"), " ")
+  for (key in listOf("contentInset", "contentOffset", "contentSize", "layoutMeasurement", "velocity")) {
+    expect("RN: a scroll event has $key", eventText.contains("event.putMap(\"$key\", $key)"), true)
+  }
+  expect("RN: a scroll event has target and timestamp", eventText.contains("event.putInt(\"target\", viewTag)") && eventText.contains("event.putDouble(\"timestamp\", timestamp.toDouble())"), true)
+  expect("RN: responderIgnoreScroll is the flag's opposite", eventText.contains("\"responderIgnoreScroll\", !ReactNativeFeatureFlags.shouldTriggerResponderTransferOnScrollAndroid()"), true)
+  expect("RN: a scroll event coalesces", eventText.contains("override fun canCoalesce(): Boolean = scrollEventType == ScrollEventType.SCROLL"), true)
+}
+
+/** The engine says the same: the input's own expressions, the record, and the two events' names and payloads. */
+private fun watchersAgainstEngine(engineInput: String, encoder: String, inputEvents: String, viewEvents: String) {
+  val input = java.io.File(engineInput).readText().replace(Regex("\\s+"), " ")
+  expect("EngineInput: the content size is the layout between the paddings, the view's own size without one",
+    input.contains("val w = if (content != null) compoundPaddingLeft + content.width + compoundPaddingRight else width") &&
+      input.contains("val h = if (content != null) compoundPaddingTop + content.height + compoundPaddingBottom else height"), true)
+  expect("EngineInput: the size goes out when it is not the one sent last, in dp", input.contains("if (!InputRules.differs(sentContentW, sentContentH, w, h)) return") &&
+    input.contains("ViewEvents.inputContentSize(node.tag, w / density, h / density)"), true)
+  expect("EngineInput: the size is looked at after a layout and after an edit", input.contains("super.onLayout(changed, left, top, right, bottom) reportContentSize()") &&
+    input.contains("reportContentSize() } })"), true)
+  expect("EngineInput: a scroll goes out when the offset is not the one sent last, with the view's size, in dp",
+    input.contains("if (!watchScroll || !InputRules.differs(sentScrollX, sentScrollY, horiz, vert)) return") &&
+      input.contains("ViewEvents.inputScroll(node.tag, horiz / density, vert / density, width / density, height / density)"), true)
+  expect("EngineInput: the watchers follow record 51 through InputRules", input.contains("InputRules.watchAfter(watchContentSize, v.onContentSizeChange)") && input.contains("InputRules.watchAfter(watchScroll, v.onScroll)"), true)
+  val encoderText = java.io.File(encoder).readText().replace(Regex("\\s+"), " ")
+  expect("the encoder sends record 51 from the raw props of both handlers", encoderText.contains("kInputEvents = 51,") && encoderText.contains("o.begin(kInputEvents); b.putInt(rawFlagCode(p, \"onContentSizeChange\")); b.putInt(rawFlagCode(p, \"onScroll\"));"), true)
+  val flag = encoderText.substringAfter("int32_t rawFlagCode(").substringBefore("// `selection`")
+  expect("the encoder reads a handler's flag as autoCorrect's code", flag.contains("p.rawProps.get_ptr(key)") && flag.contains("return autoCorrectOfRaw(raw != nullptr, isBool, isBool && raw->getBool());"), true)
+  val events = java.io.File(inputEvents).readText().replace(Regex("\\s+"), " ")
+  val size = events.substringAfter("void inputContentSize(").substringBefore("void inputScroll(")
+  expect("the content size event is topContentSizeChange: contentSize with width and height, and target, a unique event",
+    size.contains("sendUnique(*emitter, \"contentSizeChange\"") && size.contains("\"contentSize\", folly::dynamic::object(\"width\"") && size.contains("(\"height\"") && size.contains("\"target\", tag"), true)
+  val scroll = events.substringAfter("void inputScroll(").substringBefore("void switchChange(")
+  expect("the scroll event is topScroll, a unique event", scroll.contains("sendUnique(*emitter, \"scroll\""), true)
+  for (key in listOf("contentInset", "contentOffset", "contentSize", "layoutMeasurement", "velocity", "target", "timestamp", "responderIgnoreScroll")) {
+    expect("the scroll event has $key", scroll.contains("\"$key\""), true)
+  }
+  expect("the natives are registered", events.contains("makeNativeMethod(\"inputContentSize\", inputContentSize)") && events.contains("makeNativeMethod(\"inputScroll\", inputScroll)"), true)
+  val view = java.io.File(viewEvents).readText().replace(Regex("\\s+"), " ")
+  expect("ViewEvents declares them with the arguments the natives read", view.contains("external fun inputContentSize(tag: Int, widthDp: Float, heightDp: Float)") &&
+    view.contains("external fun inputScroll(tag: Int, xDp: Float, yDp: Float, widthDp: Float, heightDp: Float)"), true)
+}
+
 fun main(args: Array<String>) {
   flags()
   selectionAndAutofill()
+  watchers()
   if (args.isNotEmpty()) againstReactNative(args[0])
   if (args.size > 1) againstEngineInput(args[1])
   if (args.size > 2) againstEncoder(args[2])
   if (args.size > 3) hintsAgainstReactNative(args[0], args[3])
   if (args.size > 4) selectionAgainstEncoder(args[4])
+  if (args.size > 9) {
+    watchersAgainstReactNative(args[0], args[5], args[6], args[7])
+    watchersAgainstEngine(args[1], args[4], args[8], args[9])
+  }
   val unset = InputRules.AUTO_CORRECT_CLEARED
   expect("a view starts unset", InputRules.autoCorrectAfter(unset, InputRules.AUTO_CORRECT_KEEP), unset)
   expect("false is a setting of its own", InputRules.autoCorrectAfter(unset, InputRules.AUTO_CORRECT_OFF), InputRules.AUTO_CORRECT_OFF)

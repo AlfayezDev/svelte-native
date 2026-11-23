@@ -158,6 +158,7 @@ Additions to SPEC.md (merge into its kind / prop tables). Same batch encoding: r
 | 48 | stateText: string, mostRecentEventCount. Only in `UPDATE_STATE` (concatenated fragments of `AndroidTextInputState::attributedStringBox`) | 5 |
 | 49 | selection: code (-1 not in this update, 0 removed, 1 set), start, end, from the raw props ("TextInput: selection and autofill") | 5 |
 | 50 | autofill: autoComplete string (-1 unset), importantForAutofill (0 auto, 1 no, 2 noExcludeDescendants, 3 yes, 4 yesExcludeDescendants), showSoftInputOnFocus code (as autoCorrect's) | 5 |
+| 51 | events: `onContentSizeChange` code, `onScroll` code, from the raw props as `autoCorrect`'s (`InputRules`: 1 a handler, 0 removed, -1 not part of this update) ("TextInput: content size and scroll events") | 5 |
 | 60 | value: int (`value \|\| on`) | 6 |
 | 61 | enabled: int (`enabled && !disabled`) | 6 |
 | 62 | thumb: hasColor, color (`thumbColor`, else `thumbTintColor`) | 6 |
@@ -173,7 +174,7 @@ Additions to SPEC.md (merge into its kind / prop tables). Same batch encoding: r
 | 83 | headers: n, then n x (name string, value string). Only when `sources[0].headers` is not empty | 8 |
 | 100 | modal: animationType (0 none, 1 slide, 2 fade), transparent, statusBarTranslucent, navigationBarTranslucent, hardwareAccelerated, visible | 9 |
 
-Ids 49..59, 66..69, 74..79, 84..99, 101..109 stay free.
+Ids 52..59, 66..69, 74..79, 84..99, 101..109 stay free.
 
 ### Events (Kotlin to C++, `ViewEvents`, `InputEvents.cpp`)
 
@@ -187,6 +188,8 @@ Static JNI methods on the Kotlin object `expo.modules.svelteengine.ViewEvents`, 
 | `input(.., INPUT_SUBMIT, text ..)` | `topSubmitEditing` | `{target, text}` |
 | `input(.., INPUT_KEY_PRESS, key ..)` | `topKeyPress` | `{key}` (one char, `Enter`, `Backspace`) |
 | `input(.., INPUT_SELECTION, .., selStart, selEnd)` | `topSelectionChange` | `{selection:{start,end}}` |
+| `inputContentSize(tag, widthDp, heightDp)` | `topContentSizeChange` (unique) | `{target, contentSize:{width,height}}`, dp |
+| `inputScroll(tag, xDp, yDp, widthDp, heightDp)` | `topScroll` (unique) | `{target, contentOffset:{x,y}, layoutMeasurement:{width,height}, contentSize:{0,0}, contentInset:{0,0,0,0}, velocity:{0,0}, timestamp, responderIgnoreScroll:true}`, dp |
 | `switchChange(tag, value)` | `AndroidSwitchEventEmitter::onChange` = `topChange` | `{value, target}` |
 | `image(tag, IMAGE_LOAD_START ..)` | `ImageEventEmitter::onLoadStart` | |
 | `image(.., IMAGE_LOAD, w, h, uri ..)` | `onLoad` | `{source:{uri,width,height}}`, size = original source pixels |
@@ -215,6 +218,14 @@ Other behaviour: `inputType` is recomputed from keyboardType, autoCapitalize, se
 - `selection` (record 49) is no typed prop of Android's text input: React Native's `TextInput.js` sets it with the `setTextAndSelection` command when it differs from the last one the field reported. Here JavaScript sends it as a prop (the Android view table has it, as the iOS ones do), and the encoder (`encodeSelection`) reads the commit's raw props as for `autoCorrect`: 1 with the range (a missing `end` is `start`), 0 when it was removed, -1 when this update does not mention it. `EngineInput` selects the range when the props set a range other than the last one they set (`InputRules.selects`): a state update encodes the same props again, and must not put back a caret the user moved since. The range is clamped to the text (`InputRules.clampSelection`), and set again after the state text of the same commit (`applyState`, while `selectionFresh`), so an input that reformats its value and moves the caret in one update gets the caret in the new text.
 - `autoComplete`, `importantForAutofill` and `showSoftInputOnFocus` (record 50): the name's autofill hint (`InputAutofill`, React Native's `REACT_PROPS_AUTOFILL_HINTS_MAP` entry by entry, which `InputRulesCheck` compares), autofill off for `"off"` or a name with no hint (`InputRules.autofillMode`), API 26 and later; `showSoftInputOnFocus` is a raw-props tri-state as `autoCorrect` is, unset being true (`InputRules.softInputAfter`). JavaScript turns HTML's tokens into React Native's Android names first (`src/text-input-props.ts`, React Native's `TextInput.js` tables, compared in `tests/upstream/text-input-props.test.ts`), and `inputMode` into `keyboardType` and `showSoftInputOnFocus`.
 - The `setTextAndSelection` command reaches `EngineInput.setTextAndSelection` through `Commands.dispatch`.
+
+#### TextInput: content size and scroll events (22 November 2026)
+
+`onContentSizeChange` and `onScroll` work as React Native's `AndroidTextInput` does (`ReactTextInputManager.setOnContentSizeChange`, `setOnScroll`, `ReactTextContentSizeWatcher`, `ReactTextScrollWatcher`; `InputRulesCheck` reads those sources):
+
+- A view sends them only while the prop is there. JavaScript sends `true` for a handler, neither prop is typed in `AndroidTextInputProps`, and the encoder reads the commit's raw props (`rawFlagCode`, record 51) with the codes of `autoCorrect`; `InputRules.watchAfter` keeps the setting across updates that do not mention the prop. A watcher that is turned on has sent nothing yet, as a new React Native watcher has.
+- `topContentSizeChange { contentSize: { width, height }, target }`, in dp. The size is the text layout between the paddings (`compoundPaddingLeft + layout.width + compoundPaddingRight`, `compoundPaddingTop + layout.height + compoundPaddingBottom`; the view's own size while there is no layout), single-line or multiline. It is looked at after every layout of the view (`onLayout`, so the first layout sends it when the view mounts) and after every edit, text from JavaScript included (`afterTextChanged`, after the change event, when the edit's own layout has followed it: the trigger is the edit, as in `ReactEditText`, since the frame is Yoga's). It is sent only when the width or the height is not the one the last event carried (`InputRules.differs`): an edit that does not change the number of lines sends nothing. React Native's event does not override `canCoalesce`, so it is a unique event here (`dispatchUniqueEvent`): an unread one is replaced by the newer size.
+- `topScroll`, from `View.onScrollChanged` of the `EditText` (the caret scrolled into view, a drag), when the offset is not the one the last event carried. The payload is the `ScrollEvent` `ReactTextScrollWatcher` fills in: `contentOffset` and `layoutMeasurement` (the view's size) in dp, `contentSize`, `velocity` and `contentInset` zero, `timestamp` in milliseconds of the uptime clock, `responderIgnoreScroll` true (`shouldTriggerResponderTransferOnScrollAndroid` is off in React Native 0.86.3). A scroll event coalesces in React Native, so it is a unique event too.
 
 #### TextInput: `autoCorrect` and the platform's spell checker (2 November 2026)
 
@@ -246,7 +257,7 @@ Style drawable is chosen at creation from record 70; the frame is Yoga's (React 
 
 ### Gaps
 
-- TextInput: `contextMenuHidden`, `inlineImageLeft`, `textShadow*`, `textDecorationLine`, `underlineColorAndroid`, `numberOfLines`, `disableFullscreenUI`, `returnKeyLabel`, `textBreakStrategy` are not applied; `contentSizeChange` and `scroll` events are not sent; text attributes of children (nested `<Text>` inside the input) are not rendered; `selectionHandleColor` shares the cursor tint.
+- TextInput: `contextMenuHidden`, `inlineImageLeft`, `textShadow*`, `textDecorationLine`, `underlineColorAndroid`, `numberOfLines`, `disableFullscreenUI`, `returnKeyLabel`, `textBreakStrategy` are not applied; text attributes of children (nested `<Text>` inside the input) are not rendered; `selectionHandleColor` shares the cursor tint.
 - Switch: no ripple background (`backgroundColor` uses the common GradientDrawable).
 - Image: no `blurRadius`, `fadeDuration`, `defaultSource`, `loadingIndicatorSource`, `overlayColor`, `capInsets`, `progressiveRenderingEnabled`, `onProgress`/`onPartialLoad`; no vector XML drawables; images with a 0-size frame never load. The C++ `ImageShadowNode` still asks React Native's image manager to prefetch, which is untouched.
 - Modal: no `onOrientationChange`, no `supportedOrientations`, `hardwareAccelerated` is ignored (the layer is part of the activity's window); a new size after a rotation or a keyboard change reaches JavaScript one layout later.

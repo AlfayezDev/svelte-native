@@ -135,6 +135,13 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
   private var padT = -1
   private var padR = -1
   private var padB = -1
+  /** `onContentSizeChange` and `onScroll` (record 51): whether JavaScript has a handler, and the numbers the last event carried (`InputRules.differs`), in px as React Native keeps them. */
+  private var watchContentSize = false
+  private var watchScroll = false
+  private var sentContentW = 0
+  private var sentContentH = 0
+  private var sentScrollX = 0
+  private var sentScrollY = 0
 
   init {
     background = null
@@ -147,10 +154,14 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
       override fun afterTextChanged(s: Editable?) {
         // Creation-time setters (input type, hint, initial text) also fire this; React Native's ReactEditText reports
         // nothing before the view is fully created, and a stray empty change here overwrote a bound value in JavaScript.
-        if (settingText || !created) return
-        val n = ++nativeEventCount
-        if (n <= 3) android.util.Log.i("SvelteEngine", "input change #$n tag=${node.tag} length=${s?.length ?: 0} focused=$isFocused")
-        ViewEvents.input(node.tag, ViewEvents.INPUT_CHANGE, s?.toString() ?: "", n, selectionStart, selectionEnd)
+        if (!settingText && created) {
+          val n = ++nativeEventCount
+          if (n <= 3) android.util.Log.i("SvelteEngine", "input change #$n tag=${node.tag} length=${s?.length ?: 0} focused=$isFocused")
+          ViewEvents.input(node.tag, ViewEvents.INPUT_CHANGE, s?.toString() ?: "", n, selectionStart, selectionEnd)
+        }
+        // After the change event, for text from JavaScript too, as ReactEditText's TextWatcherDelegator does. The edit's own layout has followed it by now:
+        // an Editable tells the layout of its text before it calls `afterTextChanged`. The frame stays Yoga's, so no layout pass follows an edit to tell the new size.
+        reportContentSize()
       }
     })
     setOnFocusChangeListener { _, hasFocus ->
@@ -230,6 +241,7 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
 
     showSoftInputOnFocus = InputRules.softInputAfter(showSoftInputOnFocus, v.showSoftInputOnFocus)
     applyAutofill(v)
+    applyWatchers(v)
 
     if (create) {
       // Initial text from the props; the state (text + event count) overrides it once the layout ran.
@@ -295,6 +307,32 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
       4 -> View.IMPORTANT_FOR_AUTOFILL_YES_EXCLUDE_DESCENDANTS
       else -> View.IMPORTANT_FOR_AUTOFILL_AUTO
     }
+  }
+
+  /** `onContentSizeChange` and `onScroll` (record 51). React Native gives the view a watcher while the prop is there, and a new watcher has sent nothing yet. */
+  private fun applyWatchers(v: ViewProps) {
+    val size = InputRules.watchAfter(watchContentSize, v.onContentSizeChange)
+    if (size && !watchContentSize) { sentContentW = 0; sentContentH = 0 }
+    watchContentSize = size
+    val scroll = InputRules.watchAfter(watchScroll, v.onScroll)
+    if (scroll && !watchScroll) { sentScrollX = 0; sentScrollY = 0 }
+    watchScroll = scroll
+  }
+
+  /**
+   * `ReactTextContentSizeWatcher.onLayout`: the size of the text layout between the paddings (the view's own size while there is no layout), in dp, when it is not the
+   * one the last event carried. The first layout sends it, as does every edit that changes the number of lines; a frame that does not change, and an edit that does not
+   * change the size, send nothing.
+   */
+  private fun reportContentSize() {
+    if (!watchContentSize) return
+    val content = layout
+    val w = if (content != null) compoundPaddingLeft + content.width + compoundPaddingRight else width
+    val h = if (content != null) compoundPaddingTop + content.height + compoundPaddingBottom else height
+    if (!InputRules.differs(sentContentW, sentContentH, w, h)) return
+    sentContentW = w; sentContentH = h
+    val density = resources.displayMetrics.density
+    ViewEvents.inputContentSize(node.tag, w / density, h / density)
   }
 
   private fun applyTextStyle(v: ViewProps) {
@@ -424,6 +462,20 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
     if (!created || settingText || (selStart == lastSelStart && selEnd == lastSelEnd)) return
     lastSelStart = selStart; lastSelEnd = selEnd
     ViewEvents.input(node.tag, ViewEvents.INPUT_SELECTION, null, 0, selStart, selEnd)
+  }
+
+  override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+    super.onLayout(changed, left, top, right, bottom)
+    reportContentSize()
+  }
+
+  /** `ReactTextScrollWatcher`: the text scrolled inside the frame (the caret came into view, the user dragged), reported when the offset is not the last one sent. */
+  override fun onScrollChanged(horiz: Int, vert: Int, oldHoriz: Int, oldVert: Int) {
+    super.onScrollChanged(horiz, vert, oldHoriz, oldVert)
+    if (!watchScroll || !InputRules.differs(sentScrollX, sentScrollY, horiz, vert)) return
+    sentScrollX = horiz; sentScrollY = vert
+    val density = resources.displayMetrics.density
+    ViewEvents.inputScroll(node.tag, horiz / density, vert / density, width / density, height / density)
   }
 
   override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {

@@ -337,8 +337,12 @@ st_bundle() {
   node - "$app/out/index.android.bundle.map" "$app/out/index.android.bundle" "$repo" <<'JS'
 const fs = require("node:fs");
 const [map, bundle, repo] = process.argv.slice(2);
-const sources = JSON.parse(fs.readFileSync(map, "utf8")).sources;
 const text = fs.readFileSync(map, "utf8");
+// A plain map has `sources`; since Metro 0.87 the map of a bundle with a module that brings its own is an index map, a `sections` list of maps.
+const listed = new Set();
+const collect = (entry) => { for (const source of Array.isArray(entry.sources) ? entry.sources : []) listed.add(source); for (const section of entry.sections ?? []) if (section.map) collect(section.map); };
+collect(JSON.parse(text));
+const sources = [...listed];
 const inRepo = sources.filter((source) => source.includes(`${repo}/`));
 if (text.includes(`${repo}/`)) { console.error(`the source map mentions ${repo}`); process.exit(1); }
 const need = ["src/routes/+mobile.svelte", "src/routes/+layout.mobile.svelte", "src/routes/details/+mobile.svelte", "expo-svelte/src/router.svelte.ts", "expo-svelte/src/fabric/index.ts"];

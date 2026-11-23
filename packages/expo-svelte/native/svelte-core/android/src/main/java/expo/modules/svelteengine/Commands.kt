@@ -19,7 +19,6 @@ import kotlin.math.roundToInt
  */
 object Commands {
   private const val TAG = "SvelteEngine"
-  private val noArgs = arrayOf<Class<*>>()
 
   fun dispatch(mm: MountingManager, tag: Int, name: String, args: List<Any?>) {
     val view = mm.viewFor(tag)
@@ -36,8 +35,10 @@ object Commands {
       )
       "scrollToEnd" -> (view as? EngineScrollable)?.scrollToEndPx(bool(args.getOrNull(0)))
       "flashScrollIndicators" -> (view as? EngineScrollable)?.flashIndicators()
-      "focus" -> callOrFallback(view, "focus") { it.requestFocus() }
-      "blur" -> callOrFallback(view, "blur") { it.clearFocus() }
+      // An input's own `focus` and `blur` also open and close the keyboard. They are called directly, not found by name: R8 (on in the release build of
+      // Expo SDK 58's template) strips a method nothing calls, and the lookup then fell back to `clearFocus()`, which left the keyboard open.
+      "focus" -> if (view is EngineInput) view.focus() else view.requestFocus()
+      "blur" -> if (view is EngineInput) view.blur() else view.clearFocus()
       // React Native's TextInput command, `ref.dispatchCommand("setTextAndSelection", [eventCount, text | null, start, end])`.
       "setTextAndSelection" -> (view as? EngineInput)?.setTextAndSelection(
         (num(args.getOrNull(0)) ?: 0.0).toInt(),
@@ -46,14 +47,6 @@ object Commands {
         (num(args.getOrNull(3)) ?: -1.0).toInt(),
       )
       else -> Log.w(TAG, "dispatchCommand: unsupported command '$name' for tag $tag (${view.javaClass.simpleName})")
-    }
-  }
-
-  private fun callOrFallback(view: View, method: String, fallback: (View) -> Unit) {
-    try {
-      view.javaClass.getMethod(method, *noArgs).invoke(view)
-    } catch (_: NoSuchMethodException) {
-      fallback(view)
     }
   }
 

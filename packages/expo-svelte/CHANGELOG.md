@@ -4,6 +4,8 @@ Notable changes to `expo-svelte` (named `@alfayez/svelte-native` up to 0.4.0-rc.
 
 ## Unreleased
 
+## 0.4.0-rc.11 - 2026-11-23
+
 ### Changed
 
 - **Expo SDK 58, React Native 0.88 and React 19.3.** The package targets `expo` 58.0.26, `expo-constants` 58.0.16, `react` 19.3.0 and `react-native` 0.88.1 (peer ranges `~58.0.26` and `~58.0.16`); SDK 57 and React Native 0.86 are no longer supported. An app on SDK 57 changes:

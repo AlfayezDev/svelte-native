@@ -3,7 +3,7 @@ package expo.modules.svelteengine
 /**
  * What React Native's Android accessibility layer decides from the accessibility props, with no Android types so the host check
  * (`src/test/run.sh`, `A11yRulesCheck`) can run it and read React Native's own source for the tables. The Android calls that
- * apply the decisions are in [A11y]. The reference is React Native 0.86.3: `ReactAccessibilityDelegate.kt` (roles, actions, state,
+ * apply the decisions are in [A11y]. The reference is React Native 0.88.1: `ReactAccessibilityDelegate.kt` (roles, actions, state,
  * range) and `BaseViewManager.java` (content description, live region, important for accessibility).
  */
 object A11yRules {
@@ -128,6 +128,7 @@ object A11yRules {
     SPINBUTTON("android.widget.SpinButton", text = RoleText.SPINBUTTON),
     SWITCH("android.widget.Switch"),
     TAB("android.view.View", text = RoleText.TAB),
+    TABBAR("android.view.View"),
     TABLIST("android.view.View", text = RoleText.TABLIST),
     TIMER("android.view.View", text = RoleText.TIMER),
     LIST("android.widget.AbsListView"),

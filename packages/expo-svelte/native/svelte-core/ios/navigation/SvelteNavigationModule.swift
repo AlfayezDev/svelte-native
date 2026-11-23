@@ -14,8 +14,8 @@ import UIKit
 ///   nothing, as on Android.
 /// - `restore()`: at the next start of the process, once: `{ json, savedAt, attempts, systemKept, build, runningBuild, update }` or null. `attempts` counts
 ///   the times the file was handed over (this one included) without a start that finished; `systemKept` is the one thing only this side knows: whether
-///   UIKit offered its own restoration state at this launch (`application(_:shouldRestoreSecureApplicationState:)`, wired to `SvelteNavigationRestoration`
-///   by the config plugin's AppDelegate patch). The system keeps that state for a process it ended and deletes it when the user swipes the app away.
+///   UIKit offered its own restoration state at this launch (`application(_:shouldRestoreSecureApplicationState:)`, or the connecting scene session's
+///   `stateRestorationActivity` in an app with scenes, wired to `SvelteNavigationRestoration` by the config plugin's AppDelegate and SceneDelegate patches). The system keeps that state for a process it ended and deletes it when the user swipes the app away.
 ///   `build` and `update` are what the file says saved it and `runningBuild` the `CFBundleVersion` of this process; JavaScript compares them
 ///   (`freshNavigation`, the reason `updated`) and compares `update` with the one its own process runs. A launch in the background (a silent push, a
 ///   background fetch) is not the user coming back: it hands nothing over and consumes nothing, so the first launch in the foreground still finds the state.
@@ -43,11 +43,27 @@ public final class SvelteNavigationModule: Module {
   }
 }
 
-/// What the app delegate hands to this module (the config plugin adds four methods to the app's `AppDelegate` that call these, `applyAppDelegate` in
-/// `packages/expo-svelte/src/expo.ts`). The system saves the application's restorable state when the app enters the background and gives it back
-/// at the next launch only if the user did not remove the app from the app switcher; there is no view controller to restore, so the archive carries a
-/// version mark and `shouldRestore` / `didDecode` are the signal: the system kept the state.
+/// What the app delegate and the scene delegate hand to this module (the config plugin adds four methods to the app's `AppDelegate` and two to the `SceneDelegate`
+/// of Expo SDK 58's template that call these, `applyAppDelegate` and `applySceneDelegate` in `packages/expo-svelte/src/expo.ts`). The system saves the application's
+/// restorable state when the app enters the background and gives it back at the next launch only if the user did not remove the app from the app switcher; there is no view
+/// controller to restore, so the archive carries a version mark and the signal is that the system kept the state: for an app with scenes (the SDK 58 template, which iOS 27
+/// requires; UIKit calls none of the application delegate's restoration methods then) the scene session's `stateRestorationActivity`, for one without them `shouldRestore` /
+/// `didDecode`.
 public enum SvelteNavigationRestoration {
+  /// `UISceneDelegate.stateRestorationActivity(for:)`: asked when the app enters the background. The system keeps the activity with the scene's session and hands it back
+  /// at the next launch unless the user swiped the app away, which discards the session.
+  public static func stateRestorationActivity() -> NSUserActivity? {
+    NavigationStore.shared.observeLifecycle()
+    let activity = NSUserActivity(activityType: NavigationStore.activityType)
+    activity.addUserInfoEntries(from: [NavigationStore.archiveKey: NavigationStore.archiveVersion])
+    return activity
+  }
+
+  /// `scene(_:willConnectTo:options:)`, before React Native starts: the session the system connected carries the activity the process before this one left, so the system kept the state.
+  public static func sceneWillConnect(_ activity: NSUserActivity?) {
+    if activity?.activityType == NavigationStore.activityType { NavigationStore.shared.noteSystemKeptState() }
+  }
+
   /// `application(_:shouldSaveSecureApplicationState:)`.
   public static func shouldSave(_ coder: NSCoder) -> Bool {
     NavigationStore.shared.observeLifecycle()
@@ -76,6 +92,8 @@ final class NavigationStore: @unchecked Sendable {
 
   static let archiveKey = "svelte.navigation"
   static let archiveVersion = 1
+  /// The type of the activity a scene saves (`stateRestorationActivity`), whose presence at the next launch is the system's signal.
+  static let activityType = "svelte.navigation"
   /// The largest state kept, in bytes: Android's bound (a Bundle travels through a Binder transaction), kept so that both platforms refuse the same states.
   static let limit = 100_000
   /// The QA app only: `-SvelteNavigationAssumeSystemKill YES` among the launch arguments hands the state over without the system's signal, to tell a fault

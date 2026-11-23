@@ -71,7 +71,7 @@ export const vendoredPackages: readonly VendoredPackage[] = [
   },
   {
     name: "react-native-mmkv",
-    version: "4.3.1",
+    version: "4.3.2",
     android: { packageImportPath: "import com.margelo.nitro.mmkv.NitroMmkvPackage;", packageInstance: "new NitroMmkvPackage()" },
     ios: { podspec: "NitroMmkv.podspec" },
   },
@@ -98,26 +98,33 @@ export const vendoredPackages: readonly VendoredPackage[] = [
   },
   {
     name: "react-native-gesture-handler",
-    version: "2.32.0",
-    // The two components of its codegen (`RNGestureHandlerButton`, `RNGestureHandlerRootView`); `libraryName` is `codegenConfig.name`.
-    android: { packageImportPath: "import com.swmansion.gesturehandler.RNGestureHandlerPackage;", packageInstance: "new RNGestureHandlerPackage()", componentDescriptors: ["RNGestureHandlerButtonComponentDescriptor", "RNGestureHandlerRootViewComponentDescriptor"] },
+    version: "3.3.0",
+    // The one component descriptor and the CMake file its `react-native.config.js` names (`RNGestureHandlerDetector`: the shadow node of `shared/shadowNodes`, and `android/CMakeLists.txt`
+    // builds it with the codegen's); the button and the root view are the codegen's alone and need no registration. `libraryName` is `codegenConfig.name`.
+    android: { packageImportPath: "import com.swmansion.gesturehandler.RNGestureHandlerPackage;", packageInstance: "new RNGestureHandlerPackage()", componentDescriptors: ["RNGestureHandlerDetectorComponentDescriptor"], cmakeListsPath: "android/CMakeLists.txt" },
     ios: { podspec: "RNGestureHandler.podspec" },
   },
   {
     name: "react-native-worklets",
-    version: "0.10.1",
+    version: "0.13.0",
     android: { packageImportPath: "import com.swmansion.worklets.WorkletsPackage;", packageInstance: "new WorkletsPackage()" },
     ios: { podspec: "RNWorklets.podspec" },
   },
   {
     name: "react-native-reanimated",
-    version: "4.5.1",
-    android: { packageImportPath: "import com.swmansion.reanimated.ReanimatedPackage;", packageInstance: "new ReanimatedPackage()" },
+    version: "4.7.1",
+    // The one component of its `react-native.config.js` (the shared-transition boundary) and its codegen CMake file, which is in the sources and not below `android/build/` (a test reads both from the copy).
+    android: {
+      packageImportPath: "import com.swmansion.reanimated.ReanimatedPackage;",
+      packageInstance: "new ReanimatedPackage()",
+      componentDescriptors: ["REASharedTransitionBoundaryComponentDescriptor"],
+      cmakeListsPath: "Common/NativeView/CMakeLists.txt",
+    },
     ios: { podspec: "RNReanimated.podspec" },
   },
   {
     name: "react-native-svg",
-    version: "15.15.4",
+    version: "15.16.0",
     // The 29 components of its `react-native.config.js`, and its codegen CMake file, which is in the sources and not below `android/build/` (a test reads both from the copy).
     android: {
       packageImportPath: "import com.horcrux.svg.SvgPackage;",
@@ -220,7 +227,7 @@ function gradleLibraryName(buildGradle: string): string | undefined {
 export type AutolinkingDependency = { root: string; name: string; platforms: Record<string, unknown> };
 
 /**
- * What `react-native-config` (Expo's, SDK 57) prints for the package if it were installed, with the paths of the vendored copy: `root` and `sourceDir` (Android) or `podspecPath` (iOS)
+ * What `react-native-config` (Expo's, SDK 58) prints for the package if it were installed, with the paths of the vendored copy: `root` and `sourceDir` (Android) or `podspecPath` (iOS)
  * are in `vendor/<name>/`, the rest is what the package's files say (its version; `libraryName` is `codegenConfig.name`, else the `libraryName` of the `react { }` block in
  * `android/build.gradle`; the generated codegen CMake file is below `android/build/` unless the registry says where it is) or what the registry records. `undefined` when the
  * package has nothing for the platform.

@@ -1,6 +1,6 @@
 # expo-video
 
-- **Current**: 57.0.5
+- **Current**: 58.0.14
 - **Linked**: when the app turns it on (`libraries`)
 - **Upstream**: https://github.com/expo/expo
 - **Copy**: `vendor/expo-video/` (its `VENDOR.md` has the tarball's integrity, what was left out and the patches)
@@ -13,7 +13,7 @@ The optional `VideoView` and `createVideoPlayer` (`expo-svelte/foreign`); its co
 
 ## Coupled with
 
-The Expo SDK: `expo` and `expo-constants` (the library's peers), `expo-modules-core` (and the library's pnpm patch of it, `patches/expo-modules-core@57.0.23.patch`), and the other Expo modules carried here (expo-blur, expo-image, expo-linear-gradient, expo-video; expo-conic-gradient follows its own releases but must build against the SDK's `expo-modules-core`).
+The Expo SDK: `expo` and `expo-constants` (the library's peers), `expo-modules-core` (and the library's pnpm patch of it, `patches/expo-modules-core@58.1.0.patch`), and the other Expo modules carried here (expo-blur, expo-image, expo-linear-gradient, expo-video; expo-conic-gradient follows its own releases but must build against the SDK's `expo-modules-core`).
 
 ## Version policy
 
@@ -34,6 +34,7 @@ None.
 - The copy leaves out `prebuilds` and `plugin/tsconfig.tsbuildinfo`.
 - `local-maven-repo/` provenance.
 - Background playback and Picture in Picture: plugin options that add entitlements or background modes.
+- `build/VideoPlayer.js` (`createVideoPlayer`, required by name when it is called) imports `./ExpoVideo` since 58, which takes `requireNativeModule` from `expo`; the copy leaves out `prebuilds` only (58 has no `plugin/tsconfig.tsbuildinfo`). New Android view prop `controllerAutoShow`.
 
 ## Native dependencies downloaded at build time
 

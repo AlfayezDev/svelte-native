@@ -1,7 +1,7 @@
 import { type Snippet } from "svelte";
-import type { ScrollView as NativeScrollView, ScrollViewProps, LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from "react-native";
+import type { ScrollViewInstance as NativeScrollView, ScrollViewProps, LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from "react-native";
 declare function $$render<T>(): {
-    props: Omit<ScrollViewProps, "children" | "onLayout" | "horizontal" | "onScroll" | "ref"> & {
+    props: Omit<ScrollViewProps, "children" | "onLayout" | "onScroll" | "horizontal" | "ref"> & {
         items: readonly T[];
         /** Fixed size of every row along the scroll axis, in dp (height, or width when `horizontal`). Omit to measure rows. */
         rowHeight?: number;

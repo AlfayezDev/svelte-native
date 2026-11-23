@@ -7,7 +7,7 @@ import { vendoredNames, vendoredRoot } from "../../src/vendored.ts";
 /**
  * `expo-svelte android-autolinking` (`autolinking.ts`): React Native's autolinking config with the Nitro modules' packages relinked, so that
  * their native libraries load after the start (`DeferredLibraries.kt`). The config below has the shape Expo's `react-native-config --json
- * --platform android` prints (SDK 57), trimmed to the fields the packages' code generation reads.
+ * --platform android` prints (SDK 58), trimmed to the fields the packages' code generation reads.
  */
 const android = (packageImportPath: string, packageInstance: string, extra: Record<string, unknown> = {}) => ({
   sourceDir: "/app/node_modules/x/android",

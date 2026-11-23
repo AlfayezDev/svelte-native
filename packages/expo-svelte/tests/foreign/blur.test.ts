@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import { createHarness, expoViewConfigs, find, settle } from "./support/harness.ts";
+import { androidBlurBorderRadii, blurRadiusStyle } from "../../src/fabric/foreign-blur.ts";
 
 /**
  * expo-blur (SPEC.md, "Foreign views"): `ExpoBlurView` (the component) is a container with the native `ExpoBlurView` filling it and the children
@@ -26,6 +27,8 @@ test("Android: the blur view fills a container that holds the children, and the 
   expect(container?.props.height).toBe(60);
   expect(container?.props.borderRadius).toBe(12);
   expect(blur.props).toMatchObject({ tint: "dark", intensity: 80, blurReductionFactor: 6, blurMethod: "dimezisBlurView", position: "absolute", left: 0, top: 0, right: 0, bottom: 0 });
+  // expo-blur 58 clips the blur to the container's corners: the radius and `overflow: "hidden"` reach the native view, and on Android its `borderRadii` (horizontal and vertical radius of each corner).
+  expect(blur.props).toMatchObject({ borderRadius: 12, overflow: "hidden", borderRadii: [12, 12, 12, 12, 12, 12, 12, 12] });
   // The target's handle exists when the first transaction is built, the id goes to the blur view with the update after it.
   expect(app.targetHandle()?.tag).toBe(target.tag);
   expect(blur.props.blurTargetId).toBeUndefined();
@@ -67,6 +70,10 @@ test("iOS: the blur needs no target, which is a plain view there", async () => {
   expect(find(roots, "ViewManagerAdapter_ExpoBlur_ExpoBlurTargetView")).toEqual([]);
   expect(find(roots, "ViewManagerAdapter_ExpoBlur_ExpoBlurView")).toHaveLength(1);
   expect(harness.calls.filter((call) => call.startsWith("engine.registerForeign"))).toEqual(["engine.registerForeign ViewManagerAdapter_ExpoBlur_ExpoBlurView"]);
+  // The radius reaches the native view on iOS too, `borderRadii` is Android's alone (the module declares no such prop there).
+  const blur = find(roots, "ViewManagerAdapter_ExpoBlur_ExpoBlurView")[0];
+  expect(blur.props).toMatchObject({ borderRadius: 12, overflow: "hidden" });
+  expect("borderRadii" in blur.props).toBe(false);
 });
 
 test("the blur method defaults to none, and the deprecated experimentalBlurMethod is read", async () => {
@@ -78,4 +85,13 @@ test("the blur method defaults to none, and the deprecated experimentalBlurMetho
     return { blurMethod: views.map((view) => [view.props.blurMethod, view.props.intensity, view.props.tint, view.props.blurReductionFactor]) };
   })();
   expect(blurMethod).toEqual([["none", 50, "default", 4], ["dimezisBlurViewSdk31Plus", 50, "default", 4]]);
+});
+
+test("the radius style of the container is what expo-blur 58 hands to the native view, and its Android radii run clockwise from the top left", () => {
+  expect(blurRadiusStyle(undefined)).toBeUndefined();
+  expect(blurRadiusStyle({ height: 40, backgroundColor: "red" })).toBeUndefined();
+  expect(blurRadiusStyle([{ borderRadius: 4 }, { borderTopLeftRadius: 10, borderCurve: "continuous", height: 3 }, null])).toEqual({ borderRadius: 4, borderTopLeftRadius: 10, borderCurve: "continuous", overflow: "hidden" });
+  expect(androidBlurBorderRadii({ borderRadius: 4, borderTopLeftRadius: 10, borderBottomRightRadius: 7 })).toEqual([10, 10, 4, 4, 7, 7, 4, 4]);
+  // A radius that is not a number (a percentage) counts as none, as in the library.
+  expect(androidBlurBorderRadii({ borderRadius: "50%" })).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
 });

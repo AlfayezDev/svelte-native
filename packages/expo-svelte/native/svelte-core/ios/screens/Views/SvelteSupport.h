@@ -70,7 +70,7 @@ void SvelteAfterNextFrame(dispatch_block_t block);
 /// (staged for a push, presented for a sheet) after the commit that mounted it, and RNGH finds no touch handler above a view that has no superview yet.
 /// Called when `view` joins its window or starts to hold the touch handler: when RNGH's manager has a handler attached below `view`, asks it to register
 /// the root recognizer of the nearest view above that holds the touch handler (the surface, or a presented screen's view), as it would have at attach time.
-/// The manager registers it as its own, so a JavaScript responder that blocks the native ones (`handleSetJSResponder`) reaches it. Costs a nil check in
+/// The manager registers it as its own, so the activation callback that cancels React Native's touches (`didActivateInViewWithTouchHandler:`) reaches it. Costs a nil check in
 /// an app that has no handler, and nothing when the handler library (or its patch) is not in the app.
 void SvelteEnsureGestureRoot(UIView *view);
 

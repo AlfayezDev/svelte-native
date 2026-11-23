@@ -153,7 +153,16 @@ export function loadReference(platform: Platform): Promise<Reference> {
       export { create, diff } from "${base}/ReactNative/ReactFabricPublicInstance/ReactNativeAttributePayload";
       export * as configs from ${JSON.stringify(resolve(fabricDirectory, "view-configs.ts"))};`;
     loaded = importWithReactNative<Reference>(platform, entry).then((module) => ({
-      get: (name) => withReactNativeGlobals(() => module.get(name)),
+      // React Native 0.88 registers the modal and the activity indicator without the paper prefix (`ModalHostView`, `ActivityIndicatorView`); Fabric maps both spellings to one component.
+      get: (name) => withReactNativeGlobals(() => {
+        try {
+          return module.get(name);
+        } catch (error) {
+          const bare = name.replace(/^RCT/, "");
+          if (bare === name) throw error;
+          return module.get(bare);
+        }
+      }),
       create: module.create,
       diff: module.diff,
       configs: module.configs,

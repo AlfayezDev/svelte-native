@@ -1,0 +1,50 @@
+{
+  "react-native-gesture-handler": {
+    "root": "$PACKAGE",
+    "name": "react-native-gesture-handler",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/RNGestureHandler.podspec",
+        "version": "3.3.0",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  },
+  "react-native-worklets": {
+    "root": "$PACKAGE",
+    "name": "react-native-worklets",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/RNWorklets.podspec",
+        "version": "0.13.0",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  },
+  "react-native-reanimated": {
+    "root": "$PACKAGE",
+    "name": "react-native-reanimated",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/RNReanimated.podspec",
+        "version": "4.7.1",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  },
+  "react-native-svg": {
+    "root": "$PACKAGE",
+    "name": "react-native-svg",
+    "platforms": {
+      "ios": {
+        "podspecPath": "$PACKAGE/RNSVG.podspec",
+        "version": "15.16.0",
+        "configurations": [],
+        "scriptPhases": []
+      }
+    }
+  }
+}

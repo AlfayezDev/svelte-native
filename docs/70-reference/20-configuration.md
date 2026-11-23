@@ -19,10 +19,10 @@ What `expo-svelte init` writes, file by file, and the options of the Vite, Metro
 	},
 	"dependencies": {
 		"expo-svelte": "0.4.0-rc.10",
-		"expo": "57.0.30",
-		"expo-constants": "57.0.22",
-		"react": "19.2.7",
-		"react-native": "0.86.3",
+		"expo": "58.0.26",
+		"expo-constants": "58.0.16",
+		"react": "19.3.0",
+		"react-native": "0.88.1",
 	},
 	"devDependencies": {
 		"@sveltejs/kit": "3.4.0",
@@ -51,15 +51,15 @@ allowBuilds:
   esbuild: true
 
 overrides:
-  expo-modules-core: 57.0.23
-  "@react-native/metro-config": 0.86.3
+  expo-modules-core: 58.1.0
+  "@react-native/metro-config": 0.88.1
 patchedDependencies:
   "@sveltejs/kit@3.4.0": patches/expo-svelte/@sveltejs__kit@3.4.0.patch
-  expo-modules-core@57.0.23: patches/expo-svelte/expo-modules-core@57.0.23.patch
+  expo-modules-core@58.1.0: patches/expo-svelte/expo-modules-core@58.1.0.patch
 ```
 
 - `allowBuilds` lets esbuild run its install script. Without it, pnpm stops with `ERR_PNPM_IGNORED_BUILDS`.
-- `overrides` pins two packages that come with others and are asked for by a range. `expo-modules-core` stays at the version its patch is for. `@react-native/metro-config` stays at React Native's version; otherwise a fresh install takes a newer one, whose tools refuse Node 25.
+- `overrides` pins two packages that come with others and are asked for by a range. `expo-modules-core` stays at the version its patch is for. `@react-native/metro-config` stays at React Native's version; otherwise a fresh install can take another one.
 - `patchedDependencies` lists the patches (below).
 
 ## Patches
@@ -69,7 +69,7 @@ Expo Svelte depends on small changes to a few packages. The ones you install shi
 | Package | Needed | What the patch changes |
 | --- | --- | --- |
 | `@sveltejs/kit` 3.4.0 | when SvelteKit is installed | SvelteKit leaves `+mobile.svelte` files alone |
-| `expo-modules-core` 57.0.23 | always | Android: Expo modules start faster |
+| `expo-modules-core` 58.1.0 | always | Android: Expo modules start faster |
 
 pnpm applies a patch only from your own project, and reads the files before it installs anything, so `init` copies them from the library into `patches/expo-svelte/` and lists the ones for packages you have. Don't point `patchedDependencies` into `node_modules`: a fresh install would fail before the files exist.
 

@@ -1,6 +1,6 @@
 // Run by worklet-state.test.ts under Node (the Babel transformer Metro's workers load cannot run under Bun): transforms the sources named on the command line with the
-// package's transformer, as Metro would, and prints for each the names the worklets of the output capture (`__closure`), or the error the transform threw.
-import { isAssignmentExpression, isIdentifier, isMemberExpression, isObjectExpression, isObjectProperty, traverseFast, type Node } from "@babel/types";
+// package's transformer, as Metro would, and prints for each the names the worklets of the output capture (`__closure`, an array of the variables), or the error the transform threw.
+import { isArrayExpression, isAssignmentExpression, isIdentifier, isMemberExpression, traverseFast, type Node } from "@babel/types";
 import { transform } from "../../../src/transformer.ts";
 
 type Case = { filename: string; src: string; root: string };
@@ -14,8 +14,9 @@ const result = cases.map(({ filename, src, root }) => {
     } as never) as { ast: object };
     const closures: string[][] = [];
     traverseFast(output.ast as Node, (node) => {
-      if (!isAssignmentExpression(node) || !isMemberExpression(node.left) || !isIdentifier(node.left.property, { name: "__closure" }) || !isObjectExpression(node.right)) return;
-      closures.push(node.right.properties.flatMap((property) => (isObjectProperty(property) && isIdentifier(property.key) ? [property.key.name] : [])));
+      // Worklets 0.13 writes the closure as an array of the variables, in the order of the function's `const [a, b] = this.__closure`.
+      if (!isAssignmentExpression(node) || !isMemberExpression(node.left) || !isIdentifier(node.left.property, { name: "__closure" }) || !isArrayExpression(node.right)) return;
+      closures.push(node.right.elements.flatMap((element) => (isIdentifier(element) ? [element.name] : [])));
     });
     return { filename, closures };
   } catch (error) {

@@ -18,7 +18,7 @@
    */
   let {
     source, progress = 0, speed = 1, duration, loop = true, autoPlay = false, resizeMode = "contain", cacheComposition = true,
-    enableMergePathsAndroidForKitKatAndAbove = false, enableSafeModeAndroid = false, colorFilters = [], textFiltersAndroid = [], textFiltersIOS = [],
+    enableMergePathsAndroidForKitKatAndAbove = false, applyOpacityToLayersAndroid = false, enableSafeModeAndroid = false, colorFilters = [], textFiltersAndroid = [], textFiltersIOS = [],
     onAnimationFinish, onAnimationFailure, onAnimationLoaded, ref, ...attributes
   }: Omit<ViewProps, "children"> & {
     source?: LottieSource | null;
@@ -33,6 +33,7 @@
     imageAssetsFolder?: string;
     cacheComposition?: boolean;
     enableMergePathsAndroidForKitKatAndAbove?: boolean;
+    applyOpacityToLayersAndroid?: boolean;
     enableSafeModeAndroid?: boolean;
     hardwareAccelerationAndroid?: boolean;
     colorFilters?: readonly { keypath: string; color: string }[];
@@ -58,7 +59,7 @@
 </script>
 {#if source !== null && source !== undefined}
   <native-foreign component="LottieAnimationView" nativeProps={resolveProps({
-    ...attributes, progress, loop, resizeMode, cacheComposition, enableMergePathsAndroidForKitKatAndAbove, enableSafeModeAndroid,
+    ...attributes, progress, loop, resizeMode, cacheComposition, enableMergePathsAndroidForKitKatAndAbove, applyOpacityToLayersAndroid, enableSafeModeAndroid,
     colorFilters, textFiltersAndroid, textFiltersIOS, autoPlay,
     speed: lottieSpeed(speed, duration, source, sources),
     ...sources, ...handlers, ref: hostRef,

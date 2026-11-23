@@ -6,7 +6,7 @@ import type { AnimLog } from "../../support/reanimated-stubs.ts";
 import { importWithReactNative, type Platform } from "../../support/rn-reference.ts";
 
 /**
- * A colour in `animatedProps` (SPEC.md, "react-native-svg", Animation). Reanimated 4.5.1's `updateProps` runs `processColorsInProps` on animated props
+ * A colour in `animatedProps` (SPEC.md, "react-native-svg", Animation). Reanimated 4.7.1's `updateProps` runs `processColorsInProps` on animated props
  * (`updateProps.ts`), which turns a CSS string or an RGBA number into the platform's ARGB integer and throws "Invalid color value" for anything else, such as
  * the `{ type: 0, payload }` the library sends for a brush. The tests below run that function itself (not a stub) on the colour props of our elements. That the native
  * views of the library take such a number is pinned in `upstream/react-native-svg-colors.test.ts`.

@@ -1,5 +1,5 @@
 export type { MMKV } from './specs/MMKV.nitro';
-export type { Configuration, Mode } from './specs/MMKVFactory.nitro';
+export type { Configuration, Mode, RecoveryStrategy, } from './specs/MMKVFactory.nitro';
 export { createMMKV } from './createMMKV/createMMKV';
 export { existsMMKV } from './existsMMKV/existsMMKV';
 export { deleteMMKV } from './deleteMMKV/deleteMMKV';

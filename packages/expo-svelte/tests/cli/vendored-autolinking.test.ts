@@ -9,16 +9,16 @@ import { createProject } from "../support/project.ts";
 
 /**
  * The packages the library carries (`src/vendored.ts`, VENDORING.md) in React Native's autolinking config. The reference entries in `fixtures/vendored-autolinking/` are what Expo's
- * own `react-native-config` printed for the packages installed in `apps/example` (SDK 57: `node --no-warnings --eval "require('expo/bin/autolinking')" expo-modules-autolinking
+ * own `react-native-config` printed for the packages installed in `apps/example` (SDK 58: `node --no-warnings --eval "require('expo/bin/autolinking')" expo-modules-autolinking
  * react-native-config --json --platform android|ios`, 18 November 2026, before they were vendored), with the package's directory written as `$PACKAGE`: the entries the library adds
- * must be those, with the directory of the copy. One file per batch of packages and platform: `expo-sdk57-<platform>.json` (the pilot's two), `expo-sdk57-crypto-<platform>.json`
- * (react-native-quick-crypto, react-native-quick-base64 and hermes-intl, captured from the same app with all three installed), `expo-sdk57-optional-<platform>.json` (the eleven React Native packages
- * among the optional libraries, which an app links only when it turns them on, captured the same way; the Expo modules among them have no entry) and `expo-sdk57-ui-<platform>.json` (gesture handler,
+ * must be those, with the directory of the copy. One file per batch of packages and platform: `expo-sdk58-<platform>.json` (the pilot's two), `expo-sdk58-crypto-<platform>.json`
+ * (react-native-quick-crypto, react-native-quick-base64 and hermes-intl, captured from the same app with all three installed), `expo-sdk58-optional-<platform>.json` (the eleven React Native packages
+ * among the optional libraries, which an app links only when it turns them on, captured the same way; the Expo modules among them have no entry) and `expo-sdk58-ui-<platform>.json` (gesture handler,
  * Worklets, Reanimated and svg, run in `apps/example` with the four installed).
  */
 const fixtures = resolve(import.meta.dirname, "fixtures/vendored-autolinking");
 const reference = (platform: "android" | "ios"): Record<string, unknown> =>
-  Object.assign({}, ...readdirSync(fixtures).filter((file) => new RegExp(`^expo-sdk57-(?:[a-z0-9]+-)*${platform}\\.json$`).test(file)).sort().map((file) => JSON.parse(readFileSync(join(fixtures, file), "utf8")) as Record<string, unknown>));
+  Object.assign({}, ...readdirSync(fixtures).filter((file) => new RegExp(`^expo-sdk58-(?:[a-z0-9]+-)*${platform}\\.json$`).test(file)).sort().map((file) => JSON.parse(readFileSync(join(fixtures, file), "utf8")) as Record<string, unknown>));
 const alwaysNames = alwaysLinkedPackages.map((vendored) => vendored.name);
 const withRoot = (value: unknown, root: string): unknown => JSON.parse(JSON.stringify(value).replaceAll("$PACKAGE", root.replaceAll("\\", "\\\\")));
 
@@ -120,10 +120,10 @@ describe("the entries the library adds are the ones Expo's autolinking prints fo
       }
       if (android?.cmakeListsPath !== undefined) expect(existsSync(join(vendoredRoot(vendored.name), android.cmakeListsPath)), `${vendored.name}: ${android.cmakeListsPath}`).toBe(true);
     }
-    // Gesture handler's two components are its codegen's (`RNGestureHandlerButton`, `RNGestureHandlerRootView`).
+    // Gesture handler 3 lists one component in its own config: the detector (`RNGestureHandlerDetector`); its button and root view are the codegen's alone.
     const handler = vendoredPackages.find((vendored) => vendored.name === "react-native-gesture-handler");
     const codegen = JSON.parse(readFileSync(join(vendoredRoot("react-native-gesture-handler"), "package.json"), "utf8")) as { codegenConfig: { name: string } };
-    expect([handler?.android?.componentDescriptors, codegen.codegenConfig.name]).toEqual([["RNGestureHandlerButtonComponentDescriptor", "RNGestureHandlerRootViewComponentDescriptor"], "rngesturehandler_codegen"]);
+    expect([handler?.android?.componentDescriptors, codegen.codegenConfig.name]).toEqual([["RNGestureHandlerDetectorComponentDescriptor"], "rngesturehandler_codegen"]);
   });
 
   test("the list is what vendor/ holds, and what the library no longer asks an app to install", () => {
@@ -199,9 +199,9 @@ describe("linkVendored", () => {
   });
 
   test("the refusal is said the same way by the plugin, the doctor and the command: the library includes it, remove it from the app's dependencies", () => {
-    expect(collisionMessage(["react-native-mmkv"])).toStartWith("expo-svelte includes react-native-mmkv 4.3.1; remove it from the app's dependencies (package.json)");
-    expect(collisionMessage(["react-native-nitro-modules", "react-native-mmkv"])).toContain("includes react-native-nitro-modules 0.35.10 and react-native-mmkv 4.3.1; remove them from");
-    expect(collisionMessage(["react-native-reanimated"])).toStartWith("expo-svelte includes react-native-reanimated 4.5.1; remove it from the app's dependencies (package.json) and any `patchedDependencies` entry for it (pnpm stops on a patch of a package it no longer installs), reinstall, and prebuild again.");
+    expect(collisionMessage(["react-native-mmkv"])).toStartWith("expo-svelte includes react-native-mmkv 4.3.2; remove it from the app's dependencies (package.json)");
+    expect(collisionMessage(["react-native-nitro-modules", "react-native-mmkv"])).toContain("includes react-native-nitro-modules 0.35.10 and react-native-mmkv 4.3.2; remove them from");
+    expect(collisionMessage(["react-native-reanimated"])).toStartWith("expo-svelte includes react-native-reanimated 4.7.1; remove it from the app's dependencies (package.json) and any `patchedDependencies` entry for it (pnpm stops on a patch of a package it no longer installs), reinstall, and prebuild again.");
   });
 
   test("the refusal says what becomes of a library that asks for the package as a peer: the copy serves it, under the same name, so nothing replaces what is removed", () => {
@@ -227,7 +227,7 @@ describe("linkVendored", () => {
 
 describe("what the app lists", () => {
   test("declaredVendored reads dependencies, devDependencies and optionalDependencies, and only the vendored names", () => {
-    const project = createProject({ "package.json": JSON.stringify({ dependencies: { "react-native-mmkv": "4.3.1", react: "*" }, devDependencies: { "react-native-nitro-modules": "*" }, optionalDependencies: { "react-native-mmkv-storage": "*" } }) }, "vendored-declared-");
+    const project = createProject({ "package.json": JSON.stringify({ dependencies: { "react-native-mmkv": "4.3.2", react: "*" }, devDependencies: { "react-native-nitro-modules": "*" }, optionalDependencies: { "react-native-mmkv-storage": "*" } }) }, "vendored-declared-");
     projects.push(project);
     expect(declaredVendored(project.directory).sort()).toEqual(["react-native-mmkv", "react-native-nitro-modules"]);
     expect(declaredVendored(join(project.directory, "nowhere"))).toEqual([]);
@@ -237,8 +237,8 @@ describe("what the app lists", () => {
   });
 
   test("the config plugin's check stops the prebuild with the message, for an app that lists one, and lets another through", () => {
-    expect(() => assertNoVendoredOriginals(app({ "react-native-mmkv": "4.3.1" }))).toThrow(collisionMessage(["react-native-mmkv"]));
-    expect(() => assertNoVendoredOriginals(app({ "react-native-nitro-modules": "0.35.10", "react-native-mmkv": "4.3.1" }))).toThrow("includes react-native-nitro-modules 0.35.10 and react-native-mmkv 4.3.1");
+    expect(() => assertNoVendoredOriginals(app({ "react-native-mmkv": "4.3.2" }))).toThrow(collisionMessage(["react-native-mmkv"]));
+    expect(() => assertNoVendoredOriginals(app({ "react-native-nitro-modules": "0.35.10", "react-native-mmkv": "4.3.2" }))).toThrow("includes react-native-nitro-modules 0.35.10 and react-native-mmkv 4.3.2");
     expect(() => assertNoVendoredOriginals(app({ "react-native-get-random-values": "2.0.0", "react-native-mmkv-storage": "1.0.0" }))).not.toThrow();
   });
 });
@@ -309,7 +309,7 @@ describe("the commands", () => {
       });
 
       test("an app that lists an original is refused by both: exit status 1, the message on standard error, no config on standard output", () => {
-        const root = app({ "react-native-mmkv": "4.3.1" });
+        const root = app({ "react-native-mmkv": "4.3.2" });
         for (const command of ["android-autolinking", "ios-autolinking"] as const) {
           const platform = command === "android-autolinking" ? "android" : "ios";
           const result = run(cli, command, ...printing({ root, dependencies: { "react-native-mmkv": installed("react-native-mmkv", platform, "/app/node_modules/react-native-mmkv") } }));
@@ -343,7 +343,7 @@ describe("the config plugin", () => {
 
   test("the prebuild of either platform stops for an app that lists a vendored package, before it writes anything", async () => {
     for (const platform of ["android", "ios"] as const) {
-      const root = app({ "react-native-mmkv": "4.3.1" });
+      const root = app({ "react-native-mmkv": "4.3.2" });
       let refused: unknown;
       try { await prebuild(root, platform); } catch (error) { refused = error; }
       expect([platform, (refused as Error | undefined)?.message]).toEqual([platform, collisionMessage(["react-native-mmkv"])]);

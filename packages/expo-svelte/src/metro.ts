@@ -55,6 +55,15 @@ export const RENDERER_STUBS: Record<string, string> = {
   "react-native/Libraries/ReactNative/AppRegistryImpl.js": "./fabric/app-registry.ts",
 };
 
+/**
+ * Files of a library the package carries that take one name from the whole of `react-native`, which puts React Native's index (its components, `Animated`, the virtualized lists:
+ * about 1.2 MB of source) into every app that turns the library on. Each is resolved, by file suffix, to a module that imports that one name from its own file.
+ * expo-video 58's `resolveAssetSource.js` reads `Image.resolveAssetSource`; expo-video 57 imported `react-native/Libraries/Image/resolveAssetSource`, as its replacement does.
+ */
+export const LEAN_IMPORTS: Record<string, string> = {
+  "expo-video/build/resolveAssetSource.js": "./fabric/expo-video-asset-source.ts",
+};
+
 export type ExpoSvelteMetroOptions = {
   /**
    * Packages this app does not link (the same list the Expo plugin's `autolinkingExclude` gets). Metro resolves each of them, and
@@ -346,7 +355,7 @@ export function withExpoSvelte(config: ConfigT, options: ExpoSvelteMetroOptions 
       const stubbedFile = stubForFile(result.filePath);
       if (stubbedFile !== null) return { type: "sourceFile", filePath: stubbedFile };
       if (result.filePath.endsWith("push.svelte.ts") && pushOff(platform) && realOr(result.filePath) === pushClient) return { type: "sourceFile", filePath: pushAbsent };
-      const stub = Object.entries(RENDERER_STUBS).find(([suffix]) => result.filePath.endsWith(suffix));
+      const stub = Object.entries(RENDERER_STUBS).find(([suffix]) => result.filePath.endsWith(suffix)) ?? Object.entries(LEAN_IMPORTS).find(([suffix]) => result.filePath.endsWith(suffix));
       if (stub) return { type: "sourceFile", filePath: sourceFile(stub[1]) };
       // `init.ts` is the Fabric entry's InitializeCore. `expo/src/winter` (run before main) imports InitializeCore for the
       // XHR globals it patches, so it gets `init.ts`, which then runs first; React Native's own would also put its

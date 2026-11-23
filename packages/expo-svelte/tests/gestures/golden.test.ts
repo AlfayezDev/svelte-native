@@ -8,7 +8,7 @@ import { load, settle, world, byId, type Loaded, type NativeCall } from "./suppo
  * `fixtures/capture-golden.mjs`, against the Svelte host's: a compiled fixture with `gesture` attributes and a fake native module.
  */
 type Vector = { name: string; attach: NativeCall[]; update?: NativeCall[]; drop: NativeCall[] };
-const golden = JSON.parse(readFileSync(resolve(import.meta.dirname, "fixtures/golden/rngh-2.32.0-native-calls.json"), "utf8")) as { version: string; vectors: Vector[] };
+const golden = JSON.parse(readFileSync(resolve(import.meta.dirname, "fixtures/golden/rngh-3.3.0-native-calls.json"), "utf8")) as { version: string; vectors: Vector[] };
 
 /** Handler tags and view tags in order of first appearance, so two runs with different counters compare. */
 function normalise(calls: readonly NativeCall[]): NativeCall[] {
@@ -20,10 +20,12 @@ function normalise(calls: readonly NativeCall[]): NativeCall[] {
     switch (method) {
       case "createGestureHandler": return [method, args[0], tag(args[1]), args[2]];
       case "attachGestureHandler": return [method, tag(args[0]), view(args[1]), args[2]];
-      case "updateGestureHandler": {
-        const config = { ...(args[1] as Record<string, unknown>) };
-        for (const relation of ["waitFor", "simultaneousHandlers", "blocksHandlers"]) config[relation] = (config[relation] as number[]).map(tag);
-        return [method, tag(args[0]), config];
+      // RNGH 3: the config of a handler and its relations are two calls, the relations naming other handlers by tag.
+      case "setGestureHandlerConfig": return [method, tag(args[0]), args[1]];
+      case "configureRelations": {
+        const relations = { ...(args[1] as Record<string, unknown>) };
+        for (const relation of ["waitFor", "simultaneousHandlers", "blocksHandlers"]) relations[relation] = (relations[relation] as number[]).map(tag);
+        return [method, tag(args[0]), relations];
       }
       case "dropGestureHandler": return [method, tag(args[0])];
       default: return [method, ...args];
@@ -54,8 +56,8 @@ const shapes = (G: Loaded["gestures"]["Gesture"]): Record<string, () => Gesture>
   "manual-touches": () => G.Manual().onTouchesDown(callback).onTouchesMove(callback),
 });
 
-test("the golden file is RNGH 2.32.0's and has the twelve shapes the design names", () => {
-  expect(golden.version).toBe("2.32.0");
+test("the golden file is RNGH 3.3.0's and has the twelve shapes the design names", () => {
+  expect(golden.version).toBe("3.3.0");
   expect(golden.vectors.map((vector) => vector.name)).toEqual([
     "pan-js-offsets", "pan-worklet", "pan-no-callbacks-counts-as-worklet", "pan-mixed-runOnJS", "hitslop-number", "simultaneous-pan-pinch-rotation",
     "exclusive-doubletap-singletap", "race-longpress-tap", "fling-direction", "manual-touches", "external-relations-native-then-pan", "update-same-shape",

@@ -4,7 +4,7 @@
  * React Native encodes props for Fabric from a view config's `validAttributes` (which keys are native props and how a
  * value is converted) through `ReactNativeAttributePayload`. Loading that module and the native components that register
  * the configs costs about 50 ms of boot, so the host's own view names carry the tables below, equal to what React Native
- * 0.86 registers on Android and iOS (`tests/renderer/view-configs.test.ts` compares them with React Native's own modules). A name
+ * 0.88 registers on Android and iOS (`tests/renderer/view-configs.test.ts` compares them with React Native's own modules). A name
  * outside the tables, from a third-party native component, takes React Native's registry and payload code, required on
  * first use.
  *
@@ -49,6 +49,7 @@ const backgroundImage = required(() => require("react-native/Libraries/StyleShee
 const backgroundSize = required(() => require("react-native/Libraries/StyleSheet/processBackgroundSize").default);
 const backgroundPosition = required(() => require("react-native/Libraries/StyleSheet/processBackgroundPosition").default);
 const backgroundRepeat = required(() => require("react-native/Libraries/StyleSheet/processBackgroundRepeat").default);
+const fontVariationSettings = required(() => require("react-native/Libraries/StyleSheet/processFontVariationSettings").default);
 const assetSource = required(() => require("react-native/Libraries/Image/resolveAssetSource").default);
 type RegistryModule = {
   get(name: string): {
@@ -157,7 +158,8 @@ const viewPlain = `
 const androidViewPlain = `
     accessibilityCollection accessibilityCollectionItem accessibilityLabelledBy accessibilityLiveRegion elevation
     hasTVPreferredFocus importantForAccessibility nativeBackgroundAndroid nativeForegroundAndroid nextFocusDown
-    nextFocusForward nextFocusLeft nextFocusRight nextFocusUp onPointerEnterCapture onPointerLeaveCapture
+    nextFocusForward nextFocusLeft nextFocusRight nextFocusUp onGotPointerCapture onGotPointerCaptureCapture
+    onLostPointerCapture onLostPointerCaptureCapture onPointerEnterCapture onPointerLeaveCapture
     onPointerMoveCapture onPointerOutCapture onPointerOverCapture outlineOffset outlineStyle outlineWidth
     renderToHardwareTextureAndroid rotation scaleX scaleY screenReaderFocusable translateX translateY
   `;
@@ -196,8 +198,8 @@ const styleColors = `
   `;
 const androidEvents = `
     onGestureHandlerEvent onGestureHandlerStateChange topAccessibilityAction topBlur topChange topClick
-    topContentSizeChange topFocus topKeyDown topKeyUp topLayout topLoadingError topLoadingFinish topLoadingStart
-    topMessage topMomentumScrollBegin topMomentumScrollEnd topPointerCancel topPointerDown topPointerEnter
+    topContentSizeChange topFocus topGotPointerCapture topKeyDown topKeyUp topLayout topLoadingError topLoadingFinish topLoadingStart
+    topLostPointerCapture topMessage topMomentumScrollBegin topMomentumScrollEnd topPointerCancel topPointerDown topPointerEnter
     topPointerLeave topPointerMove topPointerOut topPointerOver topPointerUp topScroll topScrollBeginDrag
     topScrollEndDrag topSelect topSelectionChange topTouchCancel topTouchEnd topTouchMove topTouchStart
   `;
@@ -224,6 +226,8 @@ export type Kind = {
    * created with the view, so on iOS only these kinds carry their events as attributes.
    */
   legacy?: boolean;
+  /** React Native 0.88's text inputs convert `fontVariationSettings` (an object of axes becomes `'wght' 700`): an attribute with a converter, not a plain one. */
+  variationSettings?: boolean;
 };
 
 /**
@@ -234,7 +238,7 @@ export type Kind = {
  * a `legacy` kind on iOS, whose view manager only emits an event it was given a handler prop for (`Kind.legacy`).
  */
 const foreignKinds: Record<string, Kind> = {
-  // react-native-webview 13.16
+  // react-native-webview 14.0
   RNCWebView: {
     plain: `
       allowFileAccess allowFileAccessFromFileURLs allowUniversalAccessFromFileURLs allowingReadAccessToURL
@@ -250,7 +254,7 @@ const foreignKinds: Record<string, Kind> = {
       lackPermissionToDownloadMessage limitsNavigationsToAppBoundDomains mediaCapturePermissionGrantType
       mediaPlaybackRequiresUserAction menuItems messagingEnabled messagingModuleName minimumFontSize mixedContentMode
       nestedScrollEnabled newSource overScrollMode pagingEnabled paymentRequestEnabled pullToRefreshEnabled
-      refreshControlLightMode saveFormDataDisabled scalesPageToFit scrollEnabled setBuiltInZoomControls
+      refreshControlLightMode removeIosKeyboardObserver saveFormDataDisabled scalesPageToFit scrollEnabled setBuiltInZoomControls
       setDisplayZoomControls setSupportMultipleWindows sharedCookiesEnabled showsHorizontalScrollIndicator
       showsVerticalScrollIndicator suppressMenuItems textInteractionEnabled textZoom thirdPartyCookiesEnabled
       useSharedProcessPool userAgent webviewDebuggingEnabled
@@ -261,7 +265,7 @@ const foreignKinds: Record<string, Kind> = {
       topOpenWindow topRenderProcessGone topScroll topShouldStartLoadWithRequest
     `,
   },
-  // react-native-maps 1.27
+  // react-native-maps 1.29
   RNMapsMapView: {
     plain: `
       appleLogoInsets cacheEnabled camera cameraZoomRange compassOffset customMapStyleString followsUserLocation googleMapId
@@ -283,7 +287,7 @@ const foreignKinds: Record<string, Kind> = {
   },
   RNMapsMarker: {
     plain: `
-      anchor calloutAnchor calloutOffset centerOffset coordinate description displayPriority draggable identifier
+      anchor calloutAnchor calloutOffset centerOffset coordinate description displayPriority draggable flat identifier
       isPreselected opacity subtitleVisibility title titleVisibility tracksViewChanges useLegacyPinView
     `,
     colors: "pinColor",
@@ -319,10 +323,10 @@ const foreignKinds: Record<string, Kind> = {
     colors: "accentColor textColor",
     events: "topChange topPickerDismiss",
   },
-  // lottie-react-native 7.3
+  // lottie-react-native 7.5
   LottieAnimationView: {
     plain: `
-      autoPlay cacheComposition dummy enableMergePathsAndroidForKitKatAndAbove enableSafeModeAndroid
+      applyOpacityToLayersAndroid autoPlay cacheComposition dummy enableMergePathsAndroidForKitKatAndAbove enableSafeModeAndroid
       hardwareAccelerationAndroid imageAssetsFolder loop progress renderMode resizeMode sourceDotLottieURI sourceJson
       sourceName sourceURL speed textFiltersAndroid textFiltersIOS
     `,
@@ -385,6 +389,7 @@ const kinds: Record<Platform, Record<string, Kind>> = {
       colors: "endFillColor",
     },
     AndroidTextInput: {
+      variationSettings: true,
       plain: `
         acceptDragAndDropTypes adjustsFontSizeToFit allowFontScaling autoCapitalize autoComplete autoCorrect autoFocus
         caretHidden contextMenuHidden disableFullscreenUI editable fontFamily fontSize fontStyle fontVariant
@@ -418,7 +423,7 @@ const kinds: Record<Platform, Record<string, Kind>> = {
     },
     RCTModalHostView: {
       plain: `
-        allowSwipeDismissal animated animationType hardwareAccelerated identifier navigationBarTranslucent
+        allowSwipeDismissal animationType hardwareAccelerated identifier navigationBarTranslucent
         presentationStyle statusBarTranslucent supportedOrientations transparent visible
       `,
       events: "topDismiss topOrientationChange topRequestClose topShow",
@@ -467,6 +472,7 @@ const kinds: Record<Platform, Record<string, Kind>> = {
       `,
     },
     RCTSinglelineTextInputView: {
+      variationSettings: true,
       plain: `
         acceptDragAndDropTypes allowFontScaling autoCapitalize autoCorrect autoFocus caretHidden clearButtonMode
         clearTextOnFocus contextMenuHidden disableKeyboardShortcuts dynamicTypeRamp editable
@@ -482,6 +488,7 @@ const kinds: Record<Platform, Record<string, Kind>> = {
       events: "topChangeSync topContentSizeChange topKeyPressSync topScroll topSelectionChange",
     },
     RCTMultilineTextInputView: {
+      variationSettings: true,
       plain: `
         acceptDragAndDropTypes allowFontScaling autoCapitalize autoCorrect autoFocus caretHidden clearButtonMode
         clearTextOnFocus contextMenuHidden dataDetectorTypes disableKeyboardShortcuts dynamicTypeRamp editable
@@ -515,7 +522,7 @@ const kinds: Record<Platform, Record<string, Kind>> = {
     },
     RCTModalHostView: {
       plain: `
-        allowSwipeDismissal animated animationType hardwareAccelerated identifier navigationBarTranslucent onDismiss
+        allowSwipeDismissal animationType hardwareAccelerated identifier navigationBarTranslucent onDismiss
         onOrientationChange onRequestClose onShow presentationStyle statusBarTranslucent supportedOrientations
         transparent visible
       `,
@@ -534,6 +541,7 @@ function styleFor(platform: Platform): Table {
   fill(style, styleColors, color);
   Object.assign(style, {
     aspectRatio, transform, transformOrigin, fontVariant, filter, boxShadow,
+    backgroundImage, backgroundSize, backgroundPosition, backgroundRepeat, fontVariationSettings,
     experimental_backgroundImage: backgroundImage, experimental_backgroundSize: backgroundSize,
     experimental_backgroundPosition: backgroundPosition, experimental_backgroundRepeat: backgroundRepeat,
   });
@@ -550,12 +558,17 @@ function attributesFor(platform: Platform, kind: Kind): Table {
   attributes.boxShadow = boxShadow;
   if (platform === "android") {
     attributes.outlineColor = color;
+    attributes.backgroundImage = backgroundImage;
+    attributes.backgroundSize = backgroundSize;
+    attributes.backgroundPosition = backgroundPosition;
+    attributes.backgroundRepeat = backgroundRepeat;
     attributes.experimental_backgroundImage = backgroundImage;
     attributes.experimental_backgroundSize = backgroundSize;
     attributes.experimental_backgroundPosition = backgroundPosition;
     attributes.experimental_backgroundRepeat = backgroundRepeat;
   }
   fill(attributes, kind.plain ?? "", true);
+  if (kind.variationSettings) attributes.fontVariationSettings = fontVariationSettings;
   if (platform === "ios" && kind.legacy) for (const registration of eventsOf(kind.events ?? "").values()) attributes[registration] = true;
   fill(attributes, kind.colors ?? "", color);
   fill(attributes, kind.assetSources ?? "", assetSource);

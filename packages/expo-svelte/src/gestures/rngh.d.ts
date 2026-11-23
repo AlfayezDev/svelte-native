@@ -1,5 +1,7 @@
 export { GestureObjects } from "#vendor/react-native-gesture-handler/types/handlers/gestures/gestureObjects";
-export { BaseGesture, CALLBACK_TYPE } from "#vendor/react-native-gesture-handler/types/handlers/gestures/gesture";
+export { BaseGesture } from "#vendor/react-native-gesture-handler/types/handlers/gestures/gesture";
+export { CallbackType } from "#vendor/react-native-gesture-handler/types/CallbackType";
+export { normalizeHitSlop } from "#vendor/react-native-gesture-handler/types/handlers/hitSlop";
 export type { GestureType, GestureRef, HandlerCallbacks, BaseGestureConfig, Gesture } from "#vendor/react-native-gesture-handler/types/handlers/gestures/gesture";
 export type { ComposedGesture } from "#vendor/react-native-gesture-handler/types/handlers/gestures/gestureComposition";
 export { MountRegistry } from "#vendor/react-native-gesture-handler/types/mountRegistry";

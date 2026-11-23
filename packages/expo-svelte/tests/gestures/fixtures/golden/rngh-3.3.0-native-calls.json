@@ -1,0 +1,197 @@
+{
+  "package": "react-native-gesture-handler",
+  "version": "3.3.0",
+  "vectors": [
+  {
+    "name": "pan-js-offsets",
+    "attach": [
+      ["createGestureHandler","PanGestureHandler",1,{"minPointers":1,"maxPointers":2,"activeOffsetXStart":-10,"activeOffsetXEnd":10,"failOffsetYStart":-10,"failOffsetYEnd":10}],
+      ["attachGestureHandler",1,42,4],
+      ["setGestureHandlerConfig",1,{"minPointers":1,"maxPointers":2,"activeOffsetXStart":-10,"activeOffsetXEnd":10,"failOffsetYStart":-10,"failOffsetYEnd":10}],
+      ["configureRelations",1,{"waitFor":[],"simultaneousHandlers":[],"blocksHandlers":[]}],
+      ["flushOperations"]
+    ],
+    "drop": [
+      ["dropGestureHandler",1],
+      ["flushOperations"]
+    ]
+  },
+  {
+    "name": "pan-worklet",
+    "attach": [
+      ["createGestureHandler","PanGestureHandler",2,{}],
+      ["attachGestureHandler",2,42,1],
+      ["setGestureHandlerConfig",2,{}],
+      ["configureRelations",2,{"waitFor":[],"simultaneousHandlers":[],"blocksHandlers":[]}],
+      ["flushOperations"]
+    ],
+    "drop": [
+      ["dropGestureHandler",2],
+      ["flushOperations"]
+    ]
+  },
+  {
+    "name": "pan-no-callbacks-counts-as-worklet",
+    "attach": [
+      ["createGestureHandler","PanGestureHandler",3,{}],
+      ["attachGestureHandler",3,42,1],
+      ["setGestureHandlerConfig",3,{}],
+      ["configureRelations",3,{"waitFor":[],"simultaneousHandlers":[],"blocksHandlers":[]}],
+      ["flushOperations"]
+    ],
+    "drop": [
+      ["dropGestureHandler",3],
+      ["flushOperations"]
+    ]
+  },
+  {
+    "name": "pan-mixed-runOnJS",
+    "attach": [
+      ["createGestureHandler","PanGestureHandler",4,{"enabled":false,"shouldCancelWhenOutside":true,"hitSlop":[-20,null,null,null,null,null],"manualActivation":true}],
+      ["attachGestureHandler",4,42,4],
+      ["setGestureHandlerConfig",4,{"enabled":false,"shouldCancelWhenOutside":true,"hitSlop":[-20,null,null,null,null,null],"manualActivation":true}],
+      ["configureRelations",4,{"waitFor":[],"simultaneousHandlers":[],"blocksHandlers":[]}],
+      ["flushOperations"]
+    ],
+    "drop": [
+      ["dropGestureHandler",4],
+      ["flushOperations"]
+    ]
+  },
+  {
+    "name": "hitslop-number",
+    "attach": [
+      ["createGestureHandler","TapGestureHandler",5,{"shouldCancelWhenOutside":true,"hitSlop":12}],
+      ["attachGestureHandler",5,42,1],
+      ["setGestureHandlerConfig",5,{"shouldCancelWhenOutside":true,"hitSlop":12}],
+      ["configureRelations",5,{"waitFor":[],"simultaneousHandlers":[],"blocksHandlers":[]}],
+      ["flushOperations"]
+    ],
+    "drop": [
+      ["dropGestureHandler",5],
+      ["flushOperations"]
+    ]
+  },
+  {
+    "name": "simultaneous-pan-pinch-rotation",
+    "attach": [
+      ["createGestureHandler","PanGestureHandler",6,{}],
+      ["createGestureHandler","PinchGestureHandler",7,{}],
+      ["createGestureHandler","RotationGestureHandler",8,{}],
+      ["attachGestureHandler",6,42,1],
+      ["attachGestureHandler",7,42,1],
+      ["attachGestureHandler",8,42,1],
+      ["setGestureHandlerConfig",6,{}],
+      ["configureRelations",6,{"waitFor":[],"simultaneousHandlers":[7,8],"blocksHandlers":[]}],
+      ["setGestureHandlerConfig",7,{}],
+      ["configureRelations",7,{"waitFor":[],"simultaneousHandlers":[6,8],"blocksHandlers":[]}],
+      ["setGestureHandlerConfig",8,{}],
+      ["configureRelations",8,{"waitFor":[],"simultaneousHandlers":[6,7],"blocksHandlers":[]}],
+      ["flushOperations"]
+    ],
+    "drop": [
+      ["dropGestureHandler",6],
+      ["dropGestureHandler",7],
+      ["dropGestureHandler",8],
+      ["flushOperations"]
+    ]
+  },
+  {
+    "name": "exclusive-doubletap-singletap",
+    "attach": [
+      ["createGestureHandler","TapGestureHandler",9,{"shouldCancelWhenOutside":true,"numberOfTaps":2}],
+      ["createGestureHandler","TapGestureHandler",10,{"shouldCancelWhenOutside":true}],
+      ["attachGestureHandler",9,42,1],
+      ["attachGestureHandler",10,42,1],
+      ["setGestureHandlerConfig",9,{"shouldCancelWhenOutside":true,"numberOfTaps":2}],
+      ["configureRelations",9,{"waitFor":[],"simultaneousHandlers":[],"blocksHandlers":[]}],
+      ["setGestureHandlerConfig",10,{"shouldCancelWhenOutside":true}],
+      ["configureRelations",10,{"waitFor":[9],"simultaneousHandlers":[],"blocksHandlers":[]}],
+      ["flushOperations"]
+    ],
+    "drop": [
+      ["dropGestureHandler",9],
+      ["dropGestureHandler",10],
+      ["flushOperations"]
+    ]
+  },
+  {
+    "name": "race-longpress-tap",
+    "attach": [
+      ["createGestureHandler","LongPressGestureHandler",11,{"shouldCancelWhenOutside":true,"maxDist":10,"minDurationMs":300}],
+      ["createGestureHandler","TapGestureHandler",12,{"shouldCancelWhenOutside":true,"maxDurationMs":250}],
+      ["attachGestureHandler",11,42,1],
+      ["attachGestureHandler",12,42,1],
+      ["setGestureHandlerConfig",11,{"shouldCancelWhenOutside":true,"maxDist":10,"minDurationMs":300}],
+      ["configureRelations",11,{"waitFor":[],"simultaneousHandlers":[],"blocksHandlers":[]}],
+      ["setGestureHandlerConfig",12,{"shouldCancelWhenOutside":true,"maxDurationMs":250}],
+      ["configureRelations",12,{"waitFor":[],"simultaneousHandlers":[],"blocksHandlers":[]}],
+      ["flushOperations"]
+    ],
+    "drop": [
+      ["dropGestureHandler",11],
+      ["dropGestureHandler",12],
+      ["flushOperations"]
+    ]
+  },
+  {
+    "name": "fling-direction",
+    "attach": [
+      ["createGestureHandler","FlingGestureHandler",13,{"numberOfPointers":1,"direction":3}],
+      ["attachGestureHandler",13,42,1],
+      ["setGestureHandlerConfig",13,{"numberOfPointers":1,"direction":3}],
+      ["configureRelations",13,{"waitFor":[],"simultaneousHandlers":[],"blocksHandlers":[]}],
+      ["flushOperations"]
+    ],
+    "drop": [
+      ["dropGestureHandler",13],
+      ["flushOperations"]
+    ]
+  },
+  {
+    "name": "manual-touches",
+    "attach": [
+      ["createGestureHandler","ManualGestureHandler",14,{"needsPointerData":true}],
+      ["attachGestureHandler",14,42,1],
+      ["setGestureHandlerConfig",14,{"needsPointerData":true}],
+      ["configureRelations",14,{"waitFor":[],"simultaneousHandlers":[],"blocksHandlers":[]}],
+      ["flushOperations"]
+    ],
+    "drop": [
+      ["dropGestureHandler",14],
+      ["flushOperations"]
+    ]
+  },
+  {
+    "name": "external-relations-native-then-pan",
+    "attach": [
+      ["createGestureHandler","NativeViewGestureHandler",15,{"shouldActivateOnStart":false,"disallowInterruption":true}],
+      ["attachGestureHandler",15,100,1],
+      ["createGestureHandler","PanGestureHandler",16,{}],
+      ["attachGestureHandler",16,42,1],
+      ["setGestureHandlerConfig",15,{"shouldActivateOnStart":false,"disallowInterruption":true}],
+      ["configureRelations",15,{"waitFor":[],"simultaneousHandlers":[],"blocksHandlers":[]}],
+      ["setGestureHandlerConfig",16,{}],
+      ["configureRelations",16,{"waitFor":[15],"simultaneousHandlers":[15],"blocksHandlers":[15]}],
+      ["flushOperations"]
+    ],
+    "drop": []
+  },
+  {
+    "name": "update-same-shape",
+    "attach": [
+      ["createGestureHandler","PanGestureHandler",17,{"enabled":true}],
+      ["attachGestureHandler",17,42,1],
+      ["setGestureHandlerConfig",17,{"enabled":true}],
+      ["configureRelations",17,{"waitFor":[],"simultaneousHandlers":[],"blocksHandlers":[]}],
+      ["flushOperations"]
+    ],
+    "update": [
+      ["setGestureHandlerConfig",17,{"enabled":false,"minDist":4}],
+      ["configureRelations",17,{"waitFor":[],"simultaneousHandlers":[],"blocksHandlers":[]}],
+      ["flushOperations"]
+    ],
+    "drop": []
+  }
+  ]
+}

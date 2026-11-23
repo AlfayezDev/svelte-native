@@ -36,7 +36,7 @@ pnpm android        # or: pnpm ios
 - Not supported: Svelte's DOM transitions and DOM-based libraries, React widgets, and the Expo dev client.
 - EAS Build on Expo's servers is not tried, and push notification delivery is not tested end to end.
 - Svelte and SvelteKit are pinned to one version each (Svelte 5.59.1, which has custom renderers, from the registry; SvelteKit 3.4.0, for the web side of the app); a version is reviewed before the pin moves.
-- Expo SDK 57 and React Native 0.86 only.
+- Expo SDK 58 and React Native 0.88 only.
 
 **Found a bug?** [Open an issue](https://github.com/AlfayezDev/svelte-native/issues/new?template=bug.yml); the form asks for what is needed, including the output of `pnpm exec expo-svelte doctor`. If an install fails, start with [troubleshooting](docs/60-appendix/20-troubleshooting.md).
 

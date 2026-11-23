@@ -39,6 +39,7 @@ const samples: Record<string, unknown[]> = {
   processBackgroundSize: ["cover", "contain", "50% 50%", [{ x: "50%", y: "50%" }]],
   processBackgroundPosition: ["center", "top left", "10px 20px", [{ top: "10%", left: "20%" }]],
   processBackgroundRepeat: ["repeat", "no-repeat", "repeat-x", [{ x: "repeat", y: "no-repeat" }]],
+  processFontVariationSettings: [{ wght: 700 }, { wght: 700, wdth: 100 }, {}, "'wght' 700, 'wdth' 100", "'wght' 700", { abcd: Number.NaN }, { toolong: 1 }, { "'ab'": 1 }],
   resolveAssetSource: [{ uri: "https://example.com/a.png" }, { uri: "file:///a.png", width: 4, height: 2 }, null],
 };
 

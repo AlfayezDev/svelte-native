@@ -40,7 +40,7 @@ describe("the copies", () => {
     const directory = vendoredRoot("lottie-react-native");
     expect(JSON.parse(readFileSync(join(directory, "package.json"), "utf8")).license).toBe("Apache-2.0");
     expect(readFileSync(join(directory, "LICENSE"), "utf8")).toContain("Apache License\n                           Version 2.0, January 2004");
-    expect(readFileSync(join(directory, "VENDOR.md"), "utf8")).toMatch(/- License: `LICENSE` from https:\/\/raw\.githubusercontent\.com\/lottie-react-native\/lottie-react-native\/f386305cc755febf92ed593c2b24327a85d467e6\/LICENSE/);
+    expect(readFileSync(join(directory, "VENDOR.md"), "utf8")).toMatch(/- License: `LICENSE` from https:\/\/raw\.githubusercontent\.com\/lottie-react-native\/lottie-react-native\/2d60a7b0b6782d1f606991654880b993566dba6d\/LICENSE/);
     expect(existsSync(join(directory, "NOTICE"))).toBe(false);
   });
 
@@ -59,14 +59,16 @@ describe("the copies", () => {
   test("an Expo module keeps what Expo's autolinker and the Android build read: its module config, its Android project with the prebuilt artifact it publishes, its podspec and its JavaScript", () => {
     for (const vendored of optionalPackages.filter((candidate) => candidate.optional?.kind === "expo")) {
       const directory = vendoredRoot(vendored.name);
-      const config = JSON.parse(readFileSync(join(directory, "expo-module.config.json"), "utf8")) as { android: { publication?: { repository: string; groupId: string; artifactId: string; version: string } } };
+      const config = JSON.parse(readFileSync(join(directory, "expo-module.config.json"), "utf8")) as { android: { publication?: { repository: string; groupId: string; artifactId: string; version?: string } } };
       expect(existsSync(join(directory, "android/build.gradle")), vendored.name).toBe(true);
       expect(readdirSync(join(directory, "ios")).some((file) => file.endsWith(".podspec")), vendored.name).toBe(true);
       expect(existsSync(join(directory, "build")) || existsSync(join(directory, "src")), vendored.name).toBe(true);
       // Expo's Android build uses the published artifact in local-maven-repo/ when the module declares one: the copy has it, at the version of the package.
       const publication = config.android.publication;
       if (publication !== undefined) {
-        const artifact = join(directory, publication.repository, publication.groupId.replaceAll(".", "/"), publication.artifactId, publication.version, `${publication.artifactId}-${publication.version}.aar`);
+        // Expo SDK 58's config leaves the version out: it is the package's.
+        const version = publication.version ?? (JSON.parse(readFileSync(join(directory, "package.json"), "utf8")) as { version: string }).version;
+        const artifact = join(directory, publication.repository, publication.groupId.replaceAll(".", "/"), publication.artifactId, version, `${publication.artifactId}-${version}.aar`);
         expect([vendored.name, existsSync(artifact)]).toEqual([vendored.name, true]);
       }
       if (vendored.optional?.plugin !== undefined) expect(existsSync(join(directory, "plugin/build")), `${vendored.name}'s config plugin`).toBe(true);
@@ -77,7 +79,7 @@ describe("the copies", () => {
 describe("the patches", () => {
   test("each patch of vendor-patches/ is listed in its copy's VENDOR.md with its sha256, and its shape is in the copy (what the doctor looks for)", () => {
     const patched = readdirSync(join(root, "vendor-patches"));
-    expect(patched.sort()).toEqual(["lottie-react-native", "react-native-gesture-handler", "react-native-maps", "react-native-pdf", "react-native-reanimated", "react-native-video", "react-native-worklets", "rive-react-native"]);
+    expect(patched.sort()).toEqual(["lottie-react-native", "react-native-blob-util", "react-native-gesture-handler", "react-native-maps", "react-native-nitro-modules", "react-native-pdf", "react-native-quick-base64", "react-native-reanimated", "react-native-video", "react-native-worklets", "rive-react-native"]);
     for (const name of patched) {
       const files = readdirSync(join(root, "vendor-patches", name)).filter((file) => file.endsWith(".patch")).sort();
       expect(files.length).toBeGreaterThan(0);
@@ -145,9 +147,9 @@ describe("what is packed", () => {
         if (vendored.optional.plugin !== undefined) expect([vendored.name, listed.some((path) => path.startsWith(`${prefix}plugin/build/`))]).toEqual([vendored.name, true]);
       }
     }
-    expect(listed.filter((path) => path.startsWith("vendor-patches/")).length).toBe(12);
+    expect(listed.filter((path) => path.startsWith("vendor-patches/")).length).toBe(16);
     // The prebuilt AAR the Android build of an Expo module uses.
-    expect(listed).toContain("vendor/expo-image/local-maven-repo/expo/modules/image/expo.modules.image/57.0.5/expo.modules.image-57.0.5.aar");
+    expect(listed).toContain("vendor/expo-image/local-maven-repo/expo/modules/image/expo.modules.image/58.0.18/expo.modules.image-58.0.18.aar");
     // Left out of the pack as native build output, never the JavaScript below build/.
     expect(listed.filter((path) => /(^|\/)(android|ios)\/build\//.test(path))).toEqual([]);
   });

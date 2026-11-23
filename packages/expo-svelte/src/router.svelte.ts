@@ -449,11 +449,12 @@ function createStore(tree: StackNode) {
         failedAt = navigations;
         reject(error);
       };
-      let answer: Promise<string | null>;
+      // React Native 0.88 types `getInitialURL` as `Promise<string | null | undefined>`.
+      let answer: Promise<string | null | undefined>;
       try { answer = Linking.getInitialURL(); } catch (error) { failed(error); return; }
       answer.then((url) => {
         clearTimeout(timer);
-        if (waiting) { waiting = false; resolve(url); return; }
+        if (waiting) { waiting = false; resolve(url ?? null); return; }
         if (!url || launchDone) return;
         if (navigations !== gaveUpAt || staleRead()) dropLaunch(url);
         else if (accept && !accept(url)) lateLink = { url, at: gaveUpAt };

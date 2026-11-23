@@ -27,12 +27,13 @@ import { packageRoot as packageDirectory } from "../support/paths.ts";
  *   2. If the growth is wanted (a new dependency's types, a feature), measure again with `KEEP_TYPE_BUDGET_FIXTURE=1 bun test tests/package/type-budget.test.ts` and put the new numbers
  *      here, rounded up by 15 %.
  */
-// Measured 2026-11-13 (TypeScript 6.0.3, React Native 0.86.3, Reanimated 4.5.1): 600 files and 1,146 instantiations; 600 and 2,997; 227 and 1,146. Sources, for the same
-// first app: 613 files and 12,997 instantiations.
+// Measured 2026-11-22 (TypeScript 6.0.3, React Native 0.88.1, Reanimated 4.7.1, gesture handler 3.3.0): 879 files and 2,955 instantiations; 879 and 8,063; 394 and 2,955. The
+// growth is in the packages the declarations name: of the 879 files of the smallest app 232 are React Native 0.88's (`types_generated/`), 63 TypeScript's own, 20 Worklets 0.13's,
+// and the rest the library's declarations and what they reference (gesture handler 3's and Reanimated 4.7's among them). Before (2026-11-13, React Native 0.86.3, Reanimated 4.5.1, gesture handler 2.32.0): 600 files and 1,146 instantiations; 600 and 2,997; 227 and 1,146.
 const budget = {
-  "view-text": { files: 690, instantiations: 1320 },
-  features: { files: 690, instantiations: 3450 },
-  core: { files: 262, instantiations: 1320 },
+  "view-text": { files: 1010, instantiations: 3400 },
+  features: { files: 1010, instantiations: 9300 },
+  core: { files: 454, instantiations: 3400 },
 } as const;
 
 const packageRoot = realpathSync(packageDirectory);

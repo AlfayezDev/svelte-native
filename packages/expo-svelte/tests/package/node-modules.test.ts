@@ -386,7 +386,10 @@ describe("an app that builds for native only: no @sveltejs/kit, no vite", () => 
     const done = run([join(expo, "bin/cli"), "export:embed", "--platform", "android", "--dev", "false", "--minify", "false", "--reset-cache", "--entry-file", ".expo-svelte/entry.ts", "--bundle-output", bundle, "--sourcemap-output", `${bundle}.map`, "--assets-dest", join(output, "assets")], bare, env);
     expect(done.stderr + done.stdout + done.exitCode).toMatch(/0$/);
     // The source map names the modules from the project root.
-    const { sources } = JSON.parse(readFileSync(`${bundle}.map`, "utf8")) as { sources: string[] };
+    // (Metro 0.87 writes an indexed map, `sections` of maps, where 0.84 wrote one.)
+    const map = JSON.parse(readFileSync(`${bundle}.map`, "utf8")) as { sources?: string[]; sections?: { map: { sources: string[] } }[] };
+    const sources = map.sources ?? map.sections?.flatMap((section) => section.map.sources) ?? [];
+    expect(sources.length, `the source map has ${Object.keys(map).join(", ")}`).toBeGreaterThan(0);
     const has = (pattern: RegExp) => sources.some((source) => pattern.test(source));
     expect(has(/^\/src\/routes\/\+mobile\.svelte$/)).toBe(true);
     expect(has(/^\/\.expo-svelte\/routes\.app\.ts$/)).toBe(true);
@@ -403,7 +406,7 @@ describe("an app that builds for native only: no @sveltejs/kit, no vite", () => 
     const errors = lines.filter((line) => / ERROR /.test(line));
     const files = errors.map((line) => /ERROR "([^"]+)"/.exec(line)?.[1]);
     // Only the control file has errors: the typed one (every documented prop and platform module) and the library's own source, which svelte-check reads from node_modules, have none.
-    expect(files).toEqual(["types/negative.svelte", "types/negative.svelte"]);
+    expect(files, errors.join("\n")).toEqual(["types/negative.svelte", "types/negative.svelte"]);
     expect(errors.some((line) => line.includes("onPressChanged") && line.includes("does not exist"))).toBe(true);
     expect(errors.some((line) => line.includes("This comparison appears to be unintentional"))).toBe(true);
     expect(lines.some((line) => / COMPLETED \d+ FILES 2 ERRORS /.test(line))).toBe(true);

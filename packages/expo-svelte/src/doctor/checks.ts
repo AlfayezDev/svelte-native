@@ -122,8 +122,8 @@ function peerDependencies(context: Context, peers: Record<string, unknown>, opti
 
 /**
  * What `polyfills.ts` imports from `expo` by path: `expo/src/winter`, Expo's WinterCG runtime (a standard `URL` and `URLSearchParams`, `fetch`, `TextDecoder`, ...). The router builds
- * every location as a `SvelteURL`, which React Native's own `URL` cannot construct, so without the runtime an app starts blank with `TypeError: undefined is not a function`. `expo`
- * has no `exports` map; Metro picks `runtime.native.ts` on a device.
+ * every location as a `SvelteURL`, which React Native's own `URL` cannot construct, so without the runtime an app starts blank with `TypeError: undefined is not a function`. `expo`'s
+ * `exports` map serves that path from `build/winter` (the sources here under the `expo-source` condition), and the package ships both; Metro picks `runtime.native` on a device.
  */
 const EXPO_RUNTIME_FILES = ["src/winter/index.ts", "src/winter/runtime.native.ts"] as const;
 

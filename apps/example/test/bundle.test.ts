@@ -29,8 +29,22 @@ function bundle(platform: "android" | "ios"): Bundle {
     { cwd: app, env, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
   );
   if (done.status !== 0) throw new Error(`export:embed (${platform}) failed: ${(done.stderr || done.stdout).slice(-800)}`);
-  const { sources } = JSON.parse(readFileSync(sourceMap, "utf8")) as { sources: string[] };
+  const sources = sourcesOfMap(JSON.parse(readFileSync(sourceMap, "utf8")) as RawSourceMap);
   return { bytes: statSync(output).size, modules: sources.map((source) => source.replace(/^\//, "")), text: readFileSync(output, "utf8") };
+}
+
+/** A source map as Metro writes it: one map with `sources`, or, since Metro 0.87 when a module brings a map of its own, an index map whose `sections` each hold one. */
+type RawSourceMap = { sources?: unknown; sections?: { map?: RawSourceMap }[] };
+
+/** The modules a source map lists, each once, from a plain map or an index map. */
+function sourcesOfMap(map: RawSourceMap): string[] {
+  const found = new Set<string>();
+  const walk = (entry: RawSourceMap): void => {
+    if (Array.isArray(entry.sources)) for (const source of entry.sources) if (typeof source === "string") found.add(source);
+    for (const section of entry.sections ?? []) if (section.map) walk(section.map);
+  };
+  walk(map);
+  return [...found];
 }
 
 /** Every `+mobile.svelte` and `+layout.mobile.svelte` of src/routes, as the paths the source map names (from the repository root). */
@@ -56,8 +70,8 @@ for (const platform of ["android", "ios"] as const) {
       // No React renderer: the library renders Svelte to Fabric directly. (React itself is there: some of React Native's modules import it.)
       expect(modules.filter((module) => /react-dom|react-reconciler|\/scheduler\//.test(module))).toEqual([]);
       // A standard URL: the router builds every location as a `SvelteURL`, which React Native's own `URL` cannot construct, so the library's
-      // polyfills load Expo's WinterCG runtime. Without it the app started blank (9 Nov 2026, the first run of this app on an emulator).
-      expect(modules.some((module) => /node_modules\/expo\/src\/winter\/runtime\.native\.ts$/.test(module))).toBe(true);
+      // polyfills load Expo's WinterCG runtime (since SDK 58 Metro resolves `expo/src/winter` to the package's `build/`, its `exports` having no `expo-source` condition here). Without it the app started blank (9 Nov 2026, the first run of this app on an emulator).
+      expect(modules.some((module) => /node_modules\/expo\/(?:src|build)\/winter\/runtime\.native\.(?:ts|js)$/.test(module))).toBe(true);
       // The animation, gestures and svg libraries (gesture handler, Worklets, Reanimated, svg) are the library's copies too: its own imports, a library's and the app's all reach `vendor/`, and no original is bundled beside them (a package
       // manager installs one of gesture handler, Reanimated and Worklets for Expo Router's peers: Metro never reaches it, and the Worklets plugin that Babel runs is the copy's, `tests/compiler/worklets-plugin.test.ts`).
       // `crypto` and `localStorage` are react-native-quick-crypto and react-native-mmkv, with the Nitro runtime they share, and the `Intl` constructors Hermes lacks are hermes-intl: required when first used,

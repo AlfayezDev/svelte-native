@@ -12,6 +12,7 @@ import android.util.Log
 import android.util.SparseArray
 import android.view.View
 import android.view.ViewGroup
+import com.facebook.proguard.annotations.DoNotStrip
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.uimanager.ThemedReactContext
 import expo.modules.svelteengine.views.EngineForeign
@@ -78,7 +79,8 @@ private const val KIND_FOREIGN = 19
 /** The changes of the configuration that a view built ahead of time would carry (an input's text size, colours, cursor and direction); rotation and a resize are not among them. */
 private const val SPARE_CONFIGURATION = ActivityInfo.CONFIG_FONT_SCALE or ActivityInfo.CONFIG_LOCALE or ActivityInfo.CONFIG_UI_MODE or ActivityInfo.CONFIG_DENSITY or ActivityInfo.CONFIG_LAYOUT_DIRECTION
 
-/** Applies C++ mounting batches to the engine view tree. Main thread only. */
+/** Applies C++ mounting batches to the engine view tree. Main thread only. C++ calls into it by name (`onTransaction`), so R8 keeps the class and its name too. */
+@DoNotStrip
 class MountingManager(private val reactContext: ReactApplicationContext, private val lab: LabSwitches = LabSwitches(engineEnabled = true, gesturesAtStart = false)) {
   private val appContext = reactContext.applicationContext
   private var seenConfiguration = Configuration(reactContext.resources.configuration)
@@ -318,7 +320,12 @@ class MountingManager(private val reactContext: ReactApplicationContext, private
 
   private val releaseHeld = Runnable { transactions.release() }
 
-  /** Called from C++ on the thread that committed: the JS thread, or the main thread for a commit the platform made (a size, a rotation). */
+  /**
+   * Called from C++ on the thread that committed: the JS thread, or the main thread for a commit the platform made (a size, a rotation). Nothing in Kotlin calls it,
+   * so `@DoNotStrip` is what keeps it, with its name, in a release build with R8 (the Expo template of SDK 58 turns R8 on): without it the first commit fails with
+   * `NoSuchMethodError` and the screen stays empty.
+   */
+  @DoNotStrip
   @Suppress("unused")
   fun onTransaction(surfaceId: Int, ops: IntArray, strings: Array<String>, objects: Array<Any?>) {
     transactions.submit(Transaction(surfaceId, ops, strings, objects))

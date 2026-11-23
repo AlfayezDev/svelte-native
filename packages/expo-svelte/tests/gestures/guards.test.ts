@@ -1,5 +1,6 @@
 import { test, expect, spyOn } from "bun:test";
 import { load, settle, callsOf, anim, world } from "./support/harness.ts";
+import { closureEntries } from "../../src/gestures/closure.ts";
 
 /**
  * The development guards: a UI-thread callback that captured a Svelte signal, a gesture whose callbacks are some worklets and some
@@ -22,6 +23,18 @@ async function mount(options: { dev?: boolean } = {}) {
   const app = m.startSurface(101, m.Fixture, {}) as unknown as App;
   return { m, app, G: m.gestures.Gesture };
 }
+
+test("Worklets 0.13 writes the closure as an array: the names come from the function's own `const [..] = this.__closure`", async () => {
+  const { m, G } = await mount();
+  const callback = worklet();
+  Object.assign(callback, { __closure: [{}, signal()], __initData: { code: "(function onEnd(){const[$,count]=this.__closure;return $.get(count);})" } });
+  let caught = "";
+  try { m.startSurface(102, m.Fixture, { initial: [{ id: "a", gesture: G.Pan().onUpdate(callback) }] }); } catch (error) { caught = (error as Error).message; }
+  expect(caught).toContain('reads the state "count"');
+  expect(closureEntries(callback).map(([name]) => name)).toEqual(["$", "count"]);
+  // No source to read the names from: the values are still found, under their place.
+  expect(closureEntries(Object.assign(() => {}, { __closure: [1, 2] })).map(([name]) => name)).toEqual(["#0", "#1"]);
+});
 
 test("a UI-thread callback whose closure holds a Svelte signal is refused before anything reaches native, with the variable named", async () => {
   const { m, G } = await mount();

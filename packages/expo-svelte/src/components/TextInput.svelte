@@ -2,7 +2,7 @@
   import type {} from "../elements.d.ts";
   import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
-  import type { TextInput as NativeTextInput, TextInputProps } from "react-native";
+  import type { TextInputInstance as NativeTextInput, TextInputProps } from "react-native";
   import type { HostHandle } from "../fabric/host.ts";
   import { htmlTextInput } from "../html-input.ts";
   import { textInputProps } from "../text-input-props.ts";

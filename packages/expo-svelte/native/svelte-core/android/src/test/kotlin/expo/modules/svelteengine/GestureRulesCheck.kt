@@ -83,7 +83,7 @@ fun main(args: Array<String>) {
   equal("first internal id", seen.min(), GestureRules.INTERNAL_ID_BASE)
 
   // Arbitration with RNGH's default Pan (SPEC.md, "Gestures", "Android arbitration"): its `minDist` is `getScaledTouchSlop` and it
-  // activates on the distance rule of `PanGestureHandler.shouldActivate`, which is read from the library's own source here (2.32.0:
+  // activates on the distance rule of `PanGestureHandler.shouldActivate`, which is read from the library's own source here (3.3.0:
   // `dx * dx + dy * dy >= minDist * minDist`), not retyped. The edge swipe and a sheet's drag use the same distance, so whenever one
   // of them is claimed at a move a default Pan activates there too: the two tie on that move and the root asks the native view
   // first, never later.

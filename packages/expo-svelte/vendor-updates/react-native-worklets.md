@@ -1,6 +1,6 @@
 # react-native-worklets
 
-- **Current**: 0.10.1
+- **Current**: 0.13.0
 - **Linked**: every app
 - **Upstream**: https://github.com/software-mansion/react-native-reanimated
 - **Copy**: `vendor/react-native-worklets/` (its `VENDOR.md` has the tarball's integrity, what was left out and the patches)
@@ -26,7 +26,8 @@ Only with Reanimated, to a version Reanimated's compatibility table names.
 ## What the library relies on
 
 - `src/transformer.ts`: `react-native-worklets/plugin` (and `react-native-reanimated/plugin`) resolve to the copy's plugin; Metro's cache key hashes the plugin file.
-- The plugin's own `require`s (`@babel/*`, `convert-source-map`) are the library's `dependencies` (`tests/compiler/worklets-plugin.test.ts`).
+- The plugin's own `require`s (`@babel/*`, `convert-source-map`, `@jridgewell/remapping`; `whatwg-fetch` for the worklet runtime's networking) are the library's `dependencies` (`tests/compiler/worklets-plugin.test.ts`).
+- The copy leaves out `plugin-oxc/` (0.13: the Rust plugin's prebuilt `.node` binaries for six platforms, 16 MB; the Babel plugin is what the transformer loads and nothing reads the other).
 - `src/fabric/reanimated-load.ts`, `src/fabric/transitions.ts`.
 
 ## What to look at in its source

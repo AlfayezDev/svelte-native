@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { platformDir, expoSvelteCli } from "../lib/paths.ts";
+import { sourcesOfMap, type RawSourceMap } from "../lib/source-map.ts";
 
 /**
  * The JavaScript bundle of each app (packages/expo-svelte/native/svelte-core/SPEC.md, "Native modules (smoke test)" and "What the product contains: no development lab (JavaScript)"). The smoke test's libraries are in the smoke app only,
@@ -53,8 +54,17 @@ const { smokeOnlyBundlePackages, libraryVendoredPackages } = createRequire(impor
  *
  * Moved on 22 November 2026 (chore/svelte-from-npm), from 7,085,004 to 7,252,330 bytes (+167,326, 2.4 %; 1,403 to 1,424 modules): Svelte 5.59.1 from the registry replaces the build of the custom-renderer pull request. The same recipe read 7,136,198 bytes in 1,421 modules
  * at ab649ba2 (main, with that build, 51,194 over the baseline above), so the new Svelte is +116,132 (1.6 %) and three modules of the same tree.
+ *
+ * Moved on 23 November 2026 (chore/expo-sdk-58, Expo SDK 58 with React Native 0.88 and React 19.3) to 7,364,481 bytes in 1,511 modules. Measured with this recipe on both trees the same day:
+ * SDK 57 gave 7,136,179 bytes in 1,421 modules, so the move is +228,302 bytes (3.2 %). By package (source bytes): react-native +331,975 (179 to 271 modules: React Native 0.88's
+ * `src/private` and `setup-env`, which InitializeCore needs now), regenerator-runtime +25,202, whatwg-url-minimum +18,991, semver +17,592, expo-font +10,111, promise +9,934; less of
+ * event-target-shim (-23,411, gone), expo (-17,594), expo-modules-core (-13,845) and expo-file-system (-13,644). expo-video 58 took `Image` from the whole of `react-native`, which
+ * brought React Native's index and the virtualized lists (+1.2 MB of source); `LEAN_IMPORTS` in the library's `metro.ts` gives that file its own import again.
+ *
+ * With Svelte 5.59.1 from the registry in place of the pull request's build (chore/svelte-from-npm merged in, 23 November 2026), the same recipe gives 7,417,442 bytes in
+ * 1,513 modules: +52,961 (0.7 %) over SDK 58 with the build, +165,112 (2.3 %) over SDK 57 with 5.59.1 (7,252,330).
  */
-const baseline = { commit: "Svelte 5.59.1 from the registry in place of the custom-renderer pull request's build (+116,132 bytes, 1.6 %; chore/svelte-from-npm: 7,252,330 bytes in 1,424 modules, +2.4 % over the 7,085,004 of feat/native-fetch)", bytes: 7_252_330 };
+const baseline = { commit: "Expo SDK 58 with React Native 0.88 and Svelte 5.59.1 from the registry (chore/expo-sdk-58 with chore/svelte-from-npm: 7,417,442 bytes in 1,513 modules, +2.3 % over SDK 57 with Svelte 5.59.1 measured the same day); before that, Svelte 5.59.1 in place of the custom-renderer pull request's build (+116,132 bytes, 1.6 %), the library's own fetch, Blob, crypto and localStorage with the Web APIs lab (+139,202 bytes, 2.3 %), and the four packages the library requires as peers, which every app bundles now (+938,646 bytes; feat/native-fetch: 7,085,004 bytes in 1,403 modules, +17.9 % over the 6,007,156 of feat/exports-grouped)", bytes: 7_417_442 };
 
 /**
  * The production variant's bundle without the lab, built with the same recipe. It may grow by 1 % before a test says so. Measured again at 727bded, which makes the library's
@@ -66,8 +76,14 @@ const baseline = { commit: "Svelte 5.59.1 from the registry in place of the cust
  *
  * Moved on 22 November 2026 (chore/svelte-from-npm), from 5,586,438 to 5,757,081 bytes (+170,643, 3.1 %; 1,180 to 1,200 modules), with the QA app's: Svelte 5.59.1 from the registry replaces the pull request's build. The same recipe read 5,636,916 bytes in 1,197 modules at
  * ab649ba2 (main, with that build, 50,478 over the baseline above), so the new Svelte is +120,165 (2.1 %) and three modules.
+ *
+ * Moved on 23 November 2026 (chore/expo-sdk-58) to 5,883,502 bytes in 1,302 modules: SDK 57 measured the same day gave 5,636,897 bytes in 1,197 modules, so +246,605 (4.4 %),
+ * nearly all React Native 0.88's own modules that InitializeCore needs now (react-native +331,975 source bytes, 179 to 271 modules), with the same smaller packages as above.
+ *
+ * With Svelte 5.59.1 from the registry (chore/svelte-from-npm merged in, 23 November 2026): 5,942,439 bytes in 1,304 modules, +58,937 (1.0 %) over SDK 58 with the pull
+ * request's build, +185,358 (3.2 %) over SDK 57 with 5.59.1 (5,757,081).
  */
-const productBaseline = { commit: "Svelte 5.59.1 from the registry in place of the custom-renderer pull request's build (+120,165 bytes, 2.1 %; chore/svelte-from-npm: 5,757,081 bytes in 1,200 modules, +3.1 % over the 5,586,438 of feat/native-fetch)", bytes: 5_757_081 };
+const productBaseline = { commit: "Expo SDK 58 with React Native 0.88 and Svelte 5.59.1 from the registry (chore/expo-sdk-58 with chore/svelte-from-npm: 5,942,439 bytes in 1,304 modules, +3.2 % over SDK 57 with Svelte 5.59.1 measured the same day); before that, Svelte 5.59.1 in place of the custom-renderer pull request's build (+120,165 bytes, 2.1 %), the library's own fetch, Blob, crypto and localStorage (+139,369 bytes, 3.1 %), and the four packages the library requires as peers, which every app bundles now (+941,308 bytes; feat/native-fetch: 5,586,438 bytes in 1,180 modules, +24.0 % over the 4,505,761 of feat/exports-grouped)", bytes: 5_942_439 };
 
 /** What this run made: the bundle directories (about 15 to 34 MB each) and the Metro caches of their own. All removed when the tests end. */
 const made: string[] = [];
@@ -106,7 +122,7 @@ function bundle(variant: string, syncedFirst: readonly string[] = []): Bundle {
 	);
 	if (done.status !== 0) throw new Error(`export:embed (${variant || "qa"}) failed: ${(done.stderr || done.stdout).slice(-600)}`);
 	// The source map lists the modules of the bundle, as paths from the repository root (`/apps/qa/src/…`).
-	const { sources } = JSON.parse(readFileSync(sourceMap, "utf8")) as { sources: string[] };
+	const sources = sourcesOfMap(JSON.parse(readFileSync(sourceMap, "utf8")) as RawSourceMap);
 	return { text: readFileSync(output, "utf8"), bytes: statSync(output).size, modules: sources.map((source) => source.replace(/^\//, "")) };
 }
 

@@ -21,7 +21,7 @@ The newest release react-native-pdf works with (its README or peer range).
 
 ## Local changes
 
-None. The copy leaves out `windows`.
+`0001-the-optimizing-proguard-file.patch` (Android): the release build type names `proguard-android-optimize.txt`; Android Gradle plugin 9 (React Native 0.88, Expo SDK 58) refuses the default file the version names, which carries `-dontoptimize` (the 1.x line, a Kotlin rewrite, has the same one-line change). Doctor shape: `blobUtilProblems`. The copy leaves out `windows`.
 
 ## What the library relies on
 

@@ -1,4 +1,4 @@
-export type CaptureFormat = "jpg" | "png" | "webm" | "raw";
+export type CaptureFormat = "jpg" | "png" | "webp" | "webm" | "raw";
 export type CaptureResult = "tmpfile" | "base64" | "data-uri" | "zip-base64";
 export type CaptureOptions = {
     /** Android: the file name of a `tmpfile` result, at least three characters. */
@@ -9,7 +9,7 @@ export type CaptureOptions = {
      */
     width?: number;
     height?: number;
-    /** `png` (default), `jpg`, and on Android `webm` and `raw` (ARGB pixels, preceded by `width:height|`). */
+    /** `png` (default), `jpg`, and on Android `webp` (`webm` is its deprecated name, with a warning) and `raw` (ARGB pixels, preceded by `width:height|`). */
     format?: CaptureFormat;
     /** 0 to 1, for the lossy formats. */
     quality?: number;
@@ -28,7 +28,7 @@ export type CaptureOptions = {
     useRenderInContext?: boolean;
 };
 type Platform = "android" | "ios";
-/** `validateOptions`: the library's defaults and checks; a bad option falls back to its default and is reported (the library warns in development). */
+/** `validateOptions`: the library's defaults and checks; a bad option falls back to its default and is reported (the library warns, as it has done in every build since 6). */
 export declare function validateCaptureOptions(input: CaptureOptions | undefined, platform: Platform): {
     options: CaptureOptions;
     errors: string[];

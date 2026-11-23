@@ -5,7 +5,7 @@ import type { Payload, ViewConfig } from "../../src/fabric/view-configs.ts";
  * to read the props a node was given rather than the encoded payload: every prop passes through as it is, an update
  * carries the keys whose value differs by identity, and the events are the few the fixtures emit.
  */
-const events = new Map([["topChange", "onChange"], ["topLayout", "onLayout"], ["topScroll", "onScroll"], ["topDismiss", "onDismiss"]]);
+const events = new Map([["topChange", "onChange"], ["topLayout", "onLayout"], ["topScroll", "onScroll"], ["topDismiss", "onDismiss"], ["topFocus", "onFocus"], ["topBlur", "onBlur"]]);
 const config: ViewConfig = { attributes: {}, events, foreign: false };
 
 export const viewConfigFor = (): ViewConfig => config;

@@ -17,3 +17,24 @@ export function keyboard(): KeyboardModule {
 }
 
 whenBooted(keyboard);
+
+type InputState = { focusInput(input: object): void; blurInput(input: object): void };
+
+let inputs: InputState | undefined;
+
+/**
+ * React Native's record of the focused text input (`TextInputState`), the one `Keyboard.dismiss()` blurs (and a `Modal` that opens over the
+ * keyboard). React Native's `TextInput` keeps it from its focus and blur events; Expo Svelte's mounts the native view itself, so it keeps it the
+ * same way, with its handle (`components/TextInput.svelte`). The command reaches the view through the handle (`fabric/renderer-stub.ts`). The
+ * module is loaded at the first focus: `Keyboard` imports it as well, and is loaded right after the first commit.
+ */
+export function inputFocused(input: object): void {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  inputs ??= (require("react-native/Libraries/Components/TextInput/TextInputState") as { default: InputState }).default;
+  inputs.focusInput(input);
+}
+
+/** The input lost focus, or is gone: React Native's record no longer holds it (when it did). Nothing was recorded before a first focus. */
+export function inputBlurred(input: object): void {
+  inputs?.blurInput(input);
+}

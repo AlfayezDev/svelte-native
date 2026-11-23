@@ -52,12 +52,13 @@ const { smokeOnlyBundlePackages, libraryVendoredPackages } = createRequire(impor
  * as peers, react-native-quick-crypto, react-native-mmkv, react-native-nitro-modules and react-native-quick-base64: they were the smoke test's libraries, which Metro stubbed in this variant, and `crypto` and `localStorage` read them, so the QA app
  * bundles the real ones (+938,646 bytes, 164 modules; quick-crypto's implementation of Node's crypto API and the modules it needs are most of it). The smoke app carried them already and does not move (9,173,998 bytes in 1,938 modules).
  *
- * Moved on 23 November 2026 (chore/expo-sdk-58, Expo SDK 58 with React Native 0.88 and React 19.3), from 7,085,004 to 8,029,217 bytes (+944,213, 13.3 %; 1,709 modules). Measured on that tree with this recipe; the old number was not measured again
- * on SDK 57, so the move is not split module by module. By package, the 1,709 modules: react-native-reanimated 1,392,134 (271 modules), the library's own 1,228,904, react-native 1,204,841 (452), the app 855,753, svelte 771,448,
- * react-native-quick-crypto 360,762, @sveltejs/kit 242,808, react-native-worklets 233,516, readable-stream 228,962, expo 183,895, react-native-svg 105,372, react-native-gesture-handler 74,314. What is known: the sources of the libraries that moved
- * grew (reanimated 4.5.1 to 4.7.1 +106 KB, worklets 0.10.1 to 0.13.0 +46 KB, gesture handler 2.32.0 to 3.3.0 +239 KB of which 74 KB is bundled, svg +23 KB), and each library appears once, as the library's copy.
+ * Moved on 23 November 2026 (chore/expo-sdk-58, Expo SDK 58 with React Native 0.88 and React 19.3) to 7,364,481 bytes in 1,511 modules. Measured with this recipe on both trees the same day:
+ * SDK 57 gave 7,136,179 bytes in 1,421 modules, so the move is +228,302 bytes (3.2 %). By package (source bytes): react-native +331,975 (179 to 271 modules: React Native 0.88's
+ * `src/private` and `setup-env`, which InitializeCore needs now), regenerator-runtime +25,202, whatwg-url-minimum +18,991, semver +17,592, expo-font +10,111, promise +9,934; less of
+ * event-target-shim (-23,411, gone), expo (-17,594), expo-modules-core (-13,845) and expo-file-system (-13,644). expo-video 58 took `Image` from the whole of `react-native`, which
+ * brought React Native's index and the virtualized lists (+1.2 MB of source); `LEAN_IMPORTS` in the library's `metro.ts` gives that file its own import again.
  */
-const baseline = { commit: "Expo SDK 58 with React Native 0.88 (chore/expo-sdk-58: 8,029,217 bytes in 1,709 modules, +13.3 % over the 7,085,004 of feat/native-fetch); before that, the library's own fetch, Blob, crypto and localStorage with the Web APIs lab (+139,202 bytes, 2.3 %), and the four packages the library requires as peers, which every app bundles now (+938,646 bytes; feat/native-fetch: 7,085,004 bytes in 1,403 modules, +17.9 % over the 6,007,156 of feat/exports-grouped)", bytes: 8_029_217 };
+const baseline = { commit: "Expo SDK 58 with React Native 0.88 (chore/expo-sdk-58: 7,364,481 bytes in 1,511 modules, +3.2 % over SDK 57 measured the same day); before that, the library's own fetch, Blob, crypto and localStorage with the Web APIs lab (+139,202 bytes, 2.3 %), and the four packages the library requires as peers, which every app bundles now (+938,646 bytes; feat/native-fetch: 7,085,004 bytes in 1,403 modules, +17.9 % over the 6,007,156 of feat/exports-grouped)", bytes: 7_364_481 };
 
 /**
  * The production variant's bundle without the lab, built with the same recipe. It may grow by 1 % before a test says so. Measured again at 727bded, which makes the library's
@@ -67,10 +68,10 @@ const baseline = { commit: "Expo SDK 58 with React Native 0.88 (chore/expo-sdk-5
  * Moved on 14 November 2026 (feat/native-fetch), from 4,505,761 to 5,586,438 bytes (+1,080,677, 24.0 %; 980 to 1,180 modules): the library's own `fetch`, `Blob`, `FormData`, `crypto` and `localStorage` (4,645,130 bytes in 1,014 modules, +139,369, 3.1 %: the
  * product has no lab, so this is the library's code alone), and the four required peers, which the product bundled as stubs before and bundles for real now (+941,308 bytes, 166 modules).
  *
- * Moved on 23 November 2026 (chore/expo-sdk-58), from 5,586,438 to 5,883,511 bytes (+297,073, 5.3 %; 1,302 modules): Expo SDK 58 with React Native 0.88, and the libraries the library carries at their SDK 58 versions (reanimated 1,392,134 bytes,
- * react-native 652,028 in 271 modules, worklets 233,516, gesture handler 74,314). Not measured again on SDK 57, so not split module by module.
+ * Moved on 23 November 2026 (chore/expo-sdk-58) to 5,883,502 bytes in 1,302 modules: SDK 57 measured the same day gave 5,636,897 bytes in 1,197 modules, so +246,605 (4.4 %),
+ * nearly all React Native 0.88's own modules that InitializeCore needs now (react-native +331,975 source bytes, 179 to 271 modules), with the same smaller packages as above.
  */
-const productBaseline = { commit: "Expo SDK 58 with React Native 0.88 (chore/expo-sdk-58: 5,883,511 bytes in 1,302 modules, +5.3 % over the 5,586,438 of feat/native-fetch); before that, the library's own fetch, Blob, crypto and localStorage (+139,369 bytes, 3.1 %), and the four packages the library requires as peers, which every app bundles now (+941,308 bytes; feat/native-fetch: 5,586,438 bytes in 1,180 modules, +24.0 % over the 4,505,761 of feat/exports-grouped)", bytes: 5_883_511 };
+const productBaseline = { commit: "Expo SDK 58 with React Native 0.88 (chore/expo-sdk-58: 5,883,502 bytes in 1,302 modules, +4.4 % over SDK 57 measured the same day); before that, the library's own fetch, Blob, crypto and localStorage (+139,369 bytes, 3.1 %), and the four packages the library requires as peers, which every app bundles now (+941,308 bytes; feat/native-fetch: 5,586,438 bytes in 1,180 modules, +24.0 % over the 4,505,761 of feat/exports-grouped)", bytes: 5_883_502 };
 
 /** What this run made: the bundle directories (about 15 to 34 MB each) and the Metro caches of their own. All removed when the tests end. */
 const made: string[] = [];
@@ -163,7 +164,7 @@ describe("the JavaScript bundles", () => {
 		const { text, bytes } = bundled("smoke");
 		for (const code of libraryCode) expect([code, text.includes(code)]).toEqual([code, true]);
 		expect(text).toContain("RNGetRandomValues.getRandomBase64");
-		expect(bytes).toBeGreaterThan(bundled("").bytes * 1.15);
+		expect(bytes).toBeGreaterThan(bundled("").bytes * 1.2);
 	}, 120_000);
 	test("the QA app's bundle is within 1 % of the reference commit's, and the product's within 1 % of its own", () => {
 		expect(bundled("").bytes / baseline.bytes).toBeLessThan(1.01);

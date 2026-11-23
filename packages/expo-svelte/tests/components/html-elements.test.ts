@@ -1222,6 +1222,33 @@ test("a raw onChange runs before the conveniences and the binding, which still r
   expect(log.splice(0)).toEqual(["raw false", "value false"]);
 });
 
+test("onContentSizeChange and onScroll: a handler is the native prop `true`, none is no prop and a removed one is `null`, and the events reach the handler, on a TextInput and on a textarea (#89)", async () => {
+  const log = logged();
+  for (const [os, surface] of [["android", 647], ["ios", 648]] as const) {
+    (globalThis as { __htmlOS?: string }).__htmlOS = os;
+    try {
+      const t = await mountFixture(fixture("native-input-events-fixture.svelte"), surface);
+      const events = (globalThis as unknown as { __events: { unwatch(): void } }).__events;
+      // The Android engine reads these two as the raw props of the commit: a handler is `true`, no handler is no key, a removed handler is `null` (record 51).
+      for (const id of ["field", "dropped", "area"]) expect([os, id, t.byID(id).props.onContentSizeChange, t.byID(id).props.onScroll]).toEqual([os, id, true, true]);
+      expect("onContentSizeChange" in t.byID("plain").props || "onScroll" in t.byID("plain").props).toBe(false);
+      emit(t.byID("field").target, "topContentSizeChange", { contentSize: { width: 180, height: 48 }, target: 1 });
+      emit(t.byID("field").target, "topScroll", { contentOffset: { x: 0, y: 12 }, target: 1 });
+      emit(t.byID("area").target, "topContentSizeChange", { contentSize: { width: 180, height: 72 }, target: 1 });
+      emit(t.byID("area").target, "topScroll", { contentOffset: { x: 0, y: 30 }, target: 1 });
+      await t.settle();
+      expect(log.splice(0)).toEqual(["size 180 48", "scroll 12", "area size 72", "area scroll 30"]);
+      events.unwatch();
+      await t.settle();
+      expect([t.byID("dropped").props.onContentSizeChange, t.byID("dropped").props.onScroll]).toEqual([null, null]);
+      expect(t.byID("field").props.onContentSizeChange).toBe(true);
+      t.m.stopSurface(surface);
+    } finally {
+      delete (globalThis as { __htmlOS?: string }).__htmlOS;
+    }
+  }
+});
+
 test("a declarative selection reaches the native text input on Android as on iOS, at mount and when it changes (#90)", async () => {
   logged();
   for (const [os, surface] of [["android", 645], ["ios", 646]] as const) {

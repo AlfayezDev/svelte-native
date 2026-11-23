@@ -79,7 +79,8 @@ private const val KIND_FOREIGN = 19
 /** The changes of the configuration that a view built ahead of time would carry (an input's text size, colours, cursor and direction); rotation and a resize are not among them. */
 private const val SPARE_CONFIGURATION = ActivityInfo.CONFIG_FONT_SCALE or ActivityInfo.CONFIG_LOCALE or ActivityInfo.CONFIG_UI_MODE or ActivityInfo.CONFIG_DENSITY or ActivityInfo.CONFIG_LAYOUT_DIRECTION
 
-/** Applies C++ mounting batches to the engine view tree. Main thread only. */
+/** Applies C++ mounting batches to the engine view tree. Main thread only. C++ calls into it by name (`onTransaction`), so R8 keeps the class and its name too. */
+@DoNotStrip
 class MountingManager(private val reactContext: ReactApplicationContext, private val lab: LabSwitches = LabSwitches(engineEnabled = true, gesturesAtStart = false)) {
   private val appContext = reactContext.applicationContext
   private var seenConfiguration = Configuration(reactContext.resources.configuration)

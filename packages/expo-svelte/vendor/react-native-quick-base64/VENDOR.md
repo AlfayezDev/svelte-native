@@ -14,4 +14,4 @@ Nothing: the files here are the tarball's.
 
 ## Local changes
 
-None.
+- `vendor-patches/react-native-quick-base64/0001-the-runtime-without-rctcxxbridge.patch` (sha256 `d43046f6055875669a55c779c6f5ce1a6a90da3bb991c9e17c4cc98bc0e6f2c2`), applied with `patch -p1` after the unpack

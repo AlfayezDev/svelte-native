@@ -79,7 +79,7 @@ describe("the copies", () => {
 describe("the patches", () => {
   test("each patch of vendor-patches/ is listed in its copy's VENDOR.md with its sha256, and its shape is in the copy (what the doctor looks for)", () => {
     const patched = readdirSync(join(root, "vendor-patches"));
-    expect(patched.sort()).toEqual(["lottie-react-native", "react-native-blob-util", "react-native-gesture-handler", "react-native-maps", "react-native-pdf", "react-native-reanimated", "react-native-video", "react-native-worklets", "rive-react-native"]);
+    expect(patched.sort()).toEqual(["lottie-react-native", "react-native-blob-util", "react-native-gesture-handler", "react-native-maps", "react-native-pdf", "react-native-quick-base64", "react-native-reanimated", "react-native-video", "react-native-worklets", "rive-react-native"]);
     for (const name of patched) {
       const files = readdirSync(join(root, "vendor-patches", name)).filter((file) => file.endsWith(".patch")).sort();
       expect(files.length).toBeGreaterThan(0);

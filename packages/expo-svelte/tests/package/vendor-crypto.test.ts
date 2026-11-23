@@ -20,7 +20,7 @@ const filesUnder = (directory: string): string[] => readdirSync(directory, { rec
 
 describe("the three copies are what scripts/vendor.ts wrote", () => {
   for (const [name, version] of [["react-native-quick-crypto", "1.1.3"], ["react-native-quick-base64", "2.2.2"], ["hermes-intl", "0.1.2"]] as const) {
-    test(`${name}: the registry's version, package.json, LICENSE and VENDOR.md agree, with no local change`, () => {
+    test(`${name}: the registry's version, package.json, LICENSE and VENDOR.md agree, and its local changes are the files of vendor-patches/ (none for most)`, () => {
       const directory = copy(name);
       expect(vendoredPackages.find((vendored) => vendored.name === name)?.version).toBe(version);
       expect([manifestOf(directory).name, manifestOf(directory).version]).toEqual([name, version]);
@@ -29,7 +29,10 @@ describe("the three copies are what scripts/vendor.ts wrote", () => {
       expect(notes).toContain(`\`node scripts/vendor.ts ${name}@${version}`);
       expect(notes).toContain(`sha256 \`${createHash("sha256").update(readFileSync(join(directory, "LICENSE"))).digest("hex")}\``);
       expect(notes).toMatch(/Integrity \(npm's `dist.integrity`\): `sha512-[A-Za-z0-9+/=]+`/);
-      expect(notes).toContain("## Local changes\n\nNone.");
+      // quick-base64's iOS module has one (React Native 0.88 has no RCTCxxBridge); optional-libraries.test.ts checks that each patch is listed with its sha256.
+      const patches = join(packageRoot, "vendor-patches", name);
+      if (existsSync(patches)) for (const file of readdirSync(patches)) expect(notes).toContain(`vendor-patches/${name}/${file}`);
+      else expect(notes).toContain("## Local changes\n\nNone.");
       expect(readFileSync(join(directory, "LICENSE"), "utf8")).toMatch(/MIT License|Permission is hereby granted/);
     });
   }

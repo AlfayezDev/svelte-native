@@ -21,7 +21,7 @@ Only with the group: the newest runtime that the newest mmkv and quick-crypto re
 
 ## Local changes
 
-None.
+- `vendor-patches/react-native-nitro-modules/0001-the-install-overload-of-react-native-0.87.patch` (iOS): React Native 0.87 and later call only `installJSIBindingsWithRuntime:callInvoker:`, and 0.35.10 has only the one-argument overload, so Nitro never installed (MMKV and quick-crypto failed at their first use). The patch adds the two-argument overload as Nitro 0.37 has it. Drop it with the update to a Nitro that has it (0.37 or later), which also needs MMKV and quick-crypto versions generated for that Nitro.
 
 ## What the library relies on
 

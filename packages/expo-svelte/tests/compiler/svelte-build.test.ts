@@ -6,7 +6,8 @@ import { assertCustomRenderer, customRendererMessage, inspectSvelte, requiredSve
 import { packageRoot, repoRoot } from "../support/paths.ts";
 
 // The library compiles with Svelte 5.59.1 from the registry. A release before 5.59.0 has no custom renderers, so an app that installs an older `svelte` gets a compiler that
-// rejects the `customRenderer` option and nothing says why. The Metro integration, the transformer and the Vite plugin check the installed package for the `./renderer` export first and name the fix.
+// rejects the `customRenderer` option and nothing says why, and the pull-request build earlier versions installed has `./renderer` with other method names. The Metro integration, the
+// transformer and the Vite plugin check the installed package's `./renderer` export and version first and name the fix.
 const made: string[] = [];
 afterAll(() => {
   for (const directory of made) rmSync(directory, { recursive: true, force: true });
@@ -55,6 +56,22 @@ describe("the Svelte this library needs", () => {
     expect(message).toContain("has no `./renderer` export");
     expect(message).toContain(requiredSvelte.firstWithRenderer);
     expect(message).toContain(`pnpm add svelte@${requiredSvelte.version}`);
+  });
+
+  test("the pull-request build of custom renderers (5.56.7 with ./renderer, other method names) is refused with the fix", () => {
+    const pr = fakeSvelte({ renderer: true, version: "5.56.7" });
+    expect(inspectSvelte(pr)).toMatchObject({ ok: false, reason: "before-release", version: "5.56.7" });
+    expect(inspectSvelte(fakeSvelte({ renderer: true, version: "5.59.0-next.1" }))).toMatchObject({ ok: false, reason: "before-release" });
+    let message = "";
+    try {
+      assertCustomRenderer("withExpoSvelte (expo-svelte/metro)", pr);
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain(`is from before Svelte ${requiredSvelte.firstWithRenderer}`);
+    expect(message).toContain(`pnpm add svelte@${requiredSvelte.version}`);
+    expect(inspectSvelte(fakeSvelte({ renderer: true, version: requiredSvelte.firstWithRenderer }))).toMatchObject({ ok: true });
+    expect(inspectSvelte(fakeSvelte({ renderer: true, version: "5.60.0" }))).toMatchObject({ ok: true });
   });
 
   test("a build whose ./renderer file is missing is refused too, and one with custom renderers is accepted", () => {

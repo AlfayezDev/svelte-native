@@ -684,6 +684,12 @@ function blobUtilProblems(read2) {
     ["does not name `proguard-android-optimize.txt`", has("getDefaultProguardFile('proguard-android-optimize.txt')")]
   ], true);
 }
+function quickBase64Problems(read2) {
+  return inFile(read2, "ios/QuickBase64Module.mm", [
+    ["still casts the bridge to `RCTCxxBridge`, which React Native 0.88 removed", (code) => !code.includes("(RCTCxxBridge *)")],
+    ["does not ask the bridge for its runtime", has("[(id<QuickBase64RuntimeOwner>)_bridge runtime]")]
+  ], true);
+}
 function riveProblems(read2) {
   return inFile(read2, "android/src/main/java/com/rivereactnative/RiveReactNativeView.kt", [
     ["an event still goes through the old architecture's event emitter (a soft exception for every event in a bridgeless app)", (code) => !code.includes("RCTEventEmitter")],
@@ -738,6 +744,7 @@ var init_patches = __esm({
       { package: "react-native-gesture-handler", vendored: true, does: "the root gesture recognizer can be registered for the screens the library presents, and the podspec finds the Worklets copy beside it (iOS)", inspect: rnghProblems },
       { package: "react-native-maps", vendored: true, does: "the map's discrete events are delivered one by one, its streams still coalesce (Android); its iOS plugin points the Podfile at the library's copy", inspect: mapsProblems },
       { package: "react-native-pdf", vendored: true, does: "the pdf view's one event, which carries every message, no longer coalesces, and react-native is found from the app's directory (Android)", inspect: pdfProblems },
+      { package: "react-native-quick-base64", vendored: true, does: "the module finds the JavaScript runtime without `RCTCxxBridge`, which React Native 0.88 removed (iOS)", inspect: quickBase64Problems },
       { package: "react-native-reanimated", vendored: true, does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, and Worklets is the copy beside it", inspect: reanimatedProblems },
       { package: "react-native-video", vendored: true, does: "only progress and bandwidth events coalesce; every other video event is delivered (Android)", inspect: videoProblems },
       { package: "react-native-worklets", vendored: true, does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems },

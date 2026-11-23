@@ -23,6 +23,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var metro_exports = {};
 __export(metro_exports, {
   INITIALIZE_CORE: () => INITIALIZE_CORE,
+  LEAN_IMPORTS: () => LEAN_IMPORTS,
   LITE_ORIGINS: () => LITE_ORIGINS,
   NODE_CRYPTO: () => NODE_CRYPTO,
   QUICK_CRYPTO: () => QUICK_CRYPTO,
@@ -3085,6 +3086,9 @@ var RENDERER_STUBS = {
   "react-native/Libraries/ReactNative/AppRegistry.js": "./fabric/app-registry.ts",
   "react-native/Libraries/ReactNative/AppRegistryImpl.js": "./fabric/app-registry.ts"
 };
+var LEAN_IMPORTS = {
+  "expo-video/build/resolveAssetSource.js": "./fabric/expo-video-asset-source.ts"
+};
 var watchers = /* @__PURE__ */ new Set();
 function closeWatchers() {
   for (const watcher of watchers) watcher.close();
@@ -3270,7 +3274,7 @@ function withExpoSvelte(config, options = {}) {
         const stubbedFile = stubForFile(result.filePath);
         if (stubbedFile !== null) return { type: "sourceFile", filePath: stubbedFile };
         if (result.filePath.endsWith("push.svelte.ts") && pushOff(platform) && realOr(result.filePath) === pushClient) return { type: "sourceFile", filePath: pushAbsent };
-        const stub2 = Object.entries(RENDERER_STUBS).find(([suffix]) => result.filePath.endsWith(suffix));
+        const stub2 = Object.entries(RENDERER_STUBS).find(([suffix]) => result.filePath.endsWith(suffix)) ?? Object.entries(LEAN_IMPORTS).find(([suffix]) => result.filePath.endsWith(suffix));
         if (stub2) return { type: "sourceFile", filePath: sourceFile(stub2[1]) };
         if (INITIALIZE_CORE.test(result.filePath)) return { type: "sourceFile", filePath: sourceFile("init.ts") };
       }
@@ -3294,6 +3298,7 @@ function withExpoSvelte(config, options = {}) {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   INITIALIZE_CORE,
+  LEAN_IMPORTS,
   LITE_ORIGINS,
   NODE_CRYPTO,
   QUICK_CRYPTO,

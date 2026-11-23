@@ -22,6 +22,12 @@ export declare const INITIALIZE_CORE: RegExp;
  * `react-native` (expo-task-manager registers a headless task with it) gets the registry native code calls (`fabric/app-registry.ts`).
  */
 export declare const RENDERER_STUBS: Record<string, string>;
+/**
+ * Files of a library the package carries that take one name from the whole of `react-native`, which puts React Native's index (its components, `Animated`, the virtualized lists:
+ * about 1.2 MB of source) into every app that turns the library on. Each is resolved, by file suffix, to a module that imports that one name from its own file.
+ * expo-video 58's `resolveAssetSource.js` reads `Image.resolveAssetSource`; expo-video 57 imported `react-native/Libraries/Image/resolveAssetSource`, as its replacement does.
+ */
+export declare const LEAN_IMPORTS: Record<string, string>;
 export type ExpoSvelteMetroOptions = {
     /**
      * Packages this app does not link (the same list the Expo plugin's `autolinkingExclude` gets). Metro resolves each of them, and

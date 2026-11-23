@@ -225,6 +225,12 @@ export function blobUtilProblems(read: Reader): string[] {
   ], true);
 }
 
+export function nitroProblems(read: Reader): string[] {
+  return inFile(read, "ios/turbomodule/NativeNitroModules+NewArch.mm", [
+    ["has no `installJSIBindingsWithRuntime:callInvoker:`, the only overload React Native 0.87 and later call", has("installJSIBindingsWithRuntime:(jsi::Runtime&)runtime callInvoker:")],
+  ], true);
+}
+
 export function quickBase64Problems(read: Reader): string[] {
   return inFile(read, "ios/QuickBase64Module.mm", [
     ["still casts the bridge to `RCTCxxBridge`, which React Native 0.88 removed", (code) => !code.includes("(RCTCxxBridge *)")],

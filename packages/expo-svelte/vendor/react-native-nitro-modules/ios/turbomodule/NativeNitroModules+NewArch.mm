@@ -34,6 +34,12 @@ using namespace margelo;
 }
 RCT_EXPORT_MODULE(NitroModules)
 
+// React Native 0.87 and later call only this overload (Nitro 0.37 has it too).
+- (void)installJSIBindingsWithRuntime:(jsi::Runtime&)runtime callInvoker:(const std::shared_ptr<react::CallInvoker>&)callInvoker {
+  _callInvoker = callInvoker;
+  [self installJSIBindingsWithRuntime:runtime];
+}
+
 - (void)installJSIBindingsWithRuntime:(jsi::Runtime&)runtime {
   // 1. Get CallInvoker we cached statically
   std::shared_ptr<react::CallInvoker> callInvoker = _callInvoker.lock();

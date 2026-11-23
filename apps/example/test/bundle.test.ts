@@ -70,8 +70,8 @@ for (const platform of ["android", "ios"] as const) {
       // No React renderer: the library renders Svelte to Fabric directly. (React itself is there: some of React Native's modules import it.)
       expect(modules.filter((module) => /react-dom|react-reconciler|\/scheduler\//.test(module))).toEqual([]);
       // A standard URL: the router builds every location as a `SvelteURL`, which React Native's own `URL` cannot construct, so the library's
-      // polyfills load Expo's WinterCG runtime. Without it the app started blank (9 Nov 2026, the first run of this app on an emulator).
-      expect(modules.some((module) => /node_modules\/expo\/src\/winter\/runtime\.native\.ts$/.test(module))).toBe(true);
+      // polyfills load Expo's WinterCG runtime (since SDK 58 Metro resolves `expo/src/winter` to the package's `build/`, its `exports` having no `expo-source` condition here). Without it the app started blank (9 Nov 2026, the first run of this app on an emulator).
+      expect(modules.some((module) => /node_modules\/expo\/(?:src|build)\/winter\/runtime\.native\.(?:ts|js)$/.test(module))).toBe(true);
       // The animation, gestures and svg libraries (gesture handler, Worklets, Reanimated, svg) are the library's copies too: its own imports, a library's and the app's all reach `vendor/`, and no original is bundled beside them (a package
       // manager installs one of gesture handler, Reanimated and Worklets for Expo Router's peers: Metro never reaches it, and the Worklets plugin that Babel runs is the copy's, `tests/compiler/worklets-plugin.test.ts`).
       // `crypto` and `localStorage` are react-native-quick-crypto and react-native-mmkv, with the Nitro runtime they share, and the `Intl` constructors Hermes lacks are hermes-intl: required when first used,

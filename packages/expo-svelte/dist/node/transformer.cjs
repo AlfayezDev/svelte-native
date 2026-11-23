@@ -1643,8 +1643,8 @@ function lowerHtml(ast, content, filename, warn = () => {
   let link = false;
   const slice = (node) => content.slice(node.start, node.end);
   const where = (node) => {
-    const before = content.slice(0, node.start);
-    return `${filename ?? "component"}:${lines(before) + 1}:${node.start - before.lastIndexOf("\n")}`;
+    const before2 = content.slice(0, node.start);
+    return `${filename ?? "component"}:${lines(before2) + 1}:${node.start - before2.lastIndexOf("\n")}`;
   };
   const fail = (node, message) => {
     problems.push(`${where(node)} ${message}`);
@@ -2325,6 +2325,17 @@ var requiredSvelte = {
   /** The first release with custom renderers. */
   firstWithRenderer: "5.59.0"
 };
+function before(version, release) {
+  const parse4 = (v) => {
+    const match = /^(\d+)\.(\d+)\.(\d+)(-)?/.exec(v);
+    return match ? [Number(match[1]), Number(match[2]), Number(match[3]), match[4] ? 0 : 1] : null;
+  };
+  const a = parse4(version);
+  const b = parse4(release);
+  if (!a) return true;
+  for (let i = 0; i < 4; i++) if (a[i] !== b[i]) return a[i] < b[i];
+  return false;
+}
 function inspectSvelte(from) {
   let manifestPath;
   try {
@@ -2337,10 +2348,12 @@ function inspectSvelte(from) {
   const version = manifest.version ?? null;
   const exported = manifest.exports !== void 0 && "./renderer" in manifest.exports;
   if (!exported || !(0, import_node_fs3.existsSync)((0, import_node_path3.join)(directory, "src/renderer/index.js"))) return { ok: false, version, directory, reason: "no-renderer" };
+  if (version === null || before(version, requiredSvelte.firstWithRenderer)) return { ok: false, version, directory, reason: "before-release" };
   return { ok: true, version: version ?? "unknown", directory };
 }
 function customRendererMessage(inspection, what) {
-  const found = inspection.reason === "missing" ? "No `svelte` package can be resolved from it." : `The installed svelte${inspection.version ? ` ${inspection.version}` : ""} (${inspection.directory}) has no \`./renderer\` export: custom renderers came with Svelte ${requiredSvelte.firstWithRenderer}.`;
+  const installed = `The installed svelte${inspection.version ? ` ${inspection.version}` : ""} (${inspection.directory})`;
+  const found = inspection.reason === "missing" ? "No `svelte` package can be resolved from it." : inspection.reason === "no-renderer" ? `${installed} has no \`./renderer\` export: custom renderers came with Svelte ${requiredSvelte.firstWithRenderer}.` : `${installed} is from before Svelte ${requiredSvelte.firstWithRenderer}, the release with custom renderers: a build of the pull request (pkg.pr.new or a tarball) has a \`./renderer\` export with other method names.`;
   return [`${what} needs Svelte ${requiredSvelte.version}, with custom renderers. ${found}`, "Install it from the registry:", `  pnpm add svelte@${requiredSvelte.version}`].join("\n");
 }
 function assertCustomRenderer(what, from) {

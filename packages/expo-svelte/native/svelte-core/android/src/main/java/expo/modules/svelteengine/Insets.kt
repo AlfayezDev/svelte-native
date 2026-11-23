@@ -16,8 +16,10 @@ import expo.modules.svelteengine.views.EngineRoot
  * overlay the system covers" in both modes (all zero without edge-to-edge, real bars with it).
  *
  * The keyboard value is the overlap of the IME with the overlay, in dp. During an IME animation the per-frame
- * dispatches are ignored: the end state is emitted once when the animation is prepared (root insets already hold it)
- * and again at its end, so JavaScript lays out once per change, not once per frame.
+ * dispatches are ignored: the end state is emitted once when the animation starts and again at its end, so JavaScript
+ * lays out once per change, not once per frame. It is read in `onStart`, not `onPrepare`: the window dispatches the end
+ * state between the two, so the root insets still hold the start state in `onPrepare` (the content moved only once the
+ * keyboard had finished opening or closing, #109).
  */
 class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>) -> Unit) {
   private val density = root.resources.displayMetrics.density
@@ -32,9 +34,11 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
     }
     ViewCompat.setWindowInsetsAnimationCallback(root, object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
       override fun onPrepare(animation: WindowInsetsAnimationCompat) {
-        if (animation.typeMask and WindowInsetsCompat.Type.ime() == 0) return
-        animating = true
-        publish()
+        if (animation.typeMask and WindowInsetsCompat.Type.ime() != 0) animating = true
+      }
+      override fun onStart(animation: WindowInsetsAnimationCompat, bounds: WindowInsetsAnimationCompat.BoundsCompat): WindowInsetsAnimationCompat.BoundsCompat {
+        if (animation.typeMask and WindowInsetsCompat.Type.ime() != 0) publish()
+        return bounds
       }
       override fun onProgress(insets: WindowInsetsCompat, runningAnimations: MutableList<WindowInsetsAnimationCompat>) = insets
       override fun onEnd(animation: WindowInsetsAnimationCompat) {

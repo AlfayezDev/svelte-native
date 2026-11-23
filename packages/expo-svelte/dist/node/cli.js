@@ -684,6 +684,11 @@ function blobUtilProblems(read2) {
     ["does not name `proguard-android-optimize.txt`", has("getDefaultProguardFile('proguard-android-optimize.txt')")]
   ], true);
 }
+function nitroProblems(read2) {
+  return inFile(read2, "ios/turbomodule/NativeNitroModules+NewArch.mm", [
+    ["has no `installJSIBindingsWithRuntime:callInvoker:`, the only overload React Native 0.87 and later call", has("installJSIBindingsWithRuntime:(jsi::Runtime&)runtime callInvoker:")]
+  ], true);
+}
 function quickBase64Problems(read2) {
   return inFile(read2, "ios/QuickBase64Module.mm", [
     ["still casts the bridge to `RCTCxxBridge`, which React Native 0.88 removed", (code) => !code.includes("(RCTCxxBridge *)")],
@@ -743,6 +748,7 @@ var init_patches = __esm({
       { package: "react-native-blob-util", vendored: true, does: "the release build type names the optimizing Proguard file: Android Gradle plugin 9 refuses the default one (Android)", inspect: blobUtilProblems },
       { package: "react-native-gesture-handler", vendored: true, does: "the root gesture recognizer can be registered for the screens the library presents, and the podspec finds the Worklets copy beside it (iOS)", inspect: rnghProblems },
       { package: "react-native-maps", vendored: true, does: "the map's discrete events are delivered one by one, its streams still coalesce (Android); its iOS plugin points the Podfile at the library's copy", inspect: mapsProblems },
+      { package: "react-native-nitro-modules", vendored: true, does: "Nitro installs its JSI bindings through the overload React Native 0.87 and later call (iOS)", inspect: nitroProblems },
       { package: "react-native-pdf", vendored: true, does: "the pdf view's one event, which carries every message, no longer coalesces, and react-native is found from the app's directory (Android)", inspect: pdfProblems },
       { package: "react-native-quick-base64", vendored: true, does: "the module finds the JavaScript runtime without `RCTCxxBridge`, which React Native 0.88 removed (iOS)", inspect: quickBase64Problems },
       { package: "react-native-reanimated", vendored: true, does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, and Worklets is the copy beside it", inspect: reanimatedProblems },

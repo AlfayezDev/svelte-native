@@ -147,7 +147,7 @@ describe("what is packed", () => {
         if (vendored.optional.plugin !== undefined) expect([vendored.name, listed.some((path) => path.startsWith(`${prefix}plugin/build/`))]).toEqual([vendored.name, true]);
       }
     }
-    expect(listed.filter((path) => path.startsWith("vendor-patches/")).length).toBe(14);
+    expect(listed.filter((path) => path.startsWith("vendor-patches/")).length).toBe(16);
     // The prebuilt AAR the Android build of an Expo module uses.
     expect(listed).toContain("vendor/expo-image/local-maven-repo/expo/modules/image/expo.modules.image/58.0.18/expo.modules.image-58.0.18.aar");
     // Left out of the pack as native build output, never the JavaScript below build/.

@@ -11,10 +11,10 @@ index 21a5bcc..567c93c 100644
  				const ext = valid_extensions.find((ext) => file.name.endsWith(ext));
  				if (!ext) continue;
 diff --git a/src/exports/vite/index.js b/src/exports/vite/index.js
-index 3c5e4b9..100d748 100644
+index de72ec8..ad28e39 100644
 --- a/src/exports/vite/index.js
 +++ b/src/exports/vite/index.js
-@@ -93,7 +93,7 @@ const warned = new Set();
+@@ -94,7 +94,7 @@ const warned = new Set();
  const warning_preprocessor = {
  	name: 'sveltekit:warnings',
  	script: ({ content, filename }) => {
@@ -23,7 +23,7 @@ index 3c5e4b9..100d748 100644
  
  		const basename = path.basename(filename);
  		if (basename.startsWith('+page.') || basename.startsWith('+layout.')) {
-@@ -111,7 +111,7 @@ const warning_preprocessor = {
+@@ -112,7 +112,7 @@ const warning_preprocessor = {
  		}
  	},
  	markup: ({ content, filename }) => {

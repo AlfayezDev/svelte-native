@@ -6,7 +6,7 @@
  * - `node.app` is the Node an app outside the repository installs and builds under. The library's Node-side code ships as JavaScript (`dist/node/`), so an app needs no type
  *   stripping; what limits the range is the tooling a fresh install takes. React Native 0.86.3 allows `^20.19.4 || ^22.13.0 || ^24.3.0 || >=25`, but it asks for
  *   `@react-native/metro-config` by a range, so until `expo-svelte init` pins it a fresh install takes 0.88, whose tools (`@react-native/js-polyfills`, Metro 0.87) allow
- *   `^22.13.0 || ^24.3.0 || >=26.0.0`, and the SvelteKit that `sv create` installs (3.1.1) asks for Node 22.17 or newer. `sv` writes `engineStrict: true`, so pnpm stops with
+ *   `^22.13.0 || ^24.3.0 || >=26.0.0`, and the SvelteKit that `sv create` installs (3.4.0) asks for Node 22.17 or newer. `sv` writes `engineStrict: true`, so pnpm stops with
  *   `ERR_PNPM_UNSUPPORTED_ENGINE` on Node 25 at the first `pnpm add`, before `init` can run (docs/60-appendix/20-troubleshooting.md).
  *
  * pnpm is the root `packageManager` for both: the patches are applied by pnpm's `patchedDependencies`.

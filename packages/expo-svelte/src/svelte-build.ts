@@ -3,24 +3,33 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
 /**
- * The Svelte build this library compiles with: the custom-renderer pull request, https://github.com/sveltejs/svelte/pull/18042, at the commit the
- * package was written against. Its version string is 5.56.7, the same as the release's, so the version cannot tell the two apart; the `./renderer`
- * export (`svelte/renderer`, which `expo-svelte/renderer` imports and the compiler's `customRenderer` option names) is what only this build has.
+ * The Svelte this library compiles with: the registry's `svelte` 5.59.1. Custom renderers came with Svelte 5.59.0, so a release before it has no `./renderer` export
+ * (`svelte/renderer`, which `expo-svelte/renderer` imports and the compiler's `customRenderer` option names) and cannot compile for this library.
  */
 export const requiredSvelte = {
-  version: "5.56.7",
-  commit: "216f258068d93170a927ad4d27ee6864b0b305c5",
-  pullRequest: "https://github.com/sveltejs/svelte/pull/18042",
-  /** The preview build pkg.pr.new publishes for the commit; byte for byte the tarball in this repository's `vendor/`. */
-  preview: "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5",
-  vendored: "vendor/svelte-5.56.7-216f258.tgz",
+  version: "5.59.1",
+  /** The first release with custom renderers. */
+  firstWithRenderer: "5.59.0",
 } as const;
 
 export type SvelteInspection =
   | { ok: true; version: string; directory: string }
-  | { ok: false; version: string | null; directory: string | null; reason: "missing" | "stock-release" };
+  | { ok: false; version: string | null; directory: string | null; reason: "missing" | "no-renderer" | "before-release" };
 
-/** Whether the Svelte that `from` resolves (a `package.json` path, by default the one this library resolves) has the custom renderer. */
+/** Whether `version` (major.minor.patch, a pre-release counting as before its release) comes before `release`. */
+function before(version: string, release: string): boolean {
+  const parse = (v: string) => {
+    const match = /^(\d+)\.(\d+)\.(\d+)(-)?/.exec(v);
+    return match ? [Number(match[1]), Number(match[2]), Number(match[3]), match[4] ? 0 : 1] : null;
+  };
+  const a = parse(version);
+  const b = parse(release)!;
+  if (!a) return true;
+  for (let i = 0; i < 4; i++) if (a[i] !== b[i]) return a[i]! < b[i]!;
+  return false;
+}
+
+/** Whether the Svelte that `from` resolves (a `package.json` path, by default the one this library resolves) has custom renderers. */
 export function inspectSvelte(from?: string): SvelteInspection {
   let manifestPath: string;
   try {
@@ -32,25 +41,25 @@ export function inspectSvelte(from?: string): SvelteInspection {
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { version?: string; exports?: Record<string, unknown> };
   const version = manifest.version ?? null;
   const exported = manifest.exports !== undefined && "./renderer" in manifest.exports;
-  if (!exported || !existsSync(join(directory, "src/renderer/index.js"))) return { ok: false, version, directory, reason: "stock-release" };
+  if (!exported || !existsSync(join(directory, "src/renderer/index.js"))) return { ok: false, version, directory, reason: "no-renderer" };
+  // The pull-request build earlier versions of this library installed (5.56.7 from pkg.pr.new or a tarball) has `./renderer` too, with other method names.
+  if (version === null || before(version, requiredSvelte.firstWithRenderer)) return { ok: false, version, directory, reason: "before-release" };
   return { ok: true, version: version ?? "unknown", directory };
 }
 
 /** The message of a Svelte that cannot compile for this library, with the fix. `what` is what was about to need it. */
 export function customRendererMessage(inspection: Extract<SvelteInspection, { ok: false }>, what: string): string {
+  const installed = `The installed svelte${inspection.version ? ` ${inspection.version}` : ""} (${inspection.directory})`;
   const found =
     inspection.reason === "missing"
       ? "No `svelte` package can be resolved from it."
-      : `The installed svelte${inspection.version ? ` ${inspection.version}` : ""} (${inspection.directory}) has no \`./renderer\` export, so it is a stock release and not the custom-renderer build.`;
-  return [
-    `${what} needs the custom-renderer build of Svelte (${requiredSvelte.pullRequest}, commit ${requiredSvelte.commit.slice(0, 7)}, version ${requiredSvelte.version}). ${found}`,
-    "Install that build in the app instead of svelte from the registry:",
-    `  pnpm add svelte@${requiredSvelte.preview}`,
-    `or the tarball in the library's repository (${requiredSvelte.vendored}), as \`"svelte": "file:<path to it>"\`. The same build must be the one the app's own \`svelte\` resolves to, so also drop any \`svelte\` override that points elsewhere.`,
-  ].join("\n");
+      : inspection.reason === "no-renderer"
+        ? `${installed} has no \`./renderer\` export: custom renderers came with Svelte ${requiredSvelte.firstWithRenderer}.`
+        : `${installed} is from before Svelte ${requiredSvelte.firstWithRenderer}, the release with custom renderers: a build of the pull request (pkg.pr.new or a tarball) has a \`./renderer\` export with other method names.`;
+  return [`${what} needs Svelte ${requiredSvelte.version}, with custom renderers. ${found}`, "Install it from the registry:", `  pnpm add svelte@${requiredSvelte.version}`].join("\n");
 }
 
-/** Throws, naming the fix, when the Svelte this library resolves lacks `./renderer`. Cheap: one `package.json` read. */
+/** Throws, naming the fix, when the Svelte this library resolves lacks `./renderer` or is from before its release. Cheap: one `package.json` read. */
 export function assertCustomRenderer(what: string, from?: string): void {
   const inspection = inspectSvelte(from);
   if (!inspection.ok) throw new Error(customRendererMessage(inspection, what));

@@ -25,14 +25,14 @@ What `expo-svelte init` writes, file by file, and the options of the Vite, Metro
 		"react-native": "0.86.3",
 	},
 	"devDependencies": {
-		"@sveltejs/kit": "3.1.1",
-		"svelte": "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5"
+		"@sveltejs/kit": "3.4.0",
+		"svelte": "5.59.1"
 	},
 	"main": ".expo-svelte/entry.ts"
 }
 ```
 
-- `svelte` is a build of Svelte with a custom-renderer export, from a [pull request](https://github.com/sveltejs/svelte/pull/18042) that isn't merged yet. The registry's Svelte has the same version number but not that export. The web app compiles with this build too.
+- `svelte` is exact: custom renderers came with Svelte 5.59.0, and the library is written against 5.59.1. The web app compiles with the same Svelte.
 - `@sveltejs/kit` is exact, because a patch is made for that version. A native-only app doesn't need SvelteKit at all.
 - The other versions are exact for the same reason. `react` is there because React Native needs it; your code doesn't use it.
 - `crypto` ([`crypto`](web-apis#crypto): react-native-quick-crypto, and the base64 module it asks for), the `Intl` APIs Hermes lacks (`hermes-intl`), [`localStorage`](web-apis#storage) (MMKV, which shares the Nitro runtime with quick-crypto), and the gestures, the animation and the [SVG components](svg) of the main entry (`react-native-gesture-handler`, `react-native-reanimated`, `react-native-worklets` and `react-native-svg`) are made of native packages that the library carries itself: they are copied into `expo-svelte`, which links them (with its fixes already applied), so none of them is a dependency of the app. An app that lists one is refused (the prebuild stops, and `expo-svelte doctor` fails): remove it from `package.json`, install again and build again. A library you add that asks for one of them as a peer dependency gets the library's copy; your package manager may warn about the missing peer, and that is expected.
@@ -54,7 +54,7 @@ overrides:
   expo-modules-core: 57.0.23
   "@react-native/metro-config": 0.86.3
 patchedDependencies:
-  "@sveltejs/kit@3.1.1": patches/expo-svelte/@sveltejs__kit@3.1.1.patch
+  "@sveltejs/kit@3.4.0": patches/expo-svelte/@sveltejs__kit@3.4.0.patch
   expo-modules-core@57.0.23: patches/expo-svelte/expo-modules-core@57.0.23.patch
 ```
 
@@ -68,7 +68,7 @@ Expo Svelte depends on small changes to a few packages. The ones you install shi
 
 | Package | Needed | What the patch changes |
 | --- | --- | --- |
-| `@sveltejs/kit` 3.1.1 | when SvelteKit is installed | SvelteKit leaves `+mobile.svelte` files alone |
+| `@sveltejs/kit` 3.4.0 | when SvelteKit is installed | SvelteKit leaves `+mobile.svelte` files alone |
 | `expo-modules-core` 57.0.23 | always | Android: Expo modules start faster |
 
 pnpm applies a patch only from your own project, and reads the files before it installs anything, so `init` copies them from the library into `patches/expo-svelte/` and lists the ones for packages you have. Don't point `patchedDependencies` into `node_modules`: a fresh install would fail before the files exist.

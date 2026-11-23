@@ -5,7 +5,7 @@ import { allSides, classCheckNames, classStyle, expectations, isColor, sentStyle
 
 /**
  * The class checks of the native checks lab (`/__dev`, "Run all checks", after the 28 checks of Svelte itself): `class` on the views of `ClassProbe.svelte` must have become the style the CSS file says
- * (`src/global.css`, Tailwind 4.3.3), read on the device from the props of the mounted host nodes (`class-checks.ts` says which props, and what each check expects).
+ * (`src/global.css`, Tailwind 4.3.5), read on the device from the props of the mounted host nodes (`class-checks.ts` says which props, and what each check expects).
  *
  * `dark:` is the one that needs the system to change: the app's appearance is overridden (`Appearance.setColorScheme`, which the library documents as the override) to the scheme the device is not in,
  * the views are read when the classes have followed it, and the override is taken off again whatever happened. React Native tells the library about a change when the platform reports it, so the

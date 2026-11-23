@@ -1,8 +1,8 @@
 /**
  * A route id with its parameters in place: `/blog/[slug]/[...rest]` with `{ slug: "hello", rest: "a/b" }` is `/blog/hello/a/b`. SvelteKit's `resolve_route`
- * (`utils/routing.js`), written out here because its package keeps `src/` closed and the device has no SvelteKit to import it from: the same segments, the same
- * `(group)` that adds nothing to the path, the same `[x+2f]` and `[u+0041]` escapes, optional (`[[x]]`) and rest (`[...x]`) parameters, and the same refusals.
- * A matcher (`[id=integer]`) names the parameter and checks nothing: the matchers are `src/params`, which a native route has no counterpart of.
+ * (`utils/routing.js`, 3.4.0), written out here because its package keeps `src/` closed and the device has no SvelteKit to import it from: the same segments, the same
+ * `(group)` that adds nothing to the path, the same `[x+2f]` and `[u+0041]` escapes, optional (`[[x]]`) and rest (`[...x]`) parameters, a search or a hash after the id that stays as it is,
+ * and the same refusals. A matcher (`[id=integer]`) names the parameter and checks nothing: the matchers are `src/params`, which a native route has no counterpart of.
  */
 export type ParamValue = string | number | boolean | bigint;
 
@@ -16,11 +16,14 @@ const decodeEscape = (code: string) => String.fromCodePoint(...code.split("-").m
 /** A segment that is a group, `(app)`, adds nothing to the path. */
 const affectsPath = (segment: string) => segment !== "" && !/^\([^)]+\)$/.test(segment);
 
-export function resolveRoute(id: string, params: Readonly<Record<string, ParamValue | undefined>>): string {
-  const trailingSlash = id !== "/" && id.endsWith("/");
-  const segments = id.slice(1).split("/").filter(affectsPath).map((segment) =>
+export function resolveRoute(id: string, params?: Readonly<Record<string, ParamValue | undefined>>): string {
+  // Only the route takes part in the removal of groups, the parameters and the escapes.
+  const [route = "", suffix = ""] = id.split(/([?#].*)/s);
+  const trailingSlash = route.endsWith("/");
+  const segments = route.slice(1).split("/").filter(affectsPath).map((segment) =>
     segment.replace(SEGMENT, (_match, escapeType: string | undefined, escapeCode: string, optional: string | undefined, rest: string | undefined, name: string) => {
       if (escapeType) return encodePathnameChars(decodeEscape(escapeCode));
+      if (!params) throw new Error(`Missing params for dynamic route ID \`${id}\``);
       const value = params[name];
       if (value === undefined || value === "") {
         if (optional) return "";
@@ -35,7 +38,8 @@ export function resolveRoute(id: string, params: Readonly<Record<string, ParamVa
       throw new Error(`Parameter \`${name}\` in route \`${id}\` must be a string, number, boolean, or bigint`);
     }),
   );
-  return `/${segments.filter(Boolean).join("/")}${trailingSlash ? "/" : ""}`;
+  const resolved = `/${segments.filter(Boolean).join("/")}`;
+  return resolved + (trailingSlash && resolved !== "/" ? "/" : "") + suffix;
 }
 
 /** SvelteKit's route id of a route of the tree: its directory under `src/routes`, groups included, with a leading slash (`/(app)/blog/[slug]`; the root is `/`). */

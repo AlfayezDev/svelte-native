@@ -304,7 +304,7 @@ describe("the pinned list, the module table and the checks agree", () => {
 		expect(used["@react-native-async-storage/async-storage"]).toBe("2.2.0");
 		expect(used["@react-native-community/netinfo"]).toBe("12.0.1");
 		expect(used["@react-native-firebase/app"]).toBe("^24.0.0");
-		expect(used["@sentry/react-native"]).toBe("~7.11.0");
+		expect(used["@sentry/react-native"]).toBe("~8.28.0");
 		expect(used["@intercom/intercom-react-native"]).toBe("10.7.0");
 		// The packages the library carries itself (packages/expo-svelte/VENDORING.md) are not stand-ins here any more: the smoke app takes the vendored copy, so no variant lists them, and the table has the modules without a package
 		// (the nitro, mmkv, quick-crypto and quick-base64 ones; the animation, gesture and svg packages have no module of the smoke test). The list is the library's own: its always-linked packages (the optional libraries are the app's to turn on), except hermes-intl, which has no module in the smoke test.

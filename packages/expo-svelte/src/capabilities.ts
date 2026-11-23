@@ -449,11 +449,12 @@ export function applyPushAppDelegate(contents: string): string {
     "      application,",
     "      host: {",
     // `-initializeReactHostWithLaunchOptions:bundleConfiguration:devMenuConfiguration:` reaches Swift as `initializeReactHost(launchOptions:…)`
-    // (the compiler of Xcode 26.5 says so; `withLaunchOptions:` does not compile).
+    // (the compiler of Xcode 26.5 says so; `withLaunchOptions:` does not compile). Its dev menu configuration may not be nil, and `RCTDevMenuConfiguration.default()` is nil in a
+    // release build (React Native has no dev menu there) and has no nullability, so Swift would unwrap it and stop the app: a plain one stands in for it there.
     "        factory.rootViewFactory.initializeReactHost(",
     "          launchOptions: launchOptions,",
     "          bundleConfiguration: factory.bundleConfiguration,",
-    "          devMenuConfiguration: factory.devMenuConfiguration ?? RCTDevMenuConfiguration.default())",
+    "          devMenuConfiguration: factory.devMenuConfiguration ?? (RCTDevMenuConfiguration.default() as RCTDevMenuConfiguration?) ?? RCTDevMenuConfiguration())",
     "      })",
     holdEnd,
     "",

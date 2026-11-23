@@ -44,7 +44,7 @@ const stubs: Record<string, string> = {
 /** The modules a fork test reaches into, as the bundle exports them. */
 export type ForkModule = {
   Fixture: import("svelte").Component<Record<string, unknown>, Record<string, unknown>>;
-  renderer: import("svelte/renderer").Renderer<never, never, never, never>;
+  renderer: import("svelte/renderer").Renderer<{ fragment: never; element: never; text: never; comment: never }>;
   NativeNode: typeof import("../../src/renderer.ts").NativeNode;
   mergeHostProps: typeof import("../../src/native-props.ts").mergeHostProps;
   mount: typeof import("svelte").mount;

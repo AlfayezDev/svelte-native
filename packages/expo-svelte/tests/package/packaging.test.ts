@@ -40,7 +40,7 @@ describe("the manifest holds nothing that only resolves inside this repository",
     for (const group of [manifest.dependencies, manifest.peerDependencies, manifest.optionalDependencies ?? {}])
       for (const [name, spec] of Object.entries(group)) expect([name, /^(file|link|workspace|catalog):/.test(spec)]).toEqual([name, false]);
     expect(Object.keys(manifest.dependencies)).not.toContain("svelte");
-    expect(manifest.peerDependencies.svelte).toBe("5.56.7");
+    expect(manifest.peerDependencies.svelte).toBe("5.59.1");
   });
 
   test("the entries are in the package, and package.json is an entry (tools that resolve a package's directory ask for it)", () => {

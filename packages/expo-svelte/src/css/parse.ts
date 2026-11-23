@@ -207,11 +207,14 @@ export function classifySelector(selector: string): SelectorKind {
     const { name, end } = readIdent(text, 1);
     if (end === text.length && name !== "") return { kind: "class", className: name };
   }
-  return { kind: "unsupported", className: firstClass(text), reason: describeSelector(text) };
+  // Tailwind 4.3.5 writes `group-*` and `peer-*` as `:is(:where(.group):hover .group-hover\:p-2)`: the class the rule is for comes last, after the one it depends on.
+  const last = /^:is\(:where\(\.(?:group|peer)\b/.test(text);
+  return { kind: "unsupported", className: classOf(text, last), reason: describeSelector(text) };
 }
 
-/** The first `.class` in a selector, outside attribute brackets and strings (`:where(.space-x-4 > :not(:last-child))` is `space-x-4`). */
-function firstClass(text: string): string | null {
+/** The first `.class` in a selector, or the last, outside attribute brackets and strings (`:where(.space-x-4 > :not(:last-child))` is `space-x-4`). */
+function classOf(text: string, last = false): string | null {
+  let found: string | null = null;
   for (let i = 0; i < text.length; i++) {
     const c = text[i] as string;
     if (c === "\\") i++;
@@ -223,11 +226,14 @@ function firstClass(text: string): string | null {
       i = close < 0 ? text.length : close;
     } else if (c === ".") {
       const { name, end } = readIdent(text, i + 1);
-      if (name !== "") return name;
+      if (name !== "") {
+        if (!last) return name;
+        found = name;
+      }
       i = end;
     }
   }
-  return null;
+  return found;
 }
 
 /** Why a selector is not a single class: the pseudo-element or the first pseudo-class that is not just a wrapper (`:is`, `:where`, `:not`), else the combinator. */

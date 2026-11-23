@@ -157,11 +157,11 @@ function planPackageJson(root: string, original: string, patches: readonly Patch
     }
   }
 
-  // Svelte: the custom-renderer build. A `file:` tarball (the library's own vendored copy) and the preview build are both that build.
+  // Svelte: the registry's release the library compiles with, at its exact version (the library's peer is exact).
   const svelteSpec = dependencies.svelte ?? devDependencies.svelte;
-  if (svelteSpec === undefined || !(svelteSpec.startsWith("file:") || svelteSpec.startsWith("https://pkg.pr.new/svelte@"))) {
-    setDependency("svelte", requiredSvelte.preview, "devDependencies");
-    summary.push("svelte (the custom-renderer build)");
+  if (svelteSpec !== requiredSvelte.version) {
+    setDependency("svelte", requiredSvelte.version, "devDependencies");
+    summary.push(`svelte ${requiredSvelte.version} (exact: the version the library compiles with)`);
   }
 
   // SvelteKit: kept, at the exact version that has a patch (the installed one when it does, else the newest that does).

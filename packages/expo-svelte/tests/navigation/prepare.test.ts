@@ -11,17 +11,18 @@ import { type Router, type RouterApp, mountRouter } from "./support/fork-router.
  */
 restoreGlobalsAfterEach();
 
-test("when the route's modules are still loading at the fork, the page renders when they arrive, outside the fork, and its effects run before the commit", async () => {
+test("when the route's modules are still loading at the fork, the page renders when they arrive, in the fork, and its effects run at the commit", async () => {
   const { m, app, log, paths } = await mountRouter({ hold: ["b"] });
   const fork = m.fork(() => app.router.goto("/b"));
   expect(log).toEqual([]);
   app.release("b");
   await settle(m);
   await sleep(0);
-  // The pitfall `prepare` avoids by loading first: the page exists, and runs, though the navigation is not committed.
-  expect(log).toEqual(["page/b:init", "page/b:effect", "page/b:mount"]);
+  // The page exists but does not run: Svelte before 5.59 ran its effects here, though the navigation was not committed, which `prepare` avoided by loading first.
+  expect(log).toEqual(["page/b:init"]);
   expect(paths()).toEqual(["/"]);
   await fork.commit();
+  await settle(m);
   expect(paths()).toEqual(["/", "/b"]);
   expect(log).toEqual(["page/b:init", "page/b:effect", "page/b:mount"]);
 });

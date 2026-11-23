@@ -99,7 +99,7 @@ describe("SvelteKit's client files", () => {
 
   test("SvelteKit's form.svelte.js, which remote/form.svelte.ts is ported from, is the file that was reviewed: a change to it fails here until the port is compared", () => {
     const hash = createHash("sha256").update(readFileSync(join(functions, "form.svelte.js"))).digest("hex");
-    // 3.1.1. After comparing the new file with `src/remote/form.svelte.ts` (README, "Forms"; REFERENCE, "The native form"), put its hash here.
+    // 3.4.0 (the same file as 3.1.1). After comparing the new file with `src/remote/form.svelte.ts` (README, "Forms"; REFERENCE, "The native form"), put its hash here.
     expect(hash).toBe("249ac3ccb82d2125631a8fcae73a3f28757c7a356fd556e195ab2977a8a39696");
   });
 

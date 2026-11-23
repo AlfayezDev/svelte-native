@@ -553,7 +553,7 @@ describe("capabilities.push on iOS: a push that wakes the app mounts no screen",
     "        factory.rootViewFactory.initializeReactHost(",
     "          launchOptions: launchOptions,",
     "          bundleConfiguration: factory.bundleConfiguration,",
-    "          devMenuConfiguration: factory.devMenuConfiguration ?? RCTDevMenuConfiguration.default())",
+    "          devMenuConfiguration: factory.devMenuConfiguration ?? (RCTDevMenuConfiguration.default() as RCTDevMenuConfiguration?) ?? RCTDevMenuConfiguration())",
     "      })",
     "    // Svelte native: end of the launch in the background",
   ].join("\n");

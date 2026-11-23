@@ -176,7 +176,7 @@ describe("push is on only where the config plugin turned it on: SvelteCore is in
 describe("a push that wakes the app mounts no screen (rule 2)", () => {
   test("the AppDelegate patch calls the helper by the name and the labels the Swift defines, with the closures it takes", () => {
     expect(background).toContain("public enum SveltePushBackgroundLaunch {");
-    expect(background).toContain("public static func start(_ application: UIApplication, host: () -> Void)");
+    expect(background).toContain("public static func start(_ application: UIApplication, host: @escaping () -> Void)");
     const patched = applyPushAppDelegate(expoTemplateAppDelegate());
     expect(patched).toContain("SveltePushBackgroundLaunch.start(\n      application,\n      host: {");
     expect(patched).toContain("      })\n    // Svelte native: end of the launch in the background");
@@ -185,7 +185,10 @@ describe("a push that wakes the app mounts no screen (rule 2)", () => {
   });
 
   test("a launch in the foreground does nothing here (the scene starts React Native), and one in the background starts the host, which the scene's start reuses when the user opens the app", () => {
-    expect(background).toContain("guard application.applicationState == .background else { return }");
+    // Under scenes the state is `background` in didFinishLaunching for every launch (seen on the simulator with SDK 58's template: state 2, no scene, then `inactive` with one scene
+    // a main-queue turn later), so the decision is the next turn's and it asks for a connected scene.
+    expect(background).not.toContain("application.applicationState == .background");
+    expect(background).toContain("DispatchQueue.main.async {\n      guard application.connectedScenes.isEmpty else { return }");
     expect(background).toContain("host()");
     expect(background.split("host()").length - 1).toBe(1);
     // No surface is made here: no `surface` closure, no wait for the first didBecomeActive.

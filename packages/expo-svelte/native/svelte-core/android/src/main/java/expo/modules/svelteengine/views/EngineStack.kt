@@ -160,6 +160,10 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     s?.silhouette?.let { if (s.visibility == View.VISIBLE) drawSurface(canvas, it, 0f, width.toFloat(), 1f, REACH_ACROSS) }
     val drawn = super.drawChild(canvas, child, drawingTime)
     if (s != null && s.extendsEdge && s.visibility == View.VISIBLE && s.alpha > 0f) drawEdge(canvas, s)
+    // A fade-through draws the screen whole and lays the surface it fades against over it, at the opacity the screen lacks ([system]).
+    if (s != null && s.veil > 0f && s.visibility == View.VISIBLE && s.alpha > 0f) s.veilOf?.let {
+      drawSurface(canvas, it, s.left + s.translationX, s.right + s.translationX, s.veil, REACH_ACROSS, s.top + s.translationY)
+    }
     return drawn
   }
 
@@ -169,16 +173,21 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     val x0 = TransitionRules.stripStart(s.left.toFloat(), s.right.toFloat(), tx)
     val x1 = TransitionRules.stripEnd(s.left.toFloat(), s.right.toFloat(), tx)
     if (x1 <= x0) return
-    drawSurface(canvas, s, x0, x1, s.alpha, if (tx < 0f) REACH_RIGHT else REACH_LEFT)
+    drawSurface(canvas, s, x0, x1, s.alpha * (1f - s.veil), if (tx < 0f) REACH_RIGHT else REACH_LEFT)
   }
 
   /**
    * [s]'s surface from [x0] to [x1] at [alpha]: its background, then each first-level child that paints a solid one and [reach]es the part drawn (the
    * right edge, the left edge, or across the whole screen), the headers last, down to their visible bottom (a large or translucent header lies over the content).
+   * [top] is where the surface's top is drawn: [s]'s own, or that of the screen it is laid over (a veil).
    */
-  private fun drawSurface(canvas: Canvas, s: EngineScreen, x0: Float, x1: Float, alpha: Float, reach: Int) {
-    val top = s.top + s.translationY
-    fillEdge(canvas, solidColor(s.background), alpha, x0, top, x1, top + s.height)
+  private fun drawSurface(canvas: Canvas, s: EngineScreen, x0: Float, x1: Float, alpha: Float, reach: Int, top: Float = s.top + s.translationY) {
+    // The fills are composited band by band and each band drawn once ([TransitionRules.bands]): at an opacity below 1 (a veil, a fading screen's strip) the
+    // fills drawn one by one would let the background show through a header.
+    val fills = surfaceFills
+    fills.clear()
+    fun fill(color: Int?, a: Float, y0: Float, y1: Float) { if (color != null) fills.add(TransitionRules.Fill(y0, y1, color, a)) }
+    fill(solidColor(s.background), 1f, top, top + s.height)
     for (pass in 0..1) {
       for (i in 0 until s.childCount) {
         val c = s.getChildAt(i)
@@ -190,11 +199,14 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
         }
         if (!reaches) continue
         val y = top + c.top + c.translationY
-        if (c is EngineHeader) fillEdge(canvas, c.edgeColor(), alpha * c.alpha, x0, y, x1, y + c.edgeBottom())
-        else fillEdge(canvas, solidColor(c.background), alpha * c.alpha, x0, y, x1, y + c.height)
+        if (c is EngineHeader) fill(c.edgeColor(), c.alpha, y, y + c.edgeBottom())
+        else fill(solidColor(c.background), c.alpha, y, y + c.height)
       }
     }
+    for (band in TransitionRules.bands(fills)) fillEdge(canvas, band.color, alpha, x0, band.top, x1, band.bottom)
   }
+
+  private val surfaceFills = ArrayList<TransitionRules.Fill>(8)
 
   private fun fillEdge(canvas: Canvas, color: Int?, alpha: Float, x0: Float, y0: Float, x1: Float, y1: Float) {
     if (color == null) return
@@ -602,7 +614,14 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     val m = TransitionRules.motion(kind, entering) ?: run { done(); return }
     // The screen below takes part when the motion moves or fades it.
     val under = below?.takeIf { m.moveUnder || m.under != null }
-    s.holdLayer()
+    // A fade-through (the default) shows one screen at a time, and each fades against the surface the stack draws under both. Both screens are then drawn
+    // whole, with no layer, and the stack lays that surface over the one fading at the opacity it lacks ([fade], [drawChild]): the picture the screen's alpha
+    // over the surface gives, without a full-screen layer built for each screen and composited every frame. Those layers made the first push of a session
+    // spend 20 to 60 ms of one frame building them, and up to 100 ms after other screens had come and gone, and their composites kept the GPU of a Galaxy
+    // A16 past the 11 ms of a 90 Hz frame until its clock came up (#111). A screen scaled by a back gesture, or one with no opaque background to lay over the
+    // other, keeps the layer and its alpha.
+    val veiled = m.fadeThrough && under != null && s.scaleX == 1f && opaque(s) && opaque(under)
+    if (!veiled) s.holdLayer()
     freeUnder(s)
     cancelRunning(s)
     val vertical = m.vertical
@@ -619,9 +638,9 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
       // The surface under a fade is the coming screen's; a pop that goes on from a push keeps that push's, so the background does not change at the cut.
       under.silhouette = if (underFade == null) null else if (entering || resumed) s else under
       // It moves or fades too: composited from a layer for the transition, as the moving screen is.
-      under.holdLayer()
+      if (!veiled) under.holdLayer()
     }
-    var underHeld = under != null
+    var underHeld = under != null && !veiled
     fun releaseUnder() {
       if (!underHeld) return
       underHeld = false
@@ -646,11 +665,17 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
       val at = from + (to - from) * p
       if (vertical) s.translationY = at else s.translationX = at
       if (fromScale != 1f) { s.scaleX = fromScale + (1f - fromScale) * p; s.scaleY = s.scaleX }
-      m.top?.let { s.alpha = if (entering) it.at(ms, p) else fromAlpha * it.at(ms, p) }
+      m.top?.let {
+        val shown = if (entering) it.at(ms, p) else fromAlpha * it.at(ms, p)
+        if (veiled) fade(s, shown, under?.silhouette) else s.alpha = shown
+      }
       if (under != null) {
         if (m.moveUnder) under.translationX = TransitionRules.underX(s.translationX, distance)
         // A screen below that JavaScript took away meanwhile (hidden by the stack) stays hidden.
-        if (underFade != null && !under.hidden) under.alpha = underFade.at(ms, p)
+        if (underFade != null && !under.hidden) {
+          val shown = underFade.at(ms, p)
+          if (veiled) fade(under, shown, under.silhouette) else under.alpha = shown
+        }
       }
       // The strips are drawn by the stack, from where the screens are now.
       invalidate()
@@ -660,6 +685,8 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
       under.mover = null
       under.extendsEdge = false
       under.silhouette = null
+      under.veil = 0f
+      under.veilOf = null
       under.translationX = 0f
       // Whole again: a push's end has hidden it (refresh) and it stays so; anything else shows it.
       under.alpha = if (under.hidden) 0f else 1f
@@ -673,17 +700,23 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
       override fun onAnimationEnd(animation: Animator) {
         if (s.running === a) { s.running = null; s.landing = null }
         s.extendsEdge = false
+        // A transition that takes over goes on from how far this one had faded the screen in.
+        if (cancelled && s.veil > 0f) s.alpha *= 1f - s.veil
+        s.veil = 0f
+        s.veilOf = null
         // A push's end hides the screen below (refresh) before it goes back in place, so it is never seen jumping.
         if (!cancelled) done()
         putBack()
         releaseUnder()
         invalidate()
-        s.releaseLayer()
+        if (!veiled) s.releaseLayer()
       }
     })
     s.running = a
     s.landing = {
       if (vertical) s.translationY = to else s.translationX = to
+      s.veil = 0f
+      s.veilOf = null
       s.alpha = if (entering) 1f else m.top?.let { fromAlpha * it.to } ?: s.alpha
       s.scaleX = 1f
       s.scaleY = 1f
@@ -694,6 +727,21 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     }
     frame(0f)
     a.start()
+  }
+
+  /** A screen of a fade-through [shown] this far (0 out of sight, 1 whole): drawn whole under [surface] laid over it at the rest ([drawChild]), or not at all. */
+  private fun fade(x: EngineScreen, shown: Float, surface: EngineScreen?) {
+    x.alpha = if (shown <= 0f) 0f else 1f
+    x.veil = if (shown <= 0f || shown >= 1f) 0f else 1f - shown
+    x.veilOf = surface
+  }
+
+  /** The screen's own background is an opaque colour: its surface, laid over another screen, hides that one completely. */
+  private fun opaque(x: EngineScreen): Boolean {
+    val d = x.background
+    // Rounded corners let what is under the screen show at them, where a veil would lay the surface.
+    if (d is GradientDrawable && (d.cornerRadius > 0f || d.cornerRadii != null)) return false
+    return solidColor(d)?.let { Color.alpha(it) == 255 } == true
   }
 
   private fun animate(s: EngineScreen, x: Float, y: Float, alpha: Float, scale: Float, duration: Long, done: () -> Unit) {

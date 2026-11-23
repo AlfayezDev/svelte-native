@@ -18,7 +18,7 @@ export function keyboard(): KeyboardModule {
 
 whenBooted(keyboard);
 
-type InputState = { focusInput(input: object): void; blurInput(input: object): void };
+type InputState = { focusInput(input: object): void; blurInput(input: object): void; blurTextInput(input: object): void; currentlyFocusedInput(): unknown };
 
 let inputs: InputState | undefined;
 
@@ -34,7 +34,12 @@ export function inputFocused(input: object): void {
   inputs.focusInput(input);
 }
 
-/** The input lost focus, or is gone: React Native's record no longer holds it (when it did). Nothing was recorded before a first focus. */
+/** The input lost focus: React Native's record no longer holds it (when it did). Nothing was recorded before a first focus. */
 export function inputBlurred(input: object): void {
   inputs?.blurInput(input);
+}
+
+/** The input is being destroyed: when it is the focused one it is blurred, as React Native's `TextInput` does when it unmounts, so the keyboard goes with it. */
+export function inputGone(input: object): void {
+  if (inputs?.currentlyFocusedInput() === input) inputs.blurTextInput(input);
 }

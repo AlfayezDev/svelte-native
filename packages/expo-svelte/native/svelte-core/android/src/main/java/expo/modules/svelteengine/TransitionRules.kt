@@ -13,7 +13,8 @@ import kotlin.math.min
  *   `activity_close_enter.xml`, `activity_close_exit.xml` of frameworks/base, the same files the SDK ships in `platforms/android-36/data/res/anim/`): both
  *   screens move 96 dp together over 450 ms on `fast_out_extra_slow_in`. The fade is Material's fade-through (`MaterialSharedAxis`, "slides and fades"; the
  *   predictive back guide's "fade through" whose threshold is 35 %, "At the 35% mark, neither screen is showing"): the screen going away fades out over the
- *   first 35 % of the movement and the one coming fades in over the rest, so the two are never seen together.
+ *   first 35 % of the movement and the one coming fades in over the rest, so the two are never seen together; a pop that takes over a push before the screen on
+ *   top has faded in brings the screen below back from where the push left it ([resumedFade]).
  * - `android_activity` ([KIND_ACTIVITY]): the framework's activity transition as it is, which React Navigation's native stack plays by default (react-native-
  *   screens `res/v33/anim-v33/rns_default_*.xml`, with 10 % of the width where Android 16 moves 96 dp): the screen on top fades in over 83 ms from 50 ms (out
  *   over 83 ms from 35 ms on a pop) over the screen below, which stays opaque.
@@ -36,6 +37,18 @@ internal object TransitionRules {
 
   /** The screen coming in the default transition (the one on top on a push, the one below on a pop): transparent until 35 % of the movement. */
   fun fadeIn(p: Float): Float = ((p - FADE_THROUGH) / (1f - FADE_THROUGH)).coerceIn(0f, 1f)
+
+  /**
+   * The fade of the screen below on a pop: [fade], the table's, unless the pop takes over a push that is less than 35 % done, when the screen on top is [topX] px
+   * from its place and the push moves it [shift] px. That push has faded the screen below part of the way out and shows nothing on top yet, so the table's pop
+   * would put the screen below at 0 for the first 35 % of the pop and show nothing at all (just the background): it comes back to whole from where the push left
+   * it, over those 35 % instead.
+   */
+  fun resumedFade(fade: Fade, topX: Float, shift: Float): Fade {
+    if (!fade.onProgress || shift == 0f) return fade
+    val left = fadeOut(1f - (topX / shift).coerceIn(0f, 1f))
+    return if (left > 0f) Fade(left, 1f, 0f, FADE_THROUGH, onProgress = true) else fade
+  }
 
   // The kinds of `EngineScreen.transitionKind`: 0 none, 1 a modal fading in alone, 2 a modal from the right, 3 a modal or sheet from the bottom (those four
   // move one screen, `EngineStack.animate`), and the push screens' transitions between two screens below (`EngineStack.system`, [motion]).

@@ -5,7 +5,7 @@
 
   /**
    * One tile of the box styles lab (`styles-cases.ts`): the box on a grey cell. A tile with `to` is turned by Reanimated (the animated write path) to the values it names (a rotation, a scale,
-   * a `borderRadius`), about the `transformOrigin` of its style, and stays there: the reference draws that end state as a static style. A tile of another `kind` is an `Image`, a `ScrollView`
+   * a `borderRadius`), about the `transformOrigin` of its style, and stays there: the reference draws that end state as a static style. A tile with `after` is changed with `setNativeProps` 300 ms after it mounts. A tile of another `kind` is an `Image`, a `ScrollView`
    * (a bar and a block taller than the box, not scrolled) or a `Text`.
    */
   let { tile }: { tile: Tile } = $props();
@@ -20,8 +20,13 @@
     if (radius > 0) return { borderRadius: value * radius };
     return { transform: [{ rotate: `${value * degrees}deg` }, { scale: 1 + value * (scale - 1) }] };
   };
+  let handle: { setNativeProps?: (props: Record<string, unknown>) => void } | null = null;
   onMount(() => {
     if (progress) progress.value = withTiming(1, { duration: 300, reduceMotion: ReduceMotion.Never });
+    const after = untrack(() => tile.after);
+    if (after === undefined) return;
+    const timer = setTimeout(() => handle?.setNativeProps?.(after), 300);
+    return () => clearTimeout(timer);
   });
 </script>
 
@@ -37,6 +42,6 @@
   {:else if tile.kind === "text"}
     <Text style={tile.style}>{tile.text}</Text>
   {:else}
-    <View style={tile.style}>{#if tile.bar}<View style={tile.bar} />{/if}</View>
+    <View ref={(instance: unknown) => { handle = instance as typeof handle; }} style={tile.style}>{#if tile.bar}<View style={tile.bar} />{/if}</View>
   {/if}
 </View>

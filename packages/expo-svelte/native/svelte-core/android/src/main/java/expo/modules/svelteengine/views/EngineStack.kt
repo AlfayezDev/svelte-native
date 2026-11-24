@@ -849,7 +849,8 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
 
   override fun claims(dx: Float, dy: Float) = swipesBack(dx, dy)
 
-  override fun claim(ev: MotionEvent) = startDrag(ev)
+  // The swipe is measured from the DOWN, so the sample the claim was made at does not matter to it.
+  override fun claim(ev: MotionEvent, sample: Int) = startDrag(ev)
 
   override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
     // A drag that the root claimed before the gesture handlers saw the move: Android cancels the child now.

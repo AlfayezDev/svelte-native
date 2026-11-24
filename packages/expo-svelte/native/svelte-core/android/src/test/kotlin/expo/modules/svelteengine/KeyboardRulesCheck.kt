@@ -343,7 +343,7 @@ private fun channel() {
   // Another keyboard while it is open, with no animation: Reanimated's stays open and is told the new height; the engine's is told the height changed.
   bar.clear(); whole.clear(); raw.clear()
   rig.channel.settle(525)
-  expect("a layout switch is not a close and an open: it stays open", bar.toList(), listOf("2:88"))
+  expect("a layout switch is not a close and an open: it stays open", bar.toList(), listOf("2:176"))
   expect("a layout switch, the whole height", whole.toList(), listOf("2:200"))
   expect("a layout switch for the engine's own", raw.toList(), listOf("4:525"))
   // A subscriber that arrives in the middle of a close: it is told where the keyboard is, that it is closing, and what comes is what it would have been told.

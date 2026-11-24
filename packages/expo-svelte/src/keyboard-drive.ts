@@ -3,7 +3,7 @@
  * moves it with each frame of the keyboard's animation on the main thread, with no JavaScript in between. Only the Android engine has them; anywhere else (iOS, the lab's
  * React Native mounting, a test without the module) `keyboardDriven()` is false and the components fall back to the insets store, which moves them once.
  */
-import { EventEmitter, requireOptionalNativeModule } from "expo-modules-core";
+import { requireOptionalNativeModule } from "expo-modules-core";
 
 type EndVisible = { tag: number; visible: boolean };
 type Emitter = { addListener(name: string, listener: (event: EndVisible) => void): { remove(): void } };
@@ -26,11 +26,8 @@ export function keyboardDriven(): boolean {
 
 /** Calls `listener` when the scroll view of `tag` (registered with a `lift` command) has its end in view, and when it does not any more; once at first, when it has been laid out. Returns the unsubscribe function. */
 export function onEndVisible(tag: number, listener: (visible: boolean) => void): () => void {
-  const target = module();
-  if (!target) return () => {};
-  const emitter = (typeof target.addListener === "function" ? target : new EventEmitter(target as never)) as unknown as Emitter;
-  const subscription = emitter.addListener("endVisible", (event) => { if (event.tag === tag) listener(event.visible); });
-  return () => subscription.remove();
+  const subscription = module()?.addListener?.("endVisible", (event) => { if (event.tag === tag) listener(event.visible); });
+  return () => subscription?.remove();
 }
 
 /** Test hook: forget what was found, so the next call looks for the module again. */

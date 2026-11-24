@@ -14,7 +14,6 @@
  * library runs on: `Platform.OS === "ios"` narrows `Platform.Version` to a string, and `"android"` to a number.
  */
 import type * as ReactNative from "react-native";
-import { driveKeyboard } from "./keyboard-drive.ts";
 
 export { nativeModule, turboModule } from "./native-modules.ts";
 
@@ -72,7 +71,8 @@ export const Keyboard: typeof ReactNative.Keyboard = lazyModule(() => (require("
 export const KeyboardController = {
   dismiss(): void { Keyboard.dismiss(); },
   isVisible(): boolean { return Keyboard.isVisible(); },
-  setFocusTo(direction: "current" | "next" | "prev"): void { driveKeyboard(-1, "focus", [direction]); },
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- the engine's module loads on the first call, not with this entry
+  setFocusTo(direction: "current" | "next" | "prev"): void { (require("./keyboard-drive.ts") as typeof import("./keyboard-drive.ts")).driveKeyboard(-1, "focus", [direction]); },
 };
 
 /** Whether the app is in the foreground: `currentState` and `addEventListener("change", …)`. */

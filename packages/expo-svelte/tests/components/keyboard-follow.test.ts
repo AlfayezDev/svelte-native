@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import type { NativeNode } from "../../src/renderer.ts";
-import { load, src } from "../support/bundle.ts";
+import type { AnimLog } from "../support/reanimated-stubs.ts";
+import { baseStubs, load, src } from "../support/bundle.ts";
 
 /**
  * The components that follow the keyboard against a stand-in for the engine module: what each registers, with the view's tag and the right numbers, when the props change, what it
@@ -177,4 +178,42 @@ test("the insets store says where the keyboard is on its way", async () => {
   expect(m.store.keyboardState).toBe("closing");
   m.applyInsets(insets());
   expect(m.store.keyboardState).toBe("closed");
+});
+
+type Motion = { height: { value: number }; progress: { value: number }; state: { value: string } };
+const animLog = () => (globalThis as unknown as { __anim: AnimLog }).__anim;
+
+test("createKeyboardMotion turns the engine's frames into dp, progress and state on the UI runtime, and goes with its component", async () => {
+  delete (globalThis as { __anim?: AnimLog }).__anim;
+  const m = await load<{ Fixture: unknown; renderer: unknown; NativeNode: typeof NativeNode; mount: (component: unknown, options: object) => unknown; unmount: (app: unknown) => void; tick: () => Promise<void> }>({
+    entry: `import Fixture from ${JSON.stringify(resolve(import.meta.dirname, "fixtures/keyboard-motion-fixture.svelte"))};
+      import renderer, { NativeNode } from ${JSON.stringify(src("renderer.ts"))};
+      import { mount, unmount, tick } from 'svelte';
+      export { Fixture, renderer, NativeNode, mount, unmount, tick };`,
+    stubs: { ...baseStubs(), "expo-modules-core": engineModule, "react-native/Libraries/Utilities/PixelRatio": "export default { get: () => 2.625 };" },
+    converters: false,
+  });
+  const out: { motion?: Motion } = {};
+  const app = m.mount(m.Fixture, { target: new m.NativeNode("fragment"), renderer: m.renderer, props: { out } });
+  await m.tick();
+  const motion = out.motion as Motion;
+  expect(animLog().keyboard).toHaveLength(1);
+  expect(animLog().keyboard?.[0]?.options).toEqual({ isStatusBarTranslucentAndroid: true, isNavigationBarTranslucentAndroid: true });
+  const frame = animLog().keyboard?.[0]?.handler as (kind: number, px: number) => void;
+  // The engine counts in px: a keyboard of 1050 px is 400 dp at 2.625 px a dp.
+  expect([motion.height.value, motion.progress.value, motion.state.value]).toEqual([0, 0, "closed"]);
+  frame(1, 1050);
+  expect(motion.state.value).toBe("opening");
+  frame(2, 525);
+  expect([motion.height.value, motion.progress.value]).toEqual([200, 0.5]);
+  frame(3, 1050);
+  expect([motion.height.value, motion.progress.value, motion.state.value]).toEqual([400, 1, "open"]);
+  frame(1, 0);
+  expect(motion.state.value).toBe("closing");
+  frame(2, 525);
+  expect([motion.height.value, motion.progress.value]).toEqual([200, 0.5]);
+  frame(3, 0);
+  expect([motion.height.value, motion.progress.value, motion.state.value]).toEqual([0, 0, "closed"]);
+  m.unmount(app);
+  expect(animLog().keyboard?.[0]?.off).toBe(true);
 });

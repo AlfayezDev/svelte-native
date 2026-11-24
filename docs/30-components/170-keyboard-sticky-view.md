@@ -51,7 +51,7 @@ translateY = -height + closed + (opened - closed) × progress
 
 `height` is how much of the screen the keyboard covers at that frame and `progress` is `height` over the height the keyboard opens to, so the view is `closed` points from where it stands while the keyboard is closed, and `opened` points from where the keyboard puts it once it is open.
 
-A transform in the view's own `style` is kept: the keyboard's move is added to it.
+A transform in the view's own `style` is kept: the keyboard's move is added to it. The view keeps its own native view and its children inside it (`collapsable` is `false`), so everything in it moves together.
 
 On iOS the view moves to where the keyboard will be when the keyboard starts to move, in one step.
 

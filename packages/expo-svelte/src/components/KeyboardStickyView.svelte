@@ -34,6 +34,7 @@
   // Without the engine's frames the view is where the keyboard will be, at once.
   const stepped = $derived({ transform: [{ translateY: enabled ? -(insets.keyboardVisible ? insets.keyboardHeight : 0) + closed + (opened - closed) * (insets.keyboardVisible ? 1 : 0) : closed }] });
   const keep = (value: HostHandle | null) => { handle = value; ref?.(value); };
-  const nativeProps = $derived(resolveProps({ ...attributes, style: driven ? attributes.style : [attributes.style, stepped], ref: keep }));
+  // `collapsable: false`: a view that has no transform of its own does not form a stacking context, and Fabric then flattens its children out of it (they would stay where they are while the view moves).
+  const nativeProps = $derived(resolveProps({ ...attributes, collapsable: false, style: driven ? attributes.style : [attributes.style, stepped], ref: keep }));
 </script>
 <native-view {nativeProps}>{@render children?.()}</native-view>

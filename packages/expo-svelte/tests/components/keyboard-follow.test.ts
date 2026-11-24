@@ -70,6 +70,8 @@ test("a sticky view is left to the engine: its style carries no translation of i
   m.resetInsets();
   const { propsOf } = await mountFixture(m, "sticky", { offset: { opened: 34 } });
   expect(propsOf("native-view").style).toEqual({ flex: 1 });
+  // Fabric flattens the children of a view that forms no stacking context out of it, and they would not move with it.
+  expect(propsOf("native-view").collapsable).toBe(false);
 });
 
 test("without the engine a sticky view stands where the keyboard will be, in one step", async () => {
@@ -155,6 +157,7 @@ test("a KeyboardAvoidingView of position is moved by the engine from the outer v
   await m.tick();
   expect(drives(m)).toEqual([[21, "avoid", [20, 12, true]]]);
   expect(propsOf("native-view", 1).style).toEqual({ flex: 1 });
+  expect(propsOf("native-view", 1).collapsable).toBe(false);
 });
 
 test("a KeyboardAvoidingView of padding stays JavaScript's: no command, one step", async () => {

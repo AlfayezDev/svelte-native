@@ -2728,7 +2728,7 @@
 		},
 		"lab-styles-border--dark-ltr-large": {
 			"file": "lab-styles-border--dark-ltr-large.png",
-			"sha256": "b9c6159ea49535b2a22b94be5806d47fa5e198735392e7298deb9813ef3aad9e",
+			"sha256": "5e44b24be4977dd1d89d90e02ddba12321a342cddffdcf2606acbacbdb9ff417",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -2753,15 +2753,15 @@
 			"theme": "dark",
 			"direction": "ltr",
 			"fontScale": 2,
-			"updatedAt": "2026-11-24T08:11:40.455Z",
+			"updatedAt": "2026-11-24T11:08:56.562Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-border--dark-ltr-normal": {
 			"file": "lab-styles-border--dark-ltr-normal.png",
-			"sha256": "c287add9a8223adedde3417478d3dc474f0ff9f8201446e97719b91aaea2f42e",
+			"sha256": "80335504ec38925001e745426c63509e014c5036ead3c963433f2ce5fd5078e5",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -2786,15 +2786,15 @@
 			"theme": "dark",
 			"direction": "ltr",
 			"fontScale": 1,
-			"updatedAt": "2026-11-24T08:11:11.344Z",
+			"updatedAt": "2026-11-24T11:08:23.292Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-border--dark-rtl-large": {
 			"file": "lab-styles-border--dark-rtl-large.png",
-			"sha256": "a999da52675e27fdfdcf8f3b83bd9207e057cf5a06c06110cd80ed06bd8f09ca",
+			"sha256": "b44e80093b594a3540f0e965a7ed280cbfcb590107f6faf39421d2e0757cd0a8",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -2819,15 +2819,15 @@
 			"theme": "dark",
 			"direction": "rtl",
 			"fontScale": 2,
-			"updatedAt": "2026-11-24T08:12:39.484Z",
+			"updatedAt": "2026-11-24T11:10:01.428Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-border--dark-rtl-normal": {
 			"file": "lab-styles-border--dark-rtl-normal.png",
-			"sha256": "d691be79c2c727f0ec6978367337e00410b16ed4acf833416ed63af56bf12d3e",
+			"sha256": "a6db88e35314230a3bfd57d94e1e895f0311ff6affcace0cb79cc275521f7a5b",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -2852,15 +2852,15 @@
 			"theme": "dark",
 			"direction": "rtl",
 			"fontScale": 1,
-			"updatedAt": "2026-11-24T08:12:08.710Z",
+			"updatedAt": "2026-11-24T11:09:30.618Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-border--light-ltr-large": {
 			"file": "lab-styles-border--light-ltr-large.png",
-			"sha256": "30dbcc0f8178622e3a814ad00ded1366f0c0e02b6a5441163f7466347fea3250",
+			"sha256": "e295b0b94c37c66394a3d38899d89460b98e84572dbf92b28e7047a16bf368f4",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -2885,15 +2885,15 @@
 			"theme": "light",
 			"direction": "ltr",
 			"fontScale": 2,
-			"updatedAt": "2026-11-24T08:09:31.363Z",
+			"updatedAt": "2026-11-24T11:06:48.111Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-border--light-ltr-normal": {
 			"file": "lab-styles-border--light-ltr-normal.png",
-			"sha256": "f492dc0cdba9c0650fc3419484d890109e63c9dc2b1c9fab1d4aa476fa75ce6a",
+			"sha256": "b5bb4506cc043eb2fadc1bf5d737e0537b73effb3eb713d61fcb8066aac30f94",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -2918,15 +2918,15 @@
 			"theme": "light",
 			"direction": "ltr",
 			"fontScale": 1,
-			"updatedAt": "2026-11-24T08:08:59.886Z",
+			"updatedAt": "2026-11-24T11:06:16.502Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-border--light-rtl-large": {
 			"file": "lab-styles-border--light-rtl-large.png",
-			"sha256": "dc0fd3b4794230d63786ae96cff8d741420f9e81f85ff508e8350511b28f5b90",
+			"sha256": "bcc26302a920945716b1be7ab9e91016b35dce67a61d3ccd5324a8234d9a7605",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -2951,15 +2951,15 @@
 			"theme": "light",
 			"direction": "rtl",
 			"fontScale": 2,
-			"updatedAt": "2026-11-24T08:10:39.564Z",
+			"updatedAt": "2026-11-24T11:07:49.680Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-border--light-rtl-normal": {
 			"file": "lab-styles-border--light-rtl-normal.png",
-			"sha256": "a6eb295622fae1539694c6a92749ec45263a4a416c21d6b2adcac97bb1d1bf61",
+			"sha256": "99f2d8d833583d31865167bbc4ab35c339d57f803b58612e4f3f4297d012845f",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -2984,15 +2984,15 @@
 			"theme": "light",
 			"direction": "rtl",
 			"fontScale": 1,
-			"updatedAt": "2026-11-24T08:10:03.827Z",
+			"updatedAt": "2026-11-24T11:07:18.380Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-origin--dark-ltr-large": {
 			"file": "lab-styles-origin--dark-ltr-large.png",
-			"sha256": "4e7f13c4492409510a035e1104d80f3241f1eff8b3d1e5eb2e6141851b4caa2f",
+			"sha256": "d59a5599028d97a16ecbc7b3c13a12a66bb2b9ecb928ce52aa915951e3a38393",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3017,15 +3017,15 @@
 			"theme": "dark",
 			"direction": "ltr",
 			"fontScale": 2,
-			"updatedAt": "2026-11-24T08:11:48.546Z",
+			"updatedAt": "2026-11-24T11:09:06.698Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-origin--dark-ltr-normal": {
 			"file": "lab-styles-origin--dark-ltr-normal.png",
-			"sha256": "7bfc2597a7dba5bd758eee46502f83af0f3127540b16aac98ff008dd3eae75db",
+			"sha256": "9613dc3a0ba344e57bce22f1723dcb9782a91d3e5249743b14dd34378bab88e8",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3050,15 +3050,15 @@
 			"theme": "dark",
 			"direction": "ltr",
 			"fontScale": 1,
-			"updatedAt": "2026-11-24T08:11:19.550Z",
+			"updatedAt": "2026-11-24T11:08:33.368Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-origin--dark-rtl-large": {
 			"file": "lab-styles-origin--dark-rtl-large.png",
-			"sha256": "eaa02f6a2b4e523e9a8a542088f18e654873ff829dbc1b80d134934790e41312",
+			"sha256": "23ba2e181fcd07c2987094cf458b31aa1099104f7f22b5a62a178274d1e6b2ea",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3083,15 +3083,15 @@
 			"theme": "dark",
 			"direction": "rtl",
 			"fontScale": 2,
-			"updatedAt": "2026-11-24T08:12:49.190Z",
+			"updatedAt": "2026-11-24T11:10:11.741Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-origin--dark-rtl-normal": {
 			"file": "lab-styles-origin--dark-rtl-normal.png",
-			"sha256": "e8cb3b2604f6de81a0f8db6a3d4c49cc492a205cea14a9e8ed2e14210cc73aae",
+			"sha256": "c4fbd398156dd94200de2c8244350d91b6093340f5543f7fa67ae6d1617bb917",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3116,15 +3116,15 @@
 			"theme": "dark",
 			"direction": "rtl",
 			"fontScale": 1,
-			"updatedAt": "2026-11-24T08:12:18.616Z",
+			"updatedAt": "2026-11-24T11:09:40.450Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-origin--light-ltr-large": {
 			"file": "lab-styles-origin--light-ltr-large.png",
-			"sha256": "80ab3eed2e137896b4e6a34ae91d20e5bee1169b4ae432ff6fc65fbdcd1984d2",
+			"sha256": "8fd401b8d2240d6e17538a3274230a12372388ccfc43d161436324ada0ff4473",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3149,15 +3149,15 @@
 			"theme": "light",
 			"direction": "ltr",
 			"fontScale": 2,
-			"updatedAt": "2026-11-24T08:09:40.939Z",
+			"updatedAt": "2026-11-24T11:06:55.986Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-origin--light-ltr-normal": {
 			"file": "lab-styles-origin--light-ltr-normal.png",
-			"sha256": "4526354c9761c8ae81dddc26fd9fbec39514518c4d590f54eb1c4560060d0345",
+			"sha256": "99286f2e316211a5573866aff056fb3d2e9606a896b2a432fd7e2bc6da8d44b2",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3182,15 +3182,15 @@
 			"theme": "light",
 			"direction": "ltr",
 			"fontScale": 1,
-			"updatedAt": "2026-11-24T08:09:09.774Z",
+			"updatedAt": "2026-11-24T11:06:25.879Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-origin--light-rtl-large": {
 			"file": "lab-styles-origin--light-rtl-large.png",
-			"sha256": "b81a9825093ba2f4d7cd54ebd0612c9cf42e9233dc92f3d2c48b736101777340",
+			"sha256": "c3e87cce8693563856ce21d4f493b7ce483cd882b46e9c23ab56a512b8e78b10",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3215,15 +3215,15 @@
 			"theme": "light",
 			"direction": "rtl",
 			"fontScale": 2,
-			"updatedAt": "2026-11-24T08:10:49.196Z",
+			"updatedAt": "2026-11-24T11:07:59.065Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-origin--light-rtl-normal": {
 			"file": "lab-styles-origin--light-rtl-normal.png",
-			"sha256": "30b7ce8773085daad07c51acb5293ac8a18894b89300a6fe08bc0670b0154b9e",
+			"sha256": "4e7f529a18e1d0485a1461a4b126e7e4bcb270ff94a222842b46bea75c29e38c",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3248,15 +3248,15 @@
 			"theme": "light",
 			"direction": "rtl",
 			"fontScale": 1,
-			"updatedAt": "2026-11-24T08:10:14.824Z",
+			"updatedAt": "2026-11-24T11:07:27.762Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-shadow--dark-ltr-large": {
 			"file": "lab-styles-shadow--dark-ltr-large.png",
-			"sha256": "23771c5a37516713e3f459b122aabcf58e22a8f7e0c3eea6f0d7e387481ade63",
+			"sha256": "aa666e95f08896dd9d2c908c02d3371b643aaef4dd26d9fbe1d0b0e112cbc2d0",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3281,15 +3281,15 @@
 			"theme": "dark",
 			"direction": "ltr",
 			"fontScale": 2,
-			"updatedAt": "2026-11-24T08:11:31.460Z",
+			"updatedAt": "2026-11-24T11:08:45.813Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-shadow--dark-ltr-normal": {
 			"file": "lab-styles-shadow--dark-ltr-normal.png",
-			"sha256": "a73b8f17e844a82b9cc156855ae509387dd4b2ddbf2a8f3d4fbfb41c1ff26a66",
+			"sha256": "6645ff656fec1ad69c0759205a57970a68bd83934686c44bb16587d7c3dcea23",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3314,15 +3314,15 @@
 			"theme": "dark",
 			"direction": "ltr",
 			"fontScale": 1,
-			"updatedAt": "2026-11-24T08:11:00.262Z",
+			"updatedAt": "2026-11-24T11:08:13.769Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-shadow--dark-rtl-large": {
 			"file": "lab-styles-shadow--dark-rtl-large.png",
-			"sha256": "fec32868b4a0d8d68507d75793b53733563814009bbacd066ccfddcf5538ceb8",
+			"sha256": "da03e705cc7c762fbe897187bf813d3fe6650644de738546cfd2a6b9827d7e88",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3347,15 +3347,15 @@
 			"theme": "dark",
 			"direction": "rtl",
 			"fontScale": 2,
-			"updatedAt": "2026-11-24T08:12:30.293Z",
+			"updatedAt": "2026-11-24T11:09:51.720Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-shadow--dark-rtl-normal": {
 			"file": "lab-styles-shadow--dark-rtl-normal.png",
-			"sha256": "597399052c942582681612f61ff519981681d9d4e3e7a5adbac6c15fe8875133",
+			"sha256": "0c3013442f2ad6b79bbd271bd7c0ef9fa6c1751c347166ef1f415fd9ac4572c1",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3380,15 +3380,15 @@
 			"theme": "dark",
 			"direction": "rtl",
 			"fontScale": 1,
-			"updatedAt": "2026-11-24T08:11:59.267Z",
+			"updatedAt": "2026-11-24T11:09:19.708Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-shadow--light-ltr-large": {
 			"file": "lab-styles-shadow--light-ltr-large.png",
-			"sha256": "4d5c110f603e1d09d5e9e5069acffec0776a5d6c84919047a646dd41946f6fc9",
+			"sha256": "bf0331721866f7dc1356760868856394edda2a75f74a165c08d722f34848b7ec",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3413,15 +3413,15 @@
 			"theme": "light",
 			"direction": "ltr",
 			"fontScale": 2,
-			"updatedAt": "2026-11-24T08:09:21.704Z",
+			"updatedAt": "2026-11-24T11:06:37.502Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-shadow--light-ltr-normal": {
 			"file": "lab-styles-shadow--light-ltr-normal.png",
-			"sha256": "27ebb4f672878908216e44c6461593d6a5617d1847654f74193ef8eadc7c9ae0",
+			"sha256": "6bed4a3675c3c90b23e1facce695d1ba6f976ca025809318f3ef3b7ddf9b8e97",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3446,15 +3446,15 @@
 			"theme": "light",
 			"direction": "ltr",
 			"fontScale": 1,
-			"updatedAt": "2026-11-24T08:08:50.740Z",
+			"updatedAt": "2026-11-24T11:06:07.918Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-shadow--light-rtl-large": {
 			"file": "lab-styles-shadow--light-rtl-large.png",
-			"sha256": "a2afd7f47a27afc12d3089266b5b13ff9ad49fbfa345fbda4910d44689be00d6",
+			"sha256": "46d1d86c395ef74474674102bb4c27da4f21e003159cd8c0b8813e00fcfd92fd",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3479,15 +3479,15 @@
 			"theme": "light",
 			"direction": "rtl",
 			"fontScale": 2,
-			"updatedAt": "2026-11-24T08:10:28.266Z",
+			"updatedAt": "2026-11-24T11:07:39.258Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},
 		"lab-styles-shadow--light-rtl-normal": {
 			"file": "lab-styles-shadow--light-rtl-normal.png",
-			"sha256": "78652b3e05f28d246d1404d4938a3f1255887e7c78fc8de7466123e6fe2d420d",
+			"sha256": "9b7bda941c78e6f51ec272cfa8b639ae573fd2f385ed25ffd2430e5fb73ea318",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3512,9 +3512,9 @@
 			"theme": "light",
 			"direction": "rtl",
 			"fontScale": 1,
-			"updatedAt": "2026-11-24T08:09:53.937Z",
+			"updatedAt": "2026-11-24T11:07:08.791Z",
 			"source": {
-				"commit": "31eda845b",
+				"commit": "1c01ab4c9",
 				"dirty": true
 			}
 		},

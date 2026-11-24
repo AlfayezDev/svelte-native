@@ -96,7 +96,7 @@ module.exports = withExpoSvelte(getDefaultConfig(__dirname));
 plugins: [["expo-svelte", { autolinkingExclude: [], androidOnDemandViewManagers: {} }]]
 ```
 
-Name the plugin by the package's own name, as for any Expo library: the package has an `app.plugin.js` at its root, which Expo looks for before the package's main entry. `expo-svelte/app.plugin` is that file by its path. (`expo-svelte/expo`, which named the built file up to 0.4.0-rc.6, was removed in 0.4.0-rc.7 and no longer resolves: write the package's name in its place; `expo-svelte init` does it in an `app.json`, and `expo-svelte doctor` reports it.) No `babel.config.js` is needed: Expo's default preset gives the same bundle (checked byte for byte). The app needs `src/routes/+layout.mobile.svelte` (the generated entry imports it as the app shell) and at least one `+mobile.svelte`.
+Name the plugin by the package's own name, as for any Expo library: the package has an `app.plugin.js` at its root, which Expo looks for before the package's main entry. `expo-svelte/app.plugin` is that file by its path. (`expo-svelte/app.plugin.js` is the file by its file name, the one Expo asks Node for after it found the file, and it is in the package's `exports` for that: an `exports` map without it makes Expo warn on every build. It is a name `plugins` may hold too, and `expo-svelte init` and `expo-svelte doctor` know it, but "expo-svelte" is the one to write.) (`expo-svelte/expo`, which named the built file up to 0.4.0-rc.6, was removed in 0.4.0-rc.7 and no longer resolves: write the package's name in its place; `expo-svelte init` does it in an `app.json`, and `expo-svelte doctor` reports it.) No `babel.config.js` is needed: Expo's default preset gives the same bundle (checked byte for byte). The app needs `src/routes/+layout.mobile.svelte` (the generated entry imports it as the app shell) and at least one `+mobile.svelte`.
 
 Run the commands as `pnpm exec expo-svelte <command>`, or from `package.json` scripts (`"android": "expo-svelte android"`):
 
@@ -115,7 +115,7 @@ expo-svelte sync              # only regenerate .expo-svelte/
 | `expo-svelte` (the bin) | the shell, `pnpm exec`, an npm script | `dist/node/cli.js` (ES module, shebang) |
 | `expo-svelte/metro` | `metro.config.cjs`, which `require`s it | `dist/node/metro.cjs` |
 | `expo-svelte/transformer` | Metro's workers (`babelTransformerPath`, which `withExpoSvelte` sets) | `dist/node/transformer.cjs` |
-| the bare `expo-svelte` (Expo's lookup of a package's `app.plugin.js`), and `expo-svelte/app.plugin` | `@expo/config` and `expo prebuild`, which `require` the plugin | `dist/node/expo.cjs` (`app.plugin.js` re-exports it) |
+| the bare `expo-svelte` (Expo's lookup of a package's `app.plugin.js`), `expo-svelte/app.plugin` and `expo-svelte/app.plugin.js` (the same file by its file name, which Expo resolves itself and `exports` lists) | `@expo/config` and `expo prebuild`, which `require` the plugin | `dist/node/expo.cjs` (`app.plugin.js` re-exports it) |
 | `expo-svelte/vite` | Vite, which imports the plugin from `node_modules` natively | `dist/node/vite.js` (ES module) |
 | `expo-svelte/lower` | Node, for a tool that lowers `.svelte` files | `dist/node/lower.js` (ES module) |
 | `expo-svelte/push/server` | the app's server (SvelteKit, Node), which imports the push sender | `dist/node/push-server.js` (ES module) |

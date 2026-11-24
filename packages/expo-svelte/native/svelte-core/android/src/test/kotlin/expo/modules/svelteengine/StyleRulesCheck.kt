@@ -84,7 +84,7 @@ private fun rules() {
 
   // The layers: every one counts, a transparent one too (the focus ring switched off keeps React Native's drawables, and so the border drawn by them).
   val two = layer(0f, 0f, 0f, 1f, ring, false) + layer(0f, 0f, 0f, 4f, halo, false)
-  expect("a layer that is off still has the view drawn by React Native's drawables", StyleRules.needsReactDrawables(layer(0f, 0f, 0f, 0f, clear, false), StyleRecords(), IntArray(4) { ring }, floatArrayOf(1f, 1f, 1f, 1f)), true)
+  expect("a layer that is off still has the view drawn by React Native's drawables", StyleRules.needsReactDrawables(layer(0f, 0f, 0f, 0f, clear, false), floatArrayOf(0f, 0f, 0f, 0f)), true)
   expect("layer count", listOf(StyleRules.layerCount(null), StyleRules.layerCount(two)), listOf(0, 2))
   expect("an outset layer draws outside the view", listOf(StyleRules.hasOutset(two), StyleRules.hasOutset(layer(0f, 0f, 0f, 1f, ring, true)), StyleRules.hasOutset(null)), listOf(true, false, false))
 
@@ -98,20 +98,14 @@ private fun rules() {
   StyleRules.sideColors(sides, 0, colors)
   expect("a side without a colour is black", colors.toList(), listOf(0xFFFF0000.toInt(), StyleRules.BLACK, StyleRules.BLACK, 0xFF0000FF.toInt()))
 
-  // Who draws the box: the plain background, or React Native's drawables.
-  val plain = StyleRecords()
-  val same = IntArray(4) { ring }
-  expect("a plain box", StyleRules.needsReactDrawables(null, plain, same, floatArrayOf(0f, 0f, 0f, 0f)), false)
-  expect("a plain border", StyleRules.needsReactDrawables(null, plain, same, floatArrayOf(3f, 3f, 3f, 3f)), false)
-  expect("a shadow", StyleRules.needsReactDrawables(two, plain, same, floatArrayOf(0f, 0f, 0f, 0f)), true)
-  val dashed = StyleRecords().also { it.hasSides = true; it.borderStyle = 1 }
-  expect("a dashed line with no width draws nothing", StyleRules.needsReactDrawables(null, dashed, same, floatArrayOf(0f, 0f, 0f, 0f)), false)
-  expect("a dashed border", StyleRules.needsReactDrawables(null, dashed, same, floatArrayOf(3f, 3f, 3f, 3f)), true)
-  expect("sides of different colours", StyleRules.needsReactDrawables(null, plain, intArrayOf(ring, ring, ring, 0xFFFF0000.toInt()), floatArrayOf(3f, 3f, 3f, 3f)), true)
-  expect("sides of different colours with no width draw nothing", StyleRules.needsReactDrawables(null, plain, intArrayOf(ring, ring, ring, 0xFFFF0000.toInt()), floatArrayOf(0f, 0f, 0f, 0f)), false)
-  expect("a border on one side only", StyleRules.needsReactDrawables(null, plain, same, floatArrayOf(0f, 0f, 0f, 3f)), true)
-  expect("a border of different widths", StyleRules.needsReactDrawables(null, plain, same, floatArrayOf(3f, 6f, 3f, 3f)), true)
-
+  // Who draws the box: the plain background (a fill), or React Native's drawables (a shadow, a border that shows).
+  val none = floatArrayOf(0f, 0f, 0f, 0f)
+  expect("a plain box", StyleRules.needsReactDrawables(null, none), false)
+  expect("a plain border is React Native's too: the plain stroke is not its line", StyleRules.needsReactDrawables(null, floatArrayOf(3f, 3f, 3f, 3f)), true)
+  expect("a border on one side only", StyleRules.needsReactDrawables(null, floatArrayOf(0f, 0f, 0f, 3f)), true)
+  expect("a border of different widths", StyleRules.needsReactDrawables(null, floatArrayOf(3f, 6f, 3f, 3f)), true)
+  expect("a shadow", StyleRules.needsReactDrawables(two, none), true)
+  expect("a shadow and a border", StyleRules.needsReactDrawables(two, floatArrayOf(3f, 3f, 3f, 3f)), true)
   // Where a view pivots.
   expect("the centre when the origin gives nothing", StyleRules.pivot(StyleRules.UNIT_NONE, 7f, 200f), 100f)
   expect("a length in px", StyleRules.pivot(StyleRules.UNIT_PX, 30f, 200f), 30f)
@@ -237,7 +231,7 @@ private fun engine(main: String) {
   expect("the other overflow views keep the border-width rectangle", draw.contains("canvas.clipRect(widths[0], widths[1], width - widths[2], height - widths[3])"), true)
   val props = source("$java/Props.kt")
   val common = props.substring(props.indexOf("fun applyCommon("))
-  expect("applyCommon asks StyleRules which drawables draw the box", common.contains("StyleRules.needsReactDrawables(shadows, p.style, p.sideColors, p.border)"), true)
+  expect("applyCommon asks StyleRules which drawables draw the box", common.contains("StyleRules.needsReactDrawables(shadows, p.border)"), true)
   expect("applyCommon does not clip a view with outset shadows to its outline", common.contains("!(st.boxStyle && (view is EngineView || st.boxOutset))"), true)
   expect("the pivot is the origin's, at every layout and every transform write", source("$java/views/EngineView.kt").contains("if (st.transformed) Props.applyPivot(child, st)") && common.contains("setTransform("), true)
   val setTransform = props.substring(props.indexOf("fun setTransform("), props.indexOf("fun applyPivot("))

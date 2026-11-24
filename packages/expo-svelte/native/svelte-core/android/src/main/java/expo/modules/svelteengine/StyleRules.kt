@@ -37,17 +37,12 @@ internal object StyleRules {
   fun uniform(values: IntArray): Boolean = values[0] == values[1] && values[1] == values[2] && values[2] == values[3]
 
   /**
-   * Whether the view's box is drawn by React Native's own drawables (`BackgroundStyleApplicator`) and not by the engine's plain background (a `GradientDrawable`):
-   * it has a box shadow, or a border that shows and is dashed, dotted, of different colours or of different widths.
-   * [colors] is [sideColors]; [widths] are the border widths in px (left, top, right, bottom).
+   * Whether the view's box is drawn by React Native's own drawables (`BackgroundStyleApplicator`) and not by the engine's plain background (a `GradientDrawable`): it has a box
+   * shadow, or a border that shows ([widths] are the border widths in px: left, top, right, bottom). The plain background draws a border as a stroke of whole pixels, which is not
+   * the line React Native's `BorderDrawable` draws (a 1 dp border is a 3 px line shifted half a pixel, with half-covered edge pixels), so a bordered view is React Native's.
+   * What is left to the plain background is a fill, with or without rounded corners.
    */
-  fun needsReactDrawables(shadows: IntArray?, style: StyleRecords, colors: IntArray, widths: FloatArray): Boolean {
-    if (shadows != null) return true
-    val widest = maxOf(maxOf(widths[0], widths[1]), maxOf(widths[2], widths[3]))
-    if (widest <= 0f) return false
-    if (style.borderStyle != 0) return true
-    return !uniform(widths) || !uniform(colors)
-  }
+  fun needsReactDrawables(shadows: IntArray?, widths: FloatArray): Boolean = shadows != null || maxOf(maxOf(widths[0], widths[1]), maxOf(widths[2], widths[3])) > 0f
 
   /**
    * The names of React Native's `LogicalEdge` for the left, top, right and bottom side of a border whose sides differ (when they agree the style's own `borderWidth` and

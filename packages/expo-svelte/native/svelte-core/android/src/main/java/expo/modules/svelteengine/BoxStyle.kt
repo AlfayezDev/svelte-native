@@ -15,7 +15,8 @@ import expo.modules.svelteengine.views.isRtlLayout
  * A view's background, border and box shadows drawn by React Native's own drawables (SPEC.md, "Box styles"): `BackgroundStyleApplicator`, which is what
  * `ReactViewManager` calls for the same props, so the pixels are React Native's by construction (outset and inset shadows, dashed and dotted borders, a colour per side,
  * the order they are drawn in). The engine's plain background (a `GradientDrawable`, `Props.applyCommon`) stays for every view that needs none of it: it is cheaper to
- * make, and most views are plain boxes. [StyleRules.needsReactDrawables] says which is which; a view moves from one to the other when its style does.
+ * make, and a fill with no border is all it has to draw. [StyleRules.needsReactDrawables] says which is which (a shadow, or a border that shows, is React Native's); a view moves
+ * from one to the other when its style does.
  *
  * The values are the ones Fabric resolved (the border widths, colours and radii of the physical sides, in px): React Native's drawables take dp and resolve their edges again
  * by the layout direction of the view, so the lengths are divided by the density and the sides go to `START` and `END` as the app's direction says ([StyleRules.edges]).

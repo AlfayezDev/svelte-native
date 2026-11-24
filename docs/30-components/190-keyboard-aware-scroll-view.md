@@ -43,4 +43,6 @@ It also takes the props of [`ScrollView`](scroll-view#props).
 - Moving to another input while the keyboard is up scrolls to that input, with a short animation.
 - When the keyboard closes, the scroll view goes back to where it was before the keyboard opened, along the same way.
 
+In a [`Modal`](modal) the scroll view is left to the modal, which ends its content where the keyboard begins: Android's own scroll view brings the focused field into view once, when the keyboard starts to move, and `bottomOffset` does not apply.
+
 On Android the scrolling is the engine's, on the main thread, in the frame the keyboard moves in. Elsewhere the component is a plain `ScrollView`. The `layout` mode of react-native-keyboard-controller's component, and the scroll that follows the caret of a growing multiline input, are not covered.

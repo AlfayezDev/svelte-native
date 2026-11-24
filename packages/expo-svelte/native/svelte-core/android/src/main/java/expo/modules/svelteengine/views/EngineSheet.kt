@@ -170,6 +170,9 @@ class EngineSheet(context: Context) : EngineScreen(context), NativeClaim {
 
   private fun offsetFor(index: Int): Float = max(0, node.h - visibleFor(index)).toFloat()
 
+  /** Where detent [index] is now, for a settle that began with it: the detents may have been replaced since, and an index must not read past them. */
+  private fun offsetAt(index: Int): Float = if (detents.isEmpty()) 0f else offsetFor(min(index, detents.size - 1))
+
   override val restY: Float get() = if (detents.isEmpty()) 0f else offsetFor(min(current, detents.size - 1))
 
   // Every write of the translation (a drag, a settle, the rest, the stack's own) goes through here; the stack's animator does
@@ -489,9 +492,12 @@ class EngineSheet(context: Context) : EngineScreen(context), NativeClaim {
     // The layer is taken before the old settle is cancelled, so it is handed over.
     holdLayer()
     cancelSettle()
-    val animator = ValueAnimator.ofFloat(translationY, target).setDuration(SETTLE_MS)
+    // The settle goes to a detent, not to a place: a layout during it (the window was resized) moves the detent, and the settle follows it and ends where it is by then.
+    val index = indexForOffset(target)
+    val from = translationY
+    val animator = ValueAnimator.ofFloat(0f, 1f).setDuration(SETTLE_MS)
     animator.interpolator = interpolator
-    animator.addUpdateListener { translationY = it.animatedValue as Float }
+    animator.addUpdateListener { translationY = ChromeRules.settleAt(from, offsetAt(index), it.animatedValue as Float) }
     animator.addListener(object : AnimatorListenerAdapter() {
       private var cancelled = false
       override fun onAnimationCancel(animation: Animator) { cancelled = true }
@@ -499,8 +505,7 @@ class EngineSheet(context: Context) : EngineScreen(context), NativeClaim {
         if (settler === animation) settler = null
         releaseLayer()
         if (cancelled) return
-        translationY = target
-        val index = indexForOffset(target)
+        translationY = offsetAt(index)
         current = index
         // The band follows the detent the sheet now rests at (the write above still saw the old one).
         syncToolbar()

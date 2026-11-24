@@ -126,10 +126,10 @@ private fun chat() {
   expect("retuned: the close goes back to where the content was", lift.move(0, 3250, viewport, content), 2500)
   // A scroll view that arrives with the keyboard up holds the room and moves nothing.
   lift = ChatLift(ChatLift.ALWAYS, 0, threshold)
-  lift.attach(750, 3000, viewport, content)
+  lift.attach(750, 2400, viewport, content)
   expect("attached: the room", lift.padding, 750)
-  lift.start(0, 3000, viewport, content)
-  expect("attached: the close leaves the content where it is", lift.move(0, 3000, viewport, content), 3000)
+  lift.start(0, 2400, viewport, content)
+  expect("attached: the close leaves the content where it is", lift.move(0, 2400, viewport, content), 2400)
   // A tab bar of 50 px under the scroll view: the content lifts by the keyboard less that, in proportion.
   lift = ChatLift(ChatLift.ALWAYS, 50, threshold)
   lift.start(300, 2500, viewport, content)

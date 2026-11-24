@@ -56,12 +56,12 @@ class Insets(private val root: EngineRoot, private val drive: KeyboardDrive, pri
     })
     root.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or, ob -> if (r - l != or - ol || b - t != ob - ot || l != ol || t != ot) publish() }
     root.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-      override fun onViewAttachedToWindow(v: View) { watchLayouts(); v.requestApplyInsets(); publish() }
+      override fun onViewAttachedToWindow(v: View) { watchLayouts(); drive.install(v); v.requestApplyInsets(); publish() }
       // A window that goes during an IME animation does not deliver its end: the next window starts with none running.
       override fun onViewDetachedFromWindow(v: View) { unwatchLayouts(); animating = false }
     })
-    drive.install(root)
     if (root.isAttachedToWindow) {
+      drive.install(root)
       watchLayouts()
       root.requestApplyInsets()
     }

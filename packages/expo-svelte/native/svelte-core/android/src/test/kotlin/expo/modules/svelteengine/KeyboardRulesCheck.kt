@@ -157,6 +157,7 @@ private fun wiring(main: String) {
   expect("an identity transform is not one for a view the keyboard moved", props.contains("rot == 0f && st.drivenY == 0f"), true)
   expect("setNativeProps reads the translation back without the keyboard's move", read(dir, "Commands.kt").contains("view.translationY - node.drivenY"), true)
   expect("a pooled view forgets the move", read(dir, "views/EngineView.kt").contains("drivenY = 0f"), true)
+  expect("a view created after its registration is driven when it arrives", read(dir, "MountingManager.kt").contains("keyboard.viewCreated(tag)"), true)
   val module = read(dir, "SvelteEngineModule.kt")
   expect("JavaScript registers a view by tag", module.contains("Function(\"keyboardDrive\")"), true)
   expect("the end of a list is told to JavaScript", module.contains("sendEvent(\"endVisible\""), true)

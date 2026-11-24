@@ -21,7 +21,7 @@ const platformPath = "react-native/Libraries/Utilities/Platform";
 test("importing the entry loads none of React Native's modules", () => {
   const seen = probe();
   expect(seen.afterImport).toEqual([]);
-  expect(seen.exports).toEqual(["Alert", "AppState", "Appearance", "BackHandler", "Dimensions", "Keyboard", "Linking", "PixelRatio", "Platform", "Share", "Vibration", "nativeModule", "turboModule"]);
+  expect(seen.exports).toEqual(["Alert", "AppState", "Appearance", "BackHandler", "Dimensions", "Keyboard", "KeyboardController", "Linking", "PixelRatio", "Platform", "Share", "Vibration", "nativeModule", "turboModule"]);
 });
 
 test("reading a property loads that module, once, and no other", () => {

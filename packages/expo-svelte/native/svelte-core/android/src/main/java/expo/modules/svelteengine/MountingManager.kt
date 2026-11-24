@@ -608,6 +608,7 @@ class MountingManager(private val reactContext: ReactApplicationContext, private
     registry.put(tag, view)
     applyProps(view, kind, p, true)
     replayEarlyAnimated(tag, view)
+    keyboard.viewCreated(tag)
     if (view is EngineForeign) foreign.created(tag, view)
   }
 

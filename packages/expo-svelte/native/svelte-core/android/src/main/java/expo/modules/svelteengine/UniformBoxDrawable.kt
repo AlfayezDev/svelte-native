@@ -51,6 +51,13 @@ class UniformBoxDrawable : Drawable() {
   /** [computed] in px. */
   private val radiiPx = FloatArray(8)
   private val scratch = FloatArray(8)
+  /** What [getOutline] and [clipToPaddingBox] build, kept: the outline is asked for by every view that is attached or resized, the clip by every frame. */
+  private val outlinePath = Path()
+  private val outlineRadii = FloatArray(8)
+  private val clipPath = Path()
+  private val clipRadii = FloatArray(8)
+  private val clipRect = RectF()
+  private val drawing = Rect()
   private var uniformRadii = false
   private var needUpdatePath = true
 
@@ -250,29 +257,29 @@ class UniformBoxDrawable : Drawable() {
     canvas.restore()
   }
 
-  /** `CompositeBackgroundDrawable.getOutline`: the shadow of `elevation` follows the rounded rectangle, each radius grown by the border's width. */
+  /**
+   * `CompositeBackgroundDrawable.getOutline`: the shadow of `elevation` follows the rounded rectangle, each radius grown by the border's width. A view asks for it when it is attached,
+   * before it has a size, and an empty rectangle has an empty outline (`Outline.setRoundRect`), which is all React Native's gives then: nothing is built for it.
+   */
   override fun getOutline(outline: Outline) {
+    if (bounds.isEmpty) {
+      outline.setEmpty()
+      return
+    }
     if (!rounded) {
       outline.setRect(bounds)
       return
     }
     // React Native resolves these against the bounds in px, as if they were dp.
     resolve(scratch, bounds.width().toFloat(), bounds.height().toFloat())
-    val path = Path()
-    path.addRoundRect(
-      RectF(bounds),
-      floatArrayOf(
-        PixelUtil.toPixelFromDIP(scratch[0] + widthDp), PixelUtil.toPixelFromDIP(scratch[1] + widthDp),
-        PixelUtil.toPixelFromDIP(scratch[2] + widthDp), PixelUtil.toPixelFromDIP(scratch[3] + widthDp),
-        PixelUtil.toPixelFromDIP(scratch[4] + widthDp), PixelUtil.toPixelFromDIP(scratch[5] + widthDp),
-        PixelUtil.toPixelFromDIP(scratch[6] + widthDp), PixelUtil.toPixelFromDIP(scratch[7] + widthDp),
-      ),
-      Path.Direction.CW,
-    )
+    for (k in 0..7) outlineRadii[k] = PixelUtil.toPixelFromDIP(scratch[k] + widthDp)
+    outlinePath.reset()
+    boundsRect.set(bounds)
+    outlinePath.addRoundRect(boundsRect, outlineRadii, Path.Direction.CW)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-      outline.setPath(path)
+      outline.setPath(outlinePath)
     } else {
-      @Suppress("DEPRECATION") outline.setConvexPath(path)
+      @Suppress("DEPRECATION") outline.setConvexPath(outlinePath)
     }
   }
 
@@ -281,31 +288,19 @@ class UniformBoxDrawable : Drawable() {
    * [canvas] is the one `dispatchDraw` gets.
    */
   fun clipToPaddingBox(view: View, canvas: Canvas) {
-    val drawing = Rect()
     view.getDrawingRect(drawing)
     val inset = PixelUtil.toPixelFromDIP(widthDp)
-    val box = RectF(
-      bounds.left + inset,
-      bounds.top + inset,
-      bounds.right - inset,
-      bounds.bottom - inset,
-    )
+    clipRect.set(bounds.left + inset, bounds.top + inset, bounds.right - inset, bounds.bottom - inset)
     if (rounded) {
       resolve(scratch, PixelUtil.toDIPFromPixel(bounds.width().toFloat()), PixelUtil.toDIPFromPixel(bounds.height().toFloat()))
-      val path = Path()
-      path.addRoundRect(
-        box,
-        floatArrayOf(
-          inner(scratch[0], inset), inner(scratch[1], inset), inner(scratch[2], inset), inner(scratch[3], inset),
-          inner(scratch[4], inset), inner(scratch[5], inset), inner(scratch[6], inset), inner(scratch[7], inset),
-        ),
-        Path.Direction.CW,
-      )
-      path.offset(drawing.left.toFloat(), drawing.top.toFloat())
-      canvas.clipPath(path)
+      for (k in 0..7) clipRadii[k] = inner(scratch[k], inset)
+      clipPath.reset()
+      clipPath.addRoundRect(clipRect, clipRadii, Path.Direction.CW)
+      clipPath.offset(drawing.left.toFloat(), drawing.top.toFloat())
+      canvas.clipPath(clipPath)
     } else {
-      box.offset(drawing.left.toFloat(), drawing.top.toFloat())
-      canvas.clipRect(box)
+      clipRect.offset(drawing.left.toFloat(), drawing.top.toFloat())
+      canvas.clipRect(clipRect)
     }
   }
 

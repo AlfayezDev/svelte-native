@@ -119,16 +119,28 @@ export type LowerOptions = {
 /**
  * Rewrites `<View>`, `<Text>`, ... imported from "expo-svelte" into their host tags.
  * Only the tag names change: everything else is carried over verbatim, so line numbers are
- * stable (columns shift on lines holding a lowered tag, and no source map is produced).
+ * stable (columns shift on lines holding a lowered tag, and no source map is produced: [lowerWithMap] has the way back for one position).
  */
 export function lowerPrimitives(content: string, options: LowerOptions = {}): string {
-  if (!content.includes(PACKAGE) && !(options.html && mayHaveHtml(content))) return content;
+  return lowerWithMap(content, options).code;
+}
+
+/** The lowered text of a file, and where a position of it is in the file the developer wrote ([lowerWithMap]). `line` is 1-based and `column` 0-based, as Svelte's errors have them. */
+export type Lowering = { code: string; original(line: number, column: number): { line: number; column: number } };
+
+/**
+ * [lowerPrimitives] with the way back: `original` takes a position in the lowered text (where Svelte reports an error, on the lowered tag's name and the `nativeClass={...}` that took the
+ * place of a `class`) to the position of the same place in `content`. A position inside what an edit wrote is the start of what the edit replaced.
+ */
+export function lowerWithMap(content: string, options: LowerOptions = {}): Lowering {
+  const unchanged = (): Lowering => ({ code: content, original: (line, column) => ({ line, column }) });
+  if (!content.includes(PACKAGE) && !(options.html && mayHaveHtml(content))) return unchanged();
   let ast: Node;
   try {
     ast = parse(content, { modern: true, filename: options.filename }) as unknown as Node;
   } catch {
     // Leave syntax errors to the real compile, which reports them with context.
-    return content;
+    return unchanged();
   }
   const locals = new Map<string, string>();
   const actions = new Set<string>();
@@ -136,7 +148,7 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
   collectImports(ast.module?.content, locals, actions);
   const warn = options.warn ?? ((message: string) => console.warn(message));
   const html = options.html ? lowerHtml(ast, content, options.filename, warn) : undefined;
-  if (!locals.size && !html?.elements.size && !html?.edits.length) return content;
+  if (!locals.size && !html?.elements.size && !html?.edits.length) return unchanged();
   const edits: Edit[] = html ? [...html.edits] : [];
   const helpers = new Set<string>(html?.helpers);
   /** Wraps an expression in a call of one of the renderer's helpers. */
@@ -244,7 +256,7 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
       edits.push({ start: close + 2, end: close + 2 + node.name.length, text: tag });
     }
   });
-  if (!edits.length) return content;
+  if (!edits.length) return unchanged();
   const script = ast.instance ?? ast.module;
   const names = [...helpers].sort().map((helper) => `${HELPER_EXPORTS[helper]} as ${helper}`);
   const setup = html?.setup ?? [];
@@ -257,7 +269,39 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
   edits.sort((a, b) => b.start - a.start || b.end - a.end);
   let output = content;
   for (const edit of edits) output = output.slice(0, edit.start) + edit.text + output.slice(edit.end);
-  return output;
+  return { code: output, original: (line, column) => positionIn(content, output, edits, line, column) };
+}
+
+/** The 0-based offset of a 1-based line and 0-based column of [text]. */
+function offsetAt(text: string, line: number, column: number): number {
+  let offset = 0;
+  for (let at = 1; at < line; at++) {
+    const next = text.indexOf("\n", offset);
+    if (next < 0) return text.length;
+    offset = next + 1;
+  }
+  return offset + column;
+}
+
+/** The 1-based line and 0-based column of a 0-based offset of [text]. */
+function lineAndColumn(text: string, offset: number): { line: number; column: number } {
+  const before = text.slice(0, offset);
+  const line = before.split("\n").length;
+  return { line, column: offset - (before.lastIndexOf("\n") + 1) };
+}
+
+/** [lowered]'s line and column, in [content]: the edits (in the order they were applied, last in the text first) are walked from the start of the text, with what each moved the rest by. */
+function positionIn(content: string, lowered: string, edits: readonly Edit[], line: number, column: number): { line: number; column: number } {
+  const target = offsetAt(lowered, line, column);
+  let delta = 0;
+  for (let at = edits.length - 1; at >= 0; at--) {
+    const edit = edits[at] as Edit;
+    const from = edit.start + delta;
+    if (target < from) break;
+    if (target < from + edit.text.length) return lineAndColumn(content, edit.start);
+    delta += edit.text.length - (edit.end - edit.start);
+  }
+  return lineAndColumn(content, Math.max(0, Math.min(content.length, target - delta)));
 }
 
 /** Standard Svelte preprocessor wrapper, for svelte-check and other Svelte tooling. */

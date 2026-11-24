@@ -100,6 +100,7 @@ object Commands {
         "borderBottomLeftRadius" -> num(v)?.let { p.radii[3] = (it * density).toFloat() }
         "borderWidth" -> num(v)?.let { w -> p.border.fill((w * density).toFloat()) }
         "transform" -> transform(v, density, p.transform)
+        "transformOrigin" -> origin(v, density, p.style)
         "overflow" -> p.overflow = if (v == "visible") 0 else 1
         "hitSlop" -> p.hitSlop = hitSlop(v, density)
         "pointerEvents" -> p.pointer = when (v) { "none" -> 1; "box-none" -> 2; "box-only" -> 3; else -> 0 }
@@ -146,6 +147,7 @@ object Commands {
     node.radii.copyInto(p.radii)
     node.border.copyInto(p.border)
     p.borderColor = node.borderColor
+    node.style?.let { p.style.copyFrom(it) }
     p.transform[0] = view.translationX
     p.transform[1] = view.translationY
     p.transform[2] = view.scaleX
@@ -181,6 +183,22 @@ object Commands {
    * Decomposes a transform into translate/scale/rotate (see SPEC prop 6). Operations are accumulated, so the result
    * is exact for the common single-purpose transforms but not for order-dependent mixes. Also takes a 16-number matrix.
    */
+  /** `transformOrigin` (`[x, y, z]` after JavaScript's `processTransformOrigin`: a number is dp, `"50%"` a percentage) into [style]'s origin; null puts it back to the centre. */
+  private fun origin(v: Any?, density: Float, style: StyleRecords) {
+    val values = FloatArray(2)
+    var xUnit = StyleRules.UNIT_NONE
+    var yUnit = StyleRules.UNIT_NONE
+    val list = v as? List<*>
+    if (list != null && list.size >= 2) {
+      for (axis in 0..1) {
+        val unit = StyleRules.originAxis(num(list[axis]), list[axis] as? String, density, values, axis)
+        if (axis == 0) xUnit = unit else yUnit = unit
+      }
+    }
+    style.touched = true
+    style.originXUnit = xUnit; style.originX = values[0]; style.originYUnit = yUnit; style.originY = values[1]
+  }
+
   private fun transform(v: Any?, density: Float, out: FloatArray) {
     out[0] = 0f; out[1] = 0f; out[2] = 1f; out[3] = 1f; out[4] = 0f
     val list = v as? List<*> ?: return

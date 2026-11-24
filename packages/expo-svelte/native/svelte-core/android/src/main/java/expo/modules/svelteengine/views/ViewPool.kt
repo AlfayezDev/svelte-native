@@ -1,6 +1,7 @@
 package expo.modules.svelteengine.views
 
 import expo.modules.svelteengine.A11y
+import expo.modules.svelteengine.BoxStyle
 
 import android.view.View
 import android.view.ViewGroup
@@ -132,6 +133,8 @@ class ViewPool(private val capacity: Int = DEFAULT_CAPACITY) {
     if (view is EngineView && view.offscreenAlpha) view.offscreenAlpha = false
     if (view.layerType != View.LAYER_TYPE_NONE) view.setLayerType(View.LAYER_TYPE_NONE, null)
     st.viewFlags = 0
+    // React Native's drawables (shadows, borders) belong to the node that had them; the next one builds its background from nothing.
+    if (st.boxStyle) BoxStyle.drop(view, st)
     A11y.setClickable(view, false)
     view.tag = null
     // The id is the node tag (MountingManager.createView): a pooled view has no node, and no gesture handler is found on it.

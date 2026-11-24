@@ -7,11 +7,14 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
+import com.facebook.react.uimanager.BackgroundStyleApplicator
 import com.facebook.react.uimanager.PointerEvents
 import com.facebook.react.uimanager.ReactPointerEventsView
 import expo.modules.svelteengine.A11y
 import expo.modules.svelteengine.A11yRecords
 import expo.modules.svelteengine.GestureRules
+import expo.modules.svelteengine.Props
+import expo.modules.svelteengine.StyleRecords
 
 /** Per-view state the mounting layer keeps outside of View ids and tags. */
 class NodeState {
@@ -54,6 +57,26 @@ class NodeState {
   val border = FloatArray(4)
   var borderColor = 0
 
+  /** The box style records applied (box shadow, border sides, transform origin), null when the view has none: the origin is where the view pivots (`Props.applyPivot`). */
+  var style: StyleRecords? = null
+
+  /** What the last full record held of [style], so a partial write (`setNativeProps`) puts the rest back. */
+  fun rememberStyle(from: StyleRecords) {
+    val own = style
+    if (own == null) {
+      if (!from.isEmpty) style = StyleRecords().also { it.copyFrom(from) }
+    } else own.copyFrom(from)
+  }
+
+  /** React Native's own drawables draw the box (`BoxStyle`), and not the plain [drawable]. What `BoxStyle.apply` last wrote, to write only what changed. */
+  var boxStyle = false
+  var boxRtl = false
+  var boxShadows: IntArray? = null
+  var boxBorderStyle = 0
+  val boxColors = IntArray(4)
+  /** An outset shadow is among [boxShadows]: it draws outside the view, so the view's own outline must not clip it. */
+  var boxOutset = false
+
   val w get() = r - l
   val h get() = b - t
 
@@ -83,6 +106,7 @@ class NodeState {
     radii.fill(0f)
     border.fill(0f)
     borderColor = 0
+    style = null
   }
 }
 
@@ -106,10 +130,7 @@ object Frames {
     if (!st.hasFrame) return
     child.measure(View.MeasureSpec.makeMeasureSpec(st.w, exact), View.MeasureSpec.makeMeasureSpec(st.h, exact))
     child.layout(st.l, st.t, st.r, st.b)
-    if (st.transformed) {
-      child.pivotX = st.w / 2f
-      child.pivotY = st.h / 2f
-    }
+    if (st.transformed) Props.applyPivot(child, st)
   }
 
   fun measureChildren(parent: ViewGroup) {
@@ -207,9 +228,14 @@ open class EngineView(context: Context) : ViewGroup(context), EngineNode {
       super.dispatchDraw(canvas)
       return
     }
-    val widths = node.border
     val saved = canvas.save()
-    canvas.clipRect(widths[0], widths[1], width - widths[2], height - widths[3])
+    if (node.boxStyle) {
+      // React Native's own clip, round corners and border widths of its drawables included (`ReactViewGroup.dispatchDraw`).
+      BackgroundStyleApplicator.clipToPaddingBox(this, canvas)
+    } else {
+      val widths = node.border
+      canvas.clipRect(widths[0], widths[1], width - widths[2], height - widths[3])
+    }
     super.dispatchDraw(canvas)
     canvas.restoreToCount(saved)
   }

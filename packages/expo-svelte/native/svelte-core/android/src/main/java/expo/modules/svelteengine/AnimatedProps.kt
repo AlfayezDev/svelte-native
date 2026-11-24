@@ -176,6 +176,7 @@ object AnimatedProps {
 
   private fun setBackground(view: View, st: expo.modules.svelteengine.views.NodeState, color: Int) {
     if (st.bg == color) return
+    st.uniformBox?.let { return BoxStyle.setUniformBackground(it, st, color) }
     if (st.boxStyle) return BoxStyle.setBackground(view, st, color)
     st.bg = color
     var d = st.drawable
@@ -195,6 +196,7 @@ object AnimatedProps {
   private fun setRadii(view: View, st: expo.modules.svelteengine.views.NodeState, tl: Float, tr: Float, br: Float, bl: Float) {
     val r = st.radii
     if (r[0] == tl && r[1] == tr && r[2] == br && r[3] == bl) return
+    st.uniformBox?.let { return BoxStyle.setUniformRadii(view, it, st, tl, tr, br, bl) }
     if (st.boxStyle) return BoxStyle.setRadii(view, st, tl, tr, br, bl)
     r[0] = tl; r[1] = tr; r[2] = br; r[3] = bl
     st.drawable?.let { applyRadii(it, r) }

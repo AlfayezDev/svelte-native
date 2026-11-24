@@ -77,6 +77,11 @@ private fun fixture(path: String) {
 private fun layer(x: Float, y: Float, blur: Float, spread: Float, color: Int, inset: Boolean): IntArray =
   intArrayOf(x.toRawBits(), y.toRawBits(), blur.toRawBits(), spread.toRawBits(), color, if (inset) 1 else 0)
 
+/** The box of a view with [shadows] and these border [widths], solid by default, every side in the same colour unless [colors] says otherwise. */
+private fun kind(shadows: IntArray?, widths: FloatArray, style: Int = 0, colors: IntArray = IntArray(4) { 0xFF66666F.toInt() }): Int {
+  return StyleRules.boxKind(shadows, StyleRules.widest(widths), style, widths, colors)
+}
+
 private fun rules() {
   val ring = 0xFF66666F.toInt()
   val halo = 0x1209090B
@@ -84,7 +89,7 @@ private fun rules() {
 
   // The layers: every one counts, a transparent one too (the focus ring switched off keeps React Native's drawables, and so the border drawn by them).
   val two = layer(0f, 0f, 0f, 1f, ring, false) + layer(0f, 0f, 0f, 4f, halo, false)
-  expect("a layer that is off still has the view drawn by React Native's drawables", StyleRules.needsReactDrawables(layer(0f, 0f, 0f, 0f, clear, false), floatArrayOf(0f, 0f, 0f, 0f)), true)
+  expect("a layer that is off still has the view drawn by React Native's drawables", kind(layer(0f, 0f, 0f, 0f, clear, false), floatArrayOf(0f, 0f, 0f, 0f)), StyleRules.BOX_REACT)
   expect("layer count", listOf(StyleRules.layerCount(null), StyleRules.layerCount(two)), listOf(0, 2))
   expect("an outset layer draws outside the view", listOf(StyleRules.hasOutset(two), StyleRules.hasOutset(layer(0f, 0f, 0f, 1f, ring, true)), StyleRules.hasOutset(null)), listOf(true, false, false))
 
@@ -98,14 +103,34 @@ private fun rules() {
   StyleRules.sideColors(sides, 0, colors)
   expect("a side without a colour is black", colors.toList(), listOf(0xFFFF0000.toInt(), StyleRules.BLACK, StyleRules.BLACK, 0xFF0000FF.toInt()))
 
-  // Who draws the box: the plain background (a fill), or React Native's drawables (a shadow, a border that shows).
+  // Who draws the box: the plain background (a fill), the engine's one drawable (a border of one width and one colour, solid), or React Native's drawables (a shadow, a dashed or dotted
+  // border, sides of different widths or colours).
   val none = floatArrayOf(0f, 0f, 0f, 0f)
-  expect("a plain box", StyleRules.needsReactDrawables(null, none), false)
-  expect("a plain border is React Native's too: the plain stroke is not its line", StyleRules.needsReactDrawables(null, floatArrayOf(3f, 3f, 3f, 3f)), true)
-  expect("a border on one side only", StyleRules.needsReactDrawables(null, floatArrayOf(0f, 0f, 0f, 3f)), true)
-  expect("a border of different widths", StyleRules.needsReactDrawables(null, floatArrayOf(3f, 6f, 3f, 3f)), true)
-  expect("a shadow", StyleRules.needsReactDrawables(two, none), true)
-  expect("a shadow and a border", StyleRules.needsReactDrawables(two, floatArrayOf(3f, 3f, 3f, 3f)), true)
+  val three = floatArrayOf(3f, 3f, 3f, 3f)
+  expect("a fill with no border is the plain background", kind(null, none), StyleRules.BOX_PLAIN)
+  expect("a fill and a border of one width and one colour is the uniform drawable", kind(null, three), StyleRules.BOX_UNIFORM)
+  expect("a fractional width is uniform too", kind(null, floatArrayOf(0.5f, 0.5f, 0.5f, 0.5f)), StyleRules.BOX_UNIFORM)
+  expect("a translucent colour is uniform", kind(null, three, colors = IntArray(4) { 0x802563EB.toInt() }), StyleRules.BOX_UNIFORM)
+  expect("a transparent colour is uniform", kind(null, three, colors = IntArray(4)), StyleRules.BOX_UNIFORM)
+  expect("a border on one side only is React Native's", kind(null, floatArrayOf(0f, 0f, 0f, 3f)), StyleRules.BOX_REACT)
+  expect("a border of different widths is React Native's", kind(null, floatArrayOf(3f, 6f, 3f, 3f)), StyleRules.BOX_REACT)
+  expect("sides of different colours are React Native's", kind(null, three, colors = intArrayOf(ring, ring, ring, 0xFFFF0000.toInt())), StyleRules.BOX_REACT)
+  expect("sides of different colours with no width are a plain box", kind(null, none, colors = intArrayOf(ring, ring, ring, 0xFFFF0000.toInt())), StyleRules.BOX_PLAIN)
+  expect("a dashed border is React Native's", kind(null, three, style = 1), StyleRules.BOX_REACT)
+  expect("a dotted border is React Native's", kind(null, three, style = 2), StyleRules.BOX_REACT)
+  expect("a dashed line with no width is a plain box", kind(null, none, style = 1), StyleRules.BOX_PLAIN)
+  expect("a shadow is React Native's", kind(two, none), StyleRules.BOX_REACT)
+  expect("a shadow and a border are React Native's", kind(two, three), StyleRules.BOX_REACT)
+  expect("sides that agree", listOf(StyleRules.uniform(floatArrayOf(3f, 3f, 3f, 3f)), StyleRules.uniform(floatArrayOf(3f, 3f, 3f, 0f)), StyleRules.uniform(intArrayOf(ring, ring, ring, ring)), StyleRules.uniform(intArrayOf(ring, ring, ring, 0))), listOf(true, false, true, false))
+
+  // `BorderRadiusStyle.ensureNoOverlap`, in dp: nothing changes while the radii fit, two that meet on an edge shrink in proportion, a corner with no radius reads a scale of 0.
+  fun overlap(vararg r: Float, width: Float, height: Float): List<Float> = r.copyOf().also { StyleRules.ensureNoOverlap(it, width, height) }.map { Math.round(it * 1000f) / 1000f }
+  expect("radii that fit stay", overlap(8f, 8f, 8f, 8f, 8f, 8f, 8f, 8f, width = 150f, height = 56f), List(8) { 8f })
+  expect("a pill: 999 on a 150 x 56 box is half the height, on every corner", overlap(999f, 999f, 999f, 999f, 999f, 999f, 999f, 999f, width = 150f, height = 56f), List(8) { 28f })
+  expect("two radii that meet on the left edge", overlap(40f, 40f, 0f, 0f, 0f, 0f, 40f, 40f, width = 150f, height = 56f), listOf(28f, 28f, 0f, 0f, 0f, 0f, 28f, 28f))
+  expect("a corner on its own keeps its radius up to the box", overlap(20f, 20f, 0f, 0f, 0f, 0f, 0f, 0f, width = 150f, height = 56f), listOf(20f, 20f, 0f, 0f, 0f, 0f, 0f, 0f))
+  expect("a radius that is over the box alone is cut by the nearer edge", overlap(80f, 80f, 0f, 0f, 0f, 0f, 0f, 0f, width = 150f, height = 56f), listOf(56f, 56f, 0f, 0f, 0f, 0f, 0f, 0f))
+
   // Where a view pivots.
   expect("the centre when the origin gives nothing", StyleRules.pivot(StyleRules.UNIT_NONE, 7f, 200f), 100f)
   expect("a length in px", StyleRules.pivot(StyleRules.UNIT_PX, 30f, 200f), 30f)
@@ -118,7 +143,6 @@ private fun rules() {
   expect("a keyword is no axis (JavaScript resolved it already)", StyleRules.originAxis(null, "left", 2f, axis, 0), StyleRules.UNIT_NONE)
   expect("nothing is no axis", StyleRules.originAxis(null, null, 2f, axis, 0), StyleRules.UNIT_NONE)
 
-  expect("sides that agree", listOf(StyleRules.uniform(floatArrayOf(3f, 3f, 3f, 3f)), StyleRules.uniform(floatArrayOf(3f, 3f, 3f, 0f)), StyleRules.uniform(intArrayOf(ring, ring, ring, ring)), StyleRules.uniform(intArrayOf(ring, ring, ring, 0))), listOf(true, false, true, false))
 
   // The edges and the corners.
   expect("edges, left to right", StyleRules.edges(false).toList(), listOf("START", "TOP", "END", "BOTTOM"))
@@ -228,11 +252,13 @@ private fun engine(main: String) {
   val view = source("$java/views/EngineView.kt")
   val draw = Regex("""override fun dispatchDraw\(canvas: Canvas\) \{(.*?)\n  \}""", RegexOption.DOT_MATCHES_ALL).find(view)?.groupValues?.get(1) ?: error("EngineView does not override dispatchDraw")
   expect("an overflow view with React Native's drawables clips to React Native's padding box", draw.contains("BackgroundStyleApplicator.clipToPaddingBox(this, canvas)"), true)
+  expect("an overflow view with the uniform drawable clips to the same padding box", draw.contains("uniform.clipToPaddingBox(this, canvas)"), true)
   expect("the other overflow views keep the border-width rectangle", draw.contains("canvas.clipRect(widths[0], widths[1], width - widths[2], height - widths[3])"), true)
   val props = source("$java/Props.kt")
   val common = props.substring(props.indexOf("fun applyCommon("))
-  expect("applyCommon asks StyleRules which drawables draw the box", common.contains("StyleRules.needsReactDrawables(shadows, p.border)"), true)
-  expect("applyCommon does not clip a view with outset shadows to its outline", common.contains("!(st.boxStyle && (view is EngineView || st.boxOutset))"), true)
+  expect("applyCommon asks StyleRules who draws the box", common.contains("StyleRules.boxKind(shadows, widest, p.style.borderStyle, p.border, p.sideColors)"), true)
+  expect("applyCommon takes the drawable a view no longer needs off, and puts the uniform one on", common.contains("if (st.uniformBox != null && kind != StyleRules.BOX_UNIFORM) BoxStyle.dropUniform(view, st)") && common.contains("BoxStyle.applyUniform(view, st, p)"), true)
+  expect("applyCommon does not clip a view with outset shadows to its outline", common.contains("!((st.boxStyle || st.uniformBox != null) && (view is EngineView || st.boxOutset))"), true)
   expect("the pivot is the origin's, at every layout and every transform write", source("$java/views/EngineView.kt").contains("if (st.transformed) Props.applyPivot(child, st)") && common.contains("setTransform("), true)
   val setTransform = props.substring(props.indexOf("fun setTransform("), props.indexOf("fun applyPivot("))
   expect("setTransform pivots on the origin and not on the centre", setTransform.contains("applyPivot(view, st)") && !setTransform.contains("width / 2f"), true)
@@ -257,10 +283,97 @@ private fun engine(main: String) {
   expect("a shadow's colour goes as it came", encoder.contains("shadow.color = colorInt(layer.color);"), true)
 }
 
+/**
+ * The uniform box drawable against the sources it copies: every constant and expression it takes from React Native's drawables is still there, word for word (a change of React Native's
+ * drawing shows here before it shows as a pixel on a device), and the drawable has taken each one.
+ */
+private fun uniformBox(main: String, uimanager: String) {
+  fun source(path: String) = File(path).readText()
+  val mine = source("$main/java/expo/modules/svelteengine/UniformBoxDrawable.kt")
+  val background = source("$uimanager/drawable/BackgroundDrawable.kt")
+  val border = source("$uimanager/drawable/BorderDrawable.kt")
+  val composite = source("$uimanager/drawable/CompositeBackgroundDrawable.kt")
+  val applicator = source("$uimanager/BackgroundStyleApplicator.kt")
+  val radii = source("$uimanager/style/BorderRadiusStyle.kt")
+
+  // BackgroundDrawable: the fill, pulled in where a border is drawn over its rounded edge, a round rectangle for even corners, a path for the others.
+  expect("the fill is pulled in by 0.8 px", background.contains("private val pathAdjustment = 0.8f") && mine.contains("const val PATH_ADJUSTMENT = 0.8f"), true)
+  expect("only where there is a border and a radius", background.contains("if (hasBorder && borderRadius?.hasRoundedBorders() == true) {") && mine.contains("if (widthPx != 0f && rounded) {"), true)
+  expect("on every side", background.contains("backgroundRect.left += pathAdjustment") && background.contains("backgroundRect.bottom -= pathAdjustment") &&
+    mine.contains("backgroundRect.left += PATH_ADJUSTMENT") && mine.contains("backgroundRect.bottom -= PATH_ADJUSTMENT"), true)
+  expect("a round rectangle of the top left radii when the corners agree", background.contains("computedBorderRadius?.topLeft?.horizontal?.dpToPx() ?: 0f,") && mine.contains("PixelUtil.toPixelFromDIP(computed[0]), PixelUtil.toPixelFromDIP(computed[1]), backgroundPaint)"), true)
+  expect("the fill's alpha is the view's by the fill's", background.contains("(((alpha / 255f) * (Color.alpha(backgroundColor) / 255f)) * 255f).roundToInt()") && mine.contains("(((drawAlpha / 255f) * (Color.alpha(fill) / 255f)) * 255f).roundToInt()"), true)
+  expect("nothing is drawn with no alpha", background.contains("if (backgroundPaint.alpha != 0) {") && mine.contains("if (backgroundPaint.alpha != 0) {"), true)
+
+  // BorderDrawable, rectangular: whole pixels, a stroke along the middle of each side, four quadrilaterals for a translucent colour.
+  expect("the width is rounded to a pixel", border.contains("val borderLeft = borderWidth.left.roundToInt()") && mine.contains("val border = widthPx.roundToInt()"), true)
+  expect("a translucent colour is not the fast path", border.contains("Color.alpha(colorLeft) < 255 ||") && mine.contains("if (Color.alpha(color) < 255) 0 else color"), true)
+  expect("the left line is at left plus half its width, whole pixels", border.contains("pathForSingleBorder?.moveTo((left + width / 2).toFloat(), top.toFloat())") && mine.contains("sidePath.moveTo(left + half, top.toFloat())") && mine.contains("val half = (border / 2).toFloat()"), true)
+  expect("the right line is at right less half its width", border.contains("pathForSingleBorder?.moveTo((right - width / 2).toFloat(), top.toFloat())") && mine.contains("sidePath.moveTo(right - half, top.toFloat())"), true)
+  expect("the top and bottom lines run from left to right", border.contains("pathForSingleBorder?.moveTo(left.toFloat(), (top + width / 2).toFloat())") && border.contains("pathForSingleBorder?.moveTo(left.toFloat(), (bottom - width / 2).toFloat())") &&
+    mine.contains("sidePath.moveTo(left.toFloat(), top + half)") && mine.contains("sidePath.moveTo(left.toFloat(), bottom - half)"), true)
+  expect("the quadrilaterals have no anti-aliasing", border.contains("borderPaint.isAntiAlias = false") && mine.contains("borderPaint.isAntiAlias = false"), true)
+  expect("a transparent side is not drawn", border.contains("if (fillColor == Color.TRANSPARENT) {") && mine.contains("if (color == Color.TRANSPARENT) return"), true)
+  expect("the left quadrilateral", border.contains("val x3 = (left + borderLeft).toFloat()") && border.contains("val y3 = (top + height - borderBottom).toFloat()") && mine.contains("quadrilateral(canvas, l, t, l + b, t + b, l + b, t + height - b, l, t + height)"), true)
+  expect("the top quadrilateral", border.contains("val x3 = (left + width - borderRight).toFloat()") && mine.contains("quadrilateral(canvas, l, t, l + b, t + b, l + width - b, t + b, l + width, t)"), true)
+  expect("the right quadrilateral", mine.contains("quadrilateral(canvas, l + width, t, l + width, t + height, l + width - b, t + height - b, l + width - b, t + b)"), true)
+  expect("the bottom quadrilateral", mine.contains("quadrilateral(canvas, l, t + height, l + width, t + height, l + width - b, t + height - b, l + b, t + height - b)"), true)
+  expect("the alpha of the border by the view's", border.contains("val alpha = rawAlpha + (rawAlpha shr 7)") && border.contains("colorAlpha * (alpha shr 7) shr 8") && mine.contains("val alpha = rawAlpha + (rawAlpha shr 7)") && mine.contains("colorAlpha * (alpha shr 7) shr 8"), true)
+
+  // BorderDrawable, rounded: clip to the outer rounded rectangle, one stroke along the middle of the border.
+  expect("the border is clipped to the outer rounded rectangle", border.contains("canvas.clipPath(checkNotNull(outerClipPathForBorderRadius))") && mine.contains("canvas.clipPath(outerClipPath)"), true)
+  expect("a stroke as wide as the border", border.contains("borderPaint.strokeWidth = fullBorderWidth") && mine.contains("borderPaint.strokeWidth = widthPx"), true)
+  expect("a round rectangle with the radius less half the width", border.contains("((computedBorderRadius?.topLeft?.toPixelFromDIP()?.horizontal ?: 0f) -") && border.contains("borderWidth.left * 0.5f),") &&
+    mine.contains("PixelUtil.toPixelFromDIP(computed[0]) - widthPx * 0.5f, PixelUtil.toPixelFromDIP(computed[1]) - widthPx * 0.5f, borderPaint)"), true)
+  expect("the middle of the border", border.contains("tempRectForCenterDrawPath?.top =") && border.contains("borderWidth.top * 0.5f") && mine.contains("centerRect.top += widthPx * 0.5f") && mine.contains("centerRect.right -= widthPx * 0.5f"), true)
+  expect("a path when the corners differ", border.contains("canvas.drawPath(checkNotNull(centerDrawPath), borderPaint)") && mine.contains("canvas.drawPath(centerPath, borderPaint)") && mine.contains("radiiPx[0] - half, radiiPx[1] - half"), true)
+  expect("the radii are resolved against the bounds in dp", border.contains("outerClipTempRectForBorderRadius?.width()?.pxToDp() ?: 0f,") && mine.contains("PixelUtil.toDIPFromPixel(bounds.width().toFloat()), PixelUtil.toDIPFromPixel(bounds.height().toFloat()))"), true)
+
+  // The outline of the composite: each radius in dp and the border's width, in px, resolved against the bounds in px.
+  expect("the outline is the rounded rectangle of the radii and the border", composite.contains("(it.topLeft.horizontal + (computedBorderInsets?.left ?: 0f)).dpToPx(),") && mine.contains("PixelUtil.toPixelFromDIP(scratch[0] + widthDp)"), true)
+  expect("resolved against the bounds in px", composite.contains("bounds.width().toFloat(),") && mine.contains("resolve(scratch, bounds.width().toFloat(), bounds.height().toFloat())"), true)
+  expect("a rectangle without a radius", composite.contains("outline.setRect(bounds)") && mine.contains("outline.setRect(bounds)"), true)
+
+  // The padding box.
+  expect("the padding box is the bounds less the border, in px", applicator.contains("paddingBoxRect.left = composite.bounds.left + (computedBorderInsets?.left?.dpToPx() ?: 0f)") && mine.contains("bounds.left + inset"), true)
+  expect("the radii of the padding box are resolved in dp against the bounds", applicator.contains("PixelUtil.toDIPFromPixel(composite.bounds.width().toFloat()),") && mine.contains("resolve(scratch, PixelUtil.toDIPFromPixel(bounds.width().toFloat())"), true)
+  expect("each radius less the border, in px", applicator.contains("computedBorderRadius?.topLeft?.horizontal?.dpToPx(),") && applicator.contains("((computedRadius ?: 0f) - (borderWidth ?: 0f)).coerceAtLeast(0f)") &&
+    mine.contains("(PixelUtil.toPixelFromDIP(radiusDp) - insetPx).coerceAtLeast(0f)"), true)
+  expect("the path is moved by the view's drawing rectangle", applicator.contains("paddingBoxPath.offset(drawingRect.left.toFloat(), drawingRect.top.toFloat())") && mine.contains("path.offset(drawing.left.toFloat(), drawing.top.toFloat())"), true)
+
+  // The radii: the same arithmetic as BorderRadiusStyle.ensureNoOverlap, edge by edge.
+  for (line in listOf("val leftEdgeRadiiScale = if (leftEdgeRadii > 0) minOf(height / leftEdgeRadii, 1f) else 0f", "val topEdgeRadiiScale = if (topEdgeRadii > 0) minOf(width / topEdgeRadii, 1f) else 0f",
+    "val rightEdgeRadiiScale = if (rightEdgeRadii > 0) minOf(height / rightEdgeRadii, 1f) else 0f", "val bottomEdgeRadiiScale = if (bottomEdgeRadii > 0) minOf(width / bottomEdgeRadii, 1f) else 0f",
+    "val leftEdgeRadii = topLeft.vertical + bottomLeft.vertical", "val topEdgeRadii = topLeft.horizontal + topRight.horizontal", "val rightEdgeRadii = topRight.vertical + bottomRight.vertical",
+    "val bottomEdgeRadii = bottomLeft.horizontal + bottomRight.horizontal")) {
+    expect("ensureNoOverlap: $line", radii.contains(line), true)
+  }
+  val rules = source("$main/java/expo/modules/svelteengine/StyleRules.kt")
+  for (line in listOf("val leftEdgeRadiiScale = if (leftEdgeRadii > 0) minOf(height / leftEdgeRadii, 1f) else 0f", "val topEdgeRadiiScale = if (topEdgeRadii > 0) minOf(width / topEdgeRadii, 1f) else 0f",
+    "val rightEdgeRadiiScale = if (rightEdgeRadii > 0) minOf(height / rightEdgeRadii, 1f) else 0f", "val bottomEdgeRadiiScale = if (bottomEdgeRadii > 0) minOf(width / bottomEdgeRadii, 1f) else 0f",
+    "val leftEdgeRadii = tlv + blv", "val topEdgeRadii = tlh + trh", "val rightEdgeRadii = trv + brv", "val bottomEdgeRadii = blh + brh")) {
+    expect("StyleRules.ensureNoOverlap: $line", rules.contains(line), true)
+  }
+  for (corner in listOf("topLeft.horizontal * minOf(topEdgeRadiiScale, leftEdgeRadiiScale)", "topRight.horizontal * minOf(rightEdgeRadiiScale, topEdgeRadiiScale)",
+    "bottomRight.horizontal * minOf(bottomEdgeRadiiScale, rightEdgeRadiiScale)", "bottomLeft.horizontal * minOf(bottomEdgeRadiiScale, leftEdgeRadiiScale)")) {
+    expect("ensureNoOverlap scales $corner", radii.contains(corner), true)
+  }
+  for (corner in listOf("r[0] = tlh * minOf(topEdgeRadiiScale, leftEdgeRadiiScale)", "r[2] = trh * minOf(rightEdgeRadiiScale, topEdgeRadiiScale)", "r[4] = brh * minOf(bottomEdgeRadiiScale, rightEdgeRadiiScale)",
+    "r[6] = blh * minOf(bottomEdgeRadiiScale, leftEdgeRadiiScale)")) {
+    expect("StyleRules scales the same: $corner", rules.contains(corner), true)
+  }
+
+  // The glue.
+  val box = source("$main/java/expo/modules/svelteengine/BoxStyle.kt")
+  expect("BoxStyle gives the drawable the radii and the width in dp, the colour of the first side", box.contains("box.set(p.bg, p.sideColors[0], p.border[0] / density, radii)") && box.contains("radii[k] = p.radii[k] / density"), true)
+  expect("an outline that moved is asked for again", box.contains("view.invalidateOutline()"), true)
+}
+
 fun main(args: Array<String>) {
   fixture(args[0])
   rules()
   reactNative(args[1], args[2])
+  uniformBox(args[3], args[1])
   engine(args[3])
   if (failures > 0) {
     System.err.println("$failures of $checks checks failed")

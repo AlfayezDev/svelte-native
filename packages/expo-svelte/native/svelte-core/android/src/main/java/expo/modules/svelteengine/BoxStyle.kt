@@ -15,8 +15,8 @@ import expo.modules.svelteengine.views.isRtlLayout
  * A view's background, border and box shadows drawn by React Native's own drawables (SPEC.md, "Box styles"): `BackgroundStyleApplicator`, which is what
  * `ReactViewManager` calls for the same props, so the pixels are React Native's by construction (outset and inset shadows, dashed and dotted borders, a colour per side,
  * the order they are drawn in). The engine's plain background (a `GradientDrawable`, `Props.applyCommon`) stays for every view that needs none of it: it is cheaper to
- * make, and a fill with no border is all it has to draw. [StyleRules.needsReactDrawables] says which is which (a shadow, or a border that shows, is React Native's); a view moves
- * from one to the other when its style does.
+ * make, and a fill with no border is all it has to draw. [StyleRules.boxKind] says which is which: a shadow, or a border that is dashed, dotted, of sides of different widths or colours, is
+ * this; a fill and a border of one width and one colour is `UniformBoxDrawable`, which draws what these drawables draw for it in one; a view moves from one to another when its style does.
  *
  * The values are the ones Fabric resolved (the border widths, colours and radii of the physical sides, in px): React Native's drawables take dp and resolve their edges again
  * by the layout direction of the view, so the lengths are divided by the density and the sides go to `START` and `END` as the app's direction says ([StyleRules.edges]).
@@ -82,6 +82,36 @@ internal object BoxStyle {
     }
   }
 
+  /** Writes the box of [p] onto [view] through its `UniformBoxDrawable` (made when the view has none), which does what React Native's drawables do for it. */
+  fun applyUniform(view: View, st: NodeState, p: PropSet) {
+    var box = st.uniformBox
+    if (box == null) {
+      box = UniformBoxDrawable()
+      // The plain background goes: the drawable is the view's background.
+      st.drawable = null
+      view.background = box
+      st.uniformBox = box
+    }
+    val density = view.resources.displayMetrics.density
+    for (k in 0..3) radii[k] = p.radii[k] / density
+    if (box.set(p.bg, p.sideColors[0], p.border[0] / density, radii)) view.invalidateOutline()
+    p.radii.copyInto(st.radii)
+    p.border.copyInto(st.border)
+    st.bg = p.bg
+    st.borderColor = p.borderColor
+  }
+  private val radii = FloatArray(4)
+
+  /** Takes the `UniformBoxDrawable` off [view] (a recycled view keeps it while its next node has one too): `Props.applyCommon` builds the box from nothing. */
+  fun dropUniform(view: View, st: NodeState) {
+    if (view.background === st.uniformBox) view.background = null
+    st.uniformBox = null
+    st.bg = 0
+    st.radii.fill(0f)
+    st.border.fill(0f)
+    st.borderColor = 0
+  }
+
   /** The layers of record 140 as React Native's `BoxShadow`s (dp, as the style gave them), in the style's order. */
   private fun layers(raw: IntArray?): List<BoxShadow> {
     val count = StyleRules.layerCount(raw)
@@ -117,6 +147,21 @@ internal object BoxStyle {
     st.radii.fill(0f)
     st.border.fill(0f)
     st.borderColor = 0
+  }
+
+  /** An animated `backgroundColor` or corner radius (px, in the order of record 3) of a view whose box is a [UniformBoxDrawable]. */
+  fun setUniformBackground(box: UniformBoxDrawable, st: NodeState, color: Int) {
+    st.bg = color
+    box.setFill(color)
+  }
+
+  fun setUniformRadii(view: View, box: UniformBoxDrawable, st: NodeState, tl: Float, tr: Float, br: Float, bl: Float) {
+    val r = st.radii
+    r[0] = tl; r[1] = tr; r[2] = br; r[3] = bl
+    val density = view.resources.displayMetrics.density
+    for (k in 0..3) radii[k] = r[k] / density
+    box.setRadii(radii)
+    view.invalidateOutline()
   }
 
   /** An animated `backgroundColor` of a view React Native's drawables draw. */

@@ -1,5 +1,5 @@
 /**
- * The box styles the Android engine draws with React Native's own drawables and the transform origin (SPEC.md, "Box styles"; qa/README "Box styles"): one
+ * The box styles the Android engine draws (React Native's own drawables, or the engine's one drawable for a fill and a border of one width and one colour) and the transform origin (SPEC.md, "Box styles"; qa/README "Box styles"): one
  * tile per case, plain style objects. The lab page (`src/routes/__dev/styles`) draws them with the engine; `qa/styles-reference/entry.js` draws the same objects
  * with React Native's own views (a plain React Native app), so the two can be laid side by side. Plain data and no import: both bundlers take this file.
  */
@@ -13,8 +13,8 @@ export type Tile = {
   to?: { rotate?: string; scale?: number };
 };
 
-export type Mode = "shadow" | "border" | "origin";
-export const modes: Mode[] = ["shadow", "border", "origin"];
+export type Mode = "shadow" | "border" | "origin" | "uniform";
+export const modes: Mode[] = ["shadow", "border", "origin", "uniform"];
 
 const input = { width: 150, height: 44, borderRadius: 8, borderWidth: 1, borderColor: "#d4d4d8", backgroundColor: "#ffffff" };
 const box = { width: 64, height: 64, backgroundColor: "#2563eb" };
@@ -54,6 +54,21 @@ export const tiles: Record<Mode, Tile[]> = {
     { id: "no-color", style: { width: 150, height: 56, borderRadius: 8, borderWidth: 3, borderStyle: "dashed", backgroundColor: "#ffffff" } },
     { id: "solid", style: { width: 150, height: 56, borderRadius: 8, borderWidth: 3, borderColor: "#18181b", backgroundColor: "#ffffff" } },
   ],
+  // The boundary of the engine's one drawable (a fill and a solid border of one width and one colour, no shadow) and React Native's: a uniform border at the edges of what the drawable copies.
+  uniform: [
+    { id: "corners", style: { width: 150, height: 56, borderTopLeftRadius: 4, borderTopRightRadius: 16, borderBottomRightRadius: 28, borderBottomLeftRadius: 0, borderWidth: 2, borderColor: "#18181b", backgroundColor: "#fef3c7" } },
+    { id: "hairline", style: { width: 150, height: 56, borderRadius: 8, borderWidth: 0.38, borderColor: "#18181b", backgroundColor: "#ffffff" } },
+    { id: "hairline-rect", style: { width: 150, height: 56, borderWidth: 0.38, borderColor: "#18181b", backgroundColor: "#ffffff" } },
+    { id: "translucent", style: { width: 150, height: 56, borderRadius: 12, borderWidth: 6, borderColor: "rgba(37,99,235,0.5)", backgroundColor: "#fef3c7" } },
+    { id: "translucent-rect", style: { width: 150, height: 56, borderWidth: 6, borderColor: "rgba(37,99,235,0.5)", backgroundColor: "#fef3c7" } },
+    { id: "transparent-border", style: { width: 150, height: 56, borderRadius: 10, borderWidth: 4, borderColor: "transparent", backgroundColor: "#2563eb" } },
+    { id: "pill", style: { width: 150, height: 56, borderRadius: 999, borderWidth: 2, borderColor: "#18181b", backgroundColor: "#ffffff" } },
+    { id: "thick-round", style: { width: 150, height: 56, borderRadius: 8, borderWidth: 12, borderColor: "#7c3aed", backgroundColor: "#ffffff" } },
+    { id: "ellipse", style: { width: 150, height: 56, borderRadius: 40, borderWidth: 3, borderColor: "#18181b", backgroundColor: "#fef3c7" } },
+    { id: "clip", style: { width: 150, height: 84, borderRadius: 16, borderWidth: 4, borderColor: "#18181b", backgroundColor: "#ffffff", overflow: "hidden" }, bar: { height: 24, backgroundColor: "#e4e4e7" } },
+    { id: "clip-rect", style: { width: 150, height: 84, borderWidth: 2.5, borderColor: "#18181b", backgroundColor: "#ffffff", overflow: "hidden" }, bar: { height: 24, backgroundColor: "#e4e4e7" } },
+    { id: "elevation", style: { width: 150, height: 56, borderRadius: 12, borderWidth: 2, borderColor: "#18181b", backgroundColor: "#ffffff", elevation: 8 } },
+  ],
   origin: [
     { id: "centre", style: { ...box, transform: [{ rotate: "25deg" }] }, bar: marker },
     { id: "top-left", style: { ...box, transform: [{ rotate: "25deg" }], transformOrigin: "top left" }, bar: marker },
@@ -88,4 +103,8 @@ export const reuseStyles: Array<Record<string, unknown>> = [
   { width: 150, height: 56, borderRadius: 10, backgroundColor: "#ffffff", boxShadow: "inset 0 0 8px 2px rgba(59,130,246,0.8)" },
   { width: 150, height: 56, borderWidth: 2, borderColor: "#18181b", backgroundColor: "#fef3c7" },
   { width: 150, height: 56, borderRadius: 28, backgroundColor: "#ffffff", boxShadow: "0 6px 12px -2px rgba(0,0,0,0.3)" },
+  // the engine's one drawable: a translucent border round, a border with a radius for each corner, a translucent border with square corners
+  { width: 150, height: 56, borderRadius: 12, borderWidth: 6, borderColor: "rgba(37,99,235,0.5)", backgroundColor: "#fef3c7" },
+  { width: 150, height: 56, borderTopLeftRadius: 4, borderTopRightRadius: 20, borderBottomRightRadius: 0, borderBottomLeftRadius: 28, borderWidth: 3, borderColor: "#18181b", backgroundColor: "#ffffff" },
+  { width: 150, height: 56, borderWidth: 4, borderColor: "rgba(37,99,235,0.5)", backgroundColor: "#fef3c7" },
 ];

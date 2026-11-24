@@ -40,7 +40,11 @@
   }
   // The engine works out how far the keyboard covers the view itself, when the keyboard starts to open, and moves the container with the keyboard's progress.
   $effect(() => {
-    if (driven && inner && outer) driveKeyboard(inner.tag, "avoid", [outer.tag, keyboardVerticalOffset, enabled]);
+    if (!driven || !inner || !outer) return;
+    const tag = inner.tag;
+    driveKeyboard(tag, "avoid", [outer.tag, keyboardVerticalOffset, enabled]);
+    // The behaviour changed from `position` (or the view went): the container goes back to where its own style puts it, and the engine forgets it.
+    return () => { driveKeyboard(tag, "release"); };
   });
   $effect(() => {
     if (driven) return;

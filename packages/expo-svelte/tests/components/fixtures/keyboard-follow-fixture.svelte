@@ -3,7 +3,10 @@
   import KeyboardChatScrollView from "../../../src/components/KeyboardChatScrollView.svelte";
   import KeyboardAwareScrollView from "../../../src/components/KeyboardAwareScrollView.svelte";
   import KeyboardAvoidingView from "../../../src/components/KeyboardAvoidingView.svelte";
-  let { kind, props = {}, ends = [] } = $props();
+  let { kind, props: initial = {}, ends = [] } = $props();
+  // The props of the component under test, which a test changes with `set`.
+  const props = $state({ ...initial });
+  export function set(patch) { Object.assign(props, patch); }
 </script>
 {#if kind === "sticky"}
   <KeyboardStickyView {...props} style={{ flex: 1 }}><native-view testID="content"></native-view></KeyboardStickyView>

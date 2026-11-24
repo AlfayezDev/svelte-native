@@ -481,6 +481,8 @@ class MountingManager(private val reactContext: ReactApplicationContext, private
       val t2 = System.nanoTime()
       flushScreens()
       screensNs = System.nanoTime() - t2
+      // A view the keyboard follows may be in a modal now that the batch has put it in its place (a view is created and registered before it is inserted).
+      if (insert > 0) keyboard.placed()
       expireEarlyAnimated()
     } finally {
       dirtyTexts.clear()

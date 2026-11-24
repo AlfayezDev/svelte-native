@@ -21,9 +21,10 @@ export type KeyboardMotion = {
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const reanimated = (): typeof import("./fabric/reanimated-internals.js") => require("./fabric/reanimated-internals.js") as typeof import("./fabric/reanimated-internals.js");
 
-/** The kinds the engine's frames come in (`KeyboardDrive`): the keyboard is about to move to a height, it is at one on the way, it has stopped at one. */
+/** The kinds the engine's frames come in (`KeyboardChannel`): the keyboard is about to move to a height, it is at one on the way, it has stopped at one, its height changed with no animation. */
 const START = 1;
 const END = 3;
+const SETTLE = 4;
 
 /**
  * The keyboard's height and progress as shared values that move with every frame of its animation, written on the UI thread by the engine (Android; the
@@ -52,6 +53,14 @@ export function createKeyboardMotion(): KeyboardMotion {
     "worklet";
     // The engine counts in px, the integers the window reports, so no frame is rounded to a dp.
     const dp = px / density;
+    if (kind === SETTLE) {
+      // Another keyboard or a layout: the height is what it is now, and the keyboard did not start to close or open.
+      if (dp > 0) opened.value = dp;
+      height.value = dp;
+      progress.value = dp > 0 ? 1 : 0;
+      state.value = dp > 0 ? "open" : "closed";
+      return;
+    }
     if (kind === START) {
       if (dp > 0) opened.value = dp;
       state.value = dp > 0 ? "opening" : "closing";

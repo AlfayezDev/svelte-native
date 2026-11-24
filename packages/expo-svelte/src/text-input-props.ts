@@ -59,10 +59,10 @@ const known = (table: Readonly<Record<string, string>>, key: unknown): string | 
 /** The words of an HTML `autocomplete` value that say where the field belongs rather than what it holds (`section-blue shipping home tel webauthn`). */
 const DETAIL = /^(section-.*|shipping|billing|home|work|mobile|fax|pager|webauthn)$/i;
 
-/** What a field holds, from an `autocomplete` value: the token among its words (`shipping email` is `email`), lowercased as HTML compares it; the value as it is when it has one word. */
+/** What a field holds, from an `autocomplete` value: the token among its words (`shipping email` is `email`), lowercased, as HTML compares it (`OFF` is `off`, #114). */
 function fieldName(value: string): string {
   const words = value.trim().split(/\s+/);
-  if (words.length === 1) return words[0] ?? value;
+  if (words.length === 1) return (words[0] ?? value).toLowerCase();
   return (words.filter((word) => !DETAIL.test(word)).at(-1) ?? value).toLowerCase();
 }
 

@@ -59,6 +59,12 @@ test("an autocomplete value is read for its token, and one with no hint on the p
   expect(textInputProps({ autoComplete: "shipping email" }, "android").autoComplete).toBe("email");
   expect(textInputProps({ autoComplete: "section-a billing tel" }, "ios").textContentType).toBe("telephoneNumber");
   expect(textInputProps({ autoComplete: "home Email webauthn" }, "ios").textContentType).toBe("emailAddress");
+  // One token is compared as HTML compares it too, whatever its case (#114).
+  expect(textInputProps({ autoComplete: "CURRENT-PASSWORD" }, "android").autoComplete).toBe("password");
+  expect(textInputProps({ autoComplete: "CURRENT-PASSWORD" }, "ios").textContentType).toBe("password");
+  expect(textInputProps({ autoComplete: "OFF" }, "android").autoComplete).toBe("off");
+  expect(textInputProps({ autoComplete: "OFF" }, "ios").textContentType).toBe("none");
+  expect(textInputProps({ autoComplete: " One-Time-Code " }, "android").autoComplete).toBe("sms-otp");
   for (const token of ["on", "nickname", "organization", "url", "cc-name"]) {
     const props = textInputProps({ autoComplete: token }, "android");
     expect(Object.hasOwn(props, "autoComplete") ? props.autoComplete : undefined, token).toBeUndefined();

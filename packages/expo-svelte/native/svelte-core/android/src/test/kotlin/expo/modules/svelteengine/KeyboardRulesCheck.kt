@@ -375,15 +375,15 @@ private fun channel() {
   expect("not subscribed until what was posted has run", whole.toList(), emptyList<String>())
   rig.drain()
   rig.channel.frame(1050)
-  expect("subscribed after it", whole.toList(), listOf("1:400"))
+  expect("subscribed after it, told where the keyboard was on its way, and then the frames", whole.toList(), listOf("1:200", "1:400"))
   rig.main = false
   rig.channel.unsubscribe(id)
   rig.main = true
   rig.channel.frame(100)
-  expect("unsubscribed from the other thread: still told until it has run", whole.toList(), listOf("1:400", "1:38"))
+  expect("unsubscribed from the other thread: still told until it has run", whole.toList(), listOf("1:200", "1:400", "1:38"))
   rig.drain()
   rig.channel.frame(200)
-  expect("and not after", whole.toList(), listOf("1:400", "1:38"))
+  expect("and not after", whole.toList(), listOf("1:200", "1:400", "1:38"))
   // The engine's own subscription is asked for once: the next one is Reanimated's.
   rig = Rig(); raw = mutableListOf(); whole = mutableListOf()
   rig.raw(raw); rig.reanimated(true, whole)

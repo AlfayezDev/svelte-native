@@ -97,6 +97,36 @@ test("KeyboardAvoidingView pads, shrinks or lifts by the keyboard's overlap with
   }
 });
 
+test("a KeyboardAvoidingView of height shrinks from the height it has now, not from the first one it had, when it was resized while the keyboard was closed (#117)", async () => {
+  const m = await loadModule();
+  const stub = m.engine;
+  stub.current = event({ frame: { x: 0, y: 0, width: 400, height: 600 } });
+  m.resetInsets();
+  const { props_of } = await mountFixture(m, { behavior: "height" });
+  // The view fills the window: its measured height is the window's, 600 and then 350 dp.
+  let window = 600;
+  const measured = { measureInWindow: (callback: (...a: number[]) => void) => callback(0, 0, 400, window) };
+  const outer = () => props_of("native-view", 0);
+  (outer().ref as (h: unknown) => void)(measured);
+  const layout = async () => { (outer().onLayout as (e: unknown) => void)({ nativeEvent: {} }); await m.tick(); await m.tick(); };
+  const keyboard = async (open: boolean) => {
+    stub.listener?.(event({ frame: { x: 0, y: 0, width: 400, height: window }, ...(open ? { keyboardHeight: 140, keyboardVisible: true } : {}) }));
+    await m.tick();
+    await m.tick();
+  };
+  await layout();
+  await keyboard(true);
+  expect(outer().style).toEqual([{ flex: 1 }, { height: 460, flex: 0 }]);
+  await keyboard(false);
+  expect(outer().style).toEqual({ flex: 1 });
+  // Resized to 350 with the keyboard closed, the layout of the resized view measured, the keyboard opened again: 350 less 140.
+  window = 350;
+  await keyboard(false);
+  await layout();
+  await keyboard(true);
+  expect(outer().style).toEqual([{ flex: 1 }, { height: 210, flex: 0 }]);
+});
+
 test("padding math", async () => {
   const { avoidingStyle, flattenStyle, keyboardOverlap, safeAreaStyle } = await loadModule();
   const insets = { top: 20, right: 1, bottom: 30, left: 2 };

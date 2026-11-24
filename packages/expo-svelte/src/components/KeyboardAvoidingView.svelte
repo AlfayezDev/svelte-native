@@ -28,7 +28,9 @@
 
   function measure() {
     handle?.measureInWindow((_x, y, _width, height) => {
-      if (!initialHeight) initialHeight = height;
+      // The height the view has when nothing is taken off it: the one measured while it is not avoiding the keyboard, so a view resized while the keyboard is closed
+      // (the window, a split screen) shrinks from its new height the next time the keyboard opens, not from the first one it had (#117).
+      if (!initialHeight || untrack(() => applied) === 0) initialHeight = height;
       if (!frame || frame.y !== y || frame.height !== height) frame = { y, height };
     });
   }

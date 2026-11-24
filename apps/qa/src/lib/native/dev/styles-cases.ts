@@ -74,3 +74,18 @@ export function endStyle(tile: Tile): Record<string, unknown> {
   const transform = [...(tile.to.rotate === undefined ? [] : [{ rotate: tile.to.rotate }]), ...(tile.to.scale === undefined ? [] : [{ scale: tile.to.scale }])];
   return { ...tile.style, transform };
 }
+
+/**
+ * The styles of the reuse check (`/__dev/styles?reuse=<from>-<to>`): ten boxes in the style `from`, removed, then ten in the style `to` that the engine makes from the views it recycled. Whatever
+ * a recycled view had (a border, a shadow, a radius, none of them) must not show in the next style: the screenshot equals the one of `?reuse=-<to>`, which has no recycled view.
+ */
+export const reuseStyles: Array<Record<string, unknown>> = [
+  { width: 150, height: 56, borderRadius: 8, backgroundColor: "#ffffff" },
+  { width: 150, height: 56, borderRadius: 8, borderWidth: 1, borderColor: "#d4d4d8", backgroundColor: "#ffffff" },
+  { width: 150, height: 56, borderRadius: 12, borderWidth: 3, borderStyle: "dashed", borderColor: "#ef4444", backgroundColor: "#ffffff" },
+  { width: 150, height: 56, borderRadius: 8, borderWidth: 1, borderColor: "#d4d4d8", backgroundColor: "#ffffff", boxShadow: focusRing },
+  { width: 150, height: 56, borderRadius: 16, borderWidth: 6, borderTopColor: "#ef4444", borderRightColor: "#22c55e", borderBottomColor: "#3b82f6", borderLeftColor: "#f59e0b", backgroundColor: "#ffffff" },
+  { width: 150, height: 56, borderRadius: 10, backgroundColor: "#ffffff", boxShadow: "inset 0 0 8px 2px rgba(59,130,246,0.8)" },
+  { width: 150, height: 56, borderWidth: 2, borderColor: "#18181b", backgroundColor: "#fef3c7" },
+  { width: 150, height: 56, borderRadius: 28, backgroundColor: "#ffffff", boxShadow: "0 6px 12px -2px rgba(0,0,0,0.3)" },
+];

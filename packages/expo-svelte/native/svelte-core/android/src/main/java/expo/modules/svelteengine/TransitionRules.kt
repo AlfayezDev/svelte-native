@@ -35,6 +35,43 @@ internal object TransitionRules {
   /** The screen going away in the default transition (the one below on a push, the one on top on a pop) when [p] of the movement is done. */
   fun fadeOut(p: Float): Float = 1f - (p / FADE_THROUGH).coerceIn(0f, 1f)
 
+  /** A solid fill of a screen's surface ([EngineStack.drawSurface]): from [top] to [bottom] (px), across the part drawn, in [color] (ARGB) at [alpha]. */
+  class Fill(val top: Float, val bottom: Float, val color: Int, val alpha: Float)
+
+  /** A band of a surface and the one colour its fills make there. */
+  class Band(val top: Float, val bottom: Float, val color: Int)
+
+  /**
+   * A surface as bands of one colour each: its fills, in the order they are painted (the background, the children, the headers), composited over one
+   * another band by band. Drawn so at an opacity, the surface is that much of what its fills make together; each fill drawn at that opacity would let the
+   * fills below show through the ones above (the white background of a screen through its dark header, while a fade-through veils it, #111).
+   */
+  fun bands(fills: List<Fill>): List<Band> {
+    val edges = fills.flatMap { listOf(it.top, it.bottom) }.distinct().sorted()
+    val out = ArrayList<Band>()
+    for (i in 0 until edges.size - 1) {
+      val y0 = edges[i]
+      val y1 = edges[i + 1]
+      // Premultiplied, 0 to 1: each fill over what is under it.
+      var a = 0f; var r = 0f; var g = 0f; var b = 0f
+      for (f in fills) {
+        if (f.top > y0 || f.bottom < y1) continue
+        val sa = (f.color ushr 24) / 255f * f.alpha.coerceIn(0f, 1f)
+        if (sa <= 0f) continue
+        r = ((f.color shr 16) and 0xff) / 255f * sa + r * (1f - sa)
+        g = ((f.color shr 8) and 0xff) / 255f * sa + g * (1f - sa)
+        b = (f.color and 0xff) / 255f * sa + b * (1f - sa)
+        a = sa + a * (1f - sa)
+      }
+      if (a <= 0f) continue
+      fun byte(v: Float) = (v * 255f + 0.5f).toInt().coerceIn(0, 255)
+      val color = (byte(a) shl 24) or (byte(r / a) shl 16) or (byte(g / a) shl 8) or byte(b / a)
+      val last = out.lastOrNull()
+      if (last != null && last.color == color && last.bottom == y0) out[out.size - 1] = Band(last.top, y1, color) else out.add(Band(y0, y1, color))
+    }
+    return out
+  }
+
   /** The screen coming in the default transition (the one on top on a push, the one below on a pop): transparent until 35 % of the movement. */
   fun fadeIn(p: Float): Float = ((p - FADE_THROUGH) / (1f - FADE_THROUGH)).coerceIn(0f, 1f)
 
@@ -110,12 +147,14 @@ internal object TransitionRules {
   class Motion(
     val durationMs: Long, val curve: Int, val unit: Int, val amount: Float, val direction: Int, val vertical: Boolean,
     val moveUnder: Boolean, val top: Fade?, val under: Fade?, val extend: Boolean,
+    /** The fades take turns ([FADE_THROUGH]): while one screen fades, the other is out of sight, so each fades against the surface the stack draws under both. */
+    val fadeThrough: Boolean = false,
   )
 
   private val defaultPush = Motion(DURATION_MS, EMPHASIZED, DP, SHIFT_DP, 1, false, true,
-    Fade(0f, 1f, FADE_THROUGH, 1f - FADE_THROUGH, onProgress = true), Fade(1f, 0f, 0f, FADE_THROUGH, onProgress = true), true)
+    Fade(0f, 1f, FADE_THROUGH, 1f - FADE_THROUGH, onProgress = true), Fade(1f, 0f, 0f, FADE_THROUGH, onProgress = true), true, fadeThrough = true)
   private val defaultPop = Motion(DURATION_MS, EMPHASIZED, DP, SHIFT_DP, 1, false, true,
-    Fade(1f, 0f, 0f, FADE_THROUGH, onProgress = true), Fade(0f, 1f, FADE_THROUGH, 1f - FADE_THROUGH, onProgress = true), true)
+    Fade(1f, 0f, 0f, FADE_THROUGH, onProgress = true), Fade(0f, 1f, FADE_THROUGH, 1f - FADE_THROUGH, onProgress = true), true, fadeThrough = true)
   // activity_open_enter: alpha 0 to 1, startOffset 50, duration 83, linear; activity_close_exit: 1 to 0, startOffset 35, duration 83.
   private val activityPush = Motion(DURATION_MS, EMPHASIZED, DP, SHIFT_DP, 1, false, true, Fade(0f, 1f, 50f, 83f), null, true)
   private val activityPop = Motion(DURATION_MS, EMPHASIZED, DP, SHIFT_DP, 1, false, true, Fade(1f, 0f, 35f, 83f), null, true)

@@ -5,16 +5,25 @@
  */
 export type Tile = {
   id: string;
+  /** What the box is: a `View` (the default), an `Image` (of `imageUri`), a `ScrollView` (with a bar and a block of its own as content) or a `Text` (of `text`). */
+  kind?: "view" | "image" | "scroll" | "text";
   /** The style of the box under test. Its size is its own (`width`, `height`); the tile centres it. */
   style: Record<string, unknown>;
   /** A child of the box: a bar across its top, to show what `overflow: hidden` clips and what a shadow does not. */
   bar?: Record<string, unknown>;
-  /** The animated tile: Reanimated turns the box to these values (the lab page only; the reference draws the end state as a static transform). */
-  to?: { rotate?: string; scale?: number };
+  /** The words of a `Text` tile. */
+  text?: string;
+  /** The animated tile: Reanimated turns the box to these values (the lab page only; the reference draws the end state as a static style). `radius` is `borderRadius`, in dp. */
+  to?: { rotate?: string; scale?: number; radius?: number };
 };
 
-export type Mode = "shadow" | "border" | "origin" | "uniform";
-export const modes: Mode[] = ["shadow", "border", "origin", "uniform"];
+export type Mode = "shadow" | "border" | "origin" | "uniform" | "rect" | "views";
+export const modes: Mode[] = ["shadow", "border", "origin", "uniform", "rect", "views"];
+
+/** A 252 x 168 px PNG of four flat quadrants (blue, orange, green, purple): the size of a 96 x 64 dp image on a 420 dpi screen, so nothing scales it. */
+export const imageUri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPwAAACoCAIAAABL1hTRAAABdElEQVR42u3UUQ2AIBiFUWQGsIRPtMIIFKEJZSzgsxnYjPG7cU6Eu293O683EeE+ihFCZBMgehA9iB5ED6IH0YPoQfQgehA9iB5ED6IH0YPoET2IHkQPogfRg+hB9CB6ED2IHkQPogfRg+hB9IgeRA+iB9GD6EH0IHoQPYgeRA+iB9GD6EH0IHpED6IH0YPoQfQgehA9iB5ED6IH0YPoQfQgehA9ogfRg+hB9CB6ED2IHkQPogfRg+hB9CB6ED2IHtGD6EH0IHoQPYgeRA9/sc/arBBi9McInh5ED6IH0YPoQfQgekQPogfRg+hB9CB6ED2IHkQPogfRg+hB9CB6ED2IHtGD6EH0IHoQPYgeRA+iB9GD6EH0IHoQPYgeRI/oQfQgehA9iB5ED6IH0YPoQfQgehA9iB5ED6JH9CB6ED2IHkQPogfRg+hB9CB6ED2IHkQPogfRI3oQPYgeRA+iB9GD6EH0IHoQPYgeRA+iB9GD6FnbB4pOB8YxREf8AAAAAElFTkSuQmCC";
+const scrollBar = { height: 24, backgroundColor: "#e4e4e7" } as const;
+const scrollBlock = { height: 120, backgroundColor: "#2563eb" } as const;
 
 const input = { width: 150, height: 44, borderRadius: 8, borderWidth: 1, borderColor: "#d4d4d8", backgroundColor: "#ffffff" };
 const box = { width: 64, height: 64, backgroundColor: "#2563eb" };
@@ -69,6 +78,36 @@ export const tiles: Record<Mode, Tile[]> = {
     { id: "clip-rect", style: { width: 150, height: 84, borderWidth: 2.5, borderColor: "#18181b", backgroundColor: "#ffffff", overflow: "hidden" }, bar: { height: 24, backgroundColor: "#e4e4e7" } },
     { id: "elevation", style: { width: 150, height: 56, borderRadius: 12, borderWidth: 2, borderColor: "#18181b", backgroundColor: "#ffffff", elevation: 8 } },
   ],
+  // Borders of square corners the engine's drawable draws in one: a divider (a bottom border only), sides with their own widths and colours, dashes and dots, the clip to the padding box.
+  rect: [
+    { id: "divider", style: { width: 150, height: 44, backgroundColor: "#ffffff", borderBottomWidth: 0.38, borderBottomColor: "#d4d4d8" } },
+    { id: "divider-top", style: { width: 150, height: 44, backgroundColor: "#ffffff", borderTopWidth: 1, borderTopColor: "#18181b" } },
+    { id: "side-left", style: { width: 150, height: 44, backgroundColor: "#ffffff", borderLeftWidth: 4, borderLeftColor: "#7c3aed" } },
+    { id: "side-right", style: { width: 150, height: 44, backgroundColor: "#ffffff", borderRightWidth: 3, borderRightColor: "#ef4444" } },
+    { id: "widths", style: { width: 150, height: 56, backgroundColor: "#ffffff", borderLeftWidth: 2, borderRightWidth: 5, borderTopWidth: 4, borderBottomWidth: 1, borderColor: "#0d9488" } },
+    { id: "colours-translucent", style: { width: 150, height: 56, backgroundColor: "#ffffff", borderWidth: 5, borderTopColor: "rgba(239,68,68,0.5)", borderRightColor: "#22c55e", borderBottomColor: "#3b82f6", borderLeftColor: "#f59e0b" } },
+    { id: "colours-no-width", style: { width: 150, height: 44, backgroundColor: "#ffffff", borderBottomWidth: 4, borderTopColor: "#ef4444", borderLeftColor: "#f59e0b", borderBottomColor: "#3b82f6" } },
+    { id: "dashed", style: { width: 150, height: 56, backgroundColor: "#ffffff", borderWidth: 2, borderStyle: "dashed", borderColor: "#ef4444" } },
+    { id: "dotted", style: { width: 150, height: 56, backgroundColor: "#ffffff", borderWidth: 3, borderStyle: "dotted", borderColor: "#3b82f6" } },
+    { id: "dashed-widths", style: { width: 150, height: 56, backgroundColor: "#ffffff", borderTopWidth: 2, borderBottomWidth: 4, borderLeftWidth: 1, borderStyle: "dashed", borderColor: "#18181b" } },
+    { id: "dashed-colours", style: { width: 150, height: 56, backgroundColor: "#ffffff", borderWidth: 3, borderStyle: "dashed", borderColor: "#3b82f6", borderTopColor: "#ef4444" } },
+    { id: "clip-widths", style: { width: 150, height: 84, backgroundColor: "#ffffff", borderTopWidth: 6, borderBottomWidth: 2, borderLeftWidth: 3, borderRightWidth: 1, borderColor: "#18181b", overflow: "hidden" }, bar: { height: 24, backgroundColor: "#e4e4e7" } },
+  ],
+  // The other kinds of view that take the same box styles (a shadow, a border, `overflow`), the radius that is animated, and radii that overflow.
+  views: [
+    { id: "image-shadow", kind: "image", style: { width: 96, height: 64, borderRadius: 16, boxShadow: "0 6px 10px rgba(0,0,0,0.4)" } },
+    { id: "image-border", kind: "image", style: { width: 96, height: 64, borderRadius: 12, borderWidth: 3, borderColor: "#18181b" } },
+    { id: "image-plain", kind: "image", style: { width: 96, height: 64, borderRadius: 16 } },
+    { id: "scroll-shadow", kind: "scroll", style: { width: 150, height: 84, borderRadius: 16, backgroundColor: "#ffffff", boxShadow: "0 6px 12px rgba(9,9,11,0.3)" } },
+    { id: "scroll-border", kind: "scroll", style: { width: 150, height: 84, borderRadius: 16, borderWidth: 4, borderColor: "#18181b", backgroundColor: "#ffffff" } },
+    { id: "text-shadow", kind: "text", text: "A text longer than its box", style: { width: 130, height: 30, paddingHorizontal: 8, borderRadius: 12, backgroundColor: "#fef3c7", overflow: "hidden", boxShadow: "0 4px 8px rgba(0,0,0,0.3)", fontSize: 16, color: "#18181b" } },
+    { id: "text-border", kind: "text", text: "A text longer than its box", style: { width: 130, height: 30, paddingHorizontal: 8, borderRadius: 12, borderWidth: 3, borderColor: "#18181b", backgroundColor: "#fef3c7", overflow: "hidden", fontSize: 16, color: "#18181b" } },
+    { id: "radius-react", style: { width: 96, height: 64, backgroundColor: "#ffffff", borderWidth: 2, borderColor: "#18181b", overflow: "hidden", boxShadow: "0 4px 8px rgba(0,0,0,0.3)" }, bar: { height: 24, backgroundColor: "#2563eb" }, to: { radius: 24 } },
+    { id: "radius-engine", style: { width: 96, height: 64, backgroundColor: "#ffffff", borderWidth: 2, borderColor: "#18181b", overflow: "hidden", elevation: 6 }, bar: { height: 24, backgroundColor: "#2563eb" }, to: { radius: 24 } },
+    { id: "radius-plain", style: { width: 96, height: 64, backgroundColor: "#ffffff", overflow: "hidden" }, bar: { height: 24, backgroundColor: "#2563eb" }, to: { radius: 24 } },
+    { id: "mixed-overflow", style: { width: 150, height: 56, borderTopLeftRadius: 40, borderBottomLeftRadius: 40, borderTopRightRadius: 10, borderBottomRightRadius: 0, backgroundColor: "#2563eb" } },
+    { id: "mixed-fill", style: { width: 150, height: 56, borderTopLeftRadius: 4, borderTopRightRadius: 16, borderBottomRightRadius: 28, borderBottomLeftRadius: 0, backgroundColor: "#f97316" } },
+  ],
   origin: [
     { id: "centre", style: { ...box, transform: [{ rotate: "25deg" }] }, bar: marker },
     { id: "top-left", style: { ...box, transform: [{ rotate: "25deg" }], transformOrigin: "top left" }, bar: marker },
@@ -87,8 +126,11 @@ export const tiles: Record<Mode, Tile[]> = {
 export function endStyle(tile: Tile): Record<string, unknown> {
   if (tile.to === undefined) return tile.style;
   const transform = [...(tile.to.rotate === undefined ? [] : [{ rotate: tile.to.rotate }]), ...(tile.to.scale === undefined ? [] : [{ scale: tile.to.scale }])];
-  return { ...tile.style, transform };
+  return { ...tile.style, ...(transform.length === 0 ? {} : { transform }), ...(tile.to.radius === undefined ? {} : { borderRadius: tile.to.radius }) };
 }
+
+/** What a `ScrollView` tile holds: a bar and a block taller than the box, so the box's corners and border clip the content. */
+export const scrollContent = [scrollBar, scrollBlock] as const;
 
 /**
  * The styles of the reuse check (`/__dev/styles?reuse=<from>-<to>`): ten boxes in the style `from`, removed, then ten in the style `to` that the engine makes from the views it recycled. Whatever
@@ -107,4 +149,25 @@ export const reuseStyles: Array<Record<string, unknown>> = [
   { width: 150, height: 56, borderRadius: 12, borderWidth: 6, borderColor: "rgba(37,99,235,0.5)", backgroundColor: "#fef3c7" },
   { width: 150, height: 56, borderTopLeftRadius: 4, borderTopRightRadius: 20, borderBottomRightRadius: 0, borderBottomLeftRadius: 28, borderWidth: 3, borderColor: "#18181b", backgroundColor: "#ffffff" },
   { width: 150, height: 56, borderWidth: 4, borderColor: "rgba(37,99,235,0.5)", backgroundColor: "#fef3c7" },
+  // the engine's drawable for square corners: a divider, sides with their own widths and colours, dashes; and radii that differ with no border
+  { width: 150, height: 56, backgroundColor: "#ffffff", borderBottomWidth: 4, borderBottomColor: "#18181b" },
+  { width: 150, height: 56, backgroundColor: "#ffffff", borderWidth: 5, borderTopColor: "#ef4444", borderRightColor: "#22c55e", borderBottomColor: "#3b82f6", borderLeftColor: "#f59e0b" },
+  { width: 150, height: 56, backgroundColor: "#ffffff", borderWidth: 2, borderStyle: "dashed", borderColor: "#ef4444" },
+  { width: 150, height: 56, borderTopLeftRadius: 40, borderBottomLeftRadius: 40, borderTopRightRadius: 10, borderBottomRightRadius: 0, backgroundColor: "#2563eb" },
 ];
+
+/**
+ * The rows of the mount-cost lab (`?rows=300&border=<name>`): a row is a view with a fill, a text and these styles. `0` and `flat` have no border (the `GradientDrawable`: the controls), `1`, `divider`,
+ * `sides` and `dashed` are drawn by the engine's drawable (`1` with round corners, the others square), `shadow`, `round-dashed` and `round-sides` by React Native's drawables.
+ */
+export const rowStyles: Record<string, Record<string, unknown>> = {
+  "0": { borderRadius: 8 },
+  "1": { borderRadius: 8, borderWidth: 1, borderColor: "#d4d4d8" },
+  flat: {},
+  divider: { borderBottomWidth: 0.38, borderBottomColor: "#d4d4d8" },
+  sides: { borderWidth: 1, borderTopColor: "#ef4444", borderRightColor: "#22c55e", borderBottomColor: "#3b82f6", borderLeftColor: "#f59e0b" },
+  dashed: { borderWidth: 1, borderStyle: "dashed", borderColor: "#d4d4d8" },
+  shadow: { borderRadius: 8, boxShadow: "0 1px 2px rgba(0,0,0,0.1)" },
+  "round-dashed": { borderRadius: 8, borderWidth: 1, borderStyle: "dashed", borderColor: "#d4d4d8" },
+  "round-sides": { borderRadius: 8, borderWidth: 1, borderTopColor: "#ef4444", borderRightColor: "#22c55e", borderBottomColor: "#3b82f6", borderLeftColor: "#f59e0b" },
+};

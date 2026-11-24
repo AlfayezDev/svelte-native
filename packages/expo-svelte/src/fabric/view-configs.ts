@@ -694,6 +694,24 @@ export function createPayload(props: Props, config: ViewConfig): Payload | null 
   return payload;
 }
 
+/** The props of `setNativeProps` the engine reads converted, as a view's style is: a colour as an integer, a box shadow as the list `processBoxShadow` makes of it. */
+const engineConverted = ["boxShadow", "backgroundColor", "borderColor", "borderTopColor", "borderRightColor", "borderBottomColor", "borderLeftColor", "borderStartColor", "borderEndColor"];
+
+/**
+ * What `setNativeProps` hands the engine: the props as they came, with the colours and the box shadow (at the top or in `style`, one object or a list of them) converted the way the
+ * view's own style is, so the engine reads integers and a list of layers and not the strings a style is written in (`"rgba(0,0,0,0.5)"`, `"0 0 0 1px red"`).
+ */
+export function engineNativeProps(props: Props, platform: Platform): Props {
+  const picked: Props = {};
+  const sources: unknown[] = [props, ...(Array.isArray(props.style) ? props.style.flat(Number.POSITIVE_INFINITY) : [props.style])];
+  for (const source of sources) {
+    if (source === null || typeof source !== "object") continue;
+    for (const key of engineConverted) if (key in source) picked[key] = (source as Props)[key];
+  }
+  if (Object.keys(picked).length === 0) return props;
+  return { ...props, ...createPayload({ style: picked }, viewConfigFor("RCTView", platform)) };
+}
+
 /** The payload for a cloned node: the native props whose value changed, `null` for each one that went away; `null` when nothing did. */
 export function diffPayload(previous: Props, next: Props, config: ViewConfig): Payload | null {
   if (config.foreign) return reactNativePayload().diff(previous, next, config.attributes);

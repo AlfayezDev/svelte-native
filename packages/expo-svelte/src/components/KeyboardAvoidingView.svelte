@@ -52,7 +52,8 @@
   const keepInner = (value: HostHandle | null) => { inner = value; };
   const applied = $derived(enabled ? bottom : 0);
   const outerProps = $derived(resolveProps({ ...attributes, style: avoidingStyle(behavior as AvoidBehavior, style, applied, initialHeight), onLayout: layout, ref: keep }));
-  const content = $derived(resolveInner({ style: driven ? contentContainerStyle : [contentContainerStyle, { bottom: applied }], ref: keepInner }));
+  // A container the engine moves keeps its own view and its children (`collapsable: false`: Fabric flattens a view that forms no stacking context, and its children out of it).
+  const content = $derived(resolveInner({ style: driven ? contentContainerStyle : [contentContainerStyle, { bottom: applied }], ...(driven ? { collapsable: false } : {}), ref: keepInner }));
 </script>
 {#if behavior === "position"}
   <native-view nativeProps={outerProps}><native-view nativeProps={content}>{@render children?.()}</native-view></native-view>

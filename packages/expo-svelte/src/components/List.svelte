@@ -54,7 +54,7 @@
     overscan?: number;
     /** Rows mounted before the first layout reports the viewport size (default 10). */
     initialNumToRender?: number;
-    /** Row scrolled to when the first layout arrives. */
+    /** Row scrolled to when the first layout arrives, below the header; a list with no rows yet scrolls to it when they arrive. */
     initialScrollIndex?: number;
     /** Keep a fixed pool of wrapper nodes and re-target them by index instead of mounting rows. Row component state does not survive index changes. */
     recycle?: boolean;
@@ -86,6 +86,11 @@
   let viewport = $state(0);
   let headerSize = $state(0);
   let laidOut = false;
+  let headerSeen = false;
+  /** The size along the axis the spacer (the content the rows are in) was last laid out at, -1 before its first layout. */
+  let spacerSize = -1;
+  /** `initialScrollIndex` is done with: its jump was sent, or the list had rows at its first layout with none to scroll to, or the app scrolled it itself. Reactive: the window follows the jump until then. */
+  let initialSent = $state(false);
   let firedFor = -1;
   let pool = $state(0);
 
@@ -187,9 +192,13 @@
     return () => scope.cancelAnimationFrame?.(handle);
   });
   const start = $derived(initialScrollIndex ?? 0);
+  // Where the window is. Until the jump to `initialScrollIndex` is sent the list is at the top, but the rows that are mounted are the ones around the row it will jump to (with the header's
+  // size as it is known by now): the first rows would be mounted at the top and replaced by the ones around the target when it is sent, and a frame at the target would show none.
+  const waiting = $derived(initialScrollIndex !== undefined && !initialSent && count > 0);
+  const windowAt = $derived(waiting ? headerSize + layout.offsetOf(Math.max(0, Math.min(count - 1, initialScrollIndex as number))) : scroll);
   const first = $derived.by(() => {
     if (!viewport) return Math.max(0, Math.min(count - 1, start));
-    const top = Math.max(0, scroll - headerSize);
+    const top = Math.max(0, windowAt - headerSize);
     return Math.max(0, Math.min(count - 1, layout.indexAt(top) - reach));
   });
   // Before the first layout the viewport is unknown. A list that says its size in its style gets the rows that fill it (the
@@ -207,7 +216,7 @@
   const firstWindow = $derived(initialNumToRender ?? (styleSize ? Math.max(1, Math.ceil(styleSize / (fixed ? (rowHeight as number) : estimatedRowHeight))) : 10));
   const last = $derived.by(() => {
     if (!viewport) return Math.min(count - 1, first + firstWindow - 1);
-    const bottom = Math.max(0, scroll - headerSize) + viewport;
+    const bottom = Math.max(0, windowAt - headerSize) + viewport;
     return Math.min(count - 1, layout.endIndex(bottom) + reach);
   });
   const indices = $derived.by(() => {
@@ -288,7 +297,8 @@
   }
 
   function checkEnd() {
-    if (!onEndReached || !viewport || !count || firedFor === count) return;
+    // Not while the jump waits: the list is at 0 until it is sent, and what is at the end of a list that is about to be somewhere else is not what the app asked about.
+    if (!onEndReached || !viewport || !count || firedFor === count || waiting) return;
     const remaining = headerSize + layout.total - (scroll + viewport);
     if (remaining <= onEndReachedThreshold * viewport) {
       firedFor = count;
@@ -304,7 +314,8 @@
     viewableTimer = setTimeout(() => {
       viewableTimer = undefined;
       const handler = onViewableItemsChanged;
-      if (!handler || !viewport) return;
+      // Not while the jump waits either: the rows at the top are not the ones the list is about to show, and reporting them would be an impression the user never had. The scroll the jump makes reports, and the jump asks for both itself when it goes (`sendInitial`), for the day it moves nothing.
+      if (!handler || !viewport || waiting) return;
       const percent = (viewabilityConfig?.itemVisiblePercentThreshold ?? 50) / 100;
       const top = Math.max(0, scroll - headerSize);
       const bottom = top + viewport;
@@ -329,7 +340,7 @@
       if (changed.length) handler({ viewableItems: [...now.values()], changed });
     }, 50);
   }
-  onDestroy(() => { clearTimeout(viewableTimer); clearTimeout(frame); });
+  onDestroy(() => { clearTimeout(viewableTimer); clearTimeout(frame); clearTimeout(fallback); });
   // Re-evaluate once heights or items change under a stationary viewport.
   $effect(() => { void layout; void count; untrack(scheduleViewable); });
 
@@ -341,18 +352,70 @@
     onScroll?.(event);
   }
 
+  // `initialScrollIndex` is the header's size plus the row's offset, scrolled to once the content it is in has been laid out, as React Native's list does (`_maybeScrollToInitialScrollIndex`, on
+  // the first size of the content): the list's first layout, the header's first layout (it can come after the list's: Yoga's results put an ancestor ahead of a descendant), and the spacer's
+  // layout at the size the rows ask for. That last is what has the rows in the platform's content: a list that loads gets its rows in a commit that comes after the effect that sees them, a scroll sent
+  // from the effect goes out ahead of that commit, and Android's scroll view moves no further than the content it has (0 for an empty one). Once: rows that arrive in chunks are scrolled to at the
+  // first, as far as they go (React Native's does one scroll too, to the end when the index is past the rows).
+  let appAsked = false;
+  let fallback: ReturnType<typeof setTimeout> | undefined;
+  /** The number of rows the fallback's wait was started for: rows that come or go while it waits are new content to wait for, and the wait starts again. */
+  let fallbackFor = 0;
+  /** How long the jump waits for the spacer's layout once the list, the header and the rows are there, before it goes anyway: the platform clamps a scroll to the content it has, so this is no worse than a jump with no wait. */
+  const SPACER_WAIT_MS = 1000;
+  function sendInitial(force = false) {
+    if (initialSent) return;
+    // No rows: nothing to wait for (the platform clamps a scroll to 0 in an empty content), and a wait that was started for rows that are gone must not end into the rows that come next, before their layout.
+    if (!count) { clearTimeout(fallback); fallback = undefined; return; }
+    if (!laidOut) return;
+    // The app scrolled the list itself before this one went: that is the last word (`scrollToOffset`, `scrollToIndex`), and the window follows what the list does from here.
+    // No index at the first layout with rows: a later one (a prop that changes) is not a jump to make when the list grows.
+    if (appAsked || initialScrollIndex === undefined) { clearTimeout(fallback); fallback = undefined; initialSent = true; checkEnd(); scheduleViewable(); return; }
+    if (header && !headerSeen) return;
+    if (!force && spacerSize + 0.5 < layout.total) {
+      // The spacer's layout at the size the rows ask for has not come. It does with the commit that has the rows; this is for the day it does not (no event for a size the platform thinks it had).
+      if (fallback && fallbackFor !== count) { clearTimeout(fallback); fallback = undefined; }
+      fallbackFor = count;
+      fallback ??= setTimeout(() => { fallback = undefined; untrack(() => sendInitial(true)); }, SPACER_WAIT_MS);
+      return;
+    }
+    clearTimeout(fallback);
+    fallback = undefined;
+    initialSent = true;
+    const target = headerSize + layout.offsetOf(Math.max(0, Math.min(count - 1, initialScrollIndex)));
+    scroll = target;
+    whenReady(() => scrollTo(target, false));
+    // The list was not asked about its end or its rows while it waited, and a jump that moves nothing (a first page that fits, an index that is clamped to 0) is followed by no scroll event to ask on: the answer is due now.
+    checkEnd();
+    scheduleViewable();
+  }
+  $effect(() => { void count; untrack(() => sendInitial()); });
+  // The header goes (or comes): the jump and a request for a row stop waiting for a first layout of it that will not come, and the size it had is gone with it.
+  $effect(() => {
+    if (header) return;
+    untrack(() => {
+      headerSize = 0;
+      headerSeen = false;
+      sendInitial();
+      sendPendingScroll();
+    });
+  });
+
+  function handleSpacerLayout(event: LayoutChangeEvent) {
+    const { width, height } = event.nativeEvent.layout;
+    spacerSize = horizontal ? width : height;
+    sendInitial();
+  }
+  // Only while the jump waits for it: a list that is not scrolled to a row asks for no layout events of its spacer.
+  const spacerProps = { onLayout: handleSpacerLayout };
+
   function handleLayout(event: LayoutChangeEvent) {
     const { width, height } = event.nativeEvent.layout;
     viewport = horizontal ? width : height;
-    if (!laidOut) {
-      laidOut = true;
-      if (initialScrollIndex !== undefined && count) {
-        const target = headerSize + layout.offsetOf(Math.max(0, Math.min(count - 1, initialScrollIndex)));
-        scroll = target;
-        scrollToOffset(target, false);
-      }
-      sendPendingScroll();
-    }
+    laidOut = true;
+    // Every layout, not the first alone: a wake-up that was not enough then (the header was not seen, the rows were not there) may be now.
+    sendInitial();
+    sendPendingScroll();
     checkEnd();
     scheduleViewable();
     onLayout?.(event);
@@ -361,6 +424,9 @@
   function handleHeaderLayout(event: LayoutChangeEvent) {
     const { width, height } = event.nativeEvent.layout;
     headerSize = horizontal ? width : height;
+    headerSeen = true;
+    sendInitial();
+    sendPendingScroll();
   }
 
   const headerProps = { onLayout: handleHeaderLayout };
@@ -372,15 +438,17 @@
   }
 
   // A scroll asked for before the scroll view is bound and has its first layout (a page that scrolls its list in the effect that runs as the list
-  // mounts) reaches nothing: the command goes to no view, or to one with no content to scroll. The last such request is kept and sent when both are there.
-  let pendingScroll: (() => void) | null = null;
-  function whenReady(send: () => void) {
-    if (scroller && laidOut) send();
-    else pendingScroll = send;
+  // mounts) reaches nothing: the command goes to no view, or to one with no content to scroll. The last such request is kept and sent when both are there; a request for a row also waits for the header,
+  // whose size is part of the row's place (`needsHeader`).
+  let pendingScroll: { send: () => void; needsHeader: boolean } | null = null;
+  const ready = (needsHeader: boolean) => scroller !== null && laidOut && (!needsHeader || !header || headerSeen);
+  function whenReady(send: () => void, needsHeader = false) {
+    if (ready(needsHeader)) send();
+    else pendingScroll = { send, needsHeader };
   }
   function sendPendingScroll() {
-    if (!pendingScroll || !scroller || !laidOut) return;
-    const send = pendingScroll;
+    if (!pendingScroll || !ready(pendingScroll.needsHeader)) return;
+    const { send } = pendingScroll;
     pendingScroll = null;
     send();
   }
@@ -390,19 +458,25 @@
     scroller?.dispatchCommand("scrollTo", [x, y, animated]);
   }
 
-  // Commands, not reads: called from an effect they must not subscribe it to the list's own state (the window, the row sizes, the header).
+  // Commands, not reads: called from an effect they must not subscribe it to the list's own state (the window, the row sizes, the header), and from anywhere, a derived included, so they write no state: the
+  // request is kept in plain fields, and what the window follows (`initialSent`, state) is let go of by a microtask, which is where a write is allowed.
+  // A request of the app is the last word, also over `initialScrollIndex` when that one still waits for the header or the rows.
+  function takeOver() {
+    appAsked = true;
+    if (!initialSent) queueMicrotask(() => { if (!initialSent) initialSent = true; });
+  }
   export function scrollToOffset(offset: number, animated = true) {
-    untrack(() => whenReady(() => scrollTo(Math.max(0, offset), animated)));
+    untrack(() => { takeOver(); whenReady(() => scrollTo(Math.max(0, offset), animated)); });
   }
 
   export function scrollToIndex(index: number, animated = true) {
-    untrack(() => whenReady(() => scrollTo(headerSize + layout.offsetOf(Math.max(0, Math.min(count - 1, index))), animated)));
+    untrack(() => { takeOver(); whenReady(() => scrollTo(headerSize + layout.offsetOf(Math.max(0, Math.min(count - 1, index))), animated), true); });
   }
 </script>
 
 <ScrollView {...rest} {horizontal} {scrollEventThrottle} contentContainerStyle={contentStyle} onScroll={handleScroll} onLayout={handleLayout} ref={handleRef}>
   {#if header}<native-view nativeProps={headerProps}>{@render header()}</native-view>{/if}
-  <native-view nativeStyle={spacerStyle}>
+  <native-view nativeStyle={spacerStyle} nativeProps={initialScrollIndex !== undefined && !initialSent ? spacerProps : undefined}>
     {#if recycle}
       {#each slots as slot (slot)}
         {@const index = indexOfSlot(slot)}

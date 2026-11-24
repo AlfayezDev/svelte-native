@@ -189,6 +189,15 @@ private fun aware() {
 }
 
 
+/** Why a view in a Modal is left alone: the modal's layer makes room for the keyboard in its own layout, by the whole of what the keyboard covers of it. */
+private fun modal() {
+  val inset = IntArray(4)
+  expo.modules.svelteengine.views.ModalLayout.contentInsets(0, 63, 0, 63, 1050, statusBarTranslucent = false, navigationBarTranslucent = false, out = inset)
+  expect("a modal's content ends where the keyboard begins", inset[3], 1050)
+  expo.modules.svelteengine.views.ModalLayout.contentInsets(0, 63, 0, 63, 0, statusBarTranslucent = false, navigationBarTranslucent = false, out = inset)
+  expect("and above the bar without it", inset[3], 63)
+}
+
 private fun frames() {
   var f = KeyboardFrames()
   // One animation: prepare, start, frames, end.
@@ -288,6 +297,7 @@ private fun wiring(main: String) {
   expect("a subscription made on the JavaScript thread is made on the main thread, where the frames go", drive.contains("runMain {") && drive.contains("nextListener = AtomicInteger(-1)") && drive.contains("fun unsubscribe(id: Int) {\n    runMain { listeners.remove(id) }"), true)
   expect("Reanimated's callers are given their own numbers and createKeyboardMotion's subscription the engine's", drive.contains("ReanimatedKeyboard(navigationBarTranslucent") && drive.contains("val raw = rawFlag.getAndSet(false)"), true)
   expect("a lift registered again is tuned, not started over", drive.contains("known.retune(behavior, px)") && drive.contains("rules.attach("), true)
+  expect("a view in a modal is left to the modal", drive.contains("if (parent is ModalLayer) return true") && drive.contains("if (inModal(view)) { drive(view, view, 0f); return true }") && drive.split("!inModal(view)").size - 1 >= 4, true)
   expect("an input is what the focus goes to", drive.contains("if (found is EditText)"), true)
   expect("the report of a scroll view's end is forgotten with the view", drive.split("ends.remove(tag)").size - 1 >= 4, true)
   expect("the room is outside the clip, as the keyboard's scroll decorator makes it", drive.contains("view.clipToPadding = false"), true)
@@ -298,6 +308,7 @@ fun main(args: Array<String>) {
   chat()
   aware()
   frames()
+  modal()
   reanimated(args.getOrNull(1) ?: error("usage: KeyboardRulesCheck <main directory> <vendor/react-native-reanimated>"))
   wiring(args.firstOrNull() ?: error("usage: KeyboardRulesCheck <main directory> <vendor/react-native-reanimated>"))
   println("KeyboardRulesCheck: $checks checks passed")

@@ -9,6 +9,7 @@ import android.widget.EditText
 import expo.modules.svelteengine.views.EngineInput
 import expo.modules.svelteengine.views.EngineNode
 import expo.modules.svelteengine.views.EngineScroll
+import expo.modules.svelteengine.views.ModalLayer
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.roundToInt
@@ -139,7 +140,7 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
     val rules = ChatLift(behavior, px, (KeyboardRules.AT_END_DP * density).roundToInt())
     lifts[tag] = rules
     // A scroll view that arrives while the keyboard is up holds the room it takes, and lifts nothing it has not been told to.
-    if (height > 0 && !moving) { rules.attach(height, view.scrollY, view.height, content(view)); pad(view, rules.padding) }
+    if (height > 0 && !moving && !inModal(view)) { rules.attach(height, view.scrollY, view.height, content(view)); pad(view, rules.padding) }
   }
 
   fun aware(tag: Int, bottomOffset: Double, extra: Double, scrollOnHide: Boolean) {
@@ -150,7 +151,7 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
     rules.bottomOffset = (bottomOffset * density).roundToInt()
     rules.extra = (extra * density).roundToInt()
     rules.scrollOnHide = scrollOnHide
-    if (known == null && height > 0 && !moving) { rules.start(height, view.scrollY, focused(view), overlayBottom()); rules.end(height); pad(view, rules.padding) }
+    if (known == null && height > 0 && !moving && !inModal(view)) { rules.start(height, view.scrollY, focused(view), overlayBottom()); rules.end(height); pad(view, rules.padding) }
   }
 
   /** The view stops following the keyboard and goes back to where its own style puts it. */
@@ -275,6 +276,8 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
   private fun stick(tag: Int, sticky: Sticky): Boolean {
     val view = viewFor(tag)
     if (view !is EngineNode) return false
+    // A modal lifts its own content by the keyboard (`ModalLayout.contentInsets`, once, in its layout): a view in it is not moved a second time.
+    if (inModal(view)) { drive(view, view, 0f); return true }
     val density = view.resources.displayMetrics.density
     val y = if (sticky.avoid) KeyboardRules.avoid(sticky.overlap, progress, sticky.enabled)
       else KeyboardRules.sticky(height.toDouble(), progress, sticky.closed * density, sticky.opened * density, sticky.enabled)
@@ -288,6 +291,16 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
     view.translationY += y - state.drivenY
     state.drivenY = y
     if (y != 0f) state.transformed = true
+  }
+
+  /** Whether [view] is in the content of a `Modal`: its layer sits on the overlay, the keyboard reaches into it and it makes room for it itself. */
+  private fun inModal(view: View): Boolean {
+    var parent = view.parent
+    while (parent != null) {
+      if (parent is ModalLayer) return true
+      parent = parent.parent
+    }
+    return false
   }
 
   private fun scroll(view: EngineScroll, y: Int) {
@@ -375,7 +388,7 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
     while (iterator.hasNext()) {
       val (tag, rules) = iterator.next()
       val view = viewFor(tag) as? EngineScroll
-      if (view == null) { iterator.remove(); ends.remove(tag) } else block(tag, view, rules)
+      if (view == null) { iterator.remove(); ends.remove(tag) } else if (!inModal(view)) block(tag, view, rules)
     }
   }
 
@@ -384,7 +397,7 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
     while (iterator.hasNext()) {
       val (tag, rules) = iterator.next()
       val view = viewFor(tag) as? EngineScroll
-      if (view == null) iterator.remove() else block(tag, view, rules)
+      if (view == null) iterator.remove() else if (!inModal(view)) block(tag, view, rules)
     }
   }
 }

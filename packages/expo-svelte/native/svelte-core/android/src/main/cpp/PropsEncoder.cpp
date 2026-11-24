@@ -4,6 +4,7 @@
 #include "FragmentWire.h"
 #include "PropsEncoderNav.h"
 #include "PropsEncoderViews.h"
+#include "StyleWire.h"
 
 #include <react/renderer/attributedstring/AttributedString.h>
 #include <react/renderer/components/scrollview/ScrollViewProps.h>
@@ -86,6 +87,14 @@ struct Records {
   void finish() { batch.ops[countSlot] = count; }
 };
 
+// What StyleWire.h writes through: the view's record list.
+struct StyleOut {
+  Records &r;
+  void begin(int32_t id) { r.begin(id); }
+  void putInt(int32_t v) { r.batch.putInt(v); }
+  void putFloat(float v) { r.batch.putFloat(v); }
+};
+
 void encodeCommon(Records &r, const ShadowView &view, float scale) {
   auto &b = r.batch;
   const auto &p = static_cast<const ViewProps &>(*view.props);
@@ -111,21 +120,36 @@ void encodeCommon(Records &r, const ShadowView &view, float scale) {
   b.putFloat(sanitize(metrics.borderWidths.right * scale));
   b.putFloat(sanitize(metrics.borderWidths.bottom * scale));
 
-  // One colour for all sides in the spike: the first side that has one.
-  int32_t borderColor = 0;
-  for (const SharedColor *c :
-       {&metrics.borderColors.left, &metrics.borderColors.top, &metrics.borderColors.right, &metrics.borderColors.bottom}) {
-    if (*c) {
-      borderColor = colorInt(*c);
-      break;
-    }
+  // The colour of each side (left, top, right, bottom) and the border style (StyleWire.h). Record 5 is the one colour of a border whose sides agree (black when the
+  // style gave none, as React Native draws it); a border of mixed colours or a dashed or dotted one adds record 141.
+  // Fabric's Android colour is an integer in which 0 is also "no colour", so `borderColor: 'transparent'` and no colour at all look alike in the resolved colours. The cascaded
+  // props tell them apart: a side that no style gave a colour takes the default `resolve` is given, whatever it is, and a side that has one does not.
+  const bool rtl = !layoutIsEmpty(lm) && lm.layoutDirection == LayoutDirection::RightToLeft;
+  const auto probeOne = p.borderColors.resolve(rtl, SharedColor(1));
+  const auto probeTwo = p.borderColors.resolve(rtl, SharedColor(2));
+  stylewire::Sides sides;
+  const SharedColor *sideColors[4] = {&metrics.borderColors.left, &metrics.borderColors.top, &metrics.borderColors.right, &metrics.borderColors.bottom};
+  const SharedColor *one[4] = {&probeOne.left, &probeOne.top, &probeOne.right, &probeOne.bottom};
+  const SharedColor *two[4] = {&probeTwo.left, &probeTwo.top, &probeTwo.right, &probeTwo.bottom};
+  for (int i = 0; i < 4; ++i) {
+    sides.set[i] = *one[i] == *two[i];
+    sides.color[i] = sides.set[i] ? colorInt(*sideColors[i]) : 0;
+  }
+  switch (metrics.borderStyles.top) {
+    case BorderStyle::Solid: sides.style = 0; break;
+    case BorderStyle::Dashed: sides.style = 1; break;
+    case BorderStyle::Dotted: sides.style = 2; break;
   }
   r.begin(kBorderColor);
-  b.putInt(borderColor);
+  b.putInt(stylewire::uniformColor(sides));
+  StyleOut style{r};
+  stylewire::encodeSides(style, sides);
 
   float tx = 0, ty = 0, sx = 1, sy = 1, rot = 0;
   if (!p.transform.operations.empty()) {
-    Transform t = p.resolveTransform(layoutIsEmpty(lm) ? LayoutMetrics{} : lm);
+    // Without the origin: the view pivots on it (record 142), so a transform written later (an animation) turns about the same point. `resolveTransform` of the props
+    // would fold it into the translation, which only the committed transform would carry.
+    Transform t = BaseViewProps::resolveTransform(layoutIsEmpty(lm) ? Size{} : lm.frame.size, p.transform, TransformOrigin{});
     const auto &m = t.matrix; // row-major, row-vector convention: translation in m[12], m[13]
     tx = static_cast<float>(m[12]) * scale;
     ty = static_cast<float>(m[13]) * scale;
@@ -139,6 +163,35 @@ void encodeCommon(Records &r, const ShadowView &view, float scale) {
   b.putFloat(sx);
   b.putFloat(sy);
   b.putFloat(sanitize(rot));
+
+  // `transformOrigin`: a length is in points, sent in px; a percentage is of the view's own extent, which Kotlin knows when it lays the view out.
+  stylewire::Origin origin;
+  const ValueUnit axes[2] = {p.transformOrigin.xy[0], p.transformOrigin.xy[1]};
+  for (int i = 0; i < 2; ++i) {
+    const int32_t unit = axes[i].unit == UnitType::Point ? 1 : axes[i].unit == UnitType::Percent ? 2 : 0;
+    const float value = unit == 1 ? sanitize(axes[i].value * scale) : sanitize(axes[i].value);
+    (i == 0 ? origin.xUnit : origin.yUnit) = unit;
+    (i == 0 ? origin.x : origin.y) = value;
+  }
+  stylewire::encodeOrigin(style, origin);
+
+  // `boxShadow`, each layer as React Native holds it (points). The colour is as it came: 0 is transparent (the JavaScript side gave a layer without a colour black, because Fabric's
+  // Android colour cannot tell none from transparent: `view-configs.ts`, `boxShadowFor`).
+  if (!p.boxShadow.empty()) {
+    std::vector<stylewire::Shadow> shadows;
+    shadows.reserve(p.boxShadow.size());
+    for (const auto &layer : p.boxShadow) {
+      stylewire::Shadow shadow;
+      shadow.offsetX = sanitize(static_cast<float>(layer.offsetX));
+      shadow.offsetY = sanitize(static_cast<float>(layer.offsetY));
+      shadow.blurRadius = sanitize(static_cast<float>(layer.blurRadius));
+      shadow.spreadDistance = sanitize(static_cast<float>(layer.spreadDistance));
+      shadow.color = colorInt(layer.color);
+      shadow.inset = layer.inset;
+      shadows.push_back(shadow);
+    }
+    stylewire::encodeShadows(style, shadows.data(), static_cast<int32_t>(shadows.size()));
+  }
 
   r.begin(kOverflow);
   b.putInt(p.getClipsContentToBounds() ? 1 : 0);

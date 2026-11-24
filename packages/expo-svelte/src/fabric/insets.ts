@@ -7,8 +7,11 @@ import { EventEmitter, requireOptionalNativeModule } from "expo-modules-core";
 
 export type Edge = "top" | "right" | "bottom" | "left";
 export type Frame = { x: number; y: number; width: number; height: number };
-/** Values in dp. `keyboardHeight` is how much of the overlay the keyboard covers; `frame` is the overlay in window coordinates. */
-export type InsetsEvent = { top: number; right: number; bottom: number; left: number; keyboardHeight: number; keyboardVisible: boolean; frame: Frame };
+/**
+ * Values in dp. `keyboardHeight` is how much of the overlay the keyboard covers (the height it is going to have, from the start of its animation); `keyboardAnimating` says it
+ * is moving (Android; iOS does not send it); `frame` is the overlay in window coordinates.
+ */
+export type InsetsEvent = { top: number; right: number; bottom: number; left: number; keyboardHeight: number; keyboardVisible: boolean; keyboardAnimating?: boolean; frame: Frame };
 type Emitter = { addListener(name: string, listener: (event: InsetsEvent) => void): { remove(): void } };
 type EngineModule = Partial<Emitter> & { getInsets?: () => InsetsEvent | null };
 

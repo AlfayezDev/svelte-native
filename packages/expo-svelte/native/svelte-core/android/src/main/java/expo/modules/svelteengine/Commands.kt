@@ -147,7 +147,7 @@ object Commands {
     node.border.copyInto(p.border)
     p.borderColor = node.borderColor
     p.transform[0] = view.translationX
-    p.transform[1] = view.translationY
+    p.transform[1] = view.translationY - node.drivenY
     p.transform[2] = view.scaleX
     p.transform[3] = view.scaleY
     p.transform[4] = view.rotation

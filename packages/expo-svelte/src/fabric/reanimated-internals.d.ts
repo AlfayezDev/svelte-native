@@ -39,3 +39,6 @@ export class WorkletEventHandler<Event extends object = object> {
   registerForEvents(viewTag: number, fallbackEventName?: string): void;
   unregisterFromEvents(viewTag: number): void;
 }
+/** What Reanimated's `useAnimatedKeyboard` listens with: `eventHandler` is a worklet, called on the UI runtime with the two numbers the keyboard source sends (the engine's, here: `keyboard-motion.ts`). */
+export function subscribeForKeyboardEvents(eventHandler: (state: number, height: number) => void, options: { isStatusBarTranslucentAndroid?: boolean; isNavigationBarTranslucentAndroid?: boolean }): number;
+export function unsubscribeFromKeyboardEvents(listenerId: number): void;

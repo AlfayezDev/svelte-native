@@ -11,4 +11,17 @@ object SvelteEngineHook {
   @JvmStatic
   @Volatile
   var updater: ((viewTag: Int, props: ReadableMap) -> Boolean)? = null
+
+  /**
+   * The engine's keyboard source (SPEC.md, "Keyboard motion"): what `subscribeForKeyboardEvents` takes its events from when it is set, instead of a window insets callback of
+   * Reanimated's own. `keyboardSubscribe` takes the listener, called on the UI thread with (kind, px) for each frame of the keyboard, and returns an id that is below zero;
+   * `keyboardUnsubscribe` takes that id back.
+   */
+  @JvmStatic
+  @Volatile
+  var keyboardSubscribe: ((listener: (Int, Int) -> Unit) -> Int)? = null
+
+  @JvmStatic
+  @Volatile
+  var keyboardUnsubscribe: ((id: Int) -> Unit)? = null
 }

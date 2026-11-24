@@ -161,7 +161,7 @@ describe("the packages the library carries", () => {
     const shapeFiles: Record<string, string[]> = {
       "react-native-gesture-handler": ["apple/RNGestureHandlerManager.h", "apple/RNGestureHandlerManager.mm", "scripts/gesture_handler_utils.rb"],
       "react-native-reanimated": [
-        "android/src/main/java/com/swmansion/reanimated/SvelteEngineHook.kt", "android/src/main/java/com/swmansion/reanimated/NativeProxy.kt", "android/src/main/cpp/reanimated/android/NativeProxy.cpp",
+        "android/src/main/java/com/swmansion/reanimated/SvelteEngineHook.kt", "android/src/main/java/com/swmansion/reanimated/keyboard/KeyboardAnimationManager.kt", "android/src/main/java/com/swmansion/reanimated/NativeProxy.kt", "android/src/main/cpp/reanimated/android/NativeProxy.cpp",
         "android/src/main/cpp/reanimated/android/NativeProxy.h", "scripts/validate-worklets-version.js", "src/featureFlags/staticFlags.json",
       ],
       "react-native-worklets": ["lib/module/runLoop/uiRuntime/requestAnimationFrame.js", "src/runLoop/uiRuntime/requestAnimationFrame.ts"],

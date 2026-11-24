@@ -109,6 +109,9 @@ class MountingManager(private val reactContext: ReactApplicationContext, private
 
   val root: EngineRoot = EngineRoot(reactContext)
 
+  /** What follows the keyboard, frame by frame (SPEC.md, "Keyboard motion"): `Insets` feeds it. */
+  val keyboard = KeyboardDrive(::viewFor) { root.rootView.height }
+
   /**
    * The context of every engine view, built when it is first needed (the first batch, which knows the surface, or
    * [enableGestures]). Not the bare Application context: react-native-gesture-handler reads the surface id of an event's view

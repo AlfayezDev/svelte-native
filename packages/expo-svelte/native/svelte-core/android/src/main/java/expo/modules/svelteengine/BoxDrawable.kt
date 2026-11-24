@@ -3,9 +3,11 @@ package expo.modules.svelteengine
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorFilter
+import android.graphics.DashPathEffect
 import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PathEffect
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
@@ -16,24 +18,35 @@ import com.facebook.react.uimanager.PixelUtil
 import kotlin.math.roundToInt
 
 /**
- * The box of the common case, drawn by one drawable: a fill and a border of one width and one colour, solid, round corners (any radii) or none, no shadow (SPEC.md, "Box styles").
- * What React Native draws for it with a `CompositeBackgroundDrawable` (a `LayerDrawable` of a `BackgroundDrawable` and a `BorderDrawable`, and the style objects they read) is drawn
+ * The box of the common cases, drawn by one drawable of the engine's (SPEC.md, "Box styles", `StyleRules.boxKind`): a fill and
+ * - a solid border of one width and one colour with round corners (any radii) or square ones,
+ * - a border of square corners whose sides have their own widths or colours (a divider is a bottom border only), solid, or dashed and dotted when it is one colour,
+ * - no border and corners of different radii (a `GradientDrawable` scales radii that overflow together; React Native's scale each corner).
+ * What React Native draws for these with a `CompositeBackgroundDrawable` (a `LayerDrawable` of a `BackgroundDrawable` and a `BorderDrawable`, and the style objects they read) is drawn
  * here the same way, step for step, with no layers and no style objects: `BackgroundDrawable.draw` (the fill, a rounded one pulled in by 0.8 px where a border covers its edge), then
- * `BorderDrawable.drawRectangularBorders` (a stroke of whole pixels for each side, or the four quadrilaterals for a translucent colour) or `drawRoundedBorders` (a stroke of the
- * width along the centre line of the border, clipped to the outer rounded rectangle), `CompositeBackgroundDrawable.getOutline` for the elevation's shadow and
- * `BackgroundStyleApplicator.clipToPaddingBox` for `overflow` (that is [clipToPaddingBox]). Lengths are the dp React Native's drawables hold, converted with `PixelUtil` where
+ * `BorderDrawable.drawRectangularBorders` (a stroke of whole pixels along the middle of each side, or the four quadrilaterals for a translucent or mixed colour) or `drawRoundedBorders`
+ * (a stroke of the width along the centre line of the border, clipped to the outer rounded rectangle), `CompositeBackgroundDrawable.getOutline` for the elevation's shadow and
+ * `BackgroundStyleApplicator.clipToPaddingBox` for `overflow` (that is [PaddingBoxClip]). Lengths are the dp React Native's drawables hold, converted with `PixelUtil` where
  * they convert, in the same operations; the radii go through `ensureNoOverlap` as `BorderRadiusStyle.resolve` does ([StyleRules.ensureNoOverlap]). The host check reads both sources
  * for the constants and the calls (`StyleRulesCheck`), and `/__dev/styles` compares the pixels with React Native's own views, tile by tile.
  *
+ * Sides and corners are the physical ones Fabric resolved (right to left already applied): there is no edge to resolve by a layout direction here, so the drawable has no direction.
+ * Round corners need one width and one colour (`StyleRules.boxKind` sends nothing else here); the widths and colours of the four sides are for square corners.
+ *
  * One difference, on purpose: the stroke's paint style is set for each kind of drawing, where React Native's `BorderDrawable` keeps the one of its last fast-path draw (a view whose
- * border went from opaque to translucent draws its quadrilaterals as outlines there, a view that was never opaque as fills).
+ * border went from opaque to translucent draws its quadrilaterals as outlines there, a view that was never opaque as fills), and the path effect of a dashed border is set for the
+ * strokes only.
  */
-class UniformBoxDrawable : Drawable() {
+class BoxDrawable : Drawable() {
   private var fill = 0
-  private var color = 0
-  private var widthDp = 0f
+  /** Left, top, right, bottom. */
+  private val colors = IntArray(4)
+  /** Left, top, right, bottom, dp. */
+  private val widthsDp = FloatArray(4)
   /** Top left, top right, bottom right, bottom left, dp; 0 is no radius. */
   private val radiiDp = FloatArray(4)
+  /** 0 solid, 1 dashed, 2 dotted. */
+  private var borderStyle = 0
   private var rounded = false
   private var drawAlpha = 255
 
@@ -44,30 +57,37 @@ class UniformBoxDrawable : Drawable() {
   private val outerClipPath = Path()
   private val centerRect = RectF()
   private val centerPath = Path()
+  private val centerRadii = FloatArray(8)
   private val sidePath = Path()
+  private val line = FloatArray(4)
+  private val quad = FloatArray(8)
   private val boundsRect = RectF()
   /** The resolved radii, dp, as [StyleRules.ensureNoOverlap] leaves them: top left (horizontal, vertical), top right, bottom right, bottom left. */
   private val computed = FloatArray(8)
   /** [computed] in px. */
   private val radiiPx = FloatArray(8)
   private val scratch = FloatArray(8)
-  /** What [getOutline] and [clipToPaddingBox] build, kept: the outline is asked for by every view that is attached or resized, the clip by every frame. */
+  /** What [getOutline] builds, kept: the outline is asked for by every view that is attached or resized. */
   private val outlinePath = Path()
   private val outlineRadii = FloatArray(8)
-  private val clipPath = Path()
-  private val clipRadii = FloatArray(8)
-  private val clipRect = RectF()
-  private val drawing = Rect()
+  /** The widths in px, and each rounded to a pixel (what the strokes and quadrilaterals of square corners use). */
+  private val widthsPx = FloatArray(4)
+  private val borders = IntArray(4)
+  /** The path effect of each side's stroke (dashes and dots), null for solid. */
+  private val effects = arrayOfNulls<PathEffect>(4)
+  private val clip = PaddingBoxClip()
   private var uniformRadii = false
+  private var anyWidth = false
   private var needUpdatePath = true
 
-  /** Writes the box; true when something differed (the drawable draws again). [radii] are dp. */
-  fun set(fill: Int, color: Int, widthDp: Float, radii: FloatArray): Boolean {
+  /** Writes the box; true when something differed (the drawable draws again). [widths] and [radii] are dp, [colors] ARGB, all in the orders above. */
+  fun set(fill: Int, colors: IntArray, widths: FloatArray, radii: FloatArray, style: Int): Boolean {
     var changed = false
     if (this.fill != fill) { this.fill = fill; changed = true }
-    if (this.color != color) { this.color = color; changed = true }
-    if (this.widthDp != widthDp) { this.widthDp = widthDp; changed = true }
+    if (!this.colors.contentEquals(colors)) { colors.copyInto(this.colors); changed = true }
+    if (!widthsDp.contentEquals(widths)) { widths.copyInto(widthsDp); changed = true }
     if (setRadiiQuietly(radii)) changed = true
+    if (borderStyle != style) { borderStyle = style; changed = true }
     if (changed) { needUpdatePath = true; invalidateSelf() }
     return changed
   }
@@ -83,10 +103,10 @@ class UniformBoxDrawable : Drawable() {
   }
 
   private fun setRadiiQuietly(radii: FloatArray): Boolean {
-    var changed = false
-    for (k in 0..3) if (radiiDp[k] != radii[k]) { radiiDp[k] = radii[k]; changed = true }
-    if (changed) rounded = radiiDp.any { it > 0f }
-    return changed
+    if (radiiDp.contentEquals(radii)) return false
+    radii.copyInto(radiiDp)
+    rounded = StyleRules.hasRadius(radiiDp)
+    return true
   }
 
   override fun onBoundsChange(bounds: Rect) {
@@ -113,14 +133,20 @@ class UniformBoxDrawable : Drawable() {
   private fun updatePath() {
     if (!needUpdatePath) return
     needUpdatePath = false
-    val widthPx = PixelUtil.toPixelFromDIP(widthDp)
+    anyWidth = false
+    for (side in 0..3) {
+      widthsPx[side] = PixelUtil.toPixelFromDIP(widthsDp[side])
+      borders[side] = widthsPx[side].roundToInt()
+      if (widthsDp[side] != 0f) anyWidth = true
+      effects[side] = if (borderStyle == 0 || borders[side] <= 0) null else dashes(borderStyle, borders[side].toFloat())
+    }
     resolve(computed, PixelUtil.toDIPFromPixel(bounds.width().toFloat()), PixelUtil.toDIPFromPixel(bounds.height().toFloat()))
     uniformRadii = computed[0] == computed[2] && computed[1] == computed[3] && computed[0] == computed[4] && computed[1] == computed[5] &&
       computed[0] == computed[6] && computed[1] == computed[7]
 
     // BackgroundDrawable.updatePath: the fill is the whole bounds, pulled in by `pathAdjustment` where the border is drawn over its rounded edge.
     backgroundRect.set(bounds)
-    if (widthPx != 0f && rounded) {
+    if (anyWidth && rounded) {
       backgroundRect.left += PATH_ADJUSTMENT
       backgroundRect.top += PATH_ADJUSTMENT
       backgroundRect.right -= PATH_ADJUSTMENT
@@ -132,27 +158,21 @@ class UniformBoxDrawable : Drawable() {
       backgroundPath.addRoundRect(backgroundRect, radiiPx, Path.Direction.CW)
     }
 
-    // BorderDrawable.updatePath: the outer rounded rectangle, the centre line of the border, its path when the corners differ.
-    if (rounded) {
+    // BorderDrawable.updatePath: the outer rounded rectangle, the centre line of the border, its path when the corners differ (round corners have one width, the first).
+    if (rounded && anyWidth) {
+      val half = widthsPx[0] * 0.5f
       boundsRect.set(bounds)
       outerClipPath.reset()
       outerClipPath.addRoundRect(boundsRect, radiiPx, Path.Direction.CW)
       centerRect.set(bounds)
-      centerRect.top += widthPx * 0.5f
-      centerRect.bottom -= widthPx * 0.5f
-      centerRect.left += widthPx * 0.5f
-      centerRect.right -= widthPx * 0.5f
+      centerRect.top += half
+      centerRect.bottom -= half
+      centerRect.left += half
+      centerRect.right -= half
       if (!uniformRadii) {
+        for (k in 0..7) centerRadii[k] = radiiPx[k] - half
         centerPath.reset()
-        val half = widthPx * 0.5f
-        centerPath.addRoundRect(
-          centerRect,
-          floatArrayOf(
-            radiiPx[0] - half, radiiPx[1] - half, radiiPx[2] - half, radiiPx[3] - half,
-            radiiPx[4] - half, radiiPx[5] - half, radiiPx[6] - half, radiiPx[7] - half,
-          ),
-          Path.Direction.CW,
-        )
+        centerPath.addRoundRect(centerRect, centerRadii, Path.Direction.CW)
       }
     }
   }
@@ -160,7 +180,6 @@ class UniformBoxDrawable : Drawable() {
   override fun draw(canvas: Canvas) {
     if (bounds.isEmpty) return
     updatePath()
-    val widthPx = PixelUtil.toPixelFromDIP(widthDp)
     // BackgroundDrawable.draw
     backgroundPaint.color = fill
     if (drawAlpha != 255) backgroundPaint.alpha = (((drawAlpha / 255f) * (Color.alpha(fill) / 255f)) * 255f).roundToInt()
@@ -174,78 +193,68 @@ class UniformBoxDrawable : Drawable() {
       }
     }
     // BorderDrawable.draw
-    if (rounded) drawRoundedBorders(canvas, widthPx) else drawRectangularBorders(canvas, widthPx)
+    if (!anyWidth) return
+    if (rounded) drawRoundedBorders(canvas) else drawRectangularBorders(canvas)
   }
 
-  private fun drawRectangularBorders(canvas: Canvas, widthPx: Float) {
-    val border = widthPx.roundToInt()
-    if (border <= 0) return
+  private fun drawRectangularBorders(canvas: Canvas) {
+    val borderLeft = borders[0]
+    val borderTop = borders[1]
+    val borderRight = borders[2]
+    val borderBottom = borders[3]
+    if (borderLeft <= 0 && borderTop <= 0 && borderRight <= 0 && borderBottom <= 0) return
     val left = bounds.left
     val top = bounds.top
     val right = bounds.right
     val bottom = bounds.bottom
-    // `fastBorderCompatibleColorOrZero`: the four sides have one colour here, so it is that colour unless it is translucent.
-    val fast = if (Color.alpha(color) < 255) 0 else color
-    borderPaint.pathEffect = null
+    val fast = StyleRules.fastBorderColor(widthsPx, colors)
     if (fast != 0) {
-      if (Color.alpha(fast) != 0) {
-        borderPaint.color = multiplyColorAlpha(fast, drawAlpha)
-        borderPaint.style = Paint.Style.STROKE
-        val half = (border / 2).toFloat()
-        // left, top, right, bottom, each a line along the middle of the side's `border` pixels
-        borderPaint.strokeWidth = border.toFloat()
-        sidePath.reset()
-        sidePath.moveTo(left + half, top.toFloat())
-        sidePath.lineTo(left + half, bottom.toFloat())
-        canvas.drawPath(sidePath, borderPaint)
-        sidePath.reset()
-        sidePath.moveTo(left.toFloat(), top + half)
-        sidePath.lineTo(right.toFloat(), top + half)
-        canvas.drawPath(sidePath, borderPaint)
-        sidePath.reset()
-        sidePath.moveTo(right - half, top.toFloat())
-        sidePath.lineTo(right - half, bottom.toFloat())
-        canvas.drawPath(sidePath, borderPaint)
-        sidePath.reset()
-        sidePath.moveTo(left.toFloat(), bottom - half)
-        sidePath.lineTo(right.toFloat(), bottom - half)
-        canvas.drawPath(sidePath, borderPaint)
+      // One colour, none of them translucent: a stroke along the middle of each side that has a width.
+      borderPaint.color = multiplyColorAlpha(fast, drawAlpha)
+      borderPaint.style = Paint.Style.STROKE
+      for (side in 0..3) {
+        if (borders[side] <= 0) continue
+        BoxGeometry.strokeLine(side, left, top, right, bottom, borders[side], line)
+        stroke(canvas, side)
       }
     } else {
-      // The four quadrilaterals, with no anti-aliasing (they meet on the diagonals of the corners).
+      // The quadrilaterals, with no anti-aliasing (they meet on the diagonals of the corners).
+      borderPaint.pathEffect = null
       borderPaint.isAntiAlias = false
       borderPaint.style = Paint.Style.FILL
-      val width = bounds.width()
-      val height = bounds.height()
-      val l = left.toFloat()
-      val t = top.toFloat()
-      val b = border.toFloat()
-      quadrilateral(canvas, l, t, l + b, t + b, l + b, t + height - b, l, t + height)
-      quadrilateral(canvas, l, t, l + b, t + b, l + width - b, t + b, l + width, t)
-      quadrilateral(canvas, l + width, t, l + width, t + height, l + width - b, t + height - b, l + width - b, t + b)
-      quadrilateral(canvas, l, t + height, l + width, t + height, l + width - b, t + height - b, l + b, t + height - b)
+      for (side in 0..3) {
+        if (borders[side] <= 0 || colors[side] == Color.TRANSPARENT) continue
+        BoxGeometry.quadrilateral(side, left, top, bounds.width(), bounds.height(), borders, quad)
+        borderPaint.color = multiplyColorAlpha(colors[side], drawAlpha)
+        sidePath.reset()
+        sidePath.moveTo(quad[0], quad[1])
+        sidePath.lineTo(quad[2], quad[3])
+        sidePath.lineTo(quad[4], quad[5])
+        sidePath.lineTo(quad[6], quad[7])
+        sidePath.lineTo(quad[0], quad[1])
+        canvas.drawPath(sidePath, borderPaint)
+      }
       borderPaint.isAntiAlias = true
     }
   }
 
-  private fun quadrilateral(canvas: Canvas, x1: Float, y1: Float, x2: Float, y2: Float, x3: Float, y3: Float, x4: Float, y4: Float) {
-    if (color == Color.TRANSPARENT) return
-    borderPaint.color = multiplyColorAlpha(color, drawAlpha)
+  /** The stroke of [side] along [line], as wide as the side's border, with the dashes of that width. */
+  private fun stroke(canvas: Canvas, side: Int) {
+    borderPaint.pathEffect = effects[side]
+    borderPaint.strokeWidth = borders[side].toFloat()
     sidePath.reset()
-    sidePath.moveTo(x1, y1)
-    sidePath.lineTo(x2, y2)
-    sidePath.lineTo(x3, y3)
-    sidePath.lineTo(x4, y4)
-    sidePath.lineTo(x1, y1)
+    sidePath.moveTo(line[0], line[1])
+    sidePath.lineTo(line[2], line[3])
     canvas.drawPath(sidePath, borderPaint)
   }
 
-  private fun drawRoundedBorders(canvas: Canvas, widthPx: Float) {
+  private fun drawRoundedBorders(canvas: Canvas) {
     canvas.save()
     canvas.clipPath(outerClipPath)
+    val widthPx = widthsPx[0]
     if (widthPx > 0f) {
       borderPaint.pathEffect = null
-      borderPaint.color = multiplyColorAlpha(color, drawAlpha)
+      borderPaint.color = multiplyColorAlpha(colors[0], drawAlpha)
       borderPaint.style = Paint.Style.STROKE
       borderPaint.strokeWidth = widthPx
       if (uniformRadii) {
@@ -270,9 +279,9 @@ class UniformBoxDrawable : Drawable() {
       outline.setRect(bounds)
       return
     }
-    // React Native resolves these against the bounds in px, as if they were dp.
+    // React Native resolves these against the bounds in px, as if they were dp. Round corners have one width, the border's, in dp.
     resolve(scratch, bounds.width().toFloat(), bounds.height().toFloat())
-    for (k in 0..7) outlineRadii[k] = PixelUtil.toPixelFromDIP(scratch[k] + widthDp)
+    for (k in 0..7) outlineRadii[k] = PixelUtil.toPixelFromDIP(scratch[k] + widthsDp[0])
     outlinePath.reset()
     boundsRect.set(bounds)
     outlinePath.addRoundRect(boundsRect, outlineRadii, Path.Direction.CW)
@@ -283,29 +292,14 @@ class UniformBoxDrawable : Drawable() {
     }
   }
 
-  /**
-   * `overflow: hidden` clips what the view draws to the inside of its border, with the corners rounded by the radii less the width (`BackgroundStyleApplicator.clipToPaddingBox`).
-   * [canvas] is the one `dispatchDraw` gets.
-   */
+  /** `overflow: hidden` for the view this drawable is the background of: [PaddingBoxClip], with this box's bounds, radii and widths. [canvas] is the one `dispatchDraw` gets. */
   fun clipToPaddingBox(view: View, canvas: Canvas) {
-    view.getDrawingRect(drawing)
-    val inset = PixelUtil.toPixelFromDIP(widthDp)
-    clipRect.set(bounds.left + inset, bounds.top + inset, bounds.right - inset, bounds.bottom - inset)
-    if (rounded) {
-      resolve(scratch, PixelUtil.toDIPFromPixel(bounds.width().toFloat()), PixelUtil.toDIPFromPixel(bounds.height().toFloat()))
-      for (k in 0..7) clipRadii[k] = inner(scratch[k], inset)
-      clipPath.reset()
-      clipPath.addRoundRect(clipRect, clipRadii, Path.Direction.CW)
-      clipPath.offset(drawing.left.toFloat(), drawing.top.toFloat())
-      canvas.clipPath(clipPath)
-    } else {
-      clipRect.offset(drawing.left.toFloat(), drawing.top.toFloat())
-      canvas.clipRect(clipRect)
-    }
+    clip.clipDp(view, canvas, bounds.left, bounds.top, bounds.right, bounds.bottom, radiiDp, widthsDp)
   }
 
-  /** `getInnerBorderRadius`: a radius (dp) less the border's width (px), in px, never below 0. */
-  private fun inner(radiusDp: Float, insetPx: Float): Float = (PixelUtil.toPixelFromDIP(radiusDp) - insetPx).coerceAtLeast(0f)
+  /** `BorderDrawable.getPathEffect`. */
+  private fun dashes(style: Int, width: Float): PathEffect =
+    if (style == 1) DashPathEffect(floatArrayOf(width * 3, width * 3, width * 3, width * 3), 0f) else DashPathEffect(floatArrayOf(width, width, width, width), 0f)
 
   /** `BorderDrawable.multiplyColorAlpha`. */
   private fun multiplyColorAlpha(color: Int, rawAlpha: Int): Int {

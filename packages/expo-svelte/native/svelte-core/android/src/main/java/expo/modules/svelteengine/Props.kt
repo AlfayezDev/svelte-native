@@ -5,8 +5,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.graphics.Outline
+import expo.modules.svelteengine.views.EngineImage
 import expo.modules.svelteengine.views.EngineNode
 import expo.modules.svelteengine.views.EngineScreen
+import expo.modules.svelteengine.views.EngineScrollable
+import expo.modules.svelteengine.views.EngineText
 import expo.modules.svelteengine.views.EngineView
 import expo.modules.svelteengine.views.NodeState
 import kotlin.math.max
@@ -284,26 +287,24 @@ object Props {
 
   /** Applies the props every view kind shares. The record is complete, so absent props reset to defaults. */
   fun applyCommon(view: View, st: NodeState, p: PropSet, create: Boolean) {
-    // background, radii, border: the engine's plain background, or React Native's own drawables for what that cannot draw (BoxStyle.kt, SPEC.md "Box styles")
+    // background, radii, border: the engine's plain background, its own drawable, or React Native's own drawables (BoxStyle.kt, BoxDrawable.kt, SPEC.md "Box styles")
     val shadows = p.style.shadows
     val widest = StyleRules.widest(p.border)
-    if (shadows != null || widest > 0f) StyleRules.sideColors(p.style, p.borderColor, p.sideColors)
-    val kind = StyleRules.boxKind(shadows, widest, p.style.borderStyle, p.border, p.sideColors)
+    if (widest > 0f || shadows != null) StyleRules.sideColors(p.style, p.borderColor, p.sideColors) else p.sideColors.fill(0)
+    val kind = StyleRules.boxKind(shadows, p.border, p.sideColors, p.style.borderStyle, p.radii)
     val react = kind == StyleRules.BOX_REACT
     if (st.boxStyle && !react) BoxStyle.drop(view, st)
-    if (st.uniformBox != null && kind != StyleRules.BOX_UNIFORM) BoxStyle.dropUniform(view, st)
+    if (st.engineBox != null && kind != StyleRules.BOX_ENGINE) BoxStyle.dropEngine(view, st)
     val radiiChanged = create || !st.radii.contentEquals(p.radii)
-    val borderChanged = create || !st.border.contentEquals(p.border) || st.borderColor != p.borderColor
     val bgChanged = create || st.bg != p.bg
-    if (react) BoxStyle.apply(view, st, p, shadows) else if (kind == StyleRules.BOX_UNIFORM) BoxStyle.applyUniform(view, st, p)
-    if (kind == StyleRules.BOX_PLAIN && (radiiChanged || borderChanged || bgChanged)) {
+    if (react) BoxStyle.apply(view, st, p, shadows) else if (kind == StyleRules.BOX_ENGINE) BoxStyle.applyEngine(view, st, p)
+    if (kind == StyleRules.BOX_PLAIN && (radiiChanged || bgChanged)) {
+      // A fill and one radius for every corner, with no border: a `GradientDrawable` (the same pixels as React Native's).
       p.radii.copyInto(st.radii)
       p.border.copyInto(st.border)
       st.borderColor = p.borderColor
       st.bg = p.bg
-      val hasRadius = p.radii.any { it > 0f }
-      val borderW = max(max(p.border[0], p.border[1]), max(p.border[2], p.border[3]))
-      val need = (p.bg ushr 24) != 0 || hasRadius || borderW > 0f
+      val need = (p.bg ushr 24) != 0 || p.radii[0] > 0f
       if (need) {
         var d = st.drawable
         if (d == null) {
@@ -312,17 +313,7 @@ object Props {
           view.background = d
         }
         if (bgChanged) d.setColor(p.bg)
-        if (radiiChanged) {
-          val r = p.radii
-          if (r[0] == r[1] && r[1] == r[2] && r[2] == r[3]) {
-            d.cornerRadius = r[0]
-          } else {
-            d.cornerRadii = floatArrayOf(r[0], r[0], r[1], r[1], r[2], r[2], r[3], r[3])
-          }
-        }
-        if (borderChanged) {
-          d.setStroke(Math.round(borderW), p.borderColor)
-        }
+        if (radiiChanged) d.cornerRadius = p.radii[0]
       } else if (st.drawable != null) {
         st.drawable = null
         view.background = null
@@ -345,9 +336,12 @@ object Props {
       view.clipChildren = false
     } else if (view is ViewGroup) view.clipChildren = hidden
     val maxRadius = max(max(p.radii[0], p.radii[1]), max(p.radii[2], p.radii[3]))
-    // A view React Native's drawables draw clips its children to the padding box itself (`EngineView.dispatchDraw`), and a clip of the whole view to its outline would cut
-    // off the outset shadow they draw around it.
-    if (hidden && maxRadius > 0f && !((st.boxStyle || st.uniformBox != null) && (view is EngineView || st.boxOutset))) {
+    // A view whose box is the engine's drawable or React Native's clips what it draws to the padding box itself, as React Native's views do (`EngineView.dispatchDraw`, a scroll view's
+    // `dispatchDraw`, `EngineText.onDraw` and `EngineImage.onDraw`: the background, and the shadow it draws around the view, are not clipped), and a clip of the whole view to its
+    // outline would cut that shadow off. Another kind of view (an input) keeps the outline clip unless a shadow of it is outset.
+    val boxed = st.boxStyle || st.engineBox != null
+    val clipsItself = boxed && (view is EngineView || view is EngineText || view is EngineImage || view is EngineScrollable)
+    if (hidden && maxRadius > 0f && !clipsItself && !(boxed && st.boxOutset)) {
       if (!st.outlineClip) {
         st.outlineClip = true
         view.outlineProvider = RoundedOutline(st)

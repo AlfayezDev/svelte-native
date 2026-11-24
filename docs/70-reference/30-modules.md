@@ -21,6 +21,9 @@ The main entry: components, navigation, the app's state, animation, gestures and
 | `Modal` | Content over the whole screen. [Modal](modal) |
 | `SafeAreaView` | A view padded by the safe area. [SafeAreaView](safe-area-view) |
 | `KeyboardAvoidingView` | A view that moves out of the keyboard's way. [KeyboardAvoidingView](keyboard-avoiding-view) |
+| `KeyboardStickyView` | A view that rides the keyboard, frame by frame. [KeyboardStickyView](keyboard-sticky-view) |
+| `KeyboardChatScrollView` | A scroll view for a chat thread, lifted by the keyboard. [KeyboardChatScrollView](keyboard-chat-scroll-view) |
+| `KeyboardAwareScrollView` | A scroll view that keeps the focused input above the keyboard. [KeyboardAwareScrollView](keyboard-aware-scroll-view) |
 | `ActivityIndicator` | A spinner. [ActivityIndicator](activity-indicator) |
 | `Screen` | A screen's header, toolbar, sheet and system bars. [Screen](screen) |
 | `Stack` | The options of a stack navigator, in its layout. [Stack](stack) |
@@ -47,6 +50,7 @@ Animations on the UI thread, with Reanimated. [Animation](animation) Reanimated 
 | --- | --- |
 | `AnimatedView` | A `View` with `animatedStyle`, `animatedProps` and layout animations. |
 | `createSharedValue(initial)` | A value both threads can read, cancelled when the component is destroyed. |
+| `createKeyboardMotion()` | The keyboard's `height`, `progress` and `state` as shared values, moved with every frame of its animation. [Animation](animation#keyboard-motion) |
 | `withTiming`, `withSpring`, `withRepeat`, `withSequence`, `withDelay` | Animate a shared value. |
 | `cancelAnimation(value)` | Stops a shared value's animation. |
 | `Easing`, `ReduceMotion` | Timing curves; the reduce motion setting of an animation. |
@@ -100,7 +104,7 @@ The handle and option types (`VideoHandle`, `LottieHandle`, `MapHandle`, `WebVie
 
 ## expo-svelte/platform
 
-React Native's platform modules, typed: `Platform`, `Appearance`, `Dimensions`, `PixelRatio`, `Linking`, `Keyboard`, `AppState`, `BackHandler`, `Share`, `Vibration` and `Alert`. Each loads the first time it's used. [Platform APIs](platform-apis)
+React Native's platform modules, typed: `Platform`, `Appearance`, `Dimensions`, `PixelRatio`, `Linking`, `Keyboard`, `KeyboardController`, `AppState`, `BackHandler`, `Share`, `Vibration` and `Alert`. Each loads the first time it's used. [Platform APIs](platform-apis)
 
 It also has the two lookups of native modules: `turboModule<T>(name)` returns a TurboModule by name and throws when the build doesn't have it, and `nativeModule<T>(name)` returns a legacy NativeModule by name, or `undefined`. [Native libraries](native-libraries#calling-a-native-module-directly)
 

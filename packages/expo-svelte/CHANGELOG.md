@@ -4,6 +4,16 @@ Notable changes to `expo-svelte` (named `@alfayez/svelte-native` up to 0.4.0-rc.
 
 ## Unreleased
 
+### Added
+
+- **Views that follow the keyboard frame by frame, on Android.** The engine hears each frame of the keyboard's animation (the window insets animation callback, on the main thread, in the frame the window moves in) and writes what moves with it there, with no JavaScript in between, so a busy JavaScript thread does not hold them back:
+  - `KeyboardStickyView`: a view that rides the keyboard (`offset: { closed, opened }`, `enabled`), as react-native-keyboard-controller's: its translation is the keyboard's height plus the offset for how far it has opened. It is added to the view's own transform, which a commit or an `animatedStyle` does not take away.
+  - `KeyboardChatScrollView`: a `ScrollView` for a chat thread whose content lifts with the keyboard (`keyboardLiftBehavior`: `'always'`, `'whenAtEnd'`, `'never'`; `offset`), keeps the room the keyboard takes at its bottom while it is up, and tells `onEndVisible` when the end of the thread comes into view or leaves it. The lift's numbers are kb-controller's (`whenAtEnd` is within 20 points of the end).
+  - `KeyboardAwareScrollView`: a `ScrollView` that scrolls the focused input above the keyboard as the keyboard rises, and back as it closes (`bottomOffset`, `extraKeyboardSpace`, `disableScrollOnKeyboardHide`, `enabled`), and to the next input when the focus moves with the keyboard up.
+  - `KeyboardAvoidingView` with `behavior="position"` moves with the keyboard; `'padding'` and `'height'` still change once, when the keyboard starts to move.
+  - `createKeyboardMotion()` gives the keyboard's `height`, `progress` and `state` as shared values written on the UI thread with each frame, for your own `animatedStyle`. `insets.keyboardState` (`'closed'`, `'opening'`, `'open'`, `'closing'`) is the same fact as reactive state, once for each move; `KeyboardController.setFocusTo('next' | 'prev' | 'current')` from `expo-svelte/platform` moves the focus between inputs (Android). On iOS the components move once, when the keyboard starts to move, as before.
+  - The library's copy of Reanimated gets a fourth patch: `subscribeForKeyboardEvents` takes the keyboard's events from the engine, not from a window insets listener of its own (which replaces the decor view's and reports whole dips). It needs a new native build.
+
 ### Fixed
 
 - An `autocomplete` of one token is read whatever its case, as HTML reads it: `autocomplete="CURRENT-PASSWORD"` or `"OFF"` on an `<input>` (or a `TextInput`'s `autoComplete`) gives the same autofill hint as the lowercase value. It gave none, while a value of several words (`"SECTION-SIGNIN USERNAME"`) was already read so (#114).

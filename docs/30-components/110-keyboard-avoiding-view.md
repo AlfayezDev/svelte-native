@@ -50,4 +50,6 @@ It also takes the props of [`View`](view#props).
 | `'height'` | Shrinks the view by that much. |
 | `'position'` | Lifts an inner container by that much, leaving the view's own size alone. |
 
-It measures where the view is on screen, so it works below a header without an offset. The content moves to its new place at once: the change isn't animated with the keyboard yet.
+It measures where the view is on screen, so it works below a header without an offset.
+
+On Android `'position'` moves with every frame of the keyboard's animation: the engine works out how far the keyboard covers the view when it starts to open, and lifts the inner container by that much in proportion to how far the keyboard has risen, in the frame the keyboard moves in, with no JavaScript in between. `'padding'` and `'height'` change the view's layout, which is JavaScript's, so they change once, when the keyboard starts to move; for a view that has to follow the keyboard frame by frame, use `'position'` or a [`KeyboardStickyView`](keyboard-sticky-view).

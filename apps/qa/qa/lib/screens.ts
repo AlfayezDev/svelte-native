@@ -296,6 +296,24 @@ const signedOutCases: ScreenCase[] = [
 		title: "Transitions",
 		scrolled: ["Shuffle the list", "Close the panel"],
 	}),
+	// The box styles lab (SPEC.md "Box styles"; `qa/README.md`, "Box styles"): the box shadows, borders and transform origins the Android engine draws with React Native's own drawables, one tile
+	// each (`src/lib/native/dev/styles-cases.ts`), a page per kind; Android only (the iPhone draws these with UIKit). Nothing moves when it is photographed: the animated tiles of `origin` are at their end value 300 ms after the screen opens.
+	screenCase("lab-styles-shadow", "/__dev/styles?mode=shadow", `${dev}/styles?mode=shadow`, label("Focus ring"), {
+		androidOnly: true,
+		layout: "header",
+		title: "Box styles",
+		controls: ["Focus ring"],
+	}),
+	screenCase("lab-styles-border", "/__dev/styles?mode=border", `${dev}/styles?mode=border`, label("Box styles"), {
+		androidOnly: true,
+		layout: "header",
+		title: "Box styles",
+	}),
+	screenCase("lab-styles-origin", "/__dev/styles?mode=origin", `${dev}/styles?mode=origin`, label("Box styles"), {
+		androidOnly: true,
+		layout: "header",
+		title: "Box styles",
+	}),
 	// The accessibility lab (SPEC.md "Accessibility props"): the state, value, hint and actions of each control are checked against the dump
 	// (`expect`) and, for what the dump cannot show, against the node info the lab logs (`info`). Labels are what React Native's views would
 	// say for the same props: "mixed", "busy" and the value's text follow the label, joined by ", ".
@@ -575,6 +593,7 @@ export const coveredRouteDirectories = [
 	"__dev/html",
 	"__dev/screen",
 	"__dev/screens",
+	"__dev/styles",
 	"__dev/transitions",
 	"__dev/tree/home",
 	"__dev/tree/home/detail/[id]",

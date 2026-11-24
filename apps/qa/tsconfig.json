@@ -19,6 +19,7 @@
 		"src/routes/**/+mobile.svelte",
 		"src/routes/**/+layout.mobile.svelte",
 		"src/routes/**/+error.mobile.svelte",
-		"metro.config.cjs"
+		"metro.config.cjs",
+		"qa/styles-reference"
 	]
 }

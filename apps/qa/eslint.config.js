@@ -47,7 +47,7 @@ export default defineConfig(
 		},
 	},
 	{
-		files: ["*.config.cjs", "qa/smoke-packages.cjs", "qa/smoke-personal-team.cjs"],
+		files: ["*.config.cjs", "qa/smoke-packages.cjs", "qa/smoke-personal-team.cjs", "qa/styles-reference/metro.config.cjs"],
 		rules: { "@typescript-eslint/no-require-imports": "off" },
 	},
 );

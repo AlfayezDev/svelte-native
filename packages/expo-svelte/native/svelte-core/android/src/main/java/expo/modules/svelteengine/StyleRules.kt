@@ -38,19 +38,43 @@ internal object StyleRules {
 
   /** Who draws a view's box. */
   const val BOX_PLAIN = 0
-  const val BOX_UNIFORM = 1
+  const val BOX_ENGINE = 1
   const val BOX_REACT = 2
 
+  fun hasRadius(radii: FloatArray): Boolean = radii[0] > 0f || radii[1] > 0f || radii[2] > 0f || radii[3] > 0f
+
   /**
-   * Who draws the box of a view (`Props.applyCommon`; SPEC.md, "Box styles"): [BOX_PLAIN], the engine's `GradientDrawable`, for a fill with no border (the same pixels as React Native's);
-   * [BOX_UNIFORM], `UniformBoxDrawable`, for a fill and a border of one width and one colour, solid, no shadow, which it draws as React Native's `BorderDrawable` does, in one drawable;
-   * [BOX_REACT], React Native's own drawables (`BackgroundStyleApplicator`), for a box shadow (a layer that is off counts) and for a border that is dashed or dotted, of sides of different
-   * widths or of different colours. [widest] is the widest border width in px, [colors] is [sideColors].
+   * `BorderDrawable.fastBorderCompatibleColorOrZero` for the engine's px widths ([widths]: left, top, right, bottom, each rounded to a pixel as `drawRectangularBorders` rounds it) and
+   * colours ([colors], the same order): the one colour every side that has a width has, when none of the four colours is translucent, else 0. Such a border is drawn as one stroke along the
+   * middle of each side; any other as four quadrilaterals.
    */
-  fun boxKind(shadows: IntArray?, widest: Float, borderStyle: Int, widths: FloatArray, colors: IntArray): Int {
+  fun fastBorderColor(widths: FloatArray, colors: IntArray): Int {
+    for (side in 0..3) if ((colors[side] ushr 24) < 255) return 0
+    var and = -1
+    var or = 0
+    for (side in 0..3) if (Math.round(widths[side]) > 0) {
+      and = and and colors[side]
+      or = or or colors[side]
+    }
+    return if (and == or) and else 0
+  }
+
+  /**
+   * Who draws the box of a view (`Props.applyCommon`; SPEC.md, "Box styles"):
+   * - [BOX_PLAIN], the engine's `GradientDrawable`: a fill with no border and one radius for every corner (the same pixels as React Native's).
+   * - [BOX_ENGINE], `BoxDrawable`, which draws what React Native's `BackgroundDrawable` and `BorderDrawable` draw for it, in one drawable with no layers: a fill with corners of different
+   *   radii (a `GradientDrawable` scales radii that overflow together, React Native's scale each corner); a solid border of one width and one colour with any radii; a border of square
+   *   corners whose sides have their own widths or colours (a divider is a bottom border only), solid, or dashed and dotted when it is one colour.
+   * - [BOX_REACT], React Native's own drawables (`BackgroundStyleApplicator`): a box shadow (a layer that is off counts), and a border that is dashed or dotted with round corners, or of
+   *   sides of different widths or colours with round corners.
+   * [widths], [colors] (see [sideColors]) and [radii] are the four sides and corners in px, left, top, right, bottom and top left, top right, bottom right, bottom left.
+   */
+  fun boxKind(shadows: IntArray?, widths: FloatArray, colors: IntArray, borderStyle: Int, radii: FloatArray): Int {
     if (shadows != null) return BOX_REACT
-    if (widest <= 0f) return BOX_PLAIN
-    return if (borderStyle != 0 || !uniform(widths) || !uniform(colors)) BOX_REACT else BOX_UNIFORM
+    val rounded = hasRadius(radii)
+    if (widest(widths) <= 0f) return if (rounded && !uniform(radii)) BOX_ENGINE else BOX_PLAIN
+    if (!rounded) return if (borderStyle == 0 || fastBorderColor(widths, colors) != 0) BOX_ENGINE else BOX_REACT
+    return if (borderStyle == 0 && uniform(widths) && uniform(colors)) BOX_ENGINE else BOX_REACT
   }
 
   fun widest(widths: FloatArray): Float = maxOf(maxOf(widths[0], widths[1]), maxOf(widths[2], widths[3]))
@@ -78,6 +102,60 @@ internal object StyleRules {
     r[5] = brv * minOf(bottomEdgeRadiiScale, rightEdgeRadiiScale)
     r[6] = blh * minOf(bottomEdgeRadiiScale, leftEdgeRadiiScale)
     r[7] = blv * minOf(bottomEdgeRadiiScale, leftEdgeRadiiScale)
+  }
+
+  /**
+   * What `setNativeProps` does to the sides of [style] (record 141's state), as React Native's `setBorderColor` and `setBorderStyle` do to the edges of its drawables, so far as the
+   * engine can tell the edges apart (it holds the colour each side resolved to, not which edge gave it): `borderColor` colours every side; the colour of one side takes that side only
+   * (the others keep what they had, or [uniform], the border's own colour, when the border had one colour); `borderStyle` dashed or dotted makes the border one that needs record 141.
+   */
+  fun setBorderColor(style: StyleRecords, color: Int) {
+    if (style.hasSides) {
+      style.sideMask = 15
+      style.sideColors.fill(color)
+    }
+  }
+
+  fun setSideColor(style: StyleRecords, side: Int, color: Int, uniform: Int) {
+    if (!style.hasSides) {
+      style.hasSides = true
+      style.sideMask = 15
+      style.sideColors.fill(uniform)
+    }
+    style.sideColors[side] = color
+    style.sideMask = style.sideMask or (1 shl side)
+  }
+
+  fun setBorderStyle(style: StyleRecords, name: String?, uniform: Int) {
+    val code = BORDER_STYLES.indexOf(name)
+    style.borderStyle = if (code < 0) 0 else code
+    if (code > 0 && !style.hasSides) {
+      style.hasSides = true
+      style.sideMask = 15
+      style.sideColors.fill(uniform)
+    }
+  }
+
+  /**
+   * The layers of a `boxShadow` that `setNativeProps` was given (the list `processBoxShadow` makes of it: maps of `offsetX`, `offsetY`, `blurRadius`, `spreadDistance`, `color`, `inset`) as
+   * record 140's ints, null for none. A layer with no colour is black, as in React Native; [color] reads a colour (null for one it cannot).
+   */
+  fun shadowLayers(layers: List<*>?, color: (Any?) -> Int?): IntArray? {
+    if (layers == null) return null
+    val maps = layers.filterIsInstance<Map<*, *>>()
+    if (maps.isEmpty()) return null
+    val out = IntArray(maps.size * StyleRecords.SHADOW_INTS)
+    for ((k, layer) in maps.withIndex()) {
+      val at = k * StyleRecords.SHADOW_INTS
+      fun length(name: String) = ((layer[name] as? Number)?.toFloat() ?: 0f).toRawBits()
+      out[at] = length("offsetX")
+      out[at + 1] = length("offsetY")
+      out[at + 2] = length("blurRadius")
+      out[at + 3] = length("spreadDistance")
+      out[at + 4] = if (layer["color"] == null) BLACK else color(layer["color"]) ?: BLACK
+      out[at + 5] = if (layer["inset"] == true || (layer["inset"] as? Number)?.toInt() == 1) 1 else 0
+    }
+    return out
   }
 
   /**

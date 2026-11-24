@@ -44,6 +44,7 @@ java -cp "$work/a11y-live-check.jar" expo.modules.svelteengine.A11yLiveCheckKt
 g++ -std=c++20 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined "$here/cpp/StyleWireTest.cpp" -o "$work/style-wire-test"
 "$work/style-wire-test" "$work/style.tsv"
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/StyleWire.kt" \
+  "$here/../main/java/expo/modules/svelteengine/BoxGeometry.kt" \
   "$here/../main/java/expo/modules/svelteengine/StyleRules.kt" \
   "$here/kotlin/expo/modules/svelteengine/StyleRulesCheck.kt" -include-runtime -d "$work/style-check.jar"
 java -cp "$work/style-check.jar" expo.modules.svelteengine.StyleRulesCheckKt "$work/style.tsv" \

@@ -7,15 +7,16 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
-import com.facebook.react.uimanager.BackgroundStyleApplicator
 import com.facebook.react.uimanager.PointerEvents
 import com.facebook.react.uimanager.ReactPointerEventsView
 import expo.modules.svelteengine.A11y
+import expo.modules.svelteengine.BoxStyle
 import expo.modules.svelteengine.A11yRecords
 import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.Props
 import expo.modules.svelteengine.StyleRecords
-import expo.modules.svelteengine.UniformBoxDrawable
+import expo.modules.svelteengine.BoxDrawable
+import expo.modules.svelteengine.PaddingBoxClip
 
 /** Per-view state the mounting layer keeps outside of View ids and tags. */
 class NodeState {
@@ -74,8 +75,10 @@ class NodeState {
    * [bg] are not once the node is reset for the pool: they are zero then and the drawables keep what they had), to write only what changed. A recycled view keeps its drawables.
    */
   var boxStyle = false
-  /** The box is drawn by `UniformBoxDrawable` (a fill and a border of one width and one colour): this one. It holds its own state, and a recycled view keeps it like [boxStyle]'s drawables. */
-  var uniformBox: UniformBoxDrawable? = null
+  /** The box is drawn by [BoxDrawable] (`StyleRules.boxKind`): this one. It holds its own state, and a recycled view keeps it like [boxStyle]'s drawables. */
+  var engineBox: BoxDrawable? = null
+  /** What clips a view whose box is React Native's drawables to its padding box, without allocating for each draw (`BoxStyle.clipToPaddingBox`). */
+  var boxClip: PaddingBoxClip? = null
   var boxRtl = false
   var boxShadows: IntArray? = null
   var boxBorderStyle = 0
@@ -238,18 +241,18 @@ open class EngineView(context: Context) : ViewGroup(context), EngineNode {
       return
     }
     val saved = canvas.save()
-    val uniform = node.uniformBox
-    if (node.boxStyle) {
-      // React Native's own clip, round corners and border widths of its drawables included (`ReactViewGroup.dispatchDraw`).
-      BackgroundStyleApplicator.clipToPaddingBox(this, canvas)
-    } else if (uniform != null) {
-      uniform.clipToPaddingBox(this, canvas)
-    } else {
+    // React Native's own clip, round corners and border widths included (`ReactViewGroup.dispatchDraw`), for a view whose box is its drawables or the engine's.
+    if (!BoxStyle.clipToPaddingBox(this, node, canvas)) {
       val widths = node.border
       canvas.clipRect(widths[0], widths[1], width - widths[2], height - widths[3])
     }
     super.dispatchDraw(canvas)
     canvas.restoreToCount(saved)
+  }
+
+  override fun onRtlPropertiesChanged(layoutDirection: Int) {
+    super.onRtlPropertiesChanged(layoutDirection)
+    BoxStyle.directionChanged(this, node, layoutDirection)
   }
 
   override fun onViewAdded(child: View) {

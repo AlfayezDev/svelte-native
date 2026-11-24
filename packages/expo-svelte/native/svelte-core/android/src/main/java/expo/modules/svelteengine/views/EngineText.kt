@@ -11,6 +11,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
 import expo.modules.svelteengine.A11y
+import expo.modules.svelteengine.BoxStyle
 import expo.modules.svelteengine.TextHitRules
 import expo.modules.svelteengine.TextLayouts
 import expo.modules.svelteengine.TextSpec
@@ -161,8 +162,16 @@ class EngineText(context: Context) : View(context), EngineNode {
   override fun onDraw(canvas: Canvas) {
     val l = layout ?: return
     canvas.save()
+    // `overflow: hidden` clips the text to the padding box, round corners included, when the box is the engine's drawable or React Native's (`ReactTextView.onDraw`): the
+    // background, and the shadow it draws around the view, are drawn before this and are not clipped.
+    if (node.overflow != 0) BoxStyle.clipToPaddingBox(this, node, canvas)
     canvas.translate(node.padL, node.padT + verticalOffset)
     l.draw(canvas)
     canvas.restore()
+  }
+
+  override fun onRtlPropertiesChanged(layoutDirection: Int) {
+    super.onRtlPropertiesChanged(layoutDirection)
+    BoxStyle.directionChanged(this, node, layoutDirection)
   }
 }

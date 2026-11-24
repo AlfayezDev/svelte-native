@@ -8,6 +8,7 @@ import expo.modules.svelteengine.views.EngineInput
 import expo.modules.svelteengine.views.EngineNode
 import expo.modules.svelteengine.views.EngineScroll
 import expo.modules.svelteengine.views.EngineScrollable
+import expo.modules.svelteengine.views.isRtlLayout
 import kotlin.math.atan2
 import kotlin.math.hypot
 import kotlin.math.roundToInt
@@ -71,7 +72,7 @@ object Commands {
   }
 
   /**
-   * Applies a partial prop set: opacity, backgroundColor, borderRadius/Width/Color, transform, overflow,
+   * Applies a partial prop set: opacity, backgroundColor, borderRadius/Width/Color (and the colour of each side), borderStyle, boxShadow, transformOrigin, transform, overflow,
    * pointerEvents, zIndex, elevation, accessibility props, testID and scroll props (also under `style`). The shared
    * decoder path (`Props.applyCommon`) takes full records, so the view's current values are read back first and the
    * given ones laid over them. Lengths are dp, colors are processColor ints (or "#rrggbb" strings).
@@ -88,11 +89,28 @@ object Commands {
 
     val p = PropSet()
     snapshot(view, node, p)
+    var borderColor: Int? = null
+    var borderStyle: String? = null
+    val sideColors = IntArray(4)
+    var sideSet = 0
+    val rtl = view.isRtlLayout()
     for ((k, v) in flat) {
       when (k) {
         "opacity" -> num(v)?.let { p.opacity = it.toFloat() }
         "backgroundColor" -> color(v)?.let { p.bg = it }
-        "borderColor" -> color(v)?.let { p.borderColor = it }
+        "borderColor" -> color(v)?.let { borderColor = it }
+        "borderLeftColor" -> color(v)?.let { sideColors[0] = it; sideSet = sideSet or 1 }
+        "borderTopColor" -> color(v)?.let { sideColors[1] = it; sideSet = sideSet or 2 }
+        "borderRightColor" -> color(v)?.let { sideColors[2] = it; sideSet = sideSet or 4 }
+        "borderBottomColor" -> color(v)?.let { sideColors[3] = it; sideSet = sideSet or 8 }
+        "borderStartColor" -> color(v)?.let { val side = if (rtl) 2 else 0; sideColors[side] = it; sideSet = sideSet or (1 shl side) }
+        "borderEndColor" -> color(v)?.let { val side = if (rtl) 0 else 2; sideColors[side] = it; sideSet = sideSet or (1 shl side) }
+        "borderStyle" -> borderStyle = v as? String
+        "boxShadow" -> when (v) {
+          null -> p.style.shadows = null
+          is List<*> -> p.style.shadows = StyleRules.shadowLayers(v) { color(it) }
+          else -> Log.w(TAG, "setNativeProps: boxShadow takes the list `processBoxShadow` makes of it, not $v")
+        }
         "borderRadius" -> num(v)?.let { r -> p.radii.fill((r * density).toFloat()) }
         "borderTopLeftRadius" -> num(v)?.let { p.radii[0] = (it * density).toFloat() }
         "borderTopRightRadius" -> num(v)?.let { p.radii[1] = (it * density).toFloat() }
@@ -112,6 +130,13 @@ object Commands {
         "accessibilityRole" -> p.role = v as? String
       }
     }
+    // The border's colour, then its style, then the sides that were given a colour of their own: `borderColor` colours every side, a side's own colour wins over it as in a style.
+    borderColor?.let {
+      p.borderColor = it
+      StyleRules.setBorderColor(p.style, it)
+    }
+    if (flat.containsKey("borderStyle")) StyleRules.setBorderStyle(p.style, borderStyle, p.borderColor)
+    for (side in 0..3) if (sideSet and (1 shl side) != 0) StyleRules.setSideColor(p.style, side, sideColors[side], p.borderColor)
     Props.applyCommon(view, node, p, false)
 
     val enabled = flat["scrollEnabled"]

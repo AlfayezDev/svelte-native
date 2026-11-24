@@ -323,7 +323,7 @@ private fun reanimated(vendor: String) {
 private class Rig(var main: Boolean = true) {
   val queue = ArrayList<() -> Unit>()
   val dropped = ArrayList<Int>()
-  val channel = KeyboardChannel({ main }, { queue.add(it) }, { 63 }, { 2.625f }, { id, _ -> dropped.add(id) })
+  val channel = KeyboardChannel({ main }, { queue.add(it) }, { 63 }, { 2.625f }, { id: Int, _: Throwable -> dropped.add(id); Unit })
   fun drain() { val run = queue.toList(); queue.clear(); val was = main; main = true; run.forEach { it() }; main = was }
   /** A subscriber of Reanimated's, that records what it was told. */
   fun reanimated(translucent: Boolean, seen: MutableList<String>): Int = channel.subscribe({ state: Int, dp: Int -> seen.add("$state:$dp") }, translucent)
@@ -391,7 +391,7 @@ private fun channel() {
   expect("one raw, one not", listOf(raw.toList(), whole.toList()), listOf(listOf("1:1050"), emptyList<String>()))
   // A listener that fails is dropped and does not stop the others.
   rig = Rig(); whole = mutableListOf()
-  val bad = rig.channel.subscribe({ _: Int, _: Int -> error("a bad worklet") })
+  val bad: Int = rig.channel.subscribe({ _: Int, _: Int -> throw IllegalStateException("a bad worklet") })
   rig.reanimated(true, whole)
   rig.channel.start(1050); rig.channel.frame(525); rig.channel.frame(1050)
   expect("the bad one is dropped once", rig.dropped, listOf(bad))

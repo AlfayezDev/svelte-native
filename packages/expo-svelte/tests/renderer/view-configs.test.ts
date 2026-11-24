@@ -30,11 +30,17 @@ const colors: unknown[] = [
 const samples: Record<string, unknown[]> = {
   processColor: colors,
   processTransform: [[{ translateX: 10 }], [{ scale: 2 }, { rotate: "45deg" }], [], "translateX(10px) scale(2)", "rotate(45deg)", "translate(10px, 5px)"],
-  processTransformOrigin: [["50%", "50%", 0], [10, 20, 0], "top left", "10px 20px", "center", "right bottom 5px"],
+  processTransformOrigin: [["50%", "50%", 0], [10, 20, 0], "top left", "10px 20px", "center", "right bottom 5px", "25% 75%", "left center", "bottom right", ["100%", "0%", 0], ["100%", 0, 0]],
   processAspectRatio: [1.5, 0, 2, "16/9", "2", "auto", "1 / 2", "x"],
   processFontVariant: [["tabular-nums"], [], "small-caps oldstyle-nums", "", "  lining-nums  "],
   processFilter: [[{ blur: 5 }], [], "blur(5px) brightness(0.5)", "grayscale(50%)"],
-  processBoxShadow: [[{ offsetX: 1, offsetY: 2, blurRadius: 3, color: "red" }], [], "1px 2px 3px red", "inset 0 0 5px rgba(0,0,0,0.5)"],
+  processBoxShadow: [
+    [{ offsetX: 1, offsetY: 2, blurRadius: 3, color: "red" }], [], "1px 2px 3px red", "inset 0 0 5px rgba(0,0,0,0.5)",
+    // The box shadows the Android engine draws with React Native's drawables (the lab page of apps/qa): a focus ring and its halo, an inset line, a card, a hairline, one that is off.
+    "0 0 0 1px #66666f, 0 0 0 4px rgba(9,9,11,0.07)", "inset 0 0 0 1px #66666f", "0 10px 30px -10px rgba(9,9,11,0.18)", "0 1px 2px rgba(0,0,0,0.08)", "0 0 0 0 transparent",
+    "inset 0 0 0 3px #f59e0b, 0 2px 8px rgba(9,9,11,0.35), 6px 6px 0 -2px #f97316",
+    [{ offsetX: 2, offsetY: 4, blurRadius: 6, spreadDistance: 1, color: "rgba(0,0,0,0.4)" }, { offsetX: 0, offsetY: 0, blurRadius: 10, color: "#3b82f6", inset: true }],
+  ],
   processBackgroundImage: ["linear-gradient(to right, red, blue)", [], [{ type: "linear-gradient", direction: "to right", colorStops: [{ color: "red", positions: ["0%"] }, { color: "blue", positions: ["100%"] }] }]],
   processBackgroundSize: ["cover", "contain", "50% 50%", [{ x: "50%", y: "50%" }]],
   processBackgroundPosition: ["center", "top left", "10px 20px", [{ top: "10%", left: "20%" }]],
@@ -109,6 +115,20 @@ for (const platform of platforms) {
     expect(create("#ffffff")).toBe(platform === "android" ? -1 : 4294967295);
     expect(create("#000000")).toBe(platform === "android" ? -16777216 : 4278190080);
     expect(create("rgba(0,0,0,0.5)")).toBe(platform === "android" ? 2147483648 | 0 : 2147483648);
+  }, timeout);
+
+  test(`${platform}: a box shadow layer without a colour ${platform === "android" ? "is black, as React Native's Android views draw it, and `transparent` stays 0" : "is sent as React Native sends it"}`, async () => {
+    const reference = await loadReference(platform);
+    const view = reference.configs.viewConfigFor("RCTView", platform);
+    const registered = reference.get("RCTView");
+    const payload = (boxShadow: unknown) => (reference.configs.createPayload({ style: { boxShadow } }, view) as { boxShadow: Array<Record<string, unknown>> }).boxShadow;
+    const same = ["0 0 0 1px #66666f, 0 0 0 4px rgba(9,9,11,0.07)", "inset 0 0 0 1px #66666f", "0 0 0 0 transparent", "0 10px 30px -10px rgba(9,9,11,0.18)"];
+    for (const boxShadow of same) expect(payload(boxShadow), boxShadow).toEqual((reference.create({ style: { boxShadow } }, registered.validAttributes) as { boxShadow: unknown }).boxShadow);
+    expect(payload("0 0 0 0 transparent")[0]?.color).toBe(0);
+    const bare = payload("0 2px 4px");
+    expect(bare).toHaveLength(1);
+    expect(bare[0]?.color, "the layer's colour").toBe(platform === "android" ? -16777216 : undefined);
+    expect(payload([{ offsetX: 1, offsetY: 2 }, { offsetX: 3, offsetY: 4, color: "red" }]).map((layer) => layer.color)).toEqual(platform === "android" ? [-16777216, -65536] : [undefined, platform === "android" ? -65536 : 4294901760]);
   }, timeout);
 
   test(`${platform}: a colour answers the same when it is converted again and after the colour cache filled up and emptied`, async () => {

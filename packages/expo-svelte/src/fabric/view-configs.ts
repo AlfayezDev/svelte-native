@@ -44,7 +44,7 @@ const reactNativeFontVariant = required(() => require("react-native/Libraries/St
 const reactNativeTransform = required(() => require("react-native/Libraries/StyleSheet/processTransform").default);
 const reactNativeTransformOrigin = required(() => require("react-native/Libraries/StyleSheet/processTransformOrigin").default);
 const filter = required(() => require("react-native/Libraries/StyleSheet/processFilter").default);
-const boxShadow = required(() => require("react-native/Libraries/StyleSheet/processBoxShadow").default);
+const reactNativeBoxShadow = required(() => require("react-native/Libraries/StyleSheet/processBoxShadow").default);
 const backgroundImage = required(() => require("react-native/Libraries/StyleSheet/processBackgroundImage").default);
 const backgroundSize = required(() => require("react-native/Libraries/StyleSheet/processBackgroundSize").default);
 const backgroundPosition = required(() => require("react-native/Libraries/StyleSheet/processBackgroundPosition").default);
@@ -111,6 +111,19 @@ const colorFor = (platform: Platform): Converter => {
 const arrayOr = (convert: Converter): Converter => (value) => (Array.isArray(value) && !dev() ? value : convert(value));
 const transform = arrayOr(reactNativeTransform);
 const transformOrigin = arrayOr(reactNativeTransformOrigin);
+/**
+ * `boxShadow`, as React Native's `processBoxShadow` leaves it. Fabric's Android colour is an integer in which 0 also means "no colour", so a layer written without one, which
+ * React Native's Android views draw black (`BackgroundStyleApplicator.setBoxShadow`), would reach the engine as a transparent one, and `transparent` would be told from it by
+ * nothing. On Android a layer without a colour is given black here; `transparent` stays 0.
+ */
+const boxShadowFor = (platform: Platform): Converter => {
+  if (platform !== "android") return reactNativeBoxShadow;
+  return (value) => {
+    const layers = reactNativeBoxShadow(value);
+    if (!Array.isArray(layers) || layers.every((layer: unknown) => (layer as Props)?.color !== undefined)) return layers;
+    return layers.map((layer: unknown) => ((layer as Props)?.color === undefined ? { ...(layer as Props), color: processColorValue("black", "android") } : layer));
+  };
+};
 const aspectRatio: Converter = (value) => (typeof value === "number" ? value : reactNativeAspectRatio(value));
 const fontVariant: Converter = (value) => (Array.isArray(value) ? value : reactNativeFontVariant(value));
 
@@ -540,7 +553,7 @@ function styleFor(platform: Platform): Table {
   fill(style, stylePlain, true);
   fill(style, styleColors, color);
   Object.assign(style, {
-    aspectRatio, transform, transformOrigin, fontVariant, filter, boxShadow,
+    aspectRatio, transform, transformOrigin, fontVariant, filter, boxShadow: boxShadowFor(platform),
     backgroundImage, backgroundSize, backgroundPosition, backgroundRepeat, fontVariationSettings,
     experimental_backgroundImage: backgroundImage, experimental_backgroundSize: backgroundSize,
     experimental_backgroundPosition: backgroundPosition, experimental_backgroundRepeat: backgroundRepeat,
@@ -555,7 +568,7 @@ function attributesFor(platform: Platform, kind: Kind): Table {
   fill(attributes, platform === "android" ? androidViewPlain : iosViewPlain, true);
   fill(attributes, viewColors, color);
   attributes.filter = filter;
-  attributes.boxShadow = boxShadow;
+  attributes.boxShadow = boxShadowFor(platform);
   if (platform === "android") {
     attributes.outlineColor = color;
     attributes.backgroundImage = backgroundImage;

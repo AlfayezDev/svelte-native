@@ -4,8 +4,20 @@ Notable changes to `expo-svelte` (named `@alfayez/svelte-native` up to 0.4.0-rc.
 
 ## Unreleased
 
+### Added
+
+- On Android, `boxShadow` is drawn, as React Native draws it. It takes a CSS string or an array of objects, any number of shadows, outside or `inset`, with an offset, `blurRadius`, `spreadDistance` (negative too) and a colour. A shadow follows the view's corner radii, is drawn behind the background and the border (an inset one over them, inside the border), and an outside shadow stays visible when the view has `overflow: 'hidden'`, whose clip is to the inside of the border. Changing it at run time works, and so does taking it away (`'0 0 0 0 transparent'`, or no `boxShadow`): a focus ring that comes and goes on an input is one style change. The drawing is React Native's own (`BackgroundStyleApplicator`), so it is the same pixels as a React Native view with the same style. It was ignored.
+- On Android, `transformOrigin` is read, in every form React Native takes: keywords (`'top left'`), percentages (`'25% 75%'`), lengths (`'10px 20px'`) and the array (`['100%', 0, 0]`), with two or three values. A transform turns about it, a static one and one that Reanimated (or the engine's animated write path) writes every frame, which now turns about the origin of the committed style instead of the view's centre. An origin given in percent follows the view when its size changes. It was ignored: every transform pivoted on the centre.
+- On Android, `borderStyle: 'dashed'` and `'dotted'` are drawn, as React Native draws them, with rounded corners too. Before, a dashed or dotted border was a solid line.
+- On Android, the border can have a colour for each side: `borderTopColor`, `borderRightColor`, `borderBottomColor`, `borderLeftColor`, `borderStartColor`, `borderEndColor`, over `borderColor`. Where two sides meet, the corner is split as React Native splits it, with a radius or without. Before, every side took the colour of the first side that had one.
+
+### Changed
+
+- On Android, a border with a width and no colour is black, as in React Native and on iOS. It was transparent, so `borderWidth: 1` alone drew nothing. `borderColor: 'transparent'` is still transparent, and a `boxShadow` layer written without a colour is black.
+
 ### Fixed
 
+- On Android, a border whose sides have different widths (`borderBottomWidth: 1` alone, `borderTopWidth: 1` with `borderBottomWidth: 6`) draws each side with its own width. Every side took the widest one, so a view with only a bottom border was boxed in on all four sides.
 - An `autocomplete` of one token is read whatever its case, as HTML reads it: `autocomplete="CURRENT-PASSWORD"` or `"OFF"` on an `<input>` (or a `TextInput`'s `autoComplete`) gives the same autofill hint as the lowercase value. It gave none, while a value of several words (`"SECTION-SIGNIN USERNAME"`) was already read so (#114).
 - On Android, the default push and pop no longer render the two screens into full-screen hardware layers: the screens are drawn whole and the stack fades them by laying the surface they fade against over them, which looks the same. The first push of a session spent 20 to 40 ms of one frame building those layers on a Galaxy A16; its worst frame there is now 31 to 37 ms instead of 39 to 55 ms (28 to 37 ms instead of 42 to 50 ms for a screen with long lists), and later pushes' worst frames are 14 to 21 ms instead of 19 to 26 ms. About 20 ms of the first push's longest frame remains: the GPU driver's own first-time work for a second screen, which a layer warmed ahead does not avoid. A screen scaled by predictive back, a screen with a background that is not an opaque colour, and the other `animation` values keep their layers (#111).
 

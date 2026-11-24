@@ -1,6 +1,7 @@
 package com.swmansion.reanimated.keyboard
 
 import com.facebook.react.bridge.ReactApplicationContext
+import com.swmansion.reanimated.SvelteEngineHook
 import java.lang.ref.WeakReference
 import java.util.concurrent.ConcurrentHashMap
 
@@ -22,6 +23,8 @@ class KeyboardAnimationManager(
         isStatusBarTranslucent: Boolean,
         isNavigationBarTranslucent: Boolean,
     ): Int {
+        // Example patch: the svelte-engine module is the keyboard's source, frame by frame, and Reanimated's own window insets handling stays off.
+        SvelteEngineHook.keyboardSubscribe?.let { subscribe -> return subscribe { state, height -> callback.invoke(state, height) } }
         val listenerId = mNextListenerId++
         if (mListeners.isEmpty()) {
             val keyboardAnimationCallback =
@@ -33,6 +36,10 @@ class KeyboardAnimationManager(
     }
 
     fun unsubscribeFromKeyboardUpdates(listenerId: Int) {
+        if (listenerId < 0) {
+            SvelteEngineHook.keyboardUnsubscribe?.invoke(listenerId)
+            return
+        }
         mListeners.remove(listenerId)
         if (mListeners.isEmpty()) {
             mWindowsInsetsManager.stopObservingChanges()

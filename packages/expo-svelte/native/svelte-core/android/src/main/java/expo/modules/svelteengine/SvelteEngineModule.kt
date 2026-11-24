@@ -28,11 +28,11 @@ class SvelteEngineModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("SvelteEngine")
 
-    Events("insets")
+    Events("insets", "endVisible")
 
     OnCreate { appContext.reactContext?.let { Capture.deleteLeftovers(listOf(it.cacheDir, it.externalCacheDir)) } }
 
-    OnDestroy { setAnimatedUpdater(null); AnimatedBridge.uninstall(); EngineInput.discardSpare(); Capture.deleteTemporaryFiles(); onMain { insets?.uninstall(); mountingManager?.foreign?.uninstall(); mountingManager?.disableGestures() } }
+    OnDestroy { setAnimatedUpdater(null); setKeyboardSource(null); AnimatedBridge.uninstall(); EngineInput.discardSpare(); Capture.deleteTemporaryFiles(); onMain { insets?.uninstall(); mountingManager?.foreign?.uninstall(); mountingManager?.disableGestures() } }
 
     Function("install") { reanimatedReady: Boolean? ->
       if (native != null) return@Function true
@@ -65,6 +65,7 @@ class SvelteEngineModule : Module() {
       engine.install(fabric, reanimatedReady == true)
       mountingManager = manager
       native = engine
+      manager.keyboard.endVisible = { tag, visible -> sendEvent("endVisible", mapOf("tag" to tag, "visible" to visible)) }
       installAnimatedHook(manager)
       attachRoot(reactContext, manager.root)
       // A recreated Activity (a font-scale change, a locale change) gets a new content view: the overlay moves to it. React
@@ -75,7 +76,7 @@ class SvelteEngineModule : Module() {
         override fun onHostDestroy() {}
       })
       onMain {
-        val tracker = Insets(manager.root) { sendEvent("insets", it) }
+        val tracker = Insets(manager.root, manager.keyboard) { sendEvent("insets", it) }
         insets = tracker
         tracker.install()
         if (lab.gesturesAtStart) manager.enableGestures()
@@ -116,6 +117,14 @@ class SvelteEngineModule : Module() {
 
     // Safe-area and keyboard insets of the overlay (SPEC.md, "Insets and keyboard"); null before the overlay is attached to a window (or while the window has no insets).
     Function("getInsets") { onMainBlocking { insets?.read() } }
+
+    // The views that follow the keyboard frame by frame (SPEC.md, "Keyboard motion"): a registration by tag (`follow`, `lift`, `aware`, `release`), made once by the
+    // component; the frames themselves never go through JavaScript. Fire-and-forget on the main thread. False while the engine is not installed.
+    Function("keyboardDrive") { tag: Int, name: String, args: List<Any?> ->
+      val manager = mountingManager ?: return@Function false
+      onMain { manager.keyboard.command(tag, name, args) }
+      true
+    }
 
     // Commands for engine tags. Fire-and-forget on the main thread, queued behind mounting batches already posted.
     Function("dispatchCommand") { tag: Int, name: String, args: List<Any?> ->
@@ -286,6 +295,22 @@ class SvelteEngineModule : Module() {
       }
     }
     AnimatedBridge.install(manager)
+    setKeyboardSource(manager.keyboard)
+  }
+
+  // Reanimated's keyboard events (`subscribeForKeyboardEvents`, what `createKeyboardMotion()` listens to) come from the engine's frames, not from a window insets callback
+  // of Reanimated's own (vendor-patches/react-native-reanimated/0004-keyboard-events-from-the-engine.patch): the listener is called on the main thread inside the
+  // frame's animation callback, with (kind, px) of `KeyboardDrive`.
+  private fun setKeyboardSource(drive: KeyboardDrive?) {
+    try {
+      val hook = Class.forName("com.swmansion.reanimated.SvelteEngineHook")
+      val subscribe: ((Function2<Int, Int, Unit>) -> Int)? = drive?.let { { listener -> it.subscribe { kind, px -> listener(kind, px) } } }
+      val unsubscribe: ((Int) -> Unit)? = drive?.let { { id -> it.unsubscribe(id) } }
+      hook.getMethod("setKeyboardSubscribe", Function1::class.java).invoke(null, subscribe)
+      hook.getMethod("setKeyboardUnsubscribe", Function1::class.java).invoke(null, unsubscribe)
+    } catch (e: ReflectiveOperationException) {
+      android.util.Log.i("SvelteEngine", "Reanimated keyboard source not available: ${e.javaClass.simpleName}")
+    }
   }
 
   private fun setAnimatedUpdater(updater: ((Int, ReadableMap) -> Boolean)?) {

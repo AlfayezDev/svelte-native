@@ -138,7 +138,8 @@ function rnghManagerProblems(read: Reader): string[] {
 export function reanimatedProblems(read: Reader): string[] {
   const base = "android/src/main";
   return [
-    ...inFile(read, `${base}/java/com/swmansion/reanimated/SvelteEngineHook.kt`, [["has no `updater` hook", has("var updater")]]),
+    ...inFile(read, `${base}/java/com/swmansion/reanimated/SvelteEngineHook.kt`, [["has no `updater` hook", has("var updater")], ["has no keyboard source for the engine", has("var keyboardSubscribe")]]),
+    ...inFile(read, `${base}/java/com/swmansion/reanimated/keyboard/KeyboardAnimationManager.kt`, [["does not take the keyboard's events from the engine", has("SvelteEngineHook.keyboardSubscribe")]]),
     ...inFile(read, `${base}/java/com/swmansion/reanimated/NativeProxy.kt`, [
       ["does not offer the engine's hook before React Native's prop dispatch", has("SvelteEngineHook.updater?.invoke(viewTag, props)")],
       ["has no direct path for opacity and translate/scale transforms", has("private fun applySimpleProps(")],

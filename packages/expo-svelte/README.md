@@ -467,7 +467,7 @@ peer dependencies
 vendored packages
   pass  react-native-mmkv 4.3.2 comes with expo-svelte (vendor/react-native-mmkv); the app does not list it
   …
-  pass  react-native-reanimated: the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, and Worklets is the copy beside it (in expo-svelte's copy)
+  pass  react-native-reanimated: the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, the keyboard's events come from the engine's frames, and Worklets is the copy beside it (in expo-svelte's copy)
   pass  libraries turned on: expo-image, react-native-maps; the others are not linked, and Metro stubs them
 
 patches

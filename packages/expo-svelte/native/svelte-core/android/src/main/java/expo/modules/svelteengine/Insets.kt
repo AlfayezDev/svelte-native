@@ -21,7 +21,7 @@ import expo.modules.svelteengine.views.EngineRoot
  * state between the two, so the root insets still hold the start state in `onPrepare` (the content moved only once the
  * keyboard had finished opening or closing, #109).
  */
-class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>) -> Unit) {
+class Insets(private val root: EngineRoot, private val drive: KeyboardDrive, private val emit: (Map<String, Any?>) -> Unit) {
   private val density = root.resources.displayMetrics.density
   private val location = IntArray(2)
   private var last: Map<String, Any?>? = null
@@ -29,7 +29,7 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
 
   fun install() {
     ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
-      if (!animating) publish()
+      if (!animating) { publish(); drive.settle(imeOverlap()) }
       insets
     }
     ViewCompat.setWindowInsetsAnimationCallback(root, object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
@@ -37,14 +37,21 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
         if (animation.typeMask and WindowInsetsCompat.Type.ime() != 0) animating = true
       }
       override fun onStart(animation: WindowInsetsAnimationCompat, bounds: WindowInsetsAnimationCompat.BoundsCompat): WindowInsetsAnimationCompat.BoundsCompat {
-        if (animation.typeMask and WindowInsetsCompat.Type.ime() != 0) publish()
+        if (animation.typeMask and WindowInsetsCompat.Type.ime() != 0) {
+          publish()
+          drive.start(imeOverlap())
+        }
         return bounds
       }
-      override fun onProgress(insets: WindowInsetsCompat, runningAnimations: MutableList<WindowInsetsAnimationCompat>) = insets
+      override fun onProgress(insets: WindowInsetsCompat, runningAnimations: MutableList<WindowInsetsAnimationCompat>): WindowInsetsCompat {
+        if (animating && runningAnimations.any { it.typeMask and WindowInsetsCompat.Type.ime() != 0 }) drive.progress((insets.getInsets(WindowInsetsCompat.Type.ime()).bottom - gapBottom()).coerceAtLeast(0))
+        return insets
+      }
       override fun onEnd(animation: WindowInsetsAnimationCompat) {
         if (animation.typeMask and WindowInsetsCompat.Type.ime() == 0) return
         animating = false
         publish()
+        drive.end(imeOverlap())
       }
     })
     root.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or, ob -> if (r - l != or - ol || b - t != ob - ot || l != ol || t != ot) publish() }
@@ -53,6 +60,7 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
       // A window that goes during an IME animation does not deliver its end: the next window starts with none running.
       override fun onViewDetachedFromWindow(v: View) { unwatchLayouts(); animating = false }
     })
+    drive.install(root)
     if (root.isAttachedToWindow) {
       watchLayouts()
       root.requestApplyInsets()
@@ -80,6 +88,7 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
   }
 
   fun uninstall() {
+    drive.uninstall()
     unwatchLayouts()
     ViewCompat.setOnApplyWindowInsetsListener(root, null)
     ViewCompat.setWindowInsetsAnimationCallback(root, null)
@@ -135,8 +144,24 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
       "left" to dp((bars.left - gapLeft).coerceAtLeast(0)),
       "keyboardHeight" to dp(keyboardPx),
       "keyboardVisible" to (keyboardPx > 0),
+      "keyboardAnimating" to animating,
       "frame" to frame,
     )
+  }
+
+  /** The overlay's gap to the window's bottom edge (px), 0 until the window and the overlay are laid out: the part of the IME's inset the overlay does not cover. */
+  private fun gapBottom(): Int {
+    val windowHeight = root.rootView.height
+    if (windowHeight <= 0 || root.height <= 0 || root.rootView.width <= 0 || root.width <= 0) return 0
+    root.getLocationInWindow(location)
+    return windowHeight - (location[1] + root.height)
+  }
+
+  /** How much of the overlay the IME covers (px) in the root insets: what [compute] reports as the keyboard's height, and the end state of an animation from its start on. */
+  private fun imeOverlap(): Int {
+    val all = ViewCompat.getRootWindowInsets(root) ?: return 0
+    if (!root.isAttachedToWindow || !all.isVisible(WindowInsetsCompat.Type.ime())) return 0
+    return (all.getInsets(WindowInsetsCompat.Type.ime()).bottom - gapBottom()).coerceAtLeast(0)
   }
 
   private fun dp(px: Int): Double = Math.round(px / density * 100.0) / 100.0

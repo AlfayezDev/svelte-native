@@ -13,7 +13,7 @@ Notable changes to `expo-svelte` (named `@alfayez/svelte-native` up to 0.4.0-rc.
 
 ### Changed
 
-- On Android, a view with a border is drawn by React Native's own drawables, so its line is the one a React Native view has (a 1 dp border is no longer a crisp 3 px stroke: its edge pixels are half covered, as React Native's are), whether it has a shadow or not. A view with a fill and no border is unchanged. Mounting bordered views takes longer: about 40 microseconds more a view on the OVH emulator (300 bordered rows: 12 ms more when the views are recycled, 19 ms more the first time).
+- On Android, a view with a border is drawn by React Native's own drawables, so its line is the one a React Native view has (a 1 dp border is no longer a crisp 3 px stroke: its edge pixels are half covered, as React Native's are), whether it has a shadow or not. A view with a fill and no border is unchanged. Mounting bordered views takes longer: on the OVH emulator 300 bordered rows take 8 ms more when their views are recycled (a recycled view keeps its drawables and rewrites what differs) and 15 to 25 ms more the first time.
 - On Android, a border with a width and no colour is black, as in React Native and on iOS. It was transparent, so `borderWidth: 1` alone drew nothing. `borderColor: 'transparent'` is still transparent, and a `boxShadow` layer written without a colour is black.
 
 ### Fixed

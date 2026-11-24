@@ -59,4 +59,4 @@ On iOS the view moves to where the keyboard will be when the keyboard starts to 
 
 The keyboard's height is how much it covers of the screen, which includes the system navigation bar's space when the app draws under it. A composer that already pads its bottom by `insets.bottom` to clear the navigation bar should stay clear of it when the keyboard is closed and sit right on the keyboard when it is open, where the bar is covered: `offset={{ closed: 0, opened: insets.bottom }}` moves it down by that padding once the keyboard is up.
 
-Views in a [`Modal`](modal) are not moved frame by frame: a modal is a window of its own, with its own keyboard animation.
+A view inside a [`Modal`](modal) is left where the modal puts it: the modal makes room for the keyboard itself, by ending its content where the keyboard begins (when the keyboard starts to move, not frame by frame), so a view in it is not moved a second time. The same goes for the scroll views of [`KeyboardChatScrollView`](keyboard-chat-scroll-view) and [`KeyboardAwareScrollView`](keyboard-aware-scroll-view) in a modal.

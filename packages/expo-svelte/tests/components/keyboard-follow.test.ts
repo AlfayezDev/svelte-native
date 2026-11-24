@@ -12,20 +12,21 @@ import { baseStubs, load, src } from "../support/bundle.ts";
 type Insets = { top: number; right: number; bottom: number; left: number; keyboardHeight: number; keyboardVisible: boolean; keyboardAnimating?: boolean; frame: { x: number; y: number; width: number; height: number } };
 const insets = (patch: Partial<Insets> = {}): Insets => ({ top: 24, right: 0, bottom: 34, left: 0, keyboardHeight: 0, keyboardVisible: false, frame: { x: 0, y: 0, width: 400, height: 800 }, ...patch });
 
-type Engine = { calls: [number, string, unknown[]][]; installed: boolean; listeners: Record<string, (event: unknown) => void>; current: Insets | null };
-const engineModule = `export const state = { calls: [], installed: true, listeners: {}, current: null };
+type Engine = { calls: [number, string, unknown[]][]; installed: boolean; listeners: Record<string, (event: unknown) => void>; current: Insets | null; motion: number[] };
+const engineModule = `export const state = { calls: [], installed: true, listeners: {}, current: null, motion: [] };
   export const EventEmitter = class {};
   export const requireOptionalNativeModule = (name) => name !== "SvelteEngine" ? null : ({
     getInsets: () => state.current,
     addListener: (event, listener) => { state.listeners[event] = listener; return { remove() { delete state.listeners[event]; } }; },
     keyboardDrive: (tag, name, args) => { state.calls.push([tag, name, args]); return state.installed; },
+    keyboardMotionNext: () => { state.motion.push((globalThis.__anim?.keyboard ?? []).length); },
   });`;
 
 type Props = Record<string, unknown>;
 type Loaded = {
   engine: Engine; Fixture: unknown; renderer: unknown; NativeNode: typeof NativeNode; mergeHostProps: (props: unknown) => Props;
   store: { keyboardState: string; keyboardHeight: number }; applyInsets(event: Insets): void; resetInsets(): void; keyboardDriven(): boolean;
-  mount: (component: unknown, options: object) => unknown; tick: () => Promise<void>;
+  mount: (component: unknown, options: object) => unknown; unmount: (app: unknown) => void; tick: () => Promise<void>;
 };
 
 const loadModule = () => load<Loaded>({
@@ -34,9 +35,9 @@ const loadModule = () => load<Loaded>({
     import { mergeHostProps } from ${JSON.stringify(src("native-props.ts"))};
     import { insets as store, applyInsets, resetInsets } from ${JSON.stringify(src("insets.svelte.ts"))};
     import { keyboardDriven } from ${JSON.stringify(src("keyboard-drive.ts"))};
-    import { mount, tick } from 'svelte';
+    import { mount, unmount, tick } from 'svelte';
     export { state as engine } from 'expo-modules-core';
-    export { Fixture, renderer, NativeNode, mergeHostProps, store, applyInsets, resetInsets, keyboardDriven, mount, tick };`,
+    export { Fixture, renderer, NativeNode, mergeHostProps, store, applyInsets, resetInsets, keyboardDriven, mount, unmount, tick };`,
   stubs: { "expo-modules-core": engineModule },
   converters: false,
 });
@@ -44,10 +45,10 @@ const loadModule = () => load<Loaded>({
 function nodes(node: NativeNode): NativeNode[] { return [node, ...node.getSnapshot().children.flatMap(nodes)]; }
 async function mountFixture(m: Loaded, kind: string, props: Props = {}, extra: Props = {}) {
   const root = new m.NativeNode("fragment");
-  m.mount(m.Fixture, { target: root, renderer: m.renderer, props: { kind, props, ...extra } });
+  const app = m.mount(m.Fixture, { target: root, renderer: m.renderer, props: { kind, props, ...extra } });
   await m.tick();
   const propsOf = (name: string, index = 0): Props => m.mergeHostProps(nodes(root).filter((n) => n.name === name)[index].getSnapshot().props);
-  return { root, propsOf, ref: (name: string, handle: unknown, index = 0) => { (propsOf(name, index).ref as (h: unknown) => void)(handle); } };
+  return { root, app, propsOf, ref: (name: string, handle: unknown, index = 0) => { (propsOf(name, index).ref as (h: unknown) => void)(handle); } };
 }
 const drives = (m: Loaded) => m.engine.calls.filter(([tag]) => tag !== -1);
 
@@ -188,10 +189,11 @@ const animLog = () => (globalThis as unknown as { __anim: AnimLog }).__anim;
 
 test("createKeyboardMotion turns the engine's frames into dp, progress and state on the UI runtime, and goes with its component", async () => {
   delete (globalThis as { __anim?: AnimLog }).__anim;
-  const m = await load<{ Fixture: unknown; renderer: unknown; NativeNode: typeof NativeNode; mount: (component: unknown, options: object) => unknown; unmount: (app: unknown) => void; tick: () => Promise<void> }>({
+  const m = await load<{ engine: Engine; Fixture: unknown; renderer: unknown; NativeNode: typeof NativeNode; mount: (component: unknown, options: object) => unknown; unmount: (app: unknown) => void; tick: () => Promise<void> }>({
     entry: `import Fixture from ${JSON.stringify(resolve(import.meta.dirname, "fixtures/keyboard-motion-fixture.svelte"))};
       import renderer, { NativeNode } from ${JSON.stringify(src("renderer.ts"))};
       import { mount, unmount, tick } from 'svelte';
+      export { state as engine } from 'expo-modules-core';
       export { Fixture, renderer, NativeNode, mount, unmount, tick };`,
     stubs: { ...baseStubs(), "expo-modules-core": engineModule, "react-native/Libraries/Utilities/PixelRatio": "export default { get: () => 2.625 };" },
     converters: false,
@@ -201,6 +203,8 @@ test("createKeyboardMotion turns the engine's frames into dp, progress and state
   await m.tick();
   const motion = out.motion as Motion;
   expect(animLog().keyboard).toHaveLength(1);
+  // The engine is told the subscription is its own before Reanimated's is made (`useAnimatedKeyboard` is given other numbers), once.
+  expect(m.engine.motion).toEqual([0]);
   expect(animLog().keyboard?.[0]?.options).toEqual({ isStatusBarTranslucentAndroid: true, isNavigationBarTranslucentAndroid: true });
   const frame = animLog().keyboard?.[0]?.handler as (kind: number, px: number) => void;
   // The engine counts in px: a keyboard of 1050 px is 400 dp at 2.625 px a dp.
@@ -221,4 +225,18 @@ test("createKeyboardMotion turns the engine's frames into dp, progress and state
   expect(animLog().keyboard?.[0]?.off).toBe(true);
   // The fakes' log is the process's: the next file starts from none.
   delete (globalThis as { __anim?: AnimLog }).__anim;
+});
+
+test("a component that goes releases its view in the engine, whatever kind of view it moved", async () => {
+  const m = await loadModule();
+  for (const [kind, name, tag] of [["sticky", "native-view", 3], ["chat", "native-scroll", 9], ["aware", "native-scroll", 5]] as const) {
+    m.engine.calls.length = 0;
+    const { app, ref } = await mountFixture(m, kind);
+    ref(name, { tag });
+    await m.tick();
+    expect(drives(m).some(([, command]) => command === "release")).toBe(false);
+    m.unmount(app);
+    await m.tick();
+    expect(drives(m).filter(([, command]) => command === "release")).toEqual([[tag, "release", []]]);
+  }
 });

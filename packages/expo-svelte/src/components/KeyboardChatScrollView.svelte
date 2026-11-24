@@ -46,6 +46,11 @@
     const visible = contentOffset.y + layoutMeasurement.height >= contentSize.height - 20;
     if (visible !== lastEnd) { lastEnd = visible; onEndVisible(visible); }
   }
+  // The component goes: nothing of the registration is left in the engine (a scroll view's report of its end, its room), whenever the view itself goes.
+  $effect(() => {
+    const tag = handle?.tag;
+    return () => { if (tag !== undefined) driveKeyboard(tag, "release"); };
+  });
   const keep = (instance: NativeScrollView | null) => { handle = instance as unknown as HostHandle | null; ref?.(instance); };
 </script>
 <ScrollView {...attributes} scrollEventThrottle={watching ? 16 : scrollEventThrottle} onScroll={watching ? scrolled : onScroll} ref={keep}>{@render children?.()}</ScrollView>

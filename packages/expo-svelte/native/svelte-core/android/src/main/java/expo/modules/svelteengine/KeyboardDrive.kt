@@ -1,5 +1,7 @@
 package expo.modules.svelteengine
 
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.view.ViewTreeObserver
@@ -7,6 +9,8 @@ import android.widget.EditText
 import expo.modules.svelteengine.views.EngineInput
 import expo.modules.svelteengine.views.EngineNode
 import expo.modules.svelteengine.views.EngineScroll
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.roundToInt
 
 /**
@@ -16,7 +20,7 @@ import kotlin.math.roundToInt
  * shared values behind `createKeyboardMotion()` (a synchronous call into the UI runtime, which runs its mappers at once). Nothing of it goes through JavaScript, so a busy
  * JavaScript thread does not hold the keyboard's followers back; JavaScript only registers a view once, by tag, and the registration is dropped when the view is gone.
  */
-class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeight: () -> Int) {
+class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBottom: () -> Int) {
   companion object {
     private const val TAG = "SvelteEngine"
     /** The kinds of frame a listener hears: the keyboard is about to move to a height, it is at a height on the way, it has stopped at a height. */
@@ -24,6 +28,7 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeigh
     const val MOVE = 2
     const val END = 3
     private const val EARLY_MAX = 64
+    private const val FOCUS_STEPS = 16
   }
 
   /**
@@ -37,17 +42,23 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeigh
   private val awares = HashMap<Int, AwareScroll>()
   private val ends = HashMap<Int, Boolean>()
   private val early = HashMap<Int, ArrayList<Pair<String, List<Any?>>>>()
+  /** The subscribers to the frames, with the conversion each was subscribed with. Only the main thread touches the map: a subscription from another thread is posted to it. */
   private val listeners = LinkedHashMap<Int, (Int, Int) -> Unit>()
-  private var nextListener = -1
+  private val nextListener = AtomicInteger(-1)
+  private val rawFlag = AtomicBoolean(false)
+  private val main = Handler(Looper.getMainLooper())
   private var persistent = 0
   private var progress = 0.0
   private var moving = false
+
+  /** The navigation bar's px that a subscriber of Reanimated's that did not say it is translucent has taken off the keyboard's height (0 edge to edge); set by [Insets]. */
+  var navigationBar: () -> Int = { 0 }
 
   /** Told when a scroll view registered with `onEndVisible` has its end in view, and when it has not any more (`tag`, visible); the module sends it to JavaScript. */
   var endVisible: ((Int, Boolean) -> Unit)? = null
 
   /** The keyboard's height now, px: what the last frame said. */
-  var height = 0
+  @Volatile var height = 0
     private set
 
   private var root: View? = null
@@ -74,7 +85,13 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeigh
       if (early.size > EARLY_MAX) early.clear()
       val queued = early.getOrPut(tag) { ArrayList() }
       queued.removeAll { it.first == name || name == "release" }
-      if (name != "release") queued.add(name to args) else if (queued.isEmpty()) early.remove(tag)
+      if (name != "release") {
+        queued.add(name to args)
+      } else {
+        // The component is gone and so is its view: nothing is left of the registration (a scroll view's end report included).
+        if (queued.isEmpty()) early.remove(tag)
+        stickies.remove(tag); lifts.remove(tag); awares.remove(tag); ends.remove(tag)
+      }
       return
     }
     fun num(index: Int) = (args.getOrNull(index) as? Number)?.toDouble() ?: 0.0
@@ -111,22 +128,29 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeigh
   fun lift(tag: Int, behavior: Int, offset: Double, watchEnd: Boolean) {
     val view = viewFor(tag) as? EngineScroll ?: return
     watch(tag, view, watchEnd)
-    val px = (offset * view.resources.displayMetrics.density).roundToInt()
-    val rules = lifts.getOrPut(tag) { ChatLift(behavior, px, (KeyboardRules.AT_END_DP * view.resources.displayMetrics.density).roundToInt()) }
-    rules.behavior = behavior
-    rules.offset = px
+    val density = view.resources.displayMetrics.density
+    val px = (offset * density).roundToInt()
+    val known = lifts[tag]
+    if (known != null) {
+      // Registered again (a change of `keyboardLiftBehavior` or `offset`): where the content is and what the close goes back to stay as they are.
+      known.retune(behavior, px)
+      return
+    }
+    val rules = ChatLift(behavior, px, (KeyboardRules.AT_END_DP * density).roundToInt())
+    lifts[tag] = rules
     // A scroll view that arrives while the keyboard is up holds the room it takes, and lifts nothing it has not been told to.
-    if (height > 0 && !moving) { rules.start(height, view.scrollY, view.height, content(view)); rules.end(height, view.scrollY); pad(view, rules.padding) }
+    if (height > 0 && !moving) { rules.attach(height, view.scrollY, view.height, content(view)); pad(view, rules.padding) }
   }
 
   fun aware(tag: Int, bottomOffset: Double, extra: Double, scrollOnHide: Boolean) {
     val view = viewFor(tag) as? EngineScroll ?: return
     val density = view.resources.displayMetrics.density
-    val rules = awares.getOrPut(tag) { AwareScroll(0, 0, true) }
+    val known = awares[tag]
+    val rules = known ?: AwareScroll(0, 0, true).also { awares[tag] = it }
     rules.bottomOffset = (bottomOffset * density).roundToInt()
     rules.extra = (extra * density).roundToInt()
     rules.scrollOnHide = scrollOnHide
-    if (height > 0 && !moving) { rules.start(height, view.scrollY, focused(view), windowHeight()); rules.end(height); pad(view, rules.padding) }
+    if (known == null && height > 0 && !moving) { rules.start(height, view.scrollY, focused(view), overlayBottom()); rules.end(height); pad(view, rules.padding) }
   }
 
   /** The view stops following the keyboard and goes back to where its own style puts it. */
@@ -135,6 +159,7 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeigh
     if (view is EngineScroll) watch(tag, view, false)
     if (stickies.remove(tag) != null && view is EngineNode) drive(view, view, 0f)
     if ((lifts.remove(tag) != null || awares.remove(tag) != null) && view is EngineScroll) pad(view, 0)
+    ends.remove(tag)
   }
 
   /** The keyboard is about to move to [target] px (0 when it is going away): the root insets hold its end state. */
@@ -145,7 +170,7 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeigh
       for (sticky in stickies.values) if (sticky.avoid) sticky.overlap = overlapOf(sticky, target)
     }
     eachLift { tag, view, rules -> rules.start(target, view.scrollY, view.height, content(view)); pad(view, rules.padding) }
-    eachAware { _, view, rules -> rules.start(target, view.scrollY, focused(view), windowHeight()); pad(view, rules.padding) }
+    eachAware { _, view, rules -> rules.start(target, view.scrollY, focused(view), overlayBottom()); pad(view, rules.padding) }
     notify(START, target)
   }
 
@@ -153,9 +178,10 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeigh
   fun progress(px: Int) {
     height = px
     progress = KeyboardRules.progress(px.toDouble(), persistent.toDouble())
+    if (persistent > 0) for (sticky in stickies.values) if (sticky.avoid) sticky.overlap = overlapOf(sticky, persistent)
     eachSticky()
     eachLift { _, view, rules -> rules.move(px, view.scrollY, view.height, content(view))?.let { scroll(view, it) } }
-    eachAware { _, view, rules -> rules.move(px)?.let { scroll(view, it) } }
+    eachAware { _, view, rules -> rules.move(px, view.scrollY, view.height, content(view))?.let { scroll(view, it) } }
     notify(MOVE, px)
   }
 
@@ -170,6 +196,13 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeigh
     notify(END, px)
   }
 
+  /** The layout of the window changed: a view that avoids the keyboard works out again how far the keyboard covers its anchor (nothing moves while the keyboard is on its way: each frame does). */
+  fun layoutChanged() {
+    if (moving || height <= 0 || stickies.isEmpty()) return
+    for (sticky in stickies.values) if (sticky.avoid) sticky.overlap = overlapOf(sticky, height)
+    eachSticky()
+  }
+
   /** The keyboard changed its height with no animation (another keyboard, a layout): the new height at once. */
   fun settle(px: Int) {
     if (moving || px == height) return
@@ -178,19 +211,42 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeigh
     end(px)
   }
 
-  /** Subscribes [listener] to the frames (Reanimated's keyboard source, SPEC.md "Keyboard motion"); it hears the keyboard's state now when it is up. */
-  fun subscribe(listener: (Int, Int) -> Unit): Int {
-    val id = nextListener--
-    listeners[id] = listener
-    if (height > 0) {
-      call(id, listener, START, persistent)
-      call(id, listener, END, height)
+  /** The next [subscribe] is the engine's own (`createKeyboardMotion`: kind and px as they are), not one of Reanimated's `useAnimatedKeyboard` (state and dp); asked synchronously, in the JavaScript thread's order. */
+  fun rawNext() { rawFlag.set(true) }
+
+  private fun runMain(block: () -> Unit) {
+    if (Looper.myLooper() == Looper.getMainLooper()) block() else main.post(block)
+  }
+
+  /**
+   * Subscribes [listener] to the frames (Reanimated's keyboard source, SPEC.md "Keyboard motion"). A subscriber of Reanimated's own is given what `useAnimatedKeyboard` is
+   * given (state 1 to 4 and whole dp, less the navigation bar when [navigationBarTranslucent] is false); the one [rawNext] asked for gets (kind, px). It hears the keyboard's
+   * state now when it is up. Called from the JavaScript thread: the id is made here, the rest is done on the main thread, in order with the frames and with [unsubscribe].
+   */
+  fun subscribe(listener: (Int, Int) -> Unit, navigationBarTranslucent: Boolean = true): Int {
+    val id = nextListener.getAndDecrement()
+    val raw = rawFlag.getAndSet(false)
+    runMain {
+      val target: (Int, Int) -> Unit
+      if (raw) {
+        target = listener
+      } else {
+        val density = root?.resources?.displayMetrics?.density ?: 1f
+        val reanimated = ReanimatedKeyboard(navigationBarTranslucent, density, navigationBar) { state, dp -> listener(state, dp) }
+        target = { kind, px -> when (kind) { START -> reanimated.start(); MOVE -> reanimated.frame(px); else -> reanimated.end(px) } }
+      }
+      listeners[id] = target
+      if (height > 0) {
+        call(id, target, START, persistent)
+        if (!raw) call(id, target, MOVE, height)
+        call(id, target, END, height)
+      }
     }
     return id
   }
 
   fun unsubscribe(id: Int) {
-    listeners.remove(id)
+    runMain { listeners.remove(id) }
   }
 
   private fun notify(kind: Int, px: Int) {
@@ -211,7 +267,7 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeigh
   /** How far the keyboard, [target] px high, covers the anchor of [sticky] (px): its bottom edge in the window past the keyboard's top edge and the offset. */
   private fun overlapOf(sticky: Sticky, target: Int): Double {
     val anchor = viewFor(sticky.anchor) ?: return sticky.overlap
-    val keyboardTop = windowHeight() - target - sticky.closed * anchor.resources.displayMetrics.density
+    val keyboardTop = overlayBottom() - target - sticky.closed * anchor.resources.displayMetrics.density
     return maxOf(bottomOf(anchor) - keyboardTop, 0.0)
   }
 
@@ -263,15 +319,25 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeigh
     endVisible?.invoke(tag, at)
   }
 
-  /** `KeyboardController.setFocusTo`: the input after or before the focused one in the tree, or the focused one again (which brings the keyboard back). */
+  /**
+   * `KeyboardController.setFocusTo`: the input after or before the focused one in the tree, or the focused one again (which brings the keyboard back). `focusSearch` also
+   * finds containers (a scroll view takes the focus when it is its turn), which are not where the keyboard goes: the search goes on until it reaches an input, or none.
+   */
   private fun focusTo(direction: String?) {
     val current = root?.findFocus() as? EditText ?: return
-    val target = when (direction) {
-      "next" -> current.focusSearch(View.FOCUS_FORWARD)
-      "prev" -> current.focusSearch(View.FOCUS_BACKWARD)
-      else -> current
+    val way = when (direction) { "next" -> View.FOCUS_FORWARD; "prev" -> View.FOCUS_BACKWARD; else -> 0 }
+    var target: View? = current
+    if (way != 0) {
+      var from: View = current
+      target = null
+      for (step in 0 until FOCUS_STEPS) {
+        val found = from.focusSearch(way) ?: break
+        if (found === current) break
+        if (found is EditText) { target = found; break }
+        from = found
+      }
     }
-    if (target is EngineInput) target.focus() else target?.requestFocus()
+    if (target is EngineInput) target.focus() else if (target is EditText) target.requestFocus()
   }
 
   /** The bottom edge, in window coordinates, of the input of [view] that has the focus; negative when none has. */
@@ -292,7 +358,7 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeigh
       var parent = input.parent
       while (parent != null && parent !== view) parent = parent.parent
       if (parent == null) return@eachAware
-      view.scrollToPx(view.scrollX, rules.refocus(view.scrollY, bottomOf(input), windowHeight()), true)
+      view.scrollToPx(view.scrollX, rules.refocus(view.scrollY, bottomOf(input), overlayBottom()), true)
     }
   }
 
@@ -309,7 +375,7 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeigh
     while (iterator.hasNext()) {
       val (tag, rules) = iterator.next()
       val view = viewFor(tag) as? EngineScroll
-      if (view == null) iterator.remove() else block(tag, view, rules)
+      if (view == null) { iterator.remove(); ends.remove(tag) } else block(tag, view, rules)
     }
   }
 

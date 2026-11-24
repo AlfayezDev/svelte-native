@@ -2,7 +2,7 @@ import { onDestroy } from "svelte";
 import { createSharedValue, withTiming, type SharedValue } from "./animation.ts";
 import { pixelRatio } from "./fabric/deps-rn.ts";
 import { subscribeInsets } from "./fabric/insets.ts";
-import { keyboardDriven } from "./keyboard-drive.ts";
+import { keyboardDriven, keyboardMotionNext } from "./keyboard-drive.ts";
 import type { KeyboardState } from "./insets.svelte.ts";
 
 export type { KeyboardState } from "./insets.svelte.ts";
@@ -46,6 +46,8 @@ export function createKeyboardMotion(): KeyboardMotion {
   }
   const opened = createSharedValue(0);
   const density = pixelRatio().get();
+  // The subscription is not `useAnimatedKeyboard`'s: the engine gives it its own frames.
+  keyboardMotionNext();
   const listener = reanimated().subscribeForKeyboardEvents((kind: number, px: number) => {
     "worklet";
     // The engine counts in px, the integers the window reports, so no frame is rounded to a dp.

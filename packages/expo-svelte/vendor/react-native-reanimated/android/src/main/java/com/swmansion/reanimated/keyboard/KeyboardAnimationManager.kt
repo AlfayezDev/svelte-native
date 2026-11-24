@@ -24,7 +24,7 @@ class KeyboardAnimationManager(
         isNavigationBarTranslucent: Boolean,
     ): Int {
         // Rasheed patch: the svelte-engine module is the keyboard's source, frame by frame, and Reanimated's own window insets handling stays off.
-        SvelteEngineHook.keyboardSubscribe?.let { subscribe -> return subscribe { state, height -> callback.invoke(state, height) } }
+        SvelteEngineHook.keyboardSubscribe?.let { subscribe -> return subscribe({ state, height -> callback.invoke(state, height) }, isStatusBarTranslucent, isNavigationBarTranslucent) }
         val listenerId = mNextListenerId++
         if (mListeners.isEmpty()) {
             val keyboardAnimationCallback =

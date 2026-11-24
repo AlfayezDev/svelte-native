@@ -32,6 +32,11 @@
     const tag = handle.tag;
     driveKeyboard(tag, enabled ? "aware" : "release", [bottomOffset, extraKeyboardSpace, !disableScrollOnKeyboardHide]);
   });
+  // The component goes: nothing of the registration is left in the engine (a scroll view's report of its end, its room), whenever the view itself goes.
+  $effect(() => {
+    const tag = handle?.tag;
+    return () => { if (tag !== undefined) driveKeyboard(tag, "release"); };
+  });
   const keep = (instance: NativeScrollView | null) => { handle = instance as unknown as HostHandle | null; ref?.(instance); };
 </script>
 <ScrollView {...attributes} ref={keep}>{@render children?.()}</ScrollView>

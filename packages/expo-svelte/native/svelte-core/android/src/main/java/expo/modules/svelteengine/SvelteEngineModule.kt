@@ -126,6 +126,10 @@ class SvelteEngineModule : Module() {
       true
     }
 
+    // The next subscription to Reanimated's keyboard events is `createKeyboardMotion`'s: it is given the engine's frames as they are (kind, px) and not what `useAnimatedKeyboard`
+    // is given. Synchronous: the subscription that follows, on the same thread, finds it.
+    Function("keyboardMotionNext") { mountingManager?.keyboard?.rawNext() }
+
     // Commands for engine tags. Fire-and-forget on the main thread, queued behind mounting batches already posted.
     Function("dispatchCommand") { tag: Int, name: String, args: List<Any?> ->
       val manager = mountingManager ?: return@Function false
@@ -300,13 +304,13 @@ class SvelteEngineModule : Module() {
 
   // Reanimated's keyboard events (`subscribeForKeyboardEvents`, what `createKeyboardMotion()` listens to) come from the engine's frames, not from a window insets callback
   // of Reanimated's own (vendor-patches/react-native-reanimated/0004-keyboard-events-from-the-engine.patch): the listener is called on the main thread inside the
-  // frame's animation callback, with (kind, px) of `KeyboardDrive`.
+  // frame's animation callback, with what `useAnimatedKeyboard` is given (state, dp), or (kind, px) of `KeyboardDrive` for `createKeyboardMotion`.
   private fun setKeyboardSource(drive: KeyboardDrive?) {
     try {
       val hook = Class.forName("com.swmansion.reanimated.SvelteEngineHook")
-      val subscribe: ((Function2<Int, Int, Unit>) -> Int)? = drive?.let { { listener -> it.subscribe { kind, px -> listener(kind, px) } } }
+      val subscribe: ((Function2<Int, Int, Unit>, Boolean, Boolean) -> Int)? = drive?.let { { listener, _, navigationBarTranslucent -> it.subscribe({ kind, px -> listener(kind, px) }, navigationBarTranslucent) } }
       val unsubscribe: ((Int) -> Unit)? = drive?.let { { id -> it.unsubscribe(id) } }
-      hook.getMethod("setKeyboardSubscribe", Function1::class.java).invoke(null, subscribe)
+      hook.getMethod("setKeyboardSubscribe", Function3::class.java).invoke(null, subscribe)
       hook.getMethod("setKeyboardUnsubscribe", Function1::class.java).invoke(null, unsubscribe)
     } catch (e: ReflectiveOperationException) {
       android.util.Log.i("SvelteEngine", "Reanimated keyboard source not available: ${e.javaClass.simpleName}")

@@ -118,7 +118,8 @@ java -cp "$work/clip-check.jar" expo.modules.svelteengine.ClipRulesCheckKt "$vie
 # views are read for the calls that bring the frames to them and keep a commit from taking the move away.
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/KeyboardRules.kt" \
   "$here/kotlin/expo/modules/svelteengine/KeyboardRulesCheck.kt" -include-runtime -d "$work/keyboard-rules-check.jar"
-java -cp "$work/keyboard-rules-check.jar" expo.modules.svelteengine.KeyboardRulesCheckKt "$here/../main/java/expo/modules/svelteengine"
+# The library's copy of Reanimated is read for the states and the dips `useAnimatedKeyboard` is given.
+java -cp "$work/keyboard-rules-check.jar" expo.modules.svelteengine.KeyboardRulesCheckKt "$here/../main/java/expo/modules/svelteengine" "$here/../../../../../vendor/react-native-reanimated"
 
 # The default of the status and navigation bars (SPEC.md, "Screen API contract": `auto` follows the system) and that the window is written the first time.
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/SystemBarsRules.kt" \

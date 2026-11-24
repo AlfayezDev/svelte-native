@@ -66,8 +66,15 @@ internal class ChatLift(var behavior: Int, var offset: Int, private val threshol
   private var target = 0
   private var closing = false
   private var shift = 0
+  private var inFlight = false
 
+  /**
+   * An animation starts. One that starts while another is running (the keyboard turned around) goes on from the same baseline: `before`, the offset the content had
+   * before the keyboard first moved it, is what every frame of both is measured from, and `skip` stays what the first start decided.
+   */
   fun start(height: Int, scrollY: Int, viewport: Int, content: Int) {
+    val reversal = inFlight
+    inFlight = true
     if (height > 0) {
       target = height
       closing = false
@@ -77,13 +84,27 @@ internal class ChatLift(var behavior: Int, var offset: Int, private val threshol
     val effective = KeyboardRules.effective(height, target, offset).roundToInt()
     if (height > 0) {
       padding = effective
-      before = scrollY
-      // `whenAtEnd`: a scroll view somewhere up its list stays where it is, and so does one that does not lift.
-      skip = behavior == WHEN_AT_END && !KeyboardRules.atEnd(scrollY, viewport, content, threshold)
-    } else if (!skip) {
+      if (!reversal) {
+        before = scrollY
+        // `whenAtEnd`: a scroll view somewhere up its list stays where it is, and so does one that does not lift.
+        skip = behavior == WHEN_AT_END && !KeyboardRules.atEnd(scrollY, viewport, content, threshold)
+      }
+    } else if (!skip && !reversal) {
       // Closing: the way back starts from where the open left the scroll view, so the two are symmetric.
       before = scrollY - shift
     }
+  }
+
+  /** The scroll view is registered (or registered again) while the keyboard is up at [height]: it holds the room, and takes its place from there. */
+  fun attach(height: Int, scrollY: Int, viewport: Int, content: Int) {
+    start(height, scrollY, viewport, content)
+    end(height, scrollY)
+  }
+
+  /** The parameters change (`keyboardLiftBehavior`, `offset`) while the keyboard is up: nothing about where the content is, and what the close goes back to, is forgotten. */
+  fun retune(behavior: Int, offset: Int) {
+    this.behavior = behavior
+    this.offset = offset
   }
 
   /**
@@ -104,6 +125,7 @@ internal class ChatLift(var behavior: Int, var offset: Int, private val threshol
 
   /** The keyboard has settled at [height] with the scroll view at [scrollY]: the padding is what it ended at, and the open's displacement is what the close goes back by. */
   fun end(height: Int, scrollY: Int) {
+    inFlight = false
     padding = KeyboardRules.effective(height, target, offset).roundToInt()
     if (padding > 0 && !skip) shift = scrollY - before
   }
@@ -121,17 +143,22 @@ internal class AwareScroll(var bottomOffset: Int, var extra: Int, var scrollOnHi
   private var distance = 0.0
   private var open = 0
   private var closing = false
+  private var inFlight = false
 
   /**
-   * [height] is the keyboard's height at the end of the move, [scrollY] where the scroll view is, [inputBottom] the focused input's bottom edge and [window] the height of
-   * the window (both in the window's coordinates), or [inputBottom] negative when no input of this scroll view has the focus.
+   * [height] is the keyboard's height at the end of the move, [scrollY] where the scroll view is, [inputBottom] the focused input's bottom edge and [window] the bottom of
+   * the overlay (both in the window's coordinates), or [inputBottom] negative when no input of this scroll view has the focus. An animation that starts while another runs
+   * (the keyboard turned around) goes on from the same base and distance.
    */
   fun start(height: Int, scrollY: Int, inputBottom: Int, window: Int) {
+    val reversal = inFlight
+    inFlight = true
     closing = height == 0
     if (closing) return
     open = height
-    base = scrollY
     padding = height + extra
+    if (reversal) return
+    base = scrollY
     distance = if (inputBottom < 0) 0.0 else max(inputBottom + bottomOffset - (window - height), 0).toDouble()
   }
 
@@ -142,14 +169,101 @@ internal class AwareScroll(var bottomOffset: Int, var extra: Int, var scrollOnHi
     return base + distance.roundToInt()
   }
 
-  /** The scroll offset for a frame at [height], or null when this scroll view stays. */
-  fun move(height: Int): Int? {
-    if (closing && !scrollOnHide) return null
+  /**
+   * The scroll offset for a frame at [height], or null when this scroll view stays. With `disableScrollOnKeyboardHide` the close leaves the content where it is, held
+   * inside what the closing keyboard leaves scrollable as [ChatLift] does, so the content does not jump when the room goes at [end].
+   */
+  fun move(height: Int, scrollY: Int, viewport: Int, content: Int): Int? {
+    if (closing && !scrollOnHide) {
+      val limit = max(content - viewport + height, 0)
+      return if (scrollY > limit) limit else null
+    }
     if (distance == 0.0 || open == 0) return null
     return base + (distance * height / open).roundToInt()
   }
 
   fun end(height: Int) {
+    inFlight = false
     padding = if (height == 0) 0 else height + extra
+  }
+}
+
+/**
+ * Which frames of the IME's animations reach the keyboard's followers. Android reports each animation as `onPrepare`, `onStart`, `onProgress`, `onEnd`, and when the keyboard
+ * turns around the old animation's end can come after the new one's start, so what runs is counted (as Reanimated's `mActiveTransitionCounter` does) and the keyboard has
+ * settled only when the last one has ended. A frame that reads 0 while the animation heads for a height above 0 and the keyboard has been up is the one a cancelled hide
+ * shows for a moment, and is left out (Reanimated's `Keyboard.updateHeight` leaves it out too).
+ */
+internal class KeyboardFrames {
+  var running = 0
+    private set
+  private var target = 0
+  private var height = 0
+
+  fun prepare() { running++ }
+
+  /** The window went with animations running: the next window starts with none. */
+  fun reset() { running = 0 }
+
+  /** An animation goes to [target] (0: away). */
+  fun start(target: Int) { this.target = target }
+
+  /** The height to deliver for a frame at [px], or null for a frame that is left out. */
+  fun frame(px: Int): Int? {
+    if (px == 0 && target > 0 && height > 0) return null
+    height = px
+    return px
+  }
+
+  /** The height changed with no animation, or an animation ended at [px]. */
+  fun settled(px: Int) { height = px }
+
+  /** An animation ended: true when it was the last one running, and the keyboard has settled. */
+  fun end(): Boolean {
+    if (running > 0) running--
+    return running == 0
+  }
+}
+
+/**
+ * What Reanimated's own callers of `subscribeForKeyboardEvents` (`useAnimatedKeyboard`) are told, from the engine's frames: the state as `KeyboardState` numbers it (1 opening,
+ * 2 open, 3 closing, 4 closed) and the height in whole dp, less the navigation bar's px unless the caller said it is translucent. The state machine and the dispatch are those of
+ * Reanimated's `Keyboard`, `KeyboardAnimationCallback` and `KeyboardAnimationManager`: a frame is dispatched after the start with the state the start gave, the end with the
+ * state the height gives, a start while another animation runs turns the state around, and a frame that reads 0 for an open keyboard is not taken.
+ */
+internal class ReanimatedKeyboard(private val navigationBarTranslucent: Boolean, private val density: Float, private val navigationBar: () -> Int, private val deliver: (Int, Int) -> Unit) {
+  companion object {
+    const val OPENING = 1
+    const val OPEN = 2
+    const val CLOSING = 3
+    const val CLOSED = 4
+  }
+
+  private var state = 0
+  private var height = 0
+  private var active = 0
+  private var pending = false
+
+  private fun dip(px: Int): Int = max(0, px - (if (navigationBarTranslucent) 0 else navigationBar())).let { (it / density).toInt() }
+
+  fun start() {
+    state = if (active > 0) (if (state == OPENING) CLOSING else OPENING) else (if (height <= 0) OPENING else CLOSING)
+    active++
+    pending = true
+  }
+
+  fun frame(px: Int) {
+    pending = false
+    val next = dip(px)
+    if (!(next <= 0 && state == OPEN)) height = next
+    deliver(state, height)
+  }
+
+  fun end(px: Int) {
+    if (pending) { height = dip(px); deliver(state, height) }
+    pending = false
+    active = 0
+    state = if (height <= 0) CLOSED else OPEN
+    deliver(state, height)
   }
 }

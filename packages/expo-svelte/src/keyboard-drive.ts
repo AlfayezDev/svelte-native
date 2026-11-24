@@ -8,7 +8,7 @@ import * as core from "expo-modules-core";
 
 type EndVisible = { tag: number; visible: boolean };
 type Emitter = { addListener(name: string, listener: (event: EndVisible) => void): { remove(): void } };
-type Engine = Partial<Emitter> & { keyboardDrive?: (tag: number, name: string, args: unknown[]) => boolean };
+type Engine = Partial<Emitter> & { keyboardDrive?: (tag: number, name: string, args: unknown[]) => boolean; keyboardMotionNext?: () => void };
 
 let engine: Engine | null | undefined;
 let driven: boolean | undefined;
@@ -18,6 +18,14 @@ const module = (): Engine | null => (engine ??= core.requireOptionalNativeModule
 /** Sends the engine a keyboard command for the view of `tag`; false when the engine is not installed (see the file's comment). Lengths are dp. */
 export function driveKeyboard(tag: number, name: "follow" | "avoid" | "lift" | "aware" | "release" | "focus", args: unknown[] = []): boolean {
   return module()?.keyboardDrive?.(tag, name, args) ?? false;
+}
+
+/**
+ * Says that the next subscription to Reanimated's keyboard events is the engine's own: it is given the frames as the engine has them (kind and px) and not what Reanimated's
+ * `useAnimatedKeyboard` is given (state and dp). Synchronous, so the subscription that follows on this thread finds it.
+ */
+export function keyboardMotionNext(): void {
+  module()?.keyboardMotionNext?.();
 }
 
 /** Whether the engine moves views with the keyboard. The first answer is kept: a command for a tag that is not any view's does nothing, and says whether the engine is installed. */

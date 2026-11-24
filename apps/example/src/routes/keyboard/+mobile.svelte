@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { AnimatedView, KeyboardChatScrollView, KeyboardStickyView, Modal, Pressable, Screen, Text, TextInput, View, createKeyboardMotion, insets } from "expo-svelte";
+  import { AnimatedView, KeyboardAwareScrollView, KeyboardChatScrollView, KeyboardStickyView, Modal, Pressable, Screen, Text, TextInput, View, createKeyboardMotion, insets } from "expo-svelte";
   import { theme, text } from "#lib/theme.svelte.ts";
 
   // A chat thread and its composer. The composer is a KeyboardStickyView: it rides the keyboard's animation frame by frame, as a translation of the keyboard's height less
@@ -10,6 +10,7 @@
   let atEnd = $state(true);
   let draft = $state("");
   let modal = $state(false);
+  let form = $state(false);
   let messages = $state(Array.from({ length: 24 }, (_, index) => ({ id: index, mine: index % 3 === 2, text: index % 3 === 2 ? `Message ${index + 1}, from you.` : `Message ${index + 1}, a longer one from somebody else that wraps over two lines.` })));
   let thread: { scrollToEnd(options?: { animated?: boolean }): void } | null = null;
   const motion = createKeyboardMotion();
@@ -36,6 +37,9 @@
           <Text style={{ color: behavior === option ? theme.colors.onAccent : theme.colors.text, fontSize: 14 }}>{option}</Text>
         </Pressable>
       {/each}
+      <Pressable accessibilityRole="button" accessibilityLabel="Form" onPress={() => (form = true)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface }}>
+        <Text style={{ color: theme.colors.text, fontSize: 14 }}>Form</Text>
+      </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="Modal" onPress={() => (modal = true)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface }}>
         <Text style={{ color: theme.colors.text, fontSize: 14 }}>Modal</Text>
       </Pressable>
@@ -83,5 +87,18 @@
       </KeyboardStickyView>
     </View>
   </Modal>
+    <!-- A form in a Modal: the modal ends where the keyboard begins and the scroll view keeps the focused field in view with what Android's own scroll view does. -->
+    <Modal visible={form} animationType="none" onRequestClose={() => { form = false; }}>
+      <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close form" onPress={() => (form = false)} style={{ margin: 12, padding: 12, alignSelf: "flex-end", borderRadius: 22, backgroundColor: theme.colors.accent }}>
+          <Text style={{ color: theme.colors.onAccent, fontSize: 16 }}>Close form</Text>
+        </Pressable>
+        <KeyboardAwareScrollView bottomOffset={24} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
+          {#each Array.from({ length: 14 }, (_, index) => index + 1) as number (number)}
+            <TextInput placeholder={`Field ${number}`} placeholderTextColor={theme.colors.muted} accessibilityLabel={`Field ${number}`} style={{ minHeight: 48, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, color: theme.colors.text, fontSize: 16 }} />
+          {/each}
+        </KeyboardAwareScrollView>
+      </View>
+    </Modal>
   </View>
 </Screen>

@@ -26,39 +26,50 @@ class Insets(private val root: EngineRoot, private val drive: KeyboardDrive, pri
   private val location = IntArray(2)
   private var last: Map<String, Any?>? = null
   private var animating = false
+  /** The IME animations that are running: a boolean lost a frame or two when one animation's end came after the next one's start. */
+  private val frames = KeyboardFrames()
 
   fun install() {
+    drive.navigationBar = { ViewCompat.getRootWindowInsets(root)?.let { (it.getInsets(WindowInsetsCompat.Type.systemBars()).bottom - gapBottom()).coerceAtLeast(0) } ?: 0 }
     ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
-      if (!animating) { publish(); drive.settle(imeOverlap()) }
+      if (!animating) { publish(); val px = imeOverlap(); drive.settle(px); frames.settled(px) }
       insets
     }
     ViewCompat.setWindowInsetsAnimationCallback(root, object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
       override fun onPrepare(animation: WindowInsetsAnimationCompat) {
-        if (animation.typeMask and WindowInsetsCompat.Type.ime() != 0) animating = true
+        if (animation.typeMask and WindowInsetsCompat.Type.ime() != 0) { animating = true; frames.prepare() }
       }
       override fun onStart(animation: WindowInsetsAnimationCompat, bounds: WindowInsetsAnimationCompat.BoundsCompat): WindowInsetsAnimationCompat.BoundsCompat {
         if (animation.typeMask and WindowInsetsCompat.Type.ime() != 0) {
           publish()
-          drive.start(imeOverlap())
+          val target = imeOverlap()
+          frames.start(target)
+          drive.start(target)
         }
         return bounds
       }
       override fun onProgress(insets: WindowInsetsCompat, runningAnimations: MutableList<WindowInsetsAnimationCompat>): WindowInsetsCompat {
-        if (animating && runningAnimations.any { it.typeMask and WindowInsetsCompat.Type.ime() != 0 }) drive.progress((insets.getInsets(WindowInsetsCompat.Type.ime()).bottom - gapBottom()).coerceAtLeast(0))
+        if (animating && runningAnimations.any { it.typeMask and WindowInsetsCompat.Type.ime() != 0 }) {
+          frames.frame((insets.getInsets(WindowInsetsCompat.Type.ime()).bottom - gapBottom()).coerceAtLeast(0))?.let { drive.progress(it) }
+        }
         return insets
       }
       override fun onEnd(animation: WindowInsetsAnimationCompat) {
         if (animation.typeMask and WindowInsetsCompat.Type.ime() == 0) return
+        // An animation that ends while another runs (the keyboard turned around) is not the keyboard settling.
+        if (!frames.end()) return
         animating = false
         publish()
-        drive.end(imeOverlap())
+        val px = imeOverlap()
+        frames.settled(px)
+        drive.end(px)
       }
     })
     root.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or, ob -> if (r - l != or - ol || b - t != ob - ot || l != ol || t != ot) publish() }
     root.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
       override fun onViewAttachedToWindow(v: View) { watchLayouts(); drive.install(v); v.requestApplyInsets(); publish() }
       // A window that goes during an IME animation does not deliver its end: the next window starts with none running.
-      override fun onViewDetachedFromWindow(v: View) { unwatchLayouts(); animating = false }
+      override fun onViewDetachedFromWindow(v: View) { unwatchLayouts(); animating = false; frames.reset() }
     })
     if (root.isAttachedToWindow) {
       drive.install(root)
@@ -74,7 +85,7 @@ class Insets(private val root: EngineRoot, private val drive: KeyboardDrive, pri
    * [compute] takes the overlay to fill it, and every layout pass of the window publishes what
    * changed, so the first pass of the new window sends the measured values even though the overlay's own frame did not change.
    */
-  private val globalLayout = android.view.ViewTreeObserver.OnGlobalLayoutListener { if (!animating) publish() }
+  private val globalLayout = android.view.ViewTreeObserver.OnGlobalLayoutListener { if (!animating) { publish(); drive.layoutChanged() } }
   private var watched: android.view.ViewTreeObserver? = null
 
   private fun watchLayouts() {

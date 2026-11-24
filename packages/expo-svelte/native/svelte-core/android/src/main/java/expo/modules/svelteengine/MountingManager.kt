@@ -110,7 +110,12 @@ class MountingManager(private val reactContext: ReactApplicationContext, private
   val root: EngineRoot = EngineRoot(reactContext)
 
   /** What follows the keyboard, frame by frame (SPEC.md, "Keyboard motion"): `Insets` feeds it. */
-  val keyboard = KeyboardDrive(::viewFor) { root.rootView.height }
+  val keyboard = KeyboardDrive(::viewFor) {
+    // The overlay's bottom edge in the window: the keyboard's heights are what it covers of the overlay, so its top edge is that far above this (the window's own height is the same edge to edge).
+    val at = IntArray(2)
+    root.getLocationInWindow(at)
+    at[1] + root.height
+  }
 
   /**
    * The context of every engine view, built when it is first needed (the first batch, which knows the surface, or

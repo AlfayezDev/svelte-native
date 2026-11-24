@@ -2088,12 +2088,16 @@ function walk(value, visit) {
   for (const key in node) if (key !== "metadata") walk(node[key], visit);
 }
 function lowerPrimitives(content, options = {}) {
-  if (!content.includes(PACKAGE2) && !(options.html && mayHaveHtml(content))) return content;
+  return lowerWithMap(content, options).code;
+}
+function lowerWithMap(content, options = {}) {
+  const unchanged = () => ({ code: content, original: (line, column) => ({ line, column }) });
+  if (!content.includes(PACKAGE2) && !(options.html && mayHaveHtml(content))) return unchanged();
   let ast;
   try {
     ast = parse(content, { modern: true, filename: options.filename });
   } catch {
-    return content;
+    return unchanged();
   }
   const locals = /* @__PURE__ */ new Map();
   const actions = /* @__PURE__ */ new Set();
@@ -2101,7 +2105,7 @@ function lowerPrimitives(content, options = {}) {
   collectImports(ast.module?.content, locals, actions);
   const warn = options.warn ?? ((message) => console.warn(message));
   const html = options.html ? lowerHtml(ast, content, options.filename, warn) : void 0;
-  if (!locals.size && !html?.elements.size && !html?.edits.length) return content;
+  if (!locals.size && !html?.elements.size && !html?.edits.length) return unchanged();
   const edits = html ? [...html.edits] : [];
   const helpers = new Set(html?.helpers);
   const wrap = (expression, helper) => {
@@ -2186,7 +2190,7 @@ function lowerPrimitives(content, options = {}) {
       edits.push({ start: close + 2, end: close + 2 + node.name.length, text: tag });
     }
   });
-  if (!edits.length) return content;
+  if (!edits.length) return unchanged();
   const script = ast.instance ?? ast.module;
   const names = [...helpers].sort().map((helper) => `${HELPER_EXPORTS[helper]} as ${helper}`);
   const setup = html?.setup ?? [];
@@ -2196,7 +2200,33 @@ function lowerPrimitives(content, options = {}) {
   edits.sort((a, b) => b.start - a.start || b.end - a.end);
   let output = content;
   for (const edit of edits) output = output.slice(0, edit.start) + edit.text + output.slice(edit.end);
-  return output;
+  return { code: output, original: (line, column) => positionIn(content, output, edits, line, column) };
+}
+function offsetAt(text, line, column) {
+  let offset = 0;
+  for (let at = 1; at < line; at++) {
+    const next = text.indexOf("\n", offset);
+    if (next < 0) return text.length;
+    offset = next + 1;
+  }
+  return offset + column;
+}
+function lineAndColumn(text, offset) {
+  const before = text.slice(0, offset);
+  const line = before.split("\n").length;
+  return { line, column: offset - (before.lastIndexOf("\n") + 1) };
+}
+function positionIn(content, lowered, edits, line, column) {
+  const target = offsetAt(lowered, line, column);
+  let delta = 0;
+  for (let at = edits.length - 1; at >= 0; at--) {
+    const edit = edits[at];
+    const from = edit.start + delta;
+    if (target < from) break;
+    if (target < from + edit.text.length) return lineAndColumn(content, edit.start);
+    delta += edit.text.length - (edit.end - edit.start);
+  }
+  return lineAndColumn(content, Math.max(0, Math.min(content.length, target - delta)));
 }
 var lower = {
   name: "expo-svelte-lower",
@@ -2210,5 +2240,6 @@ export {
   LOWERED_TAGS,
   lower_default as default,
   lower,
-  lowerPrimitives
+  lowerPrimitives,
+  lowerWithMap
 };

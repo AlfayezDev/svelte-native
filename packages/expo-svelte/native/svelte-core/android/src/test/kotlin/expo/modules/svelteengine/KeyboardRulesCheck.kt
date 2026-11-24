@@ -326,8 +326,8 @@ private class Rig(var main: Boolean = true) {
   val channel = KeyboardChannel({ main }, { queue.add(it) }, { 63 }, { 2.625f }, { id, _ -> dropped.add(id) })
   fun drain() { val run = queue.toList(); queue.clear(); val was = main; main = true; run.forEach { it() }; main = was }
   /** A subscriber of Reanimated's, that records what it was told. */
-  fun reanimated(translucent: Boolean, seen: MutableList<String>): Int = channel.subscribe({ state, dp -> seen.add("$state:$dp") }, translucent)
-  fun raw(seen: MutableList<String>): Int { channel.rawNext(); return channel.subscribe({ kind, px -> seen.add("$kind:$px") }) }
+  fun reanimated(translucent: Boolean, seen: MutableList<String>): Int = channel.subscribe({ state: Int, dp: Int -> seen.add("$state:$dp") }, translucent)
+  fun raw(seen: MutableList<String>): Int { channel.rawNext(); return channel.subscribe({ kind: Int, px: Int -> seen.add("$kind:$px") }) }
 }
 
 /** What `useAnimatedKeyboard` is given and what `createKeyboardMotion` is, from the engine's frames, with the subscribers coming and going (SPEC.md "Keyboard motion"). */
@@ -391,7 +391,7 @@ private fun channel() {
   expect("one raw, one not", listOf(raw.toList(), whole.toList()), listOf(listOf("1:1050"), emptyList<String>()))
   // A listener that fails is dropped and does not stop the others.
   rig = Rig(); whole = mutableListOf()
-  val bad = rig.channel.subscribe({ _, _ -> error("a bad worklet") })
+  val bad = rig.channel.subscribe({ _: Int, _: Int -> error("a bad worklet") })
   rig.reanimated(true, whole)
   rig.channel.start(1050); rig.channel.frame(525); rig.channel.frame(1050)
   expect("the bad one is dropped once", rig.dropped, listOf(bad))

@@ -5,7 +5,7 @@ import { patchFiles } from "../../src/doctor/patches.ts";
 import { createProject } from "../support/project.ts";
 import { patchVersion, peerVersion } from "../support/versions.ts";
 import { fixture, library, readJson, initProjects } from "./support/init-project.ts";
-import { appDependencies, appNames, mergeWorkspaceYaml, parseInitArguments, planInit, expoSvelteViteConfig } from "../../src/init-app.ts";
+import { appDependencies, appNames, installArguments, mergeWorkspaceYaml, parseInitArguments, planInit, expoSvelteViteConfig } from "../../src/init-app.ts";
 import { compile } from "svelte/compiler";
 import { requiredSvelte } from "../../src/svelte-build.ts";
 import { collisionMessage, vendoredNames } from "../../src/vendored.ts";
@@ -70,6 +70,8 @@ describe("init in a fresh sv project", () => {
     run(root);
     const yaml = readFileSync(join(root, "pnpm-workspace.yaml"), "utf8");
     expect(yaml.startsWith("engineStrict: true\nallowBuilds:\n  esbuild: true\n")).toBe(true);
+    // pnpm hashes the name of the library's folder (which would keep `_patch_hash=<hash>`, and Android's prefab tool cannot take an "=" in a package path), and a second init leaves it.
+    expect(yaml).toContain("\nvirtualStoreDirMaxLength: 60\n");
     // Both packages that come with another one by a range: the patched expo-modules-core, and the Metro config package, pinned to the React Native version init writes.
     expect(yaml).toContain(`overrides:\n  expo-modules-core: ${coreVersion}\n  "@react-native/metro-config": ${reactNativeVersion}\n`);
     const declared = [...yaml.matchAll(/^ {2}"?([^\s":]+(?:@[^\s":]+)*)"?: (patches\/expo-svelte\/\S+)$/gm)].map((match) => match[2] as string);
@@ -350,6 +352,51 @@ describe("the edit of pnpm-workspace.yaml", () => {
     const flow = mergeWorkspaceYaml("allowBuilds: { esbuild: true }\n", { allowBuilds: wanted.allowBuilds });
     expect(flow.manual).toEqual(["allowBuilds: esbuild: true"]);
     expect(flow.text).toBe("allowBuilds: { esbuild: true }\n");
+  });
+
+  test("init's pnpm install says yes to the removal of node_modules unless a person is at both ends of a terminal (it asks, and reads the answer, there)", () => {
+    const flag = "--config.confirmModulesPurge=false";
+    expect(installArguments({ stdin: true, stdout: true })).toEqual(["install", "--no-frozen-lockfile"]);
+    for (const terminal of [{ stdin: false, stdout: false }, { stdin: true, stdout: false }, { stdin: false, stdout: true }]) expect(installArguments(terminal), JSON.stringify(terminal)).toEqual(["install", "--no-frozen-lockfile", flag]);
+  });
+
+  test("a top-level number that must not be above a limit is added after the blocks, lowered when it is above (its comment and spacing kept), kept when it is at or below, and said so", () => {
+    const limit = { virtualStoreDirMaxLength: 60 };
+    expect(mergeWorkspaceYaml("", {}, limit)).toEqual({ text: "virtualStoreDirMaxLength: 60\n", changes: ["virtualStoreDirMaxLength"], manual: [] });
+    expect(mergeWorkspaceYaml("allowBuilds:\n  esbuild: true\n", { overrides: wanted.overrides }, limit).text).toBe(`allowBuilds:\n  esbuild: true\n\noverrides:\n  expo-modules-core: ${coreVersion}\n\nvirtualStoreDirMaxLength: 60\n`);
+    const lowered = mergeWorkspaceYaml("virtualStoreDirMaxLength: 120 # pnpm's default\nallowBuilds:\n  esbuild: true\n", {}, limit);
+    expect([lowered.text, lowered.changes]).toEqual(["virtualStoreDirMaxLength: 60 # pnpm's default\nallowBuilds:\n  esbuild: true\n", ["virtualStoreDirMaxLength (was 120)"]]);
+    // Quotes go with the value they were round, spacing and the comment stay.
+    expect(mergeWorkspaceYaml('virtualStoreDirMaxLength:   "120"   # mine\n', {}, limit).text).toBe("virtualStoreDirMaxLength:   60   # mine\n");
+    for (const kept of ["virtualStoreDirMaxLength: 60\n", "virtualStoreDirMaxLength: 40 # short\n", "virtualStoreDirMaxLength: '45'\n"]) expect(mergeWorkspaceYaml(kept, {}, limit)).toEqual({ text: kept, changes: [], manual: [] });
+    expect(mergeWorkspaceYaml("virtualStoreDirMaxLength: abc\n", {}, limit)).toMatchObject({ text: "virtualStoreDirMaxLength: 60\n", changes: ["virtualStoreDirMaxLength (was abc)"] });
+    const again = mergeWorkspaceYaml("allowBuilds:\n  esbuild: true\n", { overrides: wanted.overrides }, limit);
+    expect(mergeWorkspaceYaml(again.text, { overrides: wanted.overrides }, limit)).toEqual({ text: again.text, changes: [], manual: [] });
+  });
+
+  test("next to a block in flow style the limit is still written, and a file that is one flow mapping is listed whole, the limit with it", () => {
+    const limit = { virtualStoreDirMaxLength: 60 };
+    const beside = mergeWorkspaceYaml("allowBuilds: { esbuild: true }\n", { allowBuilds: wanted.allowBuilds }, limit);
+    expect(beside.manual).toEqual(["allowBuilds: esbuild: true"]);
+    expect(beside.text).toBe("allowBuilds: { esbuild: true }\n\nvirtualStoreDirMaxLength: 60\n");
+    expect(beside.changes).toEqual(["virtualStoreDirMaxLength"]);
+    const whole = mergeWorkspaceYaml("# mine\n{ allowBuilds: { esbuild: true } }\n", { allowBuilds: wanted.allowBuilds, overrides: wanted.overrides }, limit);
+    expect(whole.text).toBe("# mine\n{ allowBuilds: { esbuild: true } }\n");
+    expect(whole.changes).toEqual([]);
+    expect(whole.manual).toEqual(["allowBuilds: esbuild: true", `overrides: expo-modules-core: ${coreVersion}`, "virtualStoreDirMaxLength: 60"]);
+  });
+
+  test("init writes what it can edit of pnpm-workspace.yaml and lists the rest, where it dropped everything when one block was in flow style", () => {
+    const root = project();
+    writeFileSync(join(root, "pnpm-workspace.yaml"), "allowBuilds: { esbuild: true }\n");
+    const plan = planInit(root);
+    const [edit] = plan.changes.filter((change) => change.path === "pnpm-workspace.yaml" && change.action === "edit");
+    expect(edit?.text).toContain("allowBuilds: { esbuild: true }");
+    expect(edit?.text).toContain(`overrides:\n  expo-modules-core: ${coreVersion}\n`);
+    expect(edit?.text).toContain("\nvirtualStoreDirMaxLength: 60\n");
+    const [manual] = plan.changes.filter((change) => change.path === "pnpm-workspace.yaml" && change.action === "manual");
+    expect(manual?.instructions).toContain("allowBuilds: esbuild: true");
+    expect(manual?.instructions).not.toContain("overrides");
   });
 
   test("line endings and a file without a final newline are kept sensible", () => {

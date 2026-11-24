@@ -68,12 +68,18 @@ class NodeState {
     } else own.copyFrom(from)
   }
 
-  /** React Native's own drawables draw the box (`BoxStyle`), and not the plain [drawable]. What `BoxStyle.apply` last wrote, to write only what changed. */
+  /**
+   * React Native's own drawables draw the box (`BoxStyle`), and not the plain [drawable]. What `BoxStyle.apply` last wrote to them (the drawables' own state, which [radii], [border] and
+   * [bg] are not once the node is reset for the pool: they are zero then and the drawables keep what they had), to write only what changed. A recycled view keeps its drawables.
+   */
   var boxStyle = false
   var boxRtl = false
   var boxShadows: IntArray? = null
   var boxBorderStyle = 0
   val boxColors = IntArray(4)
+  val boxRadii = FloatArray(4)
+  val boxBorder = FloatArray(4)
+  var boxBg = 0
   /** An outset shadow is among [boxShadows]: it draws outside the view, so the view's own outline must not clip it. */
   var boxOutset = false
 

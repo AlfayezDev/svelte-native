@@ -239,7 +239,14 @@ private fun engine(main: String) {
   val animated = source("$java/AnimatedProps.kt")
   expect("an animated background and radius go through BoxStyle for such a view", animated.contains("BoxStyle.setBackground(view, st, color)") && animated.contains("BoxStyle.setRadii(view, st, tl, tr, br, bl)"), true)
   expect("an animated transformOrigin is read", animated.contains("props.hasKey(\"transformOrigin\")"), true)
-  expect("a recycled view lets go of the drawables", source("$java/views/ViewPool.kt").contains("if (st.boxStyle) BoxStyle.drop(view, st)"), true)
+  val pool = source("$java/views/ViewPool.kt")
+  expect("a recycled view keeps React Native's drawables, which are rewritten when the next node of it needs them", !pool.contains("BoxStyle.drop") && !pool.contains("import expo.modules.svelteengine.BoxStyle"), true)
+  expect("BoxStyle compares a node with what the drawables hold (the node state is zeroed for the pool, the drawables are not), and writes it down",
+    box.contains("st.boxRadii.contentEquals(p.radii)") && box.contains("st.boxBorder.contentEquals(p.border)") && box.contains("st.boxBg != p.bg") &&
+      box.contains("p.radii.copyInto(st.boxRadii)") && box.contains("p.border.copyInto(st.boxBorder)") && box.contains("st.boxBg = p.bg") &&
+      !box.contains("st.radii.contentEquals") && !box.contains("st.border.contentEquals") && !box.contains("st.bg != p.bg"), true)
+  expect("an animated write of a view with the drawables is written down as what they hold", box.contains("st.boxBg = color") && box.contains("r.copyInto(st.boxRadii)"), true)
+  expect("taking the drawables off clears what is remembered of them", box.contains("st.boxRadii.fill(0f)") && box.contains("st.boxBorder.fill(0f)") && box.contains("st.boxBg = 0"), true)
   expect("Props decodes the style records", props.contains("in 140..149 -> i = out.style.decode(id, ops, i)"), true)
 
   // The encoder: the transform record leaves the origin out (the view pivots on it), and the three records come from StyleWire.h.

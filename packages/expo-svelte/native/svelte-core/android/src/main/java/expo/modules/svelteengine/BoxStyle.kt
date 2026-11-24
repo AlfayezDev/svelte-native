@@ -37,23 +37,25 @@ internal object BoxStyle {
     val all = fresh || st.boxRtl != rtl
     st.boxRtl = rtl
 
-    if (all || !st.radii.contentEquals(p.radii)) {
+    if (all || !st.boxRadii.contentEquals(p.radii)) {
       val corners = StyleRules.corners(rtl)
       for (k in 0..3) {
         val radius = if (p.radii[k] > 0f) LengthPercentage(p.radii[k] / density, LengthPercentageType.POINT) else null
         BackgroundStyleApplicator.setBorderRadius(view, BorderRadiusProp.valueOf(corners[k]), radius)
       }
-      p.radii.copyInto(st.radii)
+      p.radii.copyInto(st.boxRadii)
     }
+    p.radii.copyInto(st.radii)
     // Widths and colours: `borderWidth` and `borderColor` (the ALL edge) when the sides agree, a side each when they do not. React Native's rounded border draws its
     // dashes and dots only from the ALL width and colour (`BorderDrawable.drawRoundedBorders`), as a style of `borderWidth` and `borderColor` sets them.
-    if (all || !st.border.contentEquals(p.border)) {
+    if (all || !st.boxBorder.contentEquals(p.border)) {
       val edges = StyleRules.edges(rtl)
       val uniform = StyleRules.uniform(p.border)
       BackgroundStyleApplicator.setBorderWidth(view, LogicalEdge.ALL, if (uniform) p.border[0] / density else null)
       for (side in 0..3) BackgroundStyleApplicator.setBorderWidth(view, LogicalEdge.valueOf(edges[side]), if (uniform) null else p.border[side] / density)
-      p.border.copyInto(st.border)
+      p.border.copyInto(st.boxBorder)
     }
+    p.border.copyInto(st.border)
     if (all || !st.boxColors.contentEquals(p.sideColors)) {
       val edges = StyleRules.edges(rtl)
       val uniform = StyleRules.uniform(p.sideColors)
@@ -66,10 +68,11 @@ internal object BoxStyle {
       BackgroundStyleApplicator.setBorderStyle(view, BorderStyle.fromString(StyleRules.BORDER_STYLES[p.style.borderStyle]))
       st.boxBorderStyle = p.style.borderStyle
     }
-    if (all || st.bg != p.bg) {
+    if (all || st.boxBg != p.bg) {
       BackgroundStyleApplicator.setBackgroundColor(view, p.bg)
-      st.bg = p.bg
+      st.boxBg = p.bg
     }
+    st.bg = p.bg
     val applied = st.boxShadows
     val same = if (applied == null || shadows == null) applied == null && shadows == null else applied.contentEquals(shadows)
     if (!same) {
@@ -106,6 +109,9 @@ internal object BoxStyle {
     st.boxOutset = false
     st.boxBorderStyle = 0
     st.boxColors.fill(0)
+    st.boxRadii.fill(0f)
+    st.boxBorder.fill(0f)
+    st.boxBg = 0
     // What the plain path compares with: nothing is drawn, so every colour, width and radius of the next record is a change.
     st.bg = 0
     st.radii.fill(0f)
@@ -116,6 +122,7 @@ internal object BoxStyle {
   /** An animated `backgroundColor` of a view React Native's drawables draw. */
   fun setBackground(view: View, st: NodeState, color: Int) {
     st.bg = color
+    st.boxBg = color
     BackgroundStyleApplicator.setBackgroundColor(view, color)
   }
 
@@ -123,6 +130,7 @@ internal object BoxStyle {
   fun setRadii(view: View, st: NodeState, tl: Float, tr: Float, br: Float, bl: Float) {
     val r = st.radii
     r[0] = tl; r[1] = tr; r[2] = br; r[3] = bl
+    r.copyInto(st.boxRadii)
     val density = view.resources.displayMetrics.density
     val corners = StyleRules.corners(st.boxRtl)
     for (k in 0..3) {

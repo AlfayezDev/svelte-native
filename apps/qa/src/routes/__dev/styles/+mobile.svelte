@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
+  import { requireOptionalNativeModule } from "expo-modules-core";
   import { Pressable, Text, View } from "expo-svelte";
   import Page from "#lib/native/components/Page.svelte";
   import StyleTile from "#lib/native/dev/StyleTile.svelte";
-  import { focusRing, modes, runtimeInput, runtimeLabel, tiles, type Mode } from "#lib/native/dev/styles-cases.ts";
+  import { focusRing, modes, reuseStyles, runtimeInput, runtimeLabel, tiles, type Mode } from "#lib/native/dev/styles-cases.ts";
 
   /**
    * The box styles lab (SPEC.md, "Box styles"; qa/README "Box styles"): the box shadows, borders and transform origins the Android engine draws with React Native's own
@@ -20,6 +21,18 @@
   const rows = Number(untrack(() => url?.searchParams.get("rows")) ?? 0);
   const bordered = untrack(() => url?.searchParams.get("border")) === "1";
   const cycles = Number(untrack(() => url?.searchParams.get("cycles")) ?? 6);
+  // `?reuse=<from>-<to>` (indices of `reuseStyles`; `from` empty for none): ten boxes in the style `from`, removed after 700 ms, ten in the style `to` 700 ms later, made from the views the engine recycled
+  // (`[Svelte styles] reuse pooled=N`, logged just before, says how many were waiting). The grid is the one of the tiles, so the screenshot compares with the one of `?reuse=-<to>`, which has no recycled view.
+  const reuse = untrack(() => url?.searchParams.get("reuse"));
+  const [reuseFrom, reuseTo] = (reuse ?? "-").split("-").map((part) => (part === "" ? null : Number(part)));
+  let reusePhase = $state<"from" | "gap" | "to">(reuseFrom === null ? "to" : "from");
+  const engineStats = requireOptionalNativeModule<{ stats?: () => Record<string, number> | null }>("SvelteEngine");
+  onMount(() => {
+    if (reuse === null || reuseFrom === null) return;
+    const gone = setTimeout(() => { reusePhase = "gap"; }, 700);
+    const back = setTimeout(() => { console.info(`[Svelte styles] reuse pooled=${engineStats?.stats?.()?.pooled ?? -1}`); reusePhase = "to"; }, 1400);
+    return () => { clearTimeout(gone); clearTimeout(back); };
+  });
   let shown = $state(false);
   onMount(() => {
     if (rows === 0) return;
@@ -37,7 +50,22 @@
 </script>
 
 <Page title="Box styles">
-  {#if rows > 0}
+  {#if reuse !== null}
+    <!-- the removed grid is gone for 700 ms before the next one: the views it held are waiting in the pool -->
+    {#if reusePhase === "from" && reuseFrom !== null}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", width: 336, alignSelf: "center" }}>
+        {#each Array.from({ length: 10 }, (_, i) => i) as i (i)}
+          <View style={{ width: 168, height: 112, alignItems: "center", justifyContent: "center", backgroundColor: "#f4f4f5" }}><View style={reuseStyles[reuseFrom]} /></View>
+        {/each}
+      </View>
+    {:else if reusePhase === "to" && reuseTo !== null}
+      <View testID="styles.grid" style={{ flexDirection: "row", flexWrap: "wrap", width: 336, alignSelf: "center" }}>
+        {#each Array.from({ length: 10 }, (_, i) => i) as i (i)}
+          <View style={{ width: 168, height: 112, alignItems: "center", justifyContent: "center", backgroundColor: "#f4f4f5" }}><View style={reuseStyles[reuseTo]} /></View>
+        {/each}
+      </View>
+    {/if}
+  {:else if rows > 0}
     <View testID="styles.rows">
       {#if shown}
         {#each Array.from({ length: rows }, (_, i) => i) as i (i)}

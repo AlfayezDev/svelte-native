@@ -70,19 +70,18 @@
         </Pressable>
       </View>
     </KeyboardStickyView>
+  <!-- A sticky composer in a Modal: the modal lifts its own content by the keyboard, so the engine leaves a view of it where the modal puts it. -->
+  <Modal visible={modal} animationType="none" onRequestClose={() => { modal = false; }}>
+    <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: theme.colors.background }}>
+      <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }} style={{ backgroundColor: theme.colors.surface, borderTopWidth: 1, borderTopColor: theme.colors.border }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 12, paddingBottom: 12 + insets.bottom }}>
+          <TextInput placeholder="Modal message" placeholderTextColor={theme.colors.muted} accessibilityLabel="Modal message" style={{ flex: 1, minHeight: 44, paddingHorizontal: 12, borderRadius: 22, borderWidth: 1, borderColor: theme.colors.border, color: theme.colors.text, fontSize: 16 }} />
+          <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => (modal = false)} style={{ minHeight: 44, paddingHorizontal: 16, borderRadius: 22, backgroundColor: theme.colors.accent, alignItems: "center", justifyContent: "center" }}>
+            <Text style={{ color: theme.colors.onAccent, fontSize: 16 }}>Close</Text>
+          </Pressable>
+        </View>
+      </KeyboardStickyView>
+    </View>
+  </Modal>
   </View>
 </Screen>
-
-<!-- A sticky composer in a Modal: the modal lifts its own content by the keyboard, so the engine leaves a view of it where the modal puts it. -->
-<Modal visible={modal} animationType="none" onRequestClose={() => { modal = false; }}>
-  <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: theme.colors.background }}>
-    <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }} style={{ backgroundColor: theme.colors.surface, borderTopWidth: 1, borderTopColor: theme.colors.border }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 12, paddingBottom: 12 + insets.bottom }}>
-        <TextInput placeholder="Modal message" placeholderTextColor={theme.colors.muted} accessibilityLabel="Modal message" style={{ flex: 1, minHeight: 44, paddingHorizontal: 12, borderRadius: 22, borderWidth: 1, borderColor: theme.colors.border, color: theme.colors.text, fontSize: 16 }} />
-        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => (modal = false)} style={{ minHeight: 44, paddingHorizontal: 16, borderRadius: 22, backgroundColor: theme.colors.accent, alignItems: "center", justifyContent: "center" }}>
-          <Text style={{ color: theme.colors.onAccent, fontSize: 16 }}>Close</Text>
-        </Pressable>
-      </View>
-    </KeyboardStickyView>
-  </View>
-</Modal>

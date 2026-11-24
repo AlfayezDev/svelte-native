@@ -286,8 +286,8 @@ object Props {
   fun applyCommon(view: View, st: NodeState, p: PropSet, create: Boolean) {
     // background, radii, border: the engine's plain background, or React Native's own drawables for what that cannot draw (BoxStyle.kt, SPEC.md "Box styles")
     val shadows = p.style.shadows
-    StyleRules.sideColors(p.style, p.borderColor, p.sideColors)
-    val react = StyleRules.needsReactDrawables(shadows, p.style, p.sideColors, p.border)
+    val react = StyleRules.needsReactDrawables(shadows, p.border)
+    if (react) StyleRules.sideColors(p.style, p.borderColor, p.sideColors)
     if (st.boxStyle && !react) BoxStyle.drop(view, st)
     val radiiChanged = create || !st.radii.contentEquals(p.radii)
     val borderChanged = create || !st.border.contentEquals(p.border) || st.borderColor != p.borderColor

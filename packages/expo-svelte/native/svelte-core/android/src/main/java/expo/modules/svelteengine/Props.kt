@@ -286,14 +286,17 @@ object Props {
   fun applyCommon(view: View, st: NodeState, p: PropSet, create: Boolean) {
     // background, radii, border: the engine's plain background, or React Native's own drawables for what that cannot draw (BoxStyle.kt, SPEC.md "Box styles")
     val shadows = p.style.shadows
-    val react = StyleRules.needsReactDrawables(shadows, p.border)
-    if (react) StyleRules.sideColors(p.style, p.borderColor, p.sideColors)
+    val widest = StyleRules.widest(p.border)
+    if (shadows != null || widest > 0f) StyleRules.sideColors(p.style, p.borderColor, p.sideColors)
+    val kind = StyleRules.boxKind(shadows, widest, p.style.borderStyle, p.border, p.sideColors)
+    val react = kind == StyleRules.BOX_REACT
     if (st.boxStyle && !react) BoxStyle.drop(view, st)
+    if (st.uniformBox != null && kind != StyleRules.BOX_UNIFORM) BoxStyle.dropUniform(view, st)
     val radiiChanged = create || !st.radii.contentEquals(p.radii)
     val borderChanged = create || !st.border.contentEquals(p.border) || st.borderColor != p.borderColor
     val bgChanged = create || st.bg != p.bg
-    if (react) BoxStyle.apply(view, st, p, shadows)
-    if (!react && (radiiChanged || borderChanged || bgChanged)) {
+    if (react) BoxStyle.apply(view, st, p, shadows) else if (kind == StyleRules.BOX_UNIFORM) BoxStyle.applyUniform(view, st, p)
+    if (kind == StyleRules.BOX_PLAIN && (radiiChanged || borderChanged || bgChanged)) {
       p.radii.copyInto(st.radii)
       p.border.copyInto(st.border)
       st.borderColor = p.borderColor
@@ -344,7 +347,7 @@ object Props {
     val maxRadius = max(max(p.radii[0], p.radii[1]), max(p.radii[2], p.radii[3]))
     // A view React Native's drawables draw clips its children to the padding box itself (`EngineView.dispatchDraw`), and a clip of the whole view to its outline would cut
     // off the outset shadow they draw around it.
-    if (hidden && maxRadius > 0f && !(st.boxStyle && (view is EngineView || st.boxOutset))) {
+    if (hidden && maxRadius > 0f && !((st.boxStyle || st.uniformBox != null) && (view is EngineView || st.boxOutset))) {
       if (!st.outlineClip) {
         st.outlineClip = true
         view.outlineProvider = RoundedOutline(st)

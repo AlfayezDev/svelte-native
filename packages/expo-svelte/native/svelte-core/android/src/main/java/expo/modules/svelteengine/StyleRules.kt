@@ -36,13 +36,49 @@ internal object StyleRules {
   fun uniform(values: FloatArray): Boolean = values[0] == values[1] && values[1] == values[2] && values[2] == values[3]
   fun uniform(values: IntArray): Boolean = values[0] == values[1] && values[1] == values[2] && values[2] == values[3]
 
+  /** Who draws a view's box. */
+  const val BOX_PLAIN = 0
+  const val BOX_UNIFORM = 1
+  const val BOX_REACT = 2
+
   /**
-   * Whether the view's box is drawn by React Native's own drawables (`BackgroundStyleApplicator`) and not by the engine's plain background (a `GradientDrawable`): it has a box
-   * shadow, or a border that shows ([widths] are the border widths in px: left, top, right, bottom). The plain background draws a border as a stroke of whole pixels, which is not
-   * the line React Native's `BorderDrawable` draws (a 1 dp border is a 3 px line shifted half a pixel, with half-covered edge pixels), so a bordered view is React Native's.
-   * What is left to the plain background is a fill, with or without rounded corners.
+   * Who draws the box of a view (`Props.applyCommon`; SPEC.md, "Box styles"): [BOX_PLAIN], the engine's `GradientDrawable`, for a fill with no border (the same pixels as React Native's);
+   * [BOX_UNIFORM], `UniformBoxDrawable`, for a fill and a border of one width and one colour, solid, no shadow, which it draws as React Native's `BorderDrawable` does, in one drawable;
+   * [BOX_REACT], React Native's own drawables (`BackgroundStyleApplicator`), for a box shadow (a layer that is off counts) and for a border that is dashed or dotted, of sides of different
+   * widths or of different colours. [widest] is the widest border width in px, [colors] is [sideColors].
    */
-  fun needsReactDrawables(shadows: IntArray?, widths: FloatArray): Boolean = shadows != null || maxOf(maxOf(widths[0], widths[1]), maxOf(widths[2], widths[3])) > 0f
+  fun boxKind(shadows: IntArray?, widest: Float, borderStyle: Int, widths: FloatArray, colors: IntArray): Int {
+    if (shadows != null) return BOX_REACT
+    if (widest <= 0f) return BOX_PLAIN
+    return if (borderStyle != 0 || !uniform(widths) || !uniform(colors)) BOX_REACT else BOX_UNIFORM
+  }
+
+  fun widest(widths: FloatArray): Float = maxOf(maxOf(widths[0], widths[1]), maxOf(widths[2], widths[3]))
+
+  /**
+   * `BorderRadiusStyle.ensureNoOverlap`: corner radii (dp; [r] holds top left, top right, bottom right and bottom left, a horizontal and a vertical radius each) reduced in proportion
+   * where two of them would meet on an edge of the box ([width] and [height], dp). A side with no radius has a scale of 0, as in React Native, which only a corner without a radius reads.
+   */
+  fun ensureNoOverlap(r: FloatArray, width: Float, height: Float) {
+    val tlh = r[0]; val tlv = r[1]; val trh = r[2]; val trv = r[3]
+    val brh = r[4]; val brv = r[5]; val blh = r[6]; val blv = r[7]
+    val leftEdgeRadii = tlv + blv
+    val topEdgeRadii = tlh + trh
+    val rightEdgeRadii = trv + brv
+    val bottomEdgeRadii = blh + brh
+    val leftEdgeRadiiScale = if (leftEdgeRadii > 0) minOf(height / leftEdgeRadii, 1f) else 0f
+    val topEdgeRadiiScale = if (topEdgeRadii > 0) minOf(width / topEdgeRadii, 1f) else 0f
+    val rightEdgeRadiiScale = if (rightEdgeRadii > 0) minOf(height / rightEdgeRadii, 1f) else 0f
+    val bottomEdgeRadiiScale = if (bottomEdgeRadii > 0) minOf(width / bottomEdgeRadii, 1f) else 0f
+    r[0] = tlh * minOf(topEdgeRadiiScale, leftEdgeRadiiScale)
+    r[1] = tlv * minOf(topEdgeRadiiScale, leftEdgeRadiiScale)
+    r[2] = trh * minOf(rightEdgeRadiiScale, topEdgeRadiiScale)
+    r[3] = trv * minOf(rightEdgeRadiiScale, topEdgeRadiiScale)
+    r[4] = brh * minOf(bottomEdgeRadiiScale, rightEdgeRadiiScale)
+    r[5] = brv * minOf(bottomEdgeRadiiScale, rightEdgeRadiiScale)
+    r[6] = blh * minOf(bottomEdgeRadiiScale, leftEdgeRadiiScale)
+    r[7] = blv * minOf(bottomEdgeRadiiScale, leftEdgeRadiiScale)
+  }
 
   /**
    * The names of React Native's `LogicalEdge` for the left, top, right and bottom side of a border whose sides differ (when they agree the style's own `borderWidth` and

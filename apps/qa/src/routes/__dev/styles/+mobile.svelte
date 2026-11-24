@@ -8,7 +8,7 @@
 
   /**
    * The box styles lab (SPEC.md, "Box styles"; qa/README "Box styles"): the box shadows, borders and transform origins the Android engine draws with React Native's own
-   * drawables, one tile each (`styles-cases.ts`). `?mode=shadow` (the default), `?mode=border` and `?mode=origin` each fit one screen. The grid has the `testID`
+   * drawables, one tile each (`styles-cases.ts`). `?mode=shadow` (the default), `?mode=border`, `?mode=origin` and `?mode=uniform` each fit one screen. The grid has the `testID`
    * `styles.grid`; the reference app (`qa/styles-reference`) draws the same objects with React Native's own views, and the two are compared tile by tile. In `shadow`
    * an input below the grid goes through three states each time it is pressed (`styles.focus`): a focus ring, then `boxShadow: undefined` (the style key is gone), then the
    * shadow that is off (`0 0 0 0 transparent`), then the ring again, so the ring comes, goes and is taken away at run time.

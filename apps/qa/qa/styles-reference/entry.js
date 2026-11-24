@@ -3,7 +3,7 @@
 // It is the QA app's native build with this file as the JavaScript bundle (`qa/styles-reference/build.sh`): the engine is installed by the Svelte host's first commit,
 // which this app never makes, so React Native's own mounting draws every view.
 //
-// It reads the deep link the lab page is opened with: `?mode=shadow|border|origin` (the same tiles), `&top=<dp>`, the space above the grid, so the grid starts where the
+// It reads the deep link the lab page is opened with: `?mode=shadow|border|origin|uniform` (the same tiles), `&top=<dp>`, the space above the grid, so the grid starts where the
 // lab page's does and both sit on the same pixel grid, and `&runtime=on|off`, the state of the input below the grid in `shadow`.
 import "react-native/Libraries/Core/InitializeCore";
 import * as React from "react";

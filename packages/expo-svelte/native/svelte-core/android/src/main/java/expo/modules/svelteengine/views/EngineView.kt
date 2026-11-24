@@ -15,6 +15,7 @@ import expo.modules.svelteengine.A11yRecords
 import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.Props
 import expo.modules.svelteengine.StyleRecords
+import expo.modules.svelteengine.UniformBoxDrawable
 
 /** Per-view state the mounting layer keeps outside of View ids and tags. */
 class NodeState {
@@ -73,6 +74,8 @@ class NodeState {
    * [bg] are not once the node is reset for the pool: they are zero then and the drawables keep what they had), to write only what changed. A recycled view keeps its drawables.
    */
   var boxStyle = false
+  /** The box is drawn by `UniformBoxDrawable` (a fill and a border of one width and one colour): this one. It holds its own state, and a recycled view keeps it like [boxStyle]'s drawables. */
+  var uniformBox: UniformBoxDrawable? = null
   var boxRtl = false
   var boxShadows: IntArray? = null
   var boxBorderStyle = 0
@@ -235,9 +238,12 @@ open class EngineView(context: Context) : ViewGroup(context), EngineNode {
       return
     }
     val saved = canvas.save()
+    val uniform = node.uniformBox
     if (node.boxStyle) {
       // React Native's own clip, round corners and border widths of its drawables included (`ReactViewGroup.dispatchDraw`).
       BackgroundStyleApplicator.clipToPaddingBox(this, canvas)
+    } else if (uniform != null) {
+      uniform.clipToPaddingBox(this, canvas)
     } else {
       val widths = node.border
       canvas.clipRect(widths[0], widths[1], width - widths[2], height - widths[3])

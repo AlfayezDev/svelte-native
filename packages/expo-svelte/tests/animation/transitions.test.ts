@@ -22,7 +22,7 @@ const entry = `import Fixture from ${JSON.stringify(resolve(import.meta.dirname,
 type Animate = { node: unknown; keyframes: Record<string, unknown>[]; options: { duration?: number; delay?: number; fill?: string }; animation: Animation };
 type Animation = { onfinish: (() => void) | null; effect: unknown; playState: string; currentTime: number | null; cancel(): void };
 type NodeClass = { prototype: { animate(this: unknown, keyframes: unknown, options: unknown): Animation; getProp(key: string): unknown } };
-type App = { setIntro(value: boolean): void; setOutro(value: boolean): void; setReversible(value: boolean): void; setBlurred(value: boolean): void; setItems(value: number[]): void; setRows(value: number[]): void; setSlid(value: boolean): void; setSliding(value: boolean): void; setDrawing(value: boolean): void; setDelayed(value: boolean): void; setLists(left: number[], right: number[]): void; setAnimated(value: boolean): void; setCss(value: boolean): void; setScrolling(value: number[]): void; seen(): string[] };
+type App = { setIntro(value: boolean): void; setOutro(value: boolean): void; setReversible(value: boolean): void; setBlurred(value: boolean): void; setItems(value: number[]): void; setRows(value: number[]): void; setSlid(value: boolean): void; setSliding(value: boolean): void; setDrawing(value: boolean): void; setDelayed(value: boolean): void; setLists(left: number[], right: number[]): void; setAnimated(value: boolean): void; setCss(value: boolean): void; setScrolling(value: number[]): void; setZoomed(value: number[]): void; seen(): string[] };
 type Loaded = { startSurface(root: number, component: unknown, props: object): App; tick(): Promise<void>; fabricStats(): { animationLoaded: boolean }; Fixture: unknown; NativeNode: NodeClass };
 
 const load = () => loadBundle<Loaded>({ entry, stubs });
@@ -688,6 +688,10 @@ test("getBoundingClientRect counts the ancestors' transforms, scale included and
   const scaledInner = byId(75, "scaled-inner");
   expect(box(measured(75, "scaled-inner"))).toEqual(rectOf(scaledInner, true));
   expect(box(measured(75, "scaled-inner"))[2]).toBe(200);
+  // A node's own transform is in its parent's units, and the parent's scale counts for all of it, a px origin included (#122): the child (100 x 50, second in the parent) is halved about the point
+  // 10 px from its corner, which puts its corner at (5, 55) and its size at 50 x 25 in the parent's units, and the parent draws that twice as large about its own centre (50, parent top + 25).
+  const parentTop = (rectOf(byId(75, "scaled"), false) as number[])[1] as number;
+  expect(box(measured(75, "scaled-own"))).toEqual([-40, 85 - parentTop, 100, 50]);
   // A scrolled scroll view: React Native moves what is inside it by the offset, and not the scroll view itself.
   const scroller = find(host.roots[75] ?? [], "RCTScrollView")[0] as FakeNode;
   layout.scrolled[scroller.tag] = { x: 0, y: 30 };
@@ -751,6 +755,24 @@ test("a reorder while a flip runs commits the new flip's first frame, not the fi
   const second = animatesOf("item-3").at(-1) as Animate;
   expect(second.keyframes[0]?.transform).toBe("translate(0px, -87.5px) scale(1, 1)");
   expect(byId(72, "item-3").props.transform).toEqual([{ translateX: 0 }, { translateY: -87.5 }, { scaleX: 1 }, { scaleY: 1 }]);
+});
+
+test("a reorder while a flip runs under a scaled parent starts from where the item is drawn: its own offset is in the parent's units and is scaled with them (#122)", async () => {
+  const m = await fresh();
+  const app = m.startSurface(76, m.Fixture, {});
+  app.setZoomed([3, 1, 2]);
+  await settle(m);
+  // The first reorder: item 3 moves to the top and starts 100 below its new place in its own units (the window's 200, divided by the parent's scale).
+  const first = animatesOf("zoom-3").at(-1) as Animate;
+  expect(first.keyframes[0]?.transform).toBe("translate(0px, 100px) scale(1, 1)");
+  // Half way (the easing is cubic out) it is 12.5 from its place in its own units, which the parent draws as 25 in the window.
+  (first.animation as unknown as { progress: { _value: number } }).progress._value = 0.5;
+  app.setZoomed([1, 2, 3]);
+  await settle(m);
+  // The second flip goes from where it is drawn to its place at the bottom: 87.5 above that place in its own units, as under no scale (-93.75 when the read counted 12.5 of the 25).
+  const second = animatesOf("zoom-3").at(-1) as Animate;
+  expect(second.keyframes[0]?.transform).toBe("translate(0px, -87.5px) scale(1, 1)");
+  expect(byId(76, "zoom-3").props.transform).toEqual([{ translateX: 0 }, { translateY: -87.5 }, { scaleX: 1 }, { scaleY: 1 }]);
 });
 
 test("the registry is let go once: it is not emptied again 400 ms later, when another animation of the node may be using it", async () => {

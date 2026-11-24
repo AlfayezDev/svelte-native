@@ -106,7 +106,7 @@ export const tiles: Record<Mode, Tile[]> = {
     { id: "radius-engine", style: { width: 96, height: 64, backgroundColor: "#ffffff", borderWidth: 2, borderColor: "#18181b", overflow: "hidden", elevation: 6 }, bar: { height: 24, backgroundColor: "#2563eb" }, to: { radius: 24 } },
     { id: "radius-plain", style: { width: 96, height: 64, backgroundColor: "#ffffff", overflow: "hidden" }, bar: { height: 24, backgroundColor: "#2563eb" }, to: { radius: 24 } },
     { id: "mixed-overflow", style: { width: 150, height: 56, borderTopLeftRadius: 40, borderBottomLeftRadius: 40, borderTopRightRadius: 10, borderBottomRightRadius: 0, backgroundColor: "#2563eb" } },
-    { id: "mixed-fill", style: { width: 150, height: 56, borderTopLeftRadius: 4, borderTopRightRadius: 16, borderBottomRightRadius: 28, borderBottomLeftRadius: 0, backgroundColor: "#f97316" } },
+    { id: "elevation-plain", style: { width: 150, height: 56, borderRadius: 12, backgroundColor: "#ffffff", elevation: 8 } },
   ],
   origin: [
     { id: "centre", style: { ...box, transform: [{ rotate: "25deg" }] }, bar: marker },

@@ -170,7 +170,6 @@ private fun rules() {
   StyleRules.sideColors(dashes, ring, colors)
   expect("`borderStyle: 'dashed'` is a record 141 of the border's colour", Triple(dashes.borderStyle, dashes.hasSides, colors.toList()), Triple(1, true, List(4) { ring }))
   StyleRules.setBorderStyle(dashes, "solid", ring)
-  StyleRules.setBorderStyle(StyleRecords().also { it.borderStyle = 2 }, "nonsense", ring)
   expect("`solid` puts it back", dashes.borderStyle, 0)
   expect("a style it does not know is solid", StyleRecords().also { StyleRules.setBorderStyle(it, "wavy", ring) }.borderStyle, 0)
   val shadowList = listOf(
@@ -342,7 +341,7 @@ private fun engine(main: String) {
   val setRadii = box.substring(box.indexOf("fun setRadii("), box.indexOf("fun clipToPaddingBox("))
   expect("an animated radius asks the view for its outline again, whatever clips to it", setRadii.contains("view.invalidateOutline()"), true)
   expect("a change of radii or widths asks for it too", apply.contains("if (outline) view.invalidateOutline()") && Regex("outline = true").findAll(apply).count() == 2, true)
-  expect("the direction React Native's drawables resolve by is the view's once it has one", box.contains("if (view.isLayoutDirectionResolved) view.layoutDirection == View.LAYOUT_DIRECTION_RTL else view.isRtlLayout()") && apply.contains("val rtl = directionOf(view)"), true)
+  expect("the direction React Native's drawables resolve by is the view's once it has one", box.contains("if (view.isAttachedToWindow) view.layoutDirection == View.LAYOUT_DIRECTION_RTL else view.isRtlLayout()") && apply.contains("val rtl = directionOf(view)"), true)
   expect("taking the drawables off clears what is remembered of them", box.contains("st.boxRadii.fill(0f)") && box.contains("st.boxBorder.fill(0f)") && box.contains("st.boxBg = 0"), true)
   expect("Props decodes the style records", props.contains("in 140..149 -> i = out.style.decode(id, ops, i)"), true)
 
@@ -384,7 +383,7 @@ private fun boxDrawable(main: String, uimanager: String) {
   expect("the width is rounded to a pixel", border.contains("val borderLeft = borderWidth.left.roundToInt()") && mine.contains("borders[side] = widthsPx[side].roundToInt()"), true)
   expect("a translucent colour is not the fast path", border.contains("Color.alpha(colorLeft) < 255 ||") && rules.contains("if ((colors[side] ushr 24) < 255) return 0"), true)
   expect("the colours of the sides that have a width are and-ed and or-ed", border.contains("if (borderLeft > 0) colorLeft else ALL_BITS_SET") && border.contains("if (borderLeft > 0) colorLeft else ALL_BITS_UNSET") &&
-    rules.contains("and = and and colors[side]") && rules.contains("or = or or colors[side]"), true)
+    rules.contains("smearAnd = smearAnd and colors[side]") && rules.contains("smearOr = smearOr or colors[side]"), true)
   expect("the left line is at left plus half its width, whole pixels", border.contains("pathForSingleBorder?.moveTo((left + width / 2).toFloat(), top.toFloat())") && source("$java/BoxGeometry.kt").contains("val x = (left + border / 2).toFloat()"), true)
   expect("the right line is at right less half its width", border.contains("pathForSingleBorder?.moveTo((right - width / 2).toFloat(), top.toFloat())") && source("$java/BoxGeometry.kt").contains("val x = (right - border / 2).toFloat()"), true)
   expect("the top and bottom lines run from left to right", border.contains("pathForSingleBorder?.moveTo(left.toFloat(), (top + width / 2).toFloat())") && border.contains("pathForSingleBorder?.moveTo(left.toFloat(), (bottom - width / 2).toFloat())") &&

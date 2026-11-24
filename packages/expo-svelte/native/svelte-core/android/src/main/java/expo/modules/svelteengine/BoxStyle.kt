@@ -80,9 +80,9 @@ internal object BoxStyle {
     if (outline) view.invalidateOutline()
   }
 
-  /** The direction React Native's drawables resolve by: the view's own once it has resolved it, the app's configuration before (a detached view answers left to right, whatever the app is). */
+  /** The direction React Native's drawables resolve by: the view's own once it is attached (it resolves it then), the app's configuration before (a detached view answers left to right, whatever the app is). */
   private fun directionOf(view: View): Boolean =
-    if (view.isLayoutDirectionResolved) view.layoutDirection == View.LAYOUT_DIRECTION_RTL else view.isRtlLayout()
+    if (view.isAttachedToWindow) view.layoutDirection == View.LAYOUT_DIRECTION_RTL else view.isRtlLayout()
 
   private fun writeRadii(view: View, rtl: Boolean, density: Float, radii: FloatArray) {
     val corners = StyleRules.corners(rtl)

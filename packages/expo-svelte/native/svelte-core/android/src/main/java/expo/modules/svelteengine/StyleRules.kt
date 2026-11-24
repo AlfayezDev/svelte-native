@@ -50,13 +50,13 @@ internal object StyleRules {
    */
   fun fastBorderColor(widths: FloatArray, colors: IntArray): Int {
     for (side in 0..3) if ((colors[side] ushr 24) < 255) return 0
-    var and = -1
-    var or = 0
+    var smearAnd = -1
+    var smearOr = 0
     for (side in 0..3) if (Math.round(widths[side]) > 0) {
-      and = and and colors[side]
-      or = or or colors[side]
+      smearAnd = smearAnd and colors[side]
+      smearOr = smearOr or colors[side]
     }
-    return if (and == or) and else 0
+    return if (smearAnd == smearOr) smearAnd else 0
   }
 
   /**

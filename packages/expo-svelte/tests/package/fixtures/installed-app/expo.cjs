@@ -2,6 +2,9 @@
 // Loaded by plain `node` the way `@expo/config` loads a plugin named in `app.json` / `app.config`: `withPlugins` resolves the reference with
 // `resolveConfigPluginFunction` (the package's `app.plugin.js` for a bare package name, the module's `exports` through Node's CommonJS resolution for a path
 // into it) and requires the file.
+// What the resolver says on the console while it finds the plugin: Expo warns, once per name, when it loads `app.plugin.js` from a package whose `exports` does not list the file.
+const warnings = [];
+console.warn = (...args) => { warnings.push(args.join(" ")); };
 const { withPlugins } = require("@expo/config-plugins");
 // The resolver itself, to say which file each name came to (it is not in the package's index).
 const { resolveConfigPluginFunctionWithInfo } = require("@expo/config-plugins/build/utils/plugin-resolver");
@@ -24,4 +27,5 @@ try {
 } catch (error) {
   result.removed = error.code ?? error.message;
 }
+result.warnings = warnings;
 console.log(JSON.stringify(result));

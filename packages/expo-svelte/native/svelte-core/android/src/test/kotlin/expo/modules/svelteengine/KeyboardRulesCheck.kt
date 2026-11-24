@@ -60,13 +60,13 @@ private fun chat() {
   expect("always: first frame", lift.move(0, 2500, viewport, content), 2500)
   expect("always: 200 px", lift.move(200, 2500, viewport, content), 2700)
   expect("always: open", lift.move(750, 3000, viewport, content), 3250)
-  lift.end(750, 3250)
+  lift.end(750, 3250, viewport, content)
   expect("always: padding holds", lift.padding, 750)
   lift.start(0, 3250, viewport, content)
   expect("always: closing keeps the padding until the end", lift.padding, 750)
   expect("always: closing, 500 px", lift.move(500, 3250, viewport, content), 3000)
   expect("always: closed", lift.move(0, 2600, viewport, content), 2500)
-  lift.end(0, 2500)
+  lift.end(0, 2500, viewport, content)
   expect("always: padding is gone", lift.padding, 0)
   // Up the list (500): `always` lifts there too, `whenAtEnd` does not and holds, `never` neither.
   lift = ChatLift(ChatLift.ALWAYS, 0, threshold)
@@ -76,7 +76,7 @@ private fun chat() {
   lift.start(750, 500, viewport, content)
   expect("whenAtEnd up the list: the padding is still made", lift.padding, 750)
   expect("whenAtEnd up the list: no frame moves it", lift.move(400, 500, viewport, content), null)
-  lift.end(750, 500)
+  lift.end(750, 500, viewport, content)
   lift.start(0, 500, viewport, content)
   expect("whenAtEnd up the list: closing, within the range", lift.move(400, 500, viewport, content), null)
   // Left up the list and then scrolled down while the keyboard was up, the content is held inside what the closing keyboard leaves scrollable.
@@ -93,7 +93,7 @@ private fun chat() {
   lift.start(750, 2500, viewport, content)
   expect("never: padding", lift.padding, 750)
   expect("never: opening moves nothing", lift.move(400, 2500, viewport, content), null)
-  lift.end(750, 2500)
+  lift.end(750, 2500, viewport, content)
   lift.start(0, 3000, viewport, content)
   expect("never: closing clamps", lift.move(100, 3000, viewport, content), 2600)
   expect("never: closing inside the range", lift.move(100, 2600, viewport, content), null)
@@ -102,7 +102,7 @@ private fun chat() {
   lift = ChatLift(ChatLift.ALWAYS, 0, threshold)
   lift.start(750, 2500, viewport, content)
   lift.move(750, 2500, viewport, content)
-  lift.end(750, 3250)
+  lift.end(750, 3250, viewport, content)
   lift.start(0, 3250, viewport, content)
   expect("turn: closing, 500 px", lift.move(500, 3250, viewport, content), 3000)
   lift.start(750, 3000, viewport, content)
@@ -114,13 +114,13 @@ private fun chat() {
   expect("turn: 400 px open", lift.move(400, 2500, viewport, content), 2900)
   lift.start(0, 2900, viewport, content)
   expect("turn: closing from 400", lift.move(300, 2900, viewport, content), 2800)
-  lift.end(0, 2500)
+  lift.end(0, 2500, viewport, content)
   expect("turn: closed", lift.padding, 0)
   // Registered again with the keyboard up (a change of `offset` or `keyboardLiftBehavior`): what the close goes back by is kept.
   lift = ChatLift(ChatLift.ALWAYS, 0, threshold)
   lift.start(750, 2500, viewport, content)
   lift.move(750, 2500, viewport, content)
-  lift.end(750, 3250)
+  lift.end(750, 3250, viewport, content)
   lift.retune(ChatLift.ALWAYS, 0)
   lift.start(0, 3250, viewport, content)
   expect("retuned: the close goes back to where the content was", lift.move(0, 3250, viewport, content), 2500)
@@ -130,6 +130,26 @@ private fun chat() {
   expect("attached: the room", lift.padding, 750)
   lift.start(0, 2400, viewport, content)
   expect("attached: the close leaves the content where it is", lift.move(0, 2400, viewport, content), 2400)
+  // Registered while an animation runs: no start was seen, so no frame moves it, and the end takes its place from the keyboard's height. (Without it the frames scrolled the
+  // content to the height of the frame, the lift of a keyboard that nobody started.)
+  lift = ChatLift(ChatLift.ALWAYS, 0, threshold)
+  expect("not armed: a frame moves nothing", lift.move(300, 2500, viewport, content), null)
+  expect("not armed: the room is not made", lift.padding, 0)
+  lift.end(750, 2500, viewport, content)
+  expect("not armed: the end takes its place", lift.padding, 750)
+  expect("armed by it", lift.armed, true)
+  lift.start(0, 2500, viewport, content)
+  expect("and a close from there leaves the content where it is", lift.move(0, 2500, viewport, content), 2500)
+  // A scroll view that is registered again keeps its rules, a new one gets rules to start.
+  val known = HashMap<Int, ChatLift>()
+  val first = ChatLift.register(known, 7, ChatLift.ALWAYS, 0, threshold)
+  expect("a new registration has rules to start", first != null, true)
+  first!!.start(750, 2500, viewport, content)
+  first.move(750, 2500, viewport, content)
+  first.end(750, 3250, viewport, content)
+  expect("registered again: tuned, nothing to start", ChatLift.register(known, 7, ChatLift.WHEN_AT_END, 0, threshold), null)
+  first.start(0, 3250, viewport, content)
+  expect("registered again: the close still goes back to where the content was", first.move(0, 3250, viewport, content), 2500)
   // A tab bar of 50 px under the scroll view: the content lifts by the keyboard less that, in proportion.
   lift = ChatLift(ChatLift.ALWAYS, 50, threshold)
   lift.start(300, 2500, viewport, content)
@@ -145,11 +165,11 @@ private fun aware() {
   expect("nothing yet", scroll.move(0, 400, 1500, 4000), 400)
   expect("a third", scroll.move(500, 400, 1500, 4000), 550)
   expect("all of it", scroll.move(1000, 400, 1500, 4000), 700)
-  scroll.end(1000)
+  scroll.end(1000, 0, 1700, 2400)
   scroll.start(0, 700, 1700, 2400)
   expect("closing keeps the room until the end", scroll.padding, 1000)
   expect("closing goes back along the same way", scroll.move(500, 700, 1500, 4000), 550)
-  scroll.end(0)
+  scroll.end(0, 0, 1700, 2400)
   expect("the room is gone", scroll.padding, 0)
   // `bottomOffset` keeps the input that far above the keyboard.
   val offset = AwareScroll(60, 0, true)
@@ -164,7 +184,7 @@ private fun aware() {
   keep.start(1000, 400, 1700, 2400)
   expect("extra space is part of the room", keep.padding, 1040)
   expect("keeps scrolling on open", keep.move(1000, 400, 1500, 4000), 700)
-  keep.end(1000)
+  keep.end(1000, 0, 1700, 2400)
   keep.start(0, 700, 1700, 2400)
   expect("no scroll on hide", keep.move(500, 700, 1500, 4000), null)
   // The room it holds until the end still extends the range as the keyboard closes: a content scrolled into it is held inside what is left, as the chat lift's is, so it does not jump when the room goes.
@@ -174,7 +194,7 @@ private fun aware() {
   // Another input takes the focus while the keyboard is up: the way to it, from where the scroll view is.
   val next = AwareScroll(0, 0, true)
   next.start(1000, 0, 1700, 2400)
-  next.end(1000)
+  next.end(1000, 0, 1700, 2400)
   expect("refocus", next.refocus(700, 1900, 2400), 1200)
   // The keyboard turns around while it opens: the way goes on from the same base and distance, not from where the scroll view is now.
   val turn = AwareScroll(0, 0, true)
@@ -184,24 +204,67 @@ private fun aware() {
   expect("turn: closing from the third", turn.move(300, 550, 1500, 4000), 490)
   turn.start(1000, 490, 1900, 2400)
   expect("turn: opening again keeps the base", turn.move(600, 490, 1500, 4000), 580)
-  turn.end(1000)
+  turn.end(1000, 0, 1700, 2400)
   expect("turn: the room", turn.padding, 1000)
+  // Registered while an animation runs: not armed, no frame moves it, and the end starts it from the keyboard's height.
+  val late = AwareScroll(0, 0, true)
+  expect("late: a frame moves nothing", late.move(500, 400, 1500, 4000), null)
+  late.end(1000, 400, 1700, 2400)
+  expect("late: the end makes the room", late.padding, 1000)
+  expect("late: and arms it", late.armed, true)
 }
 
-
-/** Why a view in a Modal is left alone: the modal's layer makes room for the keyboard in its own layout, by the whole of what the keyboard covers of it. */
+/** Why a view in a Modal is left alone, and how it is found: the modal's layer makes room for the keyboard in its own layout, by the whole of what the keyboard covers of it. */
 private fun modal() {
   val inset = IntArray(4)
   expo.modules.svelteengine.views.ModalLayout.contentInsets(0, 63, 0, 63, 1050, statusBarTranslucent = false, navigationBarTranslucent = false, out = inset)
   expect("a modal's content ends where the keyboard begins", inset[3], 1050)
   expo.modules.svelteengine.views.ModalLayout.contentInsets(0, 63, 0, 63, 0, statusBarTranslucent = false, navigationBarTranslucent = false, out = inset)
   expect("and above the bar without it", inset[3], 63)
+  // The walk from a view up to the layer of a modal, on a tree of the host's own: root > layer > content > row > view; root > screen > view.
+  class Node(val name: String, val parent: Node?)
+  val root = Node("root", null)
+  val layer = Node("layer", root)
+  val row = Node("row", Node("content", layer))
+  val view = Node("view", row)
+  val plain = Node("view", Node("screen", root))
+  expect("a view in a modal's content is in the modal", KeyboardTree.hasAncestor(view, { it.parent }, { it.name == "layer" }), true)
+  expect("a view of a screen is not", KeyboardTree.hasAncestor(plain, { it.parent }, { it.name == "layer" }), false)
+  expect("the layer itself is not its own ancestor", KeyboardTree.hasAncestor(layer, { it.parent }, { it.name == "layer" }), false)
+  // What the keyboard asks of a view in a modal is nothing: the modal has lifted it, and a second lift is the bug (820 px too high on the emulator).
+  near("in a modal: not moved", KeyboardTree.unlessModal(true, KeyboardRules.sticky(883.0, 1.0, 0.0, 63.0, true)), 0.0)
+  near("elsewhere: as asked", KeyboardTree.unlessModal(false, KeyboardRules.sticky(883.0, 1.0, 0.0, 63.0, true)), -820.0)
+}
+
+/** The input `setFocusTo` goes to, and the reports of the end of a list. */
+private fun inputs() {
+  // The tree order is: field one, a scroll view (which `focusSearch` also stops at), field two, field three; the way forward from one.
+  val order = listOf("one", "scroll", "two", "three")
+  val forward = { n: String -> order.getOrNull(order.indexOf(n) + 1) }
+  val backward = { n: String -> order.getOrNull(order.indexOf(n) - 1) }
+  val field = { n: String -> n != "scroll" }
+  expect("next skips the container", KeyboardTree.nextInput("one", forward, field, 16), "two")
+  expect("next from the last is none", KeyboardTree.nextInput("three", forward, field, 16), null)
+  expect("previous", KeyboardTree.nextInput("two", backward, field, 16), "one")
+  expect("previous from the first is none", KeyboardTree.nextInput("one", backward, field, 16), null)
+  expect("a search that wraps round to where it began is none", KeyboardTree.nextInput("one", { n: String -> if (n == "one") "scroll" else "one" }, field, 16), null)
+  expect("a search that finds only containers gives up", KeyboardTree.nextInput("one", { "scroll" }, field, 3), null)
+  val reports = EndReports()
+  expect("the first report is news", reports.changed(4, true), true)
+  expect("the same again is not", reports.changed(4, true), false)
+  expect("a change is", reports.changed(4, false), true)
+  reports.changed(5, true)
+  expect("two views are remembered", reports.size, 2)
+  reports.forget(4); reports.forget(5)
+  expect("a view that goes leaves nothing", reports.size, 0)
+  expect("and its next report is news", reports.changed(4, false), true)
 }
 
 private fun frames() {
   var f = KeyboardFrames()
   // One animation: prepare, start, frames, end.
   f.prepare(); f.start(750)
+  expect("prepared and started: one running", f.running, 1)
   expect("first frame of an open", f.frame(0), 0)
   expect("a frame", f.frame(400), 400)
   expect("the end of the only animation settles", f.end(), true)
@@ -221,8 +284,26 @@ private fun frames() {
   expect("a hide's last frame", f.frame(0), 0)
   expect("an end with none running (an animation that began before the window) is the keyboard settling", KeyboardFrames().end(), true)
   f = KeyboardFrames()
-  f.prepare(); f.prepare(); f.reset()
-  expect("a window that goes forgets its animations", f.running, 0)
+  f.prepare(); f.start(750); f.prepare(); f.start(0); f.reset()
+  expect("a window that goes forgets its animations", f.busy, false)
+  // Counted at the start, as Reanimated counts: an animation that was prepared and never started is waiting, and the news of an end that comes for it ends it.
+  f = KeyboardFrames()
+  f.prepare(0)
+  expect("prepared: busy, not running", listOf(f.busy, f.running, f.waiting), listOf(true, 0, 1))
+  expect("an end for it settles", f.end(10), true)
+  expect("nothing is left waiting", f.busy, false)
+  // One that nothing ends is given up after a time with no news; a running animation that sends frames is not.
+  f = KeyboardFrames()
+  f.prepare(0)
+  expect("prepared, a second ago", f.stuck(1000, 2000), false)
+  expect("prepared, three seconds ago", f.stuck(3000, 2000), true)
+  f.start(750, 3000)
+  expect("started: heard of now", f.stuck(4000, 2000), false)
+  f.frame(100, 5500)
+  expect("frames keep it alive", f.stuck(7000, 2000), false)
+  expect("and silence does not", f.stuck(8000, 2000), true)
+  f.reset()
+  expect("reset: not stuck", f.stuck(99000, 2000), false)
 }
 
 /** What Reanimated's `useAnimatedKeyboard` is given (SPEC.md "Keyboard motion"): the states of its `KeyboardState` and whole dp, from the engine's frames. */
@@ -236,32 +317,93 @@ private fun reanimated(vendor: String) {
   expect("Reanimated leaves out the 0 of an open keyboard", keyboard.contains("keyboardHeight <= 0 && mState == KeyboardState.OPEN"), true)
   val manager = File(vendor, "android/src/main/java/com/swmansion/reanimated/keyboard/KeyboardAnimationManager.kt").readText()
   expect("the patched manager hands the engine the options the subscriber gave", manager.contains("isStatusBarTranslucent, isNavigationBarTranslucent) }"), true)
-  val seen = ArrayList<String>()
-  fun adapter(translucent: Boolean) = ReanimatedKeyboard(translucent, 2.625f, { 63 }) { state, dp -> seen.add("$state:$dp") }
-  // Opening, the navigation bar not translucent: 1050 px is 376 dp (987 px past the bar's 63), the state is opening on the way and open at the end.
-  var k = adapter(false)
-  k.start(); k.frame(525); k.frame(1050); k.end(1050)
-  expect("open, bar not translucent", seen.toList(), listOf("1:176", "1:376", "2:376"))
-  seen.clear()
-  k = adapter(true)
-  k.start(); k.frame(525); k.frame(1050); k.end(1050)
-  expect("open, bar translucent: the whole 400 dp", seen.toList(), listOf("1:200", "1:400", "2:400"))
-  seen.clear()
-  k.start(); k.frame(525); k.frame(0); k.end(0)
-  expect("closing ends closed, at 0", seen.toList(), listOf("3:200", "3:0", "4:0"))
-  seen.clear()
-  // A start while another runs turns the state around; a frame of an open keyboard that reads 0 is not taken; an animation with no frame is told at its end.
-  k = adapter(true)
-  k.start(); k.frame(1050); k.end(1050); seen.clear()
-  k.frame(0)
-  expect("0 for an open keyboard is left out", seen.toList(), listOf("2:400"))
-  seen.clear()
-  k.start(); k.start(); k.frame(525); k.end(525)
-  expect("a turn: closing, then opening again", seen.toList(), listOf("1:200", "2:200"))
-  seen.clear()
-  k = adapter(true)
-  k.start(); k.end(1050)
-  expect("no frame: told at the end", seen.toList(), listOf("1:400", "2:400"))
+}
+
+/** A channel on the host: a main thread that is told apart from the others, and what is posted to it waits to be run. */
+private class Rig(var main: Boolean = true) {
+  val queue = ArrayList<() -> Unit>()
+  val dropped = ArrayList<Int>()
+  val channel = KeyboardChannel({ main }, { queue.add(it) }, { 63 }, { 2.625f }, { id, _ -> dropped.add(id) })
+  fun drain() { val run = queue.toList(); queue.clear(); val was = main; main = true; run.forEach { it() }; main = was }
+  /** A subscriber of Reanimated's, that records what it was told. */
+  fun reanimated(translucent: Boolean, seen: MutableList<String>): Int = channel.subscribe({ state, dp -> seen.add("$state:$dp") }, translucent)
+  fun raw(seen: MutableList<String>): Int { channel.rawNext(); return channel.subscribe({ kind, px -> seen.add("$kind:$px") }) }
+}
+
+/** What `useAnimatedKeyboard` is given and what `createKeyboardMotion` is, from the engine's frames, with the subscribers coming and going (SPEC.md "Keyboard motion"). */
+private fun channel() {
+  var rig = Rig()
+  var bar = mutableListOf<String>(); var whole = mutableListOf<String>(); var raw = mutableListOf<String>()
+  rig.reanimated(false, bar); rig.reanimated(true, whole); rig.raw(raw)
+  // Opening: 1050 px is 376 dp past a 63 px bar and 400 dp with none; the state is opening on the way and open at the end, the same for both, and the engine's own gets the frames.
+  rig.channel.start(1050); rig.channel.frame(525); rig.channel.frame(1050); rig.channel.end(1050)
+  expect("open, the navigation bar not translucent", bar.toList(), listOf("1:176", "1:376", "2:376"))
+  expect("open, the navigation bar translucent: the whole 400 dp", whole.toList(), listOf("1:200", "1:400", "2:400"))
+  expect("the engine's own subscriber is given kind and px", raw.toList(), listOf("1:1050", "2:525", "2:1050", "3:1050"))
+  // Another keyboard while it is open, with no animation: Reanimated's stays open and is told the new height; the engine's is told the height changed.
+  bar.clear(); whole.clear(); raw.clear()
+  rig.channel.settle(525)
+  expect("a layout switch is not a close and an open: it stays open", bar.toList(), listOf("2:88"))
+  expect("a layout switch, the whole height", whole.toList(), listOf("2:200"))
+  expect("a layout switch for the engine's own", raw.toList(), listOf("4:525"))
+  // A subscriber that arrives in the middle of a close: it is told where the keyboard is, that it is closing, and what comes is what it would have been told.
+  rig = Rig(); bar = mutableListOf(); whole = mutableListOf(); raw = mutableListOf()
+  rig.channel.start(1050); rig.channel.frame(1050); rig.channel.end(1050)
+  rig.channel.start(0); rig.channel.frame(525)
+  rig.reanimated(true, whole); rig.raw(raw)
+  expect("late, mid close: closing at the height it has", whole.toList(), listOf("3:200"))
+  expect("late, mid close, the engine's own: where it goes from and to, and the height", raw.toList(), listOf("1:1050", "1:0", "2:525"))
+  rig.channel.frame(0); rig.channel.end(0)
+  expect("late, mid close: the 0 frames are taken and it ends closed", whole.toList(), listOf("3:200", "3:0", "4:0"))
+  expect("late, mid close, the engine's own, to the end", raw.toList(), listOf("1:1050", "1:0", "2:525", "2:0", "3:0"))
+  // At rest and open: a Reanimated subscriber is told open, the engine's own that the keyboard is at its height.
+  rig = Rig(); whole = mutableListOf(); raw = mutableListOf()
+  rig.channel.start(1050); rig.channel.frame(1050); rig.channel.end(1050)
+  rig.reanimated(true, whole); rig.raw(raw)
+  expect("late, at rest: open", whole.toList(), listOf("2:400"))
+  expect("late, at rest, the engine's own: settled at the height", raw.toList(), listOf("4:1050"))
+  // A subscriber before any keyboard has been seen is told nothing, and a keyboard that never moved leaves it so.
+  rig = Rig(); whole = mutableListOf()
+  rig.reanimated(true, whole)
+  expect("nothing to tell yet", whole.toList(), emptyList<String>())
+  // The JavaScript thread's subscription: the id is there at once and the subscription is made, in order, where the frames go.
+  rig = Rig(main = false); whole = mutableListOf()
+  val id = rig.reanimated(true, whole)
+  expect("an id from any thread, below zero", id < 0, true)
+  rig.main = true
+  rig.channel.start(1050); rig.channel.frame(525)
+  expect("not subscribed until what was posted has run", whole.toList(), emptyList<String>())
+  rig.drain()
+  rig.channel.frame(1050)
+  expect("subscribed after it", whole.toList(), listOf("1:400"))
+  rig.main = false
+  rig.channel.unsubscribe(id)
+  rig.main = true
+  rig.channel.frame(100)
+  expect("unsubscribed from the other thread: still told until it has run", whole.toList(), listOf("1:400", "1:38"))
+  rig.drain()
+  rig.channel.frame(200)
+  expect("and not after", whole.toList(), listOf("1:400", "1:38"))
+  // The engine's own subscription is asked for once: the next one is Reanimated's.
+  rig = Rig(); raw = mutableListOf(); whole = mutableListOf()
+  rig.raw(raw); rig.reanimated(true, whole)
+  rig.channel.start(1050)
+  expect("one raw, one not", listOf(raw.toList(), whole.toList()), listOf(listOf("1:1050"), emptyList<String>()))
+  // A listener that fails is dropped and does not stop the others.
+  rig = Rig(); whole = mutableListOf()
+  val bad = rig.channel.subscribe({ _, _ -> error("a bad worklet") })
+  rig.reanimated(true, whole)
+  rig.channel.start(1050); rig.channel.frame(525); rig.channel.frame(1050)
+  expect("the bad one is dropped once", rig.dropped, listOf(bad))
+  expect("the others go on", whole.toList(), listOf("1:200", "1:400"))
+  // The window goes in the middle of an animation: the next starts from the state the keyboard is in, not as the turn of a running one.
+  rig = Rig(); whole = mutableListOf()
+  rig.reanimated(true, whole)
+  rig.channel.start(1050); rig.channel.frame(500)
+  rig.channel.reset()
+  whole.clear()
+  rig.channel.start(0); rig.channel.frame(300)
+  expect("after a reset a hide is a hide", whole.toList(), listOf("3:114"))
 }
 
 private fun read(main: File, name: String) = File(main, name).readText()
@@ -289,17 +431,15 @@ private fun wiring(main: String) {
   val scroll = read(dir, "views/EngineScroll.kt")
   expect("a watched scroll view tells the drive of each scroll and layout", scroll.split("watcher?.invoke()").size - 1, 2)
   expect("a pooled scroll view forgets the room made at its bottom", scroll.contains("if (paddingBottom != 0) setPadding(paddingLeft, paddingTop, paddingRight, 0)"), true)
-  expect("a running animation is counted, and the end of the last one settles", insets.contains("frames.prepare()") && insets.contains("if (!frames.end()) return") && insets.contains("frames.frame("), true)
+  expect("a running animation is counted, and the end of the last one settles", insets.contains("frames.prepare(now())") && insets.contains("if (!frames.end(now())) return") && insets.contains("frames.frame(") && insets.contains("frames.start(target, now())"), true)
   expect("a layout changes where a view that avoids the keyboard is", insets.contains("drive.layoutChanged()"), true)
   expect("the navigation bar Reanimated's callers are told of is the one the overlay does not cover", insets.contains("drive.navigationBar = {"), true)
   expect("the coordinates of the keyboard's top are the overlay's", read(dir, "MountingManager.kt").contains("root.getLocationInWindow(at)"), true)
   val drive = read(dir, "KeyboardDrive.kt")
-  expect("a subscription made on the JavaScript thread is made on the main thread, where the frames go", drive.contains("runMain {") && drive.contains("nextListener = AtomicInteger(-1)") && drive.contains("fun unsubscribe(id: Int) {\n    runMain { listeners.remove(id) }"), true)
-  expect("Reanimated's callers are given their own numbers and createKeyboardMotion's subscription the engine's", drive.contains("ReanimatedKeyboard(navigationBarTranslucent") && drive.contains("val raw = rawFlag.getAndSet(false)"), true)
-  expect("a lift registered again is tuned, not started over", drive.contains("known.retune(behavior, px)") && drive.contains("rules.attach("), true)
-  expect("a view in a modal is left to the modal", drive.contains("if (parent is ModalLayer) return true") && drive.contains("if (inModal(view)) { drive(view, view, 0f); return true }") && drive.split("!inModal(view)").size - 1 >= 4, true)
-  expect("an input is what the focus goes to", drive.contains("if (found is EditText)"), true)
-  expect("the report of a scroll view's end is forgotten with the view", drive.split("ends.remove(tag)").size - 1 >= 4, true)
+  // The tree rules (`KeyboardTree`) are checked above on their own; here, that the drive asks them, and in the places where a follower is moved.
+  expect("a view in a modal is left to the modal", drive.contains("KeyboardTree.unlessModal(inModal(view), asked)") && drive.contains("KeyboardTree.hasAncestor<View>(view, { it.parent as? View }, { it is ModalLayer })") && drive.split("!inModal(view)").size - 1 >= 3, true)
+  expect("what registered before its modal is put in its place is left alone at the end of the batch", drive.contains("fun placed()") && read(dir, "MountingManager.kt").contains("if (insert > 0) keyboard.placed()"), true)
+  expect("a keyboard that nothing ends is given up and the window's going resets the drive", insets.contains("frames.stuck(now(), STUCK_MS)") && insets.contains("frames.reset(); drive.reset()"), true)
   expect("the room is outside the clip, as the keyboard's scroll decorator makes it", drive.contains("view.clipToPadding = false"), true)
 }
 
@@ -308,6 +448,8 @@ fun main(args: Array<String>) {
   chat()
   aware()
   frames()
+  channel()
+  inputs()
   modal()
   reanimated(args.getOrNull(1) ?: error("usage: KeyboardRulesCheck <main directory> <vendor/react-native-reanimated>"))
   wiring(args.firstOrNull() ?: error("usage: KeyboardRulesCheck <main directory> <vendor/react-native-reanimated>"))

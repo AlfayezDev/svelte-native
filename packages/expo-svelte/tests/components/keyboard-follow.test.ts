@@ -45,7 +45,7 @@ const loadModule = () => load<Loaded>({
 function nodes(node: NativeNode): NativeNode[] { return [node, ...node.getSnapshot().children.flatMap(nodes)]; }
 async function mountFixture(m: Loaded, kind: string, props: Props = {}, extra: Props = {}) {
   const root = new m.NativeNode("fragment");
-  const app = m.mount(m.Fixture, { target: root, renderer: m.renderer, props: { kind, props, ...extra } });
+  const app = m.mount(m.Fixture, { target: root, renderer: m.renderer, props: { kind, props, ...extra } }) as { set(patch: Props): void };
   await m.tick();
   const propsOf = (name: string, index = 0): Props => m.mergeHostProps(nodes(root).filter((n) => n.name === name)[index].getSnapshot().props);
   return { root, app, propsOf, ref: (name: string, handle: unknown, index = 0) => { (propsOf(name, index).ref as (h: unknown) => void)(handle); } };
@@ -221,6 +221,10 @@ test("createKeyboardMotion turns the engine's frames into dp, progress and state
   expect([motion.height.value, motion.progress.value]).toEqual([200, 0.5]);
   frame(3, 0);
   expect([motion.height.value, motion.progress.value, motion.state.value]).toEqual([0, 0, "closed"]);
+  // Another keyboard while it is open (no animation): the height changes and the state does not go through closing.
+  frame(3, 1050);
+  frame(4, 525);
+  expect([motion.height.value, motion.progress.value, motion.state.value]).toEqual([200, 1, "open"]);
   m.unmount(app);
   expect(animLog().keyboard?.[0]?.off).toBe(true);
   // The fakes' log is the process's: the next file starts from none.
@@ -239,4 +243,20 @@ test("a component that goes releases its view in the engine, whatever kind of vi
     await m.tick();
     expect(drives(m).filter(([, command]) => command === "release")).toEqual([[tag, "release", []]]);
   }
+});
+
+test("a KeyboardAvoidingView whose behaviour leaves position gives its container back to the engine", async () => {
+  const m = await loadModule();
+  m.engine.current = insets({ keyboardHeight: 300, keyboardVisible: true });
+  m.resetInsets();
+  const { app, ref } = await mountFixture(m, "avoid", { behavior: "position" });
+  ref("native-view", { tag: 20, measureInWindow: () => {} }, 0);
+  ref("native-view", { tag: 21 }, 1);
+  await m.tick();
+  expect(drives(m)).toEqual([[21, "avoid", [20, 0, true]]]);
+  m.engine.calls.length = 0;
+  app.set({ behavior: "padding" });
+  await m.tick();
+  await m.tick();
+  expect(drives(m)).toEqual([[21, "release", []]]);
 });

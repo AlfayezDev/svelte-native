@@ -330,16 +330,17 @@ private fun uniformBox(main: String, uimanager: String) {
   expect("the radii are resolved against the bounds in dp", border.contains("outerClipTempRectForBorderRadius?.width()?.pxToDp() ?: 0f,") && mine.contains("PixelUtil.toDIPFromPixel(bounds.width().toFloat()), PixelUtil.toDIPFromPixel(bounds.height().toFloat()))"), true)
 
   // The outline of the composite: each radius in dp and the border's width, in px, resolved against the bounds in px.
-  expect("the outline is the rounded rectangle of the radii and the border", composite.contains("(it.topLeft.horizontal + (computedBorderInsets?.left ?: 0f)).dpToPx(),") && mine.contains("PixelUtil.toPixelFromDIP(scratch[0] + widthDp)"), true)
+  expect("the outline is the rounded rectangle of the radii and the border", composite.contains("(it.topLeft.horizontal + (computedBorderInsets?.left ?: 0f)).dpToPx(),") && mine.contains("outlineRadii[k] = PixelUtil.toPixelFromDIP(scratch[k] + widthDp)"), true)
   expect("resolved against the bounds in px", composite.contains("bounds.width().toFloat(),") && mine.contains("resolve(scratch, bounds.width().toFloat(), bounds.height().toFloat())"), true)
   expect("a rectangle without a radius", composite.contains("outline.setRect(bounds)") && mine.contains("outline.setRect(bounds)"), true)
+  expect("an empty rectangle is an empty outline, which is what Outline makes of one", mine.contains("if (bounds.isEmpty) {\n      outline.setEmpty()"), true)
 
   // The padding box.
   expect("the padding box is the bounds less the border, in px", applicator.contains("paddingBoxRect.left = composite.bounds.left + (computedBorderInsets?.left?.dpToPx() ?: 0f)") && mine.contains("bounds.left + inset"), true)
   expect("the radii of the padding box are resolved in dp against the bounds", applicator.contains("PixelUtil.toDIPFromPixel(composite.bounds.width().toFloat()),") && mine.contains("resolve(scratch, PixelUtil.toDIPFromPixel(bounds.width().toFloat())"), true)
   expect("each radius less the border, in px", applicator.contains("computedBorderRadius?.topLeft?.horizontal?.dpToPx(),") && applicator.contains("((computedRadius ?: 0f) - (borderWidth ?: 0f)).coerceAtLeast(0f)") &&
     mine.contains("(PixelUtil.toPixelFromDIP(radiusDp) - insetPx).coerceAtLeast(0f)"), true)
-  expect("the path is moved by the view's drawing rectangle", applicator.contains("paddingBoxPath.offset(drawingRect.left.toFloat(), drawingRect.top.toFloat())") && mine.contains("path.offset(drawing.left.toFloat(), drawing.top.toFloat())"), true)
+  expect("the path is moved by the view's drawing rectangle", applicator.contains("paddingBoxPath.offset(drawingRect.left.toFloat(), drawingRect.top.toFloat())") && mine.contains("clipPath.offset(drawing.left.toFloat(), drawing.top.toFloat())"), true)
 
   // The radii: the same arithmetic as BorderRadiusStyle.ensureNoOverlap, edge by edge.
   for (line in listOf("val leftEdgeRadiiScale = if (leftEdgeRadii > 0) minOf(height / leftEdgeRadii, 1f) else 0f", "val topEdgeRadiiScale = if (topEdgeRadii > 0) minOf(width / topEdgeRadii, 1f) else 0f",

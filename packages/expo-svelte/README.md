@@ -58,6 +58,7 @@ A release is a tag with its [changelog](CHANGELOG.md) entry. What `pnpm install`
 - **pnpm settings.** pnpm 12 reads them from the app's `pnpm-workspace.yaml` (an app that is not a workspace has the file with these keys only):
 
   ```yaml
+  virtualStoreDirMaxLength: 60 # pnpm cuts a longer folder name of node_modules/.pnpm to 27 characters and a hash: the library's folder would keep an "=" at 120 (below)
   allowBuilds:
     esbuild: true              # a dependency of the package; pnpm 12 stops with ERR_PNPM_IGNORED_BUILDS until its install script is allowed
   overrides:
@@ -66,6 +67,8 @@ A release is a tag with its [changelog](CHANGELOG.md) entry. What `pnpm install`
   ```
 
   Without the first override a fresh install takes a newer 58.1.x and pnpm stops with `ERR_PNPM_UNUSED_PATCH`; `expo-svelte doctor` reports a different version of `expo-modules-core` with this fix. The second is React Native's version (the one in `dependencies`): without it the install may take another `@react-native/metro-config` than React Native's own.
+
+  pnpm names a folder of `node_modules/.pnpm` after the dependency path, and with the patched SvelteKit that `init` declares the library's is `expo-svelte@<version>_@sveltejs+kit@3.4.0_patch_hash=<hash>_<hash>`. A name no longer than `virtualStoreDirMaxLength` and with no uppercase letter stays as it is; a longer one, or one with an uppercase letter (unless it starts with `file+`), is cut to its first `limit - 33` characters (all of it, when it is shorter) and a hash is added (`depPathToFilename`, in pnpm's `@pnpm/dependency-path`), so the `=` of `patch_hash=` goes only when the cut falls before it. At the default, 120, 87 characters stay and it stays; at 60, 27 stay, which end inside the first peer's name (`expo-svelte@0.4.0-rc.11_@sv`), and it goes. Android's prefab tool, which the CMake builds of the libraries the package carries run, reads a package path with an `=` in it as an option: `Error: no such option /…/expo-svelte@…_patch_hash` (`CXX1429`, in the `:app:` C++ build). `expo-svelte doctor` fails on such a folder, `init` writes the setting (and lowers a larger one), and the install after it removes and installs `node_modules` again: pnpm asks, and `init` passes `--config.confirmModulesPurge=false` when it has no terminal to ask.
 
   The `patchedDependencies` entries go in the same file ("Apply the patches").
 - **Native modules.** Nothing is copied into the app. The package's `expo-module.config.json` links its one native module through Expo's autolinking (the Android Gradle project `:svelte-core` and the iOS pod `SvelteCore`, both in `native/svelte-core`), so `expo prebuild` and `pod install` find it in `node_modules/expo-svelte/native/`. Keep the app's own Expo modules in its `modules/` directory as usual.

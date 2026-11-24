@@ -36,6 +36,21 @@ const pluginNames: readonly string[] = [plugin, `${plugin}/app.plugin`];
 const removedPluginName = `${plugin}/expo`;
 const scripts: Readonly<Record<string, string>> = { native: "expo-svelte dev", android: "expo-svelte android", ios: "expo-svelte ios", "check-setup": "expo-svelte doctor" };
 const gitignore = [".expo-svelte", ".expo", "/android", "/ios"];
+/**
+ * pnpm's `virtualStoreDirMaxLength` that `init` writes. pnpm names a folder of its virtual store (`node_modules/.pnpm`) after the dependency path, and for a patched package or a package that
+ * has one among its peers the path has `(patch_hash=<hash>)`, so the folder is named `<name>@<version>_<peers>_patch_hash=<hash>`. `depPathToFilename` (pnpm's `@pnpm/dependency-path`) leaves a name
+ * as it is when it is no longer than the limit and has no uppercase letter (unless it starts with `file+`), and otherwise keeps the first `limit - 33` characters and adds `_<hash>`; the "=" goes only when the cut falls before it. At the default, 120,
+ * 87 characters are kept and the library's folder (`expo-svelte@<version>_@sveltejs+kit@3.4.0_patch_hash=`: 55 characters before the hash) keeps its "="; at 60 it keeps 27, which end
+ * inside `expo-svelte@<version>_<the first peer>`, before any `patch_hash=` a name of the declared patches can reach.
+ */
+export const virtualStoreDirMaxLength = 60;
+
+/**
+ * The arguments of init's `pnpm install`. A changed `virtualStoreDirMaxLength` makes pnpm remove node_modules and install again, which it asks to confirm; without a terminal (and without CI) it stops with
+ * ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY. With no terminal the person is not there to ask: the setting `confirmModulesPurge` (`--config.confirmModulesPurge=false`, the form for any pnpm setting) says yes.
+ * A terminal is both: pnpm reads the answer from stdin, and a question written to a redirected stdout is one nobody sees.
+ */
+export const installArguments = (terminal: { stdin: boolean; stdout: boolean }): string[] => ["install", "--no-frozen-lockfile", ...(terminal.stdin && terminal.stdout ? [] : ["--config.confirmModulesPurge=false"])];
 
 export type InitOptions = {
   dryRun?: boolean;
@@ -223,12 +238,22 @@ const keyOf = (key: string) => (key.startsWith("@") || key.includes(":") ? `"${k
  * there with the same value stays; with another value it is replaced and said so; a block written in flow style (`allowBuilds: { esbuild: true }`) is not edited
  * and comes back in `manual`.
  */
-export function mergeWorkspaceYaml(text: string, blocks: Readonly<Record<string, Readonly<Record<string, string>>>>): { text: string; changes: string[]; manual: string[] } {
+export function mergeWorkspaceYaml(
+  text: string,
+  blocks: Readonly<Record<string, Readonly<Record<string, string>>>>,
+  atMost: Readonly<Record<string, number>> = {},
+): { text: string; changes: string[]; manual: string[] } {
   const crlf = text.includes("\r\n");
   const lines = text.replaceAll("\r\n", "\n").split("\n");
   if (lines.at(-1) === "") lines.pop();
   const changes: string[] = [];
   const manual: string[] = [];
+  // A file that is one flow mapping (`{ allowBuilds: { esbuild: true } }`) takes no line below it: it is left as it is and every entry is listed for the person.
+  if (/^\s*\{/.test(lines.find((line) => line.trim() !== "" && !line.trim().startsWith("#")) ?? "")) {
+    for (const [block, wanted] of Object.entries(blocks)) manual.push(`${block}: ${Object.entries(wanted).map(([key, value]) => `${keyOf(key)}: ${value}`).join(", ")}`);
+    for (const [key, limit] of Object.entries(atMost)) manual.push(`${key}: ${limit}`);
+    return { text, changes, manual };
+  }
   let separated = false;
   for (const [block, wanted] of Object.entries(blocks)) {
     const start = lines.findIndex((line) => new RegExp(`^${block}:\\s*(?:#.*)?$`).test(line));
@@ -270,6 +295,20 @@ export function mergeWorkspaceYaml(text: string, blocks: Readonly<Record<string,
       }
     }
     lines.splice(last + 1, 0, ...inserted);
+  }
+  // A top-level number that must not be above a limit (`virtualStoreDirMaxLength`): a file that has it at or below the limit keeps it, one that has it above (or that is not a number) gets the limit
+  // with its spacing and its trailing comment kept, and one that does not have it gets it after the last block, as the blocks above are added.
+  for (const [key, limit] of Object.entries(atMost)) {
+    const index = lines.findIndex((line) => new RegExp(`^${key}:`).test(line));
+    const written = index < 0 ? undefined : /^([^:\s]+:\s*)("[^"]*"|'[^']*'|[^\s#]*)(\s*(?:#.*)?)$/.exec(lines[index] ?? "");
+    const was = index < 0 ? undefined : (written?.[2] ?? "").replace(/^["']|["']$/g, "");
+    if (was !== undefined && /^\d+$/.test(was) && Number(was) <= limit) continue;
+    if (index >= 0) lines[index] = written ? `${written[1]}${limit}${written[3]}` : `${key}: ${limit}`;
+    else {
+      if (lines.length > 0 && lines.at(-1) !== "") lines.push("");
+      lines.push(`${key}: ${limit}`);
+    }
+    changes.push(was === undefined ? key : `${key} (was ${was === "" ? "empty" : was})`);
   }
   const merged = `${lines.join("\n")}\n`;
   return { text: crlf ? merged.replaceAll("\n", "\r\n") : merged, changes, manual };
@@ -512,7 +551,11 @@ export function planInit(root: string, options: InitOptions = {}): Plan {
   const reactNative = appDependencies["react-native"];
   if (reactNative !== undefined) overrides["@react-native/metro-config"] = reactNative;
   const patched: Record<string, string> = Object.fromEntries(needed.map((patch) => [patchKey(patch), `patches/expo-svelte/${patch.file}`]));
-  const merged = mergeWorkspaceYaml(workspaceText ?? "", { allowBuilds: { esbuild: "true" }, overrides, patchedDependencies: patched });
+  // `virtualStoreDirMaxLength` (see its constant): the library's folder is `expo-svelte@<version>_<peers>_patch_hash=<hash>` cut at `limit - 33` characters and hashed, and Android's prefab tool, which
+  // the native libraries the library carries are built with, takes a package path with an "=" in it for an option. At 60 the cut is before the "=".
+  const merged = mergeWorkspaceYaml(workspaceText ?? "", { allowBuilds: { esbuild: "true" }, overrides, patchedDependencies: patched }, { virtualStoreDirMaxLength: virtualStoreDirMaxLength });
+  // What init can edit is written (a block next to one in flow style, the limit), and what it cannot is listed: the entries of a block written in flow style, and everything for a file that is one flow mapping.
+  if (merged.changes.length > 0) plan.changes.push({ path: "pnpm-workspace.yaml", action: workspaceText === undefined ? "create" : "edit", summary: merged.changes.join("; "), text: merged.text });
   if (merged.manual.length > 0) {
     plan.changes.push({
       path: "pnpm-workspace.yaml",
@@ -520,9 +563,8 @@ export function planInit(root: string, options: InitOptions = {}): Plan {
       summary: "a block is written in a style init does not edit",
       instructions: `Add these to pnpm-workspace.yaml:\n${merged.manual.map((line) => `  ${line}`).join("\n")}`,
     });
-  } else if (merged.changes.length > 0) {
-    plan.changes.push({ path: "pnpm-workspace.yaml", action: workspaceText === undefined ? "create" : "edit", summary: merged.changes.join("; "), text: merged.text });
-  } else plan.changes.push({ path: "pnpm-workspace.yaml", action: "keep", summary: "has everything" });
+  }
+  if (merged.changes.length === 0 && merged.manual.length === 0) plan.changes.push({ path: "pnpm-workspace.yaml", action: "keep", summary: "has everything" });
   if (workspaceText !== undefined) {
     for (const key of patchedKeys(workspaceText)) {
       const at = key.lastIndexOf("@");
@@ -785,7 +827,7 @@ export function runInit(root: string, args: readonly string[], io: InitIo = proc
   io.out(written === 0 ? "\nNothing to change: the project is already set up." : `\nWrote ${plural(written, "file")}.`);
   if (options.install === false) return manual > 0 ? 1 : 0;
   io.out("\n==> pnpm install");
-  const install = spawnSync("pnpm", ["install", "--no-frozen-lockfile"], { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
+  const install = spawnSync("pnpm", installArguments({ stdin: Boolean(process.stdin.isTTY), stdout: Boolean(process.stdout.isTTY) }), { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
   if (install.status !== 0) {
     io.err("expo-svelte init: pnpm install failed; fix what it says and run `pnpm install` and `pnpm exec expo-svelte doctor`.");
     return install.status ?? 1;

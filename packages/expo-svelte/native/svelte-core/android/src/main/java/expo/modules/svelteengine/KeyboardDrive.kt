@@ -23,6 +23,7 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeigh
     const val START = 1
     const val MOVE = 2
     const val END = 3
+    private const val EARLY_MAX = 64
   }
 
   /**
@@ -35,6 +36,7 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeigh
   private val lifts = HashMap<Int, ChatLift>()
   private val awares = HashMap<Int, AwareScroll>()
   private val ends = HashMap<Int, Boolean>()
+  private val early = HashMap<Int, ArrayList<Pair<String, List<Any?>>>>()
   private val listeners = LinkedHashMap<Int, (Int, Int) -> Unit>()
   private var nextListener = -1
   private var persistent = 0
@@ -63,8 +65,18 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeigh
     watched = null
   }
 
-  /** The commands of `SvelteEngine.keyboardDrive(tag, name, args)`; lengths in dp. */
+  /**
+   * The commands of `SvelteEngine.keyboardDrive(tag, name, args)`; lengths in dp. JavaScript registers a view when its component has been mounted, which is before the
+   * commit that creates the view has reached the main thread: a command for a tag with no view waits, the last of each name, for [viewCreated].
+   */
   fun command(tag: Int, name: String, args: List<Any?>) {
+    if (tag >= 0 && viewFor(tag) == null) {
+      if (early.size > EARLY_MAX) early.clear()
+      val queued = early.getOrPut(tag) { ArrayList() }
+      queued.removeAll { it.first == name || name == "release" }
+      if (name != "release") queued.add(name to args) else if (queued.isEmpty()) early.remove(tag)
+      return
+    }
     fun num(index: Int) = (args.getOrNull(index) as? Number)?.toDouble() ?: 0.0
     fun flag(index: Int) = args.getOrNull(index) as? Boolean ?: true
     when (name) {
@@ -76,6 +88,13 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val windowHeigh
       "focus" -> focusTo(args.getOrNull(0) as? String)
       else -> Log.w(TAG, "keyboardDrive: unsupported command '$name' for tag $tag")
     }
+  }
+
+  /** The view of [tag] has been created and given its props: the commands that were waiting for it run. */
+  fun viewCreated(tag: Int) {
+    if (early.isEmpty()) return
+    val queued = early.remove(tag) ?: return
+    for ((name, args) in queued) command(tag, name, args)
   }
 
   fun follow(tag: Int, closed: Double, opened: Double, enabled: Boolean, avoid: Boolean = false, anchor: Int = 0) {

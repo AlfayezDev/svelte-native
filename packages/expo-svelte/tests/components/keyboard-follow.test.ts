@@ -216,4 +216,6 @@ test("createKeyboardMotion turns the engine's frames into dp, progress and state
   expect([motion.height.value, motion.progress.value, motion.state.value]).toEqual([0, 0, "closed"]);
   m.unmount(app);
   expect(animLog().keyboard?.[0]?.off).toBe(true);
+  // The fakes' log is the process's: the next file starts from none.
+  delete (globalThis as { __anim?: AnimLog }).__anim;
 });

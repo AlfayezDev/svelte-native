@@ -36,15 +36,16 @@
     const stop = watched ? endVisible(tag, (visible) => onEndVisible?.(visible)) : undefined;
     return () => stop?.();
   });
-  // Without the engine the end is worked out from the scroll events.
+  // Without the engine the end is worked out from the scroll events, which a thread that the engine watches does not have to send.
+  const watching = $derived(!driven && onEndVisible !== undefined);
   let lastEnd: boolean | undefined;
   function scrolled(event: NativeSyntheticEvent<NativeScrollEvent>) {
     onScroll?.(event);
-    if (driven || !onEndVisible) return;
+    if (!onEndVisible) return;
     const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
     const visible = contentOffset.y + layoutMeasurement.height >= contentSize.height - 20;
     if (visible !== lastEnd) { lastEnd = visible; onEndVisible(visible); }
   }
   const keep = (instance: NativeScrollView | null) => { handle = instance as unknown as HostHandle | null; ref?.(instance); };
 </script>
-<ScrollView {...attributes} scrollEventThrottle={!driven && onEndVisible ? 16 : scrollEventThrottle} onScroll={scrolled} ref={keep}>{@render children?.()}</ScrollView>
+<ScrollView {...attributes} scrollEventThrottle={watching ? 16 : scrollEventThrottle} onScroll={watching ? scrolled : onScroll} ref={keep}>{@render children?.()}</ScrollView>

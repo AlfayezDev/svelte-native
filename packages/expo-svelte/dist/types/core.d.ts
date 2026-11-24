@@ -10,4 +10,7 @@ export { default as ActivityIndicator } from "./components/ActivityIndicator.sve
 export { default as Switch } from "./components/Switch.svelte";
 export { default as List } from "./components/List.svelte";
 export { default as KeyboardAvoidingView } from "./components/KeyboardAvoidingView.svelte";
+export { default as KeyboardStickyView } from "./components/KeyboardStickyView.svelte";
+export { default as KeyboardChatScrollView } from "./components/KeyboardChatScrollView.svelte";
+export { default as KeyboardAwareScrollView } from "./components/KeyboardAwareScrollView.svelte";
 export { insets, connectInsets } from "./insets.svelte.js";

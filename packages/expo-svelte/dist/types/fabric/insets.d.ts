@@ -5,7 +5,10 @@ export type Frame = {
     width: number;
     height: number;
 };
-/** Values in dp. `keyboardHeight` is how much of the overlay the keyboard covers; `frame` is the overlay in window coordinates. */
+/**
+ * Values in dp. `keyboardHeight` is how much of the overlay the keyboard covers (the height it is going to have, from the start of its animation); `keyboardAnimating` says it
+ * is moving (Android; iOS does not send it); `frame` is the overlay in window coordinates.
+ */
 export type InsetsEvent = {
     top: number;
     right: number;
@@ -13,6 +16,7 @@ export type InsetsEvent = {
     left: number;
     keyboardHeight: number;
     keyboardVisible: boolean;
+    keyboardAnimating?: boolean;
     frame: Frame;
 };
 /** Subscribes to insets changes and delivers the current value first when the engine already has one. Returns the unsubscribe function, or null without the engine module. */

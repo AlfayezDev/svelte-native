@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { Pressable, Text, View } from "expo-svelte";
   import Page from "#lib/native/components/Page.svelte";
   import StyleTile from "#lib/native/dev/StyleTile.svelte";
@@ -15,22 +15,50 @@
   let { url }: { url?: URL } = $props();
   const requested = untrack(() => url?.searchParams.get("mode"));
   const mode: Mode = modes.find((name) => name === requested) ?? "shadow";
+  // `?rows=300&border=1&cycles=6`: the mount cost of bordered views. 300 rows (a view with a fill, a radius and, with `border=1`, a 1 dp border, holding a text) are mounted and
+  // removed `cycles` times, 700 ms apart; the engine logs each transaction (`SvelteEngine: surface=... create=... apply=...ms`), which is what is read.
+  const rows = Number(untrack(() => url?.searchParams.get("rows")) ?? 0);
+  const bordered = untrack(() => url?.searchParams.get("border")) === "1";
+  const cycles = Number(untrack(() => url?.searchParams.get("cycles")) ?? 6);
+  let shown = $state(false);
+  onMount(() => {
+    if (rows === 0) return;
+    let count = 0;
+    const timer = setInterval(() => {
+      shown = !shown;
+      if (shown) console.info(`[Svelte styles] rows mount ${++count}`);
+      else if (count >= cycles) { console.info("[Svelte styles] rows done"); clearInterval(timer); }
+    }, 700);
+    return () => clearInterval(timer);
+  });
   let step = $state(0);
   const focused = $derived(step % 3 === 1);
   const shadow = $derived(step % 3 === 1 ? focusRing : step % 3 === 0 ? "0 0 0 0 transparent" : undefined);
 </script>
 
 <Page title="Box styles">
-  <View testID="styles.grid" style={{ flexDirection: "row", flexWrap: "wrap", width: 336, alignSelf: "center" }}>
-    {#each tiles[mode] as tile (tile.id)}
-      <StyleTile {tile} />
-    {/each}
-  </View>
-  {#if mode === "shadow"}
-    <View testID="styles.runtime" style={{ width: 168, height: 112, alignSelf: "center", alignItems: "center", justifyContent: "center", backgroundColor: "#f4f4f5" }}>
-      <Pressable testID="styles.focus" accessibilityRole="button" accessibilityLabel="Focus ring" onPress={() => { step += 1; }} style={{ ...runtimeInput, boxShadow: shadow }}>
-        <Text style={runtimeLabel}>{focused ? "Focused" : "Not focused"}</Text>
-      </Pressable>
+  {#if rows > 0}
+    <View testID="styles.rows">
+      {#if shown}
+        {#each Array.from({ length: rows }, (_, i) => i) as i (i)}
+          <View style={{ flexDirection: "row", alignItems: "center", height: 40, marginBottom: 4, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "#ffffff", ...(bordered ? { borderWidth: 1, borderColor: "#d4d4d8" } : {}) }}>
+            <Text style={{ fontSize: 14, color: "#18181b" }}>Row {i}</Text>
+          </View>
+        {/each}
+      {/if}
     </View>
+  {:else}
+    <View testID="styles.grid" style={{ flexDirection: "row", flexWrap: "wrap", width: 336, alignSelf: "center" }}>
+      {#each tiles[mode] as tile (tile.id)}
+        <StyleTile {tile} />
+      {/each}
+    </View>
+    {#if mode === "shadow"}
+      <View testID="styles.runtime" style={{ width: 168, height: 112, alignSelf: "center", alignItems: "center", justifyContent: "center", backgroundColor: "#f4f4f5" }}>
+        <Pressable testID="styles.focus" accessibilityRole="button" accessibilityLabel="Focus ring" onPress={() => { step += 1; }} style={{ ...runtimeInput, boxShadow: shadow }}>
+          <Text style={runtimeLabel}>{focused ? "Focused" : "Not focused"}</Text>
+        </Pressable>
+      </View>
+    {/if}
   {/if}
 </Page>

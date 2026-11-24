@@ -10,7 +10,9 @@ import kotlin.system.exitProcess
  * Also `onContentSizeChange` and `onScroll` (SPEC.md "TextInput: content size and scroll events"): when a view watches and when a watcher has something to send, and that the
  * events say what React Native's watchers say.
  * Usage: InputRulesCheck <ReactTextInputManager.kt> <EngineInput.kt> <AutoCorrectCode.h> <InputAutofill.kt> <PropsEncoderViews.cpp> <ReactTextContentSizeWatcher.kt>
- *   <ReactTextScrollWatcher.kt> <ScrollEvent.kt> <InputEvents.cpp> <ViewEvents.kt>   (src/test/run.sh)
+ *   <ReactTextScrollWatcher.kt> <ScrollEvent.kt> <InputEvents.cpp> <ViewEvents.kt> [<android.jar>]   (src/test/run.sh)
+ * Also the input type (SPEC.md, "TextInput: the input type"): `InputRules.inputType` for every combination of `keyboardType`, `secureTextEntry`, `autoCapitalize`, `autoCorrect` and
+ * `multiline` (`inputMode` is a `keyboardType` in JavaScript) against `ReactTextInputManager`'s staged flags, run here with the setters in every order.
  */
 private var failures = 0
 private var checks = 0
@@ -46,8 +48,18 @@ private fun flags() {
 /** `EngineInput` hands the platform's flags over by name, auto-correct to the first and no-suggestions to the second (swapping them there would swap the behaviour), after the view kept the setting an update carried. */
 private fun againstEngineInput(source: String) {
   val text = java.io.File(source).readText().replace(Regex("\\s+"), " ")
-  expect("EngineInput.applyInputType maps the setting through InputRules.suggestionFlag with the platform's flags the right way round",
-    text.contains("InputRules.suggestionFlag(autoCorrect, autoCorrectFlag = InputType.TYPE_TEXT_FLAG_AUTO_CORRECT, noSuggestionsFlag = InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS)"), true)
+  expect("EngineInput.applyInputType takes the input type from InputRules.inputType, with the setting the view kept", text.contains("val type = InputRules.inputType(v.keyboard, v.secure, v.capitalize, autoCorrect, v.multiline)"), true)
+  expect("and computes none of the flags itself any more", text.substringAfter("private fun applyInputType(").substringBefore("private fun applyCursorTint").contains("InputType.TYPE_TEXT_FLAG_"), false)
+  val applying = text.substringAfter("private fun applyInputType(").substringBefore("private fun applyCursorTint")
+  expect("a view the platform kept single-line is made multi-line by hand, as React Native's multiline asks for any class", applying.contains("if (InputRules.platformKeepsSingleLine(type)) { setSingleLine(false)"), true)
+  expect("and the masking setSingleLine(false) removed is set again for a password type, after it", applying.indexOf("{ setSingleLine(false)") in 0 until applying.indexOf("if (InputRules.isPassword(type)) transformationMethod = PasswordTransformationMethod.getInstance()"), true)
+  // Each swap sets the text again and fires afterTextChanged with the selection at (0, 0): a number password made multi-line swaps three times. None of it is the user's.
+  val guarded = applying.substringAfter("val was = settingText settingText = true try {").substringBefore("} finally { settingText = was }")
+  expect("the type swaps run with settingText set, and it is put back as it was in a finally", applying.contains("val was = settingText settingText = true try {") && applying.contains("} finally { settingText = was }"), true)
+  for (inside in listOf("inputType = type", "setSingleLine(false)", "transformationMethod = PasswordTransformationMethod.getInstance()", "applyTypeface(family, weight, italic)", "setSelection(start, end)"))
+    expect("$inside is inside the guarded block, so it sends neither a change nor a selection event", guarded.contains(inside), true)
+  expect("the text watcher and the selection listener both skip while settingText is set", text.contains("if (!settingText && created) {") && text.contains("if (!created || settingText ||"), true)
+  expect("the masking is PasswordTransformationMethod's", applying.contains("transformationMethod = PasswordTransformationMethod.getInstance()") && text.contains("import android.text.method.PasswordTransformationMethod"), true)
   expect("EngineInput keeps the setting an update carried", text.contains("autoCorrect = InputRules.autoCorrectAfter(autoCorrect, v.autoCorrect)"), true)
 }
 
@@ -172,7 +184,133 @@ private fun watchersAgainstEngine(engineInput: String, encoder: String, inputEve
     view.contains("external fun inputScroll(tag: Int, xDp: Float, yDp: Float, widthDp: Float, heightDp: Float)"), true)
 }
 
+/** What `ReactTextInputManager` leaves in `stagedInputType`: its setters, in [order] (k keyboardType, s secureTextEntry, a autoCorrect, m multiline), then `reconcileAutoCapitalize`. A prop that is not given is not run. */
+private fun reactNativeInputType(keyboard: Int, secure: Boolean, capitalize: Int, autoCorrect: Int, multiline: Boolean, order: String): Int {
+  val auto = 0x8000
+  val noSuggestions = 0x80000
+  val numbered = 0x2 or 0x2000 or 0x1000 // INPUT_TYPE_KEYBOARD_NUMBERED: TYPE_CLASS_NUMBER, TYPE_NUMBER_FLAG_DECIMAL, TYPE_NUMBER_FLAG_SIGNED
+  var staged = 0x1 // createViewInstance: `inputType and TYPE_TEXT_FLAG_MULTI_LINE.inv()` of an EditText's TYPE_CLASS_TEXT or TYPE_TEXT_FLAG_MULTI_LINE
+  fun update(unset: Int, set: Int) { staged = (staged and unset.inv()) or set }
+  fun checkPasswordType() { if ((staged and numbered) != 0 && (staged and 0x80) != 0) update(0x80, 0x10) }
+  for (setter in order) when (setter) {
+    'k' -> {
+      val set = when (keyboard) {
+        1 -> numbered // numeric
+        2 -> 0x2 // number-pad
+        3 -> 0x2 or 0x2000 // decimal-pad
+        4 -> 0x20 or 0x1 // email-address
+        5 -> 0x3 // phone-pad
+        6 -> 0x90 // visible-password: a variation, no class
+        7 -> 0x10 // url: a variation, no class
+        else -> 0x1
+      }
+      update(0xF, set)
+      checkPasswordType()
+    }
+    's' -> if (secure) { update(0x90, 0x80); checkPasswordType() }
+    'a' -> if (autoCorrect == InputRules.AUTO_CORRECT_ON || autoCorrect == InputRules.AUTO_CORRECT_OFF) update(auto or noSuggestions, if (autoCorrect == InputRules.AUTO_CORRECT_ON) auto else noSuggestions)
+    'm' -> if (multiline) update(0, 0x20000)
+  }
+  val capitalisation = 0x4000 or 0x2000 or 0x1000
+  val value = when (capitalize) { 0 -> 0; 1 -> 0x1000; 2 -> 0x2000; else -> 0x4000 }
+  return if ((staged and 0xF) == 0x1) (staged and capitalisation.inv()) or value else staged and 0x4000.inv()
+}
+
+private fun permutations(of: String): List<String> = if (of.length <= 1) listOf(of) else of.indices.flatMap { at -> permutations(of.removeRange(at, at + 1)).map { of[at] + it } }
+
+private fun inputTypes(androidJar: String?) {
+  val orders = permutations("ksam")
+  var combinations = 0
+  var orderDependent = 0
+  for (keyboard in 0..7) for (secure in listOf(false, true)) for (capitalize in 0..3) for (autoCorrect in listOf(InputRules.AUTO_CORRECT_CLEARED, InputRules.AUTO_CORRECT_ON, InputRules.AUTO_CORRECT_OFF)) for (multiline in listOf(false, true)) {
+    combinations++
+    val reactNative = orders.map { reactNativeInputType(keyboard, secure, capitalize, autoCorrect, multiline, it) }.toSet()
+    val ours = InputRules.inputType(keyboard, secure, capitalize, autoCorrect, multiline)
+    val label = "keyboard $keyboard, secureTextEntry $secure, autoCapitalize $capitalize, autoCorrect $autoCorrect, multiline $multiline"
+    // React Native's setters do not commute for a keyboard that is a bare variation with `secureTextEntry` around it (the order of the props decides): the engine's type is one of its results.
+    if (reactNative.size > 1) orderDependent++
+    expect("input type of $label is React Native's (${reactNative.map { "0x" + it.toString(16) }})", ours in reactNative, true)
+  }
+  expect("the combinations the check ran", combinations, 8 * 2 * 4 * 3 * 2)
+  expect("only visible-password and url with a password are order dependent in React Native itself (every autoCapitalize, autoCorrect and multiline of them)", orderDependent, 2 * 4 * 3 * 2)
+  // The report: a multiline field, auto-correction on, the default capitalisation: Gboard starts with the shift on and shows its suggestions.
+  val report = InputRules.inputType(0, secure = false, capitalize = 3, autoCorrect = InputRules.AUTO_CORRECT_ON, multiline = true)
+  expect("a multiline text input with auto-correction on and the default capitalisation", report, 0x1 or 0x4000 or 0x8000 or 0x20000)
+  expect("it asks for capital letters at the start of a sentence, for suggestions and for several lines", Triple(report and 0x4000, report and 0x8000, report and 0x20000), Triple(0x4000, 0x8000, 0x20000))
+  expect("a single-line field with nothing set is a plain text field with capital sentences", InputRules.inputType(0, secure = false, capitalize = 3, autoCorrect = InputRules.AUTO_CORRECT_CLEARED, multiline = false), 0x1 or 0x4000)
+  expect("autoCapitalize none asks for none", InputRules.inputType(0, secure = false, capitalize = 0, autoCorrect = InputRules.AUTO_CORRECT_CLEARED, multiline = false), 0x1)
+  expect("autoCorrect false turns suggestions off", InputRules.inputType(0, secure = false, capitalize = 3, autoCorrect = InputRules.AUTO_CORRECT_OFF, multiline = false), 0x1 or 0x4000 or 0x80000)
+  expect("a password keeps the flags React Native keeps on it", InputRules.inputType(0, secure = true, capitalize = 3, autoCorrect = InputRules.AUTO_CORRECT_ON, multiline = false), 0x1 or 0x80 or 0x4000 or 0x8000)
+  expect("a numeric field takes no capital letters, and keeps auto-correction and multiline as React Native does", InputRules.inputType(2, secure = false, capitalize = 3, autoCorrect = InputRules.AUTO_CORRECT_ON, multiline = true), 0x2 or 0x8000 or 0x20000)
+  expect("a numeric password is the number variation", InputRules.inputType(2, secure = true, capitalize = 3, autoCorrect = InputRules.AUTO_CORRECT_CLEARED, multiline = false), 0x2 or 0x10)
+  expect("visible-password wins over secureTextEntry", InputRules.inputType(6, secure = true, capitalize = 3, autoCorrect = InputRules.AUTO_CORRECT_CLEARED, multiline = false), 0x90)
+  // What the platform masks, and what it leaves single-line (the engine sets the masking again after making a number class multi-line: `setSingleLine(false)` drops it).
+  fun typeOf(keyboard: Int, secure: Boolean, multiline: Boolean) = InputRules.inputType(keyboard, secure, 3, InputRules.AUTO_CORRECT_CLEARED, multiline)
+  val textPassword = typeOf(0, secure = true, multiline = true)
+  expect("a text password with several lines is masked by the platform, which has made it multi-line itself (no setSingleLine)", Pair(InputRules.isPassword(textPassword), InputRules.platformKeepsSingleLine(textPassword)), Pair(true, false))
+  val numberPassword = typeOf(2, secure = true, multiline = true)
+  expect("a number password with several lines is one the platform keeps single-line, and masks: the masking is set again after setSingleLine(false)", Pair(InputRules.isPassword(numberPassword), InputRules.platformKeepsSingleLine(numberPassword)), Pair(true, true))
+  expect("a number field with several lines is made multi-line and is not masked", Pair(InputRules.isPassword(typeOf(2, secure = false, multiline = true)), InputRules.platformKeepsSingleLine(typeOf(2, secure = false, multiline = true))), Pair(false, true))
+  expect("a single-line password is masked and needs nothing", Pair(InputRules.isPassword(typeOf(0, secure = true, multiline = false)), InputRules.platformKeepsSingleLine(typeOf(0, secure = true, multiline = false))), Pair(true, false))
+  expect("visible-password shows its text", InputRules.isPassword(typeOf(6, secure = false, multiline = false)), false)
+  expect("so does it when secureTextEntry is set (visible-password wins)", InputRules.isPassword(typeOf(6, secure = true, multiline = false)), false)
+  expect("a web password is masked", InputRules.isPassword(0x1 or 0xE0), true)
+  expect("an email field and a phone field are not", Pair(InputRules.isPassword(typeOf(4, secure = false, multiline = false)), InputRules.isPassword(typeOf(5, secure = false, multiline = false))), Pair(false, false))
+  var keptSingleLine = 0
+  for (keyboard in 0..7) for (secure in listOf(false, true)) for (multiline in listOf(false, true)) {
+    val type = typeOf(keyboard, secure, multiline)
+    // Only a multi-line type of a class that is not text: the text class is the platform's (and the class-less visible-password and url are not text either: they have no class bits).
+    val expected = multiline && (type and 0xF) != 0x1
+    if (expected) keptSingleLine++
+    expect("platformKeepsSingleLine of keyboard $keyboard, secure $secure, multiline $multiline", InputRules.platformKeepsSingleLine(type), expected)
+  }
+  expect("some of the combinations are the ones the platform keeps single-line", keptSingleLine > 0, true)
+  // The constants are the platform's own.
+  if (androidJar != null && java.io.File(androidJar).isFile) {
+    val platform = java.net.URLClassLoader(arrayOf(java.io.File(androidJar).toURI().toURL()), null).loadClass("android.text.InputType")
+    for ((name, value) in mapOf(
+      "TYPE_MASK_CLASS" to InputRules.TYPE_MASK_CLASS, "TYPE_MASK_VARIATION" to InputRules.TYPE_MASK_VARIATION, "TYPE_TEXT_VARIATION_WEB_PASSWORD" to InputRules.TYPE_TEXT_VARIATION_WEB_PASSWORD, "TYPE_CLASS_TEXT" to InputRules.TYPE_CLASS_TEXT, "TYPE_CLASS_NUMBER" to InputRules.TYPE_CLASS_NUMBER, "TYPE_CLASS_PHONE" to InputRules.TYPE_CLASS_PHONE,
+      "TYPE_NUMBER_FLAG_SIGNED" to InputRules.TYPE_NUMBER_FLAG_SIGNED, "TYPE_NUMBER_FLAG_DECIMAL" to InputRules.TYPE_NUMBER_FLAG_DECIMAL, "TYPE_NUMBER_VARIATION_PASSWORD" to InputRules.TYPE_NUMBER_VARIATION_PASSWORD,
+      "TYPE_TEXT_FLAG_CAP_CHARACTERS" to InputRules.TYPE_TEXT_FLAG_CAP_CHARACTERS, "TYPE_TEXT_FLAG_CAP_WORDS" to InputRules.TYPE_TEXT_FLAG_CAP_WORDS, "TYPE_TEXT_FLAG_CAP_SENTENCES" to InputRules.TYPE_TEXT_FLAG_CAP_SENTENCES,
+      "TYPE_TEXT_FLAG_AUTO_CORRECT" to InputRules.TYPE_TEXT_FLAG_AUTO_CORRECT, "TYPE_TEXT_FLAG_MULTI_LINE" to InputRules.TYPE_TEXT_FLAG_MULTI_LINE, "TYPE_TEXT_FLAG_NO_SUGGESTIONS" to InputRules.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
+      "TYPE_TEXT_VARIATION_URI" to InputRules.TYPE_TEXT_VARIATION_URI, "TYPE_TEXT_VARIATION_EMAIL_ADDRESS" to InputRules.TYPE_TEXT_VARIATION_EMAIL_ADDRESS, "TYPE_TEXT_VARIATION_PASSWORD" to InputRules.TYPE_TEXT_VARIATION_PASSWORD,
+      "TYPE_TEXT_VARIATION_VISIBLE_PASSWORD" to InputRules.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+    )) expect("InputRules.$name is android.text.InputType.$name", platform.getField(name).getInt(null), value)
+  } else {
+    println("input type: no android.jar, the constants were not compared with the platform's")
+  }
+}
+
+/** The setters of React Native's `ReactTextInputManager` still say what `InputRules.inputType` (and the check's copy of them) says. */
+private fun inputTypeAgainstReactNative(source: String) {
+  val text = java.io.File(source).readText().replace(Regex("\\s+"), " ")
+  for (line in listOf(
+    "editText.inputType = inputType and (InputType.TYPE_TEXT_FLAG_MULTI_LINE.inv())",
+    "flagsToUnset = if (multiline) 0 else InputType.TYPE_TEXT_FLAG_MULTI_LINE, flagsToSet = if (multiline) InputType.TYPE_TEXT_FLAG_MULTI_LINE else 0,",
+    "if (password) { InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD } else { InputType.TYPE_NUMBER_VARIATION_PASSWORD or InputType.TYPE_TEXT_VARIATION_PASSWORD }, flagsToSet = if (password) InputType.TYPE_TEXT_VARIATION_PASSWORD else 0,",
+    "var autoCapitalizeValue = InputType.TYPE_TEXT_FLAG_CAP_SENTENCES",
+    "var flagsToSet = InputType.TYPE_CLASS_TEXT",
+    "flagsToSet = INPUT_TYPE_KEYBOARD_NUMBERED",
+    "flagsToSet = INPUT_TYPE_KEYBOARD_NUMBER_PAD",
+    "flagsToSet = INPUT_TYPE_KEYBOARD_DECIMAL_PAD",
+    "flagsToSet = InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS or InputType.TYPE_CLASS_TEXT",
+    "flagsToSet = InputType.TYPE_CLASS_PHONE",
+    "flagsToSet = InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD",
+    "flagsToSet = InputType.TYPE_TEXT_VARIATION_URI",
+    "updateStagedInputTypeFlag(view, InputType.TYPE_MASK_CLASS, flagsToSet)",
+    "private const val INPUT_TYPE_KEYBOARD_NUMBER_PAD = InputType.TYPE_CLASS_NUMBER",
+    "INPUT_TYPE_KEYBOARD_NUMBER_PAD or InputType.TYPE_NUMBER_FLAG_DECIMAL",
+    "INPUT_TYPE_KEYBOARD_DECIMAL_PAD or InputType.TYPE_NUMBER_FLAG_SIGNED",
+    "(view.stagedInputType and AUTOCAPITALIZE_FLAGS.inv()) or autoCapValue",
+    "view.stagedInputType and InputType.TYPE_TEXT_FLAG_CAP_SENTENCES.inv()",
+    "updateStagedInputTypeFlag( view, InputType.TYPE_TEXT_VARIATION_PASSWORD, InputType.TYPE_NUMBER_VARIATION_PASSWORD, )",
+  )) expect("RN: $line", text.contains(line), true)
+  expect("RN: reconcileAutoCapitalize and the staged type are committed after all the setters", text.contains("reconcileAutoCapitalize(view) view.commitStagedInputType()"), true)
+}
+
 fun main(args: Array<String>) {
+  inputTypes(args.getOrNull(10))
+  if (args.isNotEmpty()) inputTypeAgainstReactNative(args[0])
   flags()
   selectionAndAutofill()
   watchers()

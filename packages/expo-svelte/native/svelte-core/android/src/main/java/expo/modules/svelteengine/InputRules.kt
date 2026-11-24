@@ -30,6 +30,122 @@ object InputRules {
     else -> 0
   }
 
+  // `android.text.InputType`'s values, which `InputRulesCheck` compares with the platform's own class where an android.jar is at hand. This file has no Android type.
+  const val TYPE_MASK_CLASS = 0xF
+  const val TYPE_MASK_VARIATION = 0xFF0
+  const val TYPE_CLASS_TEXT = 0x1
+  const val TYPE_CLASS_NUMBER = 0x2
+  const val TYPE_CLASS_PHONE = 0x3
+  const val TYPE_NUMBER_FLAG_SIGNED = 0x1000
+  const val TYPE_NUMBER_FLAG_DECIMAL = 0x2000
+  const val TYPE_NUMBER_VARIATION_PASSWORD = 0x10
+  const val TYPE_TEXT_FLAG_CAP_CHARACTERS = 0x1000
+  const val TYPE_TEXT_FLAG_CAP_WORDS = 0x2000
+  const val TYPE_TEXT_FLAG_CAP_SENTENCES = 0x4000
+  const val TYPE_TEXT_FLAG_AUTO_CORRECT = 0x8000
+  const val TYPE_TEXT_FLAG_MULTI_LINE = 0x20000
+  const val TYPE_TEXT_FLAG_NO_SUGGESTIONS = 0x80000
+  const val TYPE_TEXT_VARIATION_URI = 0x10
+  const val TYPE_TEXT_VARIATION_EMAIL_ADDRESS = 0x20
+  const val TYPE_TEXT_VARIATION_PASSWORD = 0x80
+  const val TYPE_TEXT_VARIATION_WEB_PASSWORD = 0xE0
+  const val TYPE_TEXT_VARIATION_VISIBLE_PASSWORD = 0x90
+
+  /** The codes of record 47's keyboard (`keyboardCode` in `PropsEncoderViews.cpp`): 0 is the default keyboard, and any name React Native does not know. */
+  const val KEYBOARD_NUMERIC = 1
+  const val KEYBOARD_NUMBER_PAD = 2
+  const val KEYBOARD_DECIMAL_PAD = 3
+  const val KEYBOARD_EMAIL = 4
+  const val KEYBOARD_PHONE = 5
+  const val KEYBOARD_VISIBLE_PASSWORD = 6
+  const val KEYBOARD_URL = 7
+
+  /** The codes of `autoCapitalize` (`capitalizeCode`): none, characters, words, and sentences, which is also the default. */
+  const val CAPITALIZE_NONE = 0
+  const val CAPITALIZE_CHARACTERS = 1
+  const val CAPITALIZE_WORDS = 2
+
+  /**
+   * The `inputType` of a text input: what `ReactTextInputManager` leaves in `ReactEditText.stagedInputType` for the props it was given, the flags a keyboard reads
+   * (Gboard starts with the shift on for `TYPE_TEXT_FLAG_CAP_SENTENCES` and shows its suggestion strip for a field that takes suggestions). The view starts as
+   * `createViewInstance` leaves it (`TYPE_CLASS_TEXT`, the `EditText`'s own type without `TYPE_TEXT_FLAG_MULTI_LINE`), and each prop is a setter that unsets some bits and sets others:
+   *
+   * - `keyboardType` unsets the class bits and sets the keyboard's whole type: a variation without a class for `visible-password` and `url` (`TYPE_CLASS_TEXT` is not in
+   *   `TYPE_TEXT_VARIATION_VISIBLE_PASSWORD` or `_URI`, and React Native does not add it);
+   * - `secureTextEntry` (only when it is true: false is the same as unset for it) unsets the visible-password bits and sets the password variation, and a numeric keyboard's
+   *   password is the number variation (`checkPasswordType`); `visible-password` wins over it, as React Native's comment says it does;
+   * - `autoCorrect` unsets both of its flags and sets the one the setting stands for ([suggestionFlag]), whatever the class and whether the field is a password;
+   * - `multiline` sets `TYPE_TEXT_FLAG_MULTI_LINE`, whatever the class (`ReactEditText` makes the view multi-line for it);
+   * - `autoCapitalize` is not a setter of the flags: `reconcileAutoCapitalize` runs after all of them, and for a text class replaces the three capitalisation bits by the prop's (sentences
+   *   when it is unset), for any other class takes `TYPE_TEXT_FLAG_CAP_SENTENCES` away (its other two bits are `TYPE_NUMBER_FLAG_SIGNED` and `_DECIMAL`).
+   *
+   * What the engine computed before dropped `autoCorrect`, `multiline` and the capitalisation from a password field and `autoCorrect` and `multiline` from every other class that
+   * is not text, and gave `visible-password` and `url` a class.
+   */
+  fun inputType(keyboard: Int, secure: Boolean, capitalize: Int, autoCorrect: Int, multiline: Boolean): Int {
+    var staged = TYPE_CLASS_TEXT
+    fun update(unset: Int, set: Int) { staged = (staged and unset.inv()) or set }
+    val numbered = TYPE_CLASS_NUMBER or TYPE_NUMBER_FLAG_DECIMAL or TYPE_NUMBER_FLAG_SIGNED
+    fun checkPasswordType() {
+      if ((staged and numbered) != 0 && (staged and TYPE_TEXT_VARIATION_PASSWORD) != 0) update(TYPE_TEXT_VARIATION_PASSWORD, TYPE_NUMBER_VARIATION_PASSWORD)
+    }
+    fun keyboardType() {
+      update(
+        TYPE_MASK_CLASS,
+        when (keyboard) {
+          KEYBOARD_NUMERIC -> numbered
+          KEYBOARD_NUMBER_PAD -> TYPE_CLASS_NUMBER
+          KEYBOARD_DECIMAL_PAD -> TYPE_CLASS_NUMBER or TYPE_NUMBER_FLAG_DECIMAL
+          KEYBOARD_EMAIL -> TYPE_TEXT_VARIATION_EMAIL_ADDRESS or TYPE_CLASS_TEXT
+          KEYBOARD_PHONE -> TYPE_CLASS_PHONE
+          KEYBOARD_VISIBLE_PASSWORD -> TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+          KEYBOARD_URL -> TYPE_TEXT_VARIATION_URI
+          else -> TYPE_CLASS_TEXT
+        },
+      )
+      checkPasswordType()
+    }
+    fun secureTextEntry() {
+      update(TYPE_TEXT_VARIATION_VISIBLE_PASSWORD, TYPE_TEXT_VARIATION_PASSWORD)
+      checkPasswordType()
+    }
+    if (secure && keyboard == KEYBOARD_VISIBLE_PASSWORD) { secureTextEntry(); keyboardType() } else { keyboardType(); if (secure) secureTextEntry() }
+    update(TYPE_TEXT_FLAG_AUTO_CORRECT or TYPE_TEXT_FLAG_NO_SUGGESTIONS, suggestionFlag(autoCorrect, TYPE_TEXT_FLAG_AUTO_CORRECT, TYPE_TEXT_FLAG_NO_SUGGESTIONS))
+    if (multiline) update(0, TYPE_TEXT_FLAG_MULTI_LINE)
+    val capitalisation = TYPE_TEXT_FLAG_CAP_SENTENCES or TYPE_TEXT_FLAG_CAP_WORDS or TYPE_TEXT_FLAG_CAP_CHARACTERS
+    if ((staged and TYPE_MASK_CLASS) == TYPE_CLASS_TEXT) {
+      update(
+        capitalisation,
+        when (capitalize) {
+          CAPITALIZE_NONE -> 0
+          CAPITALIZE_CHARACTERS -> TYPE_TEXT_FLAG_CAP_CHARACTERS
+          CAPITALIZE_WORDS -> TYPE_TEXT_FLAG_CAP_WORDS
+          else -> TYPE_TEXT_FLAG_CAP_SENTENCES
+        },
+      )
+    } else {
+      update(TYPE_TEXT_FLAG_CAP_SENTENCES, 0)
+    }
+    return staged
+  }
+
+  /**
+   * Whether the platform masks the text of an input of this [type]: `TextView.isPasswordInputType`, whose `setInputType` then sets `PasswordTransformationMethod`. A text password
+   * (`secureTextEntry`), a web password and a number password (the numeric keyboards'); not `visible-password`.
+   */
+  fun isPassword(type: Int): Boolean {
+    val variation = type and (TYPE_MASK_CLASS or TYPE_MASK_VARIATION)
+    return variation == (TYPE_CLASS_TEXT or TYPE_TEXT_VARIATION_PASSWORD) || variation == (TYPE_CLASS_TEXT or TYPE_TEXT_VARIATION_WEB_PASSWORD) ||
+      variation == (TYPE_CLASS_NUMBER or TYPE_NUMBER_VARIATION_PASSWORD)
+  }
+
+  /**
+   * Whether the platform leaves a view of this [type] single-line although the type says multi-line: `TextView.setInputType` makes a view multi-line when the class is text and the flag is
+   * set (`isMultilineInputType`), and React Native's `multiline` is the flag on any class. For a text class the platform already did what the flag asks (and kept the masking of a password
+   * it set), so the view is made multi-line by hand only here.
+   */
+  fun platformKeepsSingleLine(type: Int): Boolean = (type and TYPE_TEXT_FLAG_MULTI_LINE) != 0 && (type and TYPE_MASK_CLASS) != TYPE_CLASS_TEXT
+
   /** The setting after an update that carried [code]; [current] is what the view had. */
   fun autoCorrectAfter(current: Int, code: Int): Int = when (code) {
     AUTO_CORRECT_ON, AUTO_CORRECT_OFF -> code

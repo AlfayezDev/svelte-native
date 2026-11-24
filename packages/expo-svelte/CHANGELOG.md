@@ -4,6 +4,10 @@ Notable changes to `expo-svelte` (named `@alfayez/svelte-native` up to 0.4.0-rc.
 
 ## Unreleased
 
+### Fixed
+
+- An `autocomplete` of one token is read whatever its case, as HTML reads it: `autocomplete="CURRENT-PASSWORD"` or `"OFF"` on an `<input>` (or a `TextInput`'s `autoComplete`) gives the same autofill hint as the lowercase value. It gave none, while a value of several words (`"SECTION-SIGNIN USERNAME"`) was already read so (#114).
+
 ## 0.4.0-rc.11 - 2026-11-23
 
 ### Changed

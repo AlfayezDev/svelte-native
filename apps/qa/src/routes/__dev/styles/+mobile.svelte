@@ -4,11 +4,11 @@
   import { Pressable, Text, View } from "expo-svelte";
   import Page from "#lib/native/components/Page.svelte";
   import StyleTile from "#lib/native/dev/StyleTile.svelte";
-  import { focusRing, modes, reuseStyles, runtimeInput, runtimeLabel, tiles, type Mode } from "#lib/native/dev/styles-cases.ts";
+  import { focusRing, modes, reuseStyles, rowStyles, runtimeInput, runtimeLabel, tiles, type Mode } from "#lib/native/dev/styles-cases.ts";
 
   /**
    * The box styles lab (SPEC.md, "Box styles"; qa/README "Box styles"): the box shadows, borders and transform origins the Android engine draws with React Native's own
-   * drawables, one tile each (`styles-cases.ts`). `?mode=shadow` (the default), `?mode=border`, `?mode=origin` and `?mode=uniform` each fit one screen. The grid has the `testID`
+   * drawables, one tile each (`styles-cases.ts`). `?mode=shadow` (the default), `border`, `origin`, `uniform`, `rect` and `views` each fit one screen. The grid has the `testID`
    * `styles.grid`; the reference app (`qa/styles-reference`) draws the same objects with React Native's own views, and the two are compared tile by tile. In `shadow`
    * an input below the grid goes through three states each time it is pressed (`styles.focus`): a focus ring, then `boxShadow: undefined` (the style key is gone), then the
    * shadow that is off (`0 0 0 0 transparent`), then the ring again, so the ring comes, goes and is taken away at run time.
@@ -16,10 +16,11 @@
   let { url }: { url?: URL } = $props();
   const requested = untrack(() => url?.searchParams.get("mode"));
   const mode: Mode = modes.find((name) => name === requested) ?? "shadow";
-  // `?rows=300&border=1&cycles=6`: the mount cost of bordered views. 300 rows (a view with a fill, a radius and, with `border=1`, a 1 dp border, holding a text) are mounted and
-  // removed `cycles` times, 700 ms apart; the engine logs each transaction (`SvelteEngine: surface=... create=... apply=...ms`), which is what is read.
+  // `?rows=300&border=1&cycles=6`: the mount cost of bordered views. 300 rows (a view with a fill, holding a text, with the style `rowStyles[border]`: `0` a radius, `1` a radius and a 1 dp border, and the
+  // others of `styles-cases.ts`: a divider, sides, dashes, a shadow) are mounted and removed `cycles` times, 700 ms apart; the engine logs each transaction
+  // (`SvelteEngine: surface=... create=... apply=...ms`), which is what is read.
   const rows = Number(untrack(() => url?.searchParams.get("rows")) ?? 0);
-  const bordered = untrack(() => url?.searchParams.get("border")) === "1";
+  const rowStyle = rowStyles[untrack(() => url?.searchParams.get("border")) ?? "0"] ?? rowStyles["0"];
   const cycles = Number(untrack(() => url?.searchParams.get("cycles")) ?? 6);
   // `?reuse=<from>-<to>` (indices of `reuseStyles`; `from` empty for none): ten boxes in the style `from`, removed after 700 ms, ten in the style `to` 700 ms later, made from the views the engine recycled
   // (`[Svelte styles] reuse pooled=N`, logged just before, says how many were waiting). The grid is the one of the tiles, so the screenshot compares with the one of `?reuse=-<to>`, which has no recycled view.
@@ -69,7 +70,7 @@
     <View testID="styles.rows">
       {#if shown}
         {#each Array.from({ length: rows }, (_, i) => i) as i (i)}
-          <View style={{ flexDirection: "row", alignItems: "center", height: 40, marginBottom: 4, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "#ffffff", ...(bordered ? { borderWidth: 1, borderColor: "#d4d4d8" } : {}) }}>
+          <View style={{ flexDirection: "row", alignItems: "center", height: 40, marginBottom: 4, paddingHorizontal: 12, backgroundColor: "#ffffff", ...rowStyle }}>
             <Text style={{ fontSize: 14, color: "#18181b" }}>Row {i}</Text>
           </View>
         {/each}

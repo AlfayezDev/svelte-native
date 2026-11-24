@@ -13,7 +13,7 @@ import { loadReanimated } from "./reanimated-load.ts";
 import { onFirstCommit } from "../updates/launch.ts";
 import { resolveAssetSource, Platform, pixelRatio, appearance } from "./deps-rn.ts";
 import { styleValue, textColor, type Scheme } from "../system-colors.ts";
-import { createPayload, diffPayload, viewConfigFor } from "./view-configs.ts";
+import { createPayload, diffPayload, engineNativeProps, viewConfigFor } from "./view-configs.ts";
 import { requireOptionalNativeModule } from "./deps-expo.ts";
 import { droppedReasons, freshNavigation } from "../navigation-restore.ts";
 import type { Adoption } from "../hmr-state.ts";
@@ -220,6 +220,7 @@ const binding: Binding | undefined = raw && debug ? {
 } : raw;
 const android = () => Platform.OS === "android";
 const viewConfig = (viewName: string) => viewConfigFor(viewName, android() ? "android" : "ios");
+
 /** Fabric component names, as React Native registers them; a function picks by platform and props. */
 const viewNames: Record<string, string | ((props: Record<string, unknown>) => string)> = {
   "native-view": "RCTView",
@@ -487,7 +488,7 @@ function handleFor(current: State, node: NativeNode | null = null): HostHandle {
     blur() { this.dispatchCommand("blur"); },
     setNativeProps(props: Record<string, unknown>) {
       later(() => {
-        if (!current.foreign && engineInstalled && engineModule?.setNativeProps) engineModule.setNativeProps(current.tag, props);
+        if (!current.foreign && engineInstalled && engineModule?.setNativeProps) engineModule.setNativeProps(current.tag, engineNativeProps(props, android() ? "android" : "ios"));
         else if (current.node) binding?.setNativeProps?.(current.node, props);
       });
     },

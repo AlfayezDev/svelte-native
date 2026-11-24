@@ -293,3 +293,21 @@ test("a view name outside the tables takes React Native's registry entry and pay
   expect(configs.viewConfigFor("RCTSwitch", "android")).toBe(config);
   expect(() => withReactNativeGlobals(() => configs.viewConfigFor("NoSuchView", "android"))).toThrow(/NoSuchView/);
 });
+
+test("setNativeProps hands the engine converted colours and a converted box shadow", async () => {
+  const { configs } = await loadReference("android");
+  const props = configs.engineNativeProps(
+    { opacity: 0.5, borderColor: "red", style: [{ boxShadow: "0 0 0 1px #66666f" }, [{ borderTopColor: "rgba(0,0,0,0.5)", borderStyle: "dashed" }]] },
+    "android",
+  );
+  expect(props.opacity).toBe(0.5);
+  expect(props.borderColor).toBe(-65536);
+  expect(props.borderTopColor).toBe(0x80000000 | 0);
+  expect(Array.isArray(props.boxShadow)).toBe(true);
+  const layers = props.boxShadow as Array<Record<string, unknown>>;
+  expect(layers).toHaveLength(1);
+  expect(layers[0]).toMatchObject({ offsetX: 0, offsetY: 0, spreadDistance: 1, color: 0xff66666f | 0 });
+  // what has nothing to convert is returned as it came
+  const plain = { style: { borderStyle: "dashed" } };
+  expect(configs.engineNativeProps(plain, "android")).toBe(plain);
+}, timeout);

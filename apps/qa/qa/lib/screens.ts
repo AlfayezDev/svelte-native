@@ -296,7 +296,7 @@ const signedOutCases: ScreenCase[] = [
 		title: "Transitions",
 		scrolled: ["Shuffle the list", "Close the panel"],
 	}),
-	// The box styles lab (SPEC.md "Box styles"; `qa/README.md`, "Box styles"): the box shadows, borders and transform origins the Android engine draws (React Native's own drawables, or its one drawable for a plain border), one tile
+	// The box styles lab (SPEC.md "Box styles"; `qa/README.md`, "Box styles"): the box shadows, borders, transform origins and the box styles of an image, a scroll view and a text the Android engine draws (React Native's own drawables, or its own drawable for the common borders), one tile
 	// each (`src/lib/native/dev/styles-cases.ts`), a page per kind; Android only (the iPhone draws these with UIKit). Nothing moves when it is photographed: the animated tiles of `origin` are at their end value 300 ms after the screen opens.
 	screenCase("lab-styles-shadow", "/__dev/styles?mode=shadow", `${dev}/styles?mode=shadow`, label("Focus ring"), {
 		androidOnly: true,
@@ -315,6 +315,16 @@ const signedOutCases: ScreenCase[] = [
 		title: "Box styles",
 	}),
 	screenCase("lab-styles-uniform", "/__dev/styles?mode=uniform", `${dev}/styles?mode=uniform`, label("Box styles"), {
+		androidOnly: true,
+		layout: "header",
+		title: "Box styles",
+	}),
+	screenCase("lab-styles-rect", "/__dev/styles?mode=rect", `${dev}/styles?mode=rect`, label("Box styles"), {
+		androidOnly: true,
+		layout: "header",
+		title: "Box styles",
+	}),
+	screenCase("lab-styles-views", "/__dev/styles?mode=views", `${dev}/styles?mode=views`, label("Box styles"), {
 		androidOnly: true,
 		layout: "header",
 		title: "Box styles",

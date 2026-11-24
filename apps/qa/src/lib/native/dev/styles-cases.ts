@@ -13,6 +13,8 @@ export type Tile = {
   bar?: Record<string, unknown>;
   /** The words of a `Text` tile. */
   text?: string;
+  /** The tile that is changed with `setNativeProps` 300 ms after it mounts (the lab page only; the reference draws the end state as a static style: `style` with these laid over it). */
+  after?: Record<string, unknown>;
   /** The animated tile: Reanimated turns the box to these values (the lab page only; the reference draws the end state as a static style). `radius` is `borderRadius`, in dp. */
   to?: { rotate?: string; scale?: number; radius?: number };
 };
@@ -83,7 +85,8 @@ export const tiles: Record<Mode, Tile[]> = {
     { id: "divider", style: { width: 150, height: 44, backgroundColor: "#ffffff", borderBottomWidth: 0.38, borderBottomColor: "#d4d4d8" } },
     { id: "divider-top", style: { width: 150, height: 44, backgroundColor: "#ffffff", borderTopWidth: 1, borderTopColor: "#18181b" } },
     { id: "side-left", style: { width: 150, height: 44, backgroundColor: "#ffffff", borderLeftWidth: 4, borderLeftColor: "#7c3aed" } },
-    { id: "side-right", style: { width: 150, height: 44, backgroundColor: "#ffffff", borderRightWidth: 3, borderRightColor: "#ef4444" } },
+    // `setNativeProps` after mount: `borderColor` colours every side, a side's own colour, the dashes and the shadow are taken (the engine kept the border's first colour, ignored the rest)
+    { id: "native-props", style: { width: 150, height: 56, backgroundColor: "#ffffff", borderWidth: 3, borderColor: "#3b82f6" }, after: { borderColor: "#22c55e", borderTopColor: "#ef4444", borderStyle: "dashed", boxShadow: "0 4px 8px rgba(0,0,0,0.3)" } },
     { id: "widths", style: { width: 150, height: 56, backgroundColor: "#ffffff", borderLeftWidth: 2, borderRightWidth: 5, borderTopWidth: 4, borderBottomWidth: 1, borderColor: "#0d9488" } },
     { id: "colours-translucent", style: { width: 150, height: 56, backgroundColor: "#ffffff", borderWidth: 5, borderTopColor: "rgba(239,68,68,0.5)", borderRightColor: "#22c55e", borderBottomColor: "#3b82f6", borderLeftColor: "#f59e0b" } },
     { id: "colours-no-width", style: { width: 150, height: 44, backgroundColor: "#ffffff", borderBottomWidth: 4, borderTopColor: "#ef4444", borderLeftColor: "#f59e0b", borderBottomColor: "#3b82f6" } },
@@ -124,6 +127,7 @@ export const tiles: Record<Mode, Tile[]> = {
 
 /** The style a tile has once its animation ends: the box's own, with the transform the animation reached written as one. */
 export function endStyle(tile: Tile): Record<string, unknown> {
+  if (tile.after !== undefined) return { ...tile.style, ...tile.after };
   if (tile.to === undefined) return tile.style;
   const transform = [...(tile.to.rotate === undefined ? [] : [{ rotate: tile.to.rotate }]), ...(tile.to.scale === undefined ? [] : [{ scale: tile.to.scale }])];
   return { ...tile.style, ...(transform.length === 0 ? {} : { transform }), ...(tile.to.radius === undefined ? {} : { borderRadius: tile.to.radius }) };

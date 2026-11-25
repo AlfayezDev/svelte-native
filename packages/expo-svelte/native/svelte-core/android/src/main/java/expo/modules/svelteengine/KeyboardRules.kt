@@ -91,7 +91,8 @@ internal class ChatLift(var behavior: Int, var offset: Int, private val threshol
     val effective = KeyboardRules.effective(height, target, offset).roundToInt()
     if (height > 0) {
       val lifted = padding
-      padding = effective
+      // The room stays while the keyboard is still as tall as it was (a shrink): a smaller one would make the scroll view clamp its offset to the shorter range at once, and the content jump; `end` takes it to the new height's.
+      padding = if (up) max(lifted, effective) else effective
       if (up) {
         // The frames add the height to `before`, so it is the offset without the lift the old height made: the content goes by the difference, not by the whole height again.
         if (!skip) before = scrollY - lifted
@@ -119,12 +120,14 @@ internal class ChatLift(var behavior: Int, var offset: Int, private val threshol
    * height, which the end of the range cuts off for a list at its end and does not for one anywhere else.
    */
   fun resize(height: Int, scrollY: Int, viewport: Int, content: Int): Int? {
-    val before = KeyboardRules.effective(target, target, offset)
+    // From the room the content was lifted by (`padding`: what the last start, frame or end gave), not from the height the keyboard was going to have: an animation that was left at
+    // 400 of 600 (the window went, the watchdog gave up) lifted the content by 400.
+    val before = padding
     target = height
     val after = KeyboardRules.effective(height, height, offset)
     padding = after.roundToInt()
     if (behavior == NEVER || skip) return null
-    val destination = min(max(scrollY + (after - before).roundToInt(), 0), max(content - viewport + padding, 0))
+    val destination = min(max(scrollY + (padding - before), 0), max(content - viewport + padding, 0))
     shift = destination - this.before
     return destination
   }
@@ -203,12 +206,14 @@ internal class AwareScroll(var bottomOffset: Int, var extra: Int, var scrollOnHi
    */
   fun start(height: Int, scrollY: Int, inputBottom: Int, window: Int) {
     val reversal = inFlight
+    // The keyboard is up and goes to another height: the room stays until the end (as [ChatLift.start]).
+    val up = !reversal && armed && padding > 0
     inFlight = true
     armed = true
     closing = height == 0
     if (closing) return
     open = height
-    padding = height + extra
+    padding = if (up) max(padding, height + extra) else height + extra
     if (reversal) return
     base = scrollY
     distance = if (inputBottom < 0) 0.0 else max(inputBottom + bottomOffset - (window - height), 0).toDouble()
@@ -421,15 +426,81 @@ internal class KeyboardSession(private val sink: KeyboardSink) {
   fun stuck(now: Long, limit: Long): Boolean = frames.stuck(now, limit)
 
   private fun finish(px: Int) {
-    lastPx = px
     frames.settled(px)
     if (moving) {
       moving = false
+      // The followers are at the last frame they were given: when the keyboard is somewhere else (the watchdog heals at the height the insets say, a window that came back), they get there first, so what moves
+      // with the frames reaches its destination before the end takes its room.
+      if (px != lastPx) sink.progress(px)
+      lastPx = px
       sink.end(px)
     } else {
+      lastPx = px
       sink.settle(px)
     }
   }
+}
+
+/**
+ * A scroll view as the followers' steps see it (`KeyboardDrive` has the Android one): where it is, how big it and its content are, and the two things a step does to it. A scroll view
+ * clamps a scroll to the range it has, which holds the room at its bottom ([pad]), so the room is given before the scroll.
+ */
+internal interface ScrollSide {
+  val scrollY: Int
+  val viewport: Int
+  val content: Int
+  fun pad(px: Int)
+  fun scroll(y: Int)
+}
+
+/** What the keyboard's steps do to a scroll view that follows it, in the order they must: the same for the engine's views and for the host's stand-in. */
+internal object KeyboardSteps {
+  /** The keyboard goes to [target]: the room first. */
+  fun start(side: ScrollSide, rules: ChatLift, target: Int) {
+    rules.start(target, side.scrollY, side.viewport, side.content)
+    side.pad(rules.padding)
+  }
+
+  fun start(side: ScrollSide, rules: AwareScroll, target: Int, inputBottom: Int, window: Int) {
+    rules.start(target, side.scrollY, inputBottom, window)
+    side.pad(rules.padding)
+  }
+
+  /** One frame, [px] high. */
+  fun move(side: ScrollSide, rules: ChatLift, px: Int) {
+    rules.move(px, side.scrollY, side.viewport, side.content)?.let { side.scroll(it) }
+  }
+
+  fun move(side: ScrollSide, rules: AwareScroll, px: Int) {
+    rules.move(px, side.scrollY, side.viewport, side.content)?.let { side.scroll(it) }
+  }
+
+  /** The keyboard has stopped at [px]: the room it holds from here. */
+  fun end(side: ScrollSide, rules: ChatLift, px: Int) {
+    rules.end(px, side.scrollY, side.viewport, side.content)
+    side.pad(rules.padding)
+  }
+
+  fun end(side: ScrollSide, rules: AwareScroll, px: Int, inputBottom: Int, window: Int) {
+    rules.end(px, side.scrollY, inputBottom, window)
+    side.pad(rules.padding)
+  }
+
+  /** The keyboard that is up is [px] high now, with no animation: the room first, then the scroll (which the old room's range would have cut short for a list at its end). */
+  fun resize(side: ScrollSide, rules: ChatLift, px: Int) {
+    val destination = rules.resize(px, side.scrollY, side.viewport, side.content)
+    side.pad(rules.padding)
+    if (destination != null) side.scroll(destination)
+  }
+
+  fun resize(side: ScrollSide, rules: AwareScroll, px: Int, inputBottom: Int, window: Int) {
+    val destination = rules.resize(px, side.scrollY, inputBottom, window)
+    side.pad(rules.padding)
+    if (destination != null) side.scroll(destination)
+  }
+
+  /** Whether a change of height with no animation is a keyboard that stays up (a [resize]) and not one that comes or goes (a start, a frame and an end). */
+  fun resizes(height: Int, px: Int): Boolean = px > 0 && height > 0
 }
 
 /** The last report of each scroll view that watches its end (`onEndVisible`): a report is made when it changes, and a view that goes leaves nothing behind. */

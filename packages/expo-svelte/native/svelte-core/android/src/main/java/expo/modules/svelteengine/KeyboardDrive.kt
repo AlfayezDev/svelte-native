@@ -158,8 +158,8 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
       persistent = target
       for (sticky in stickies.values) if (sticky.avoid) sticky.overlap = overlapOf(sticky, target)
     }
-    eachLift { _, view, rules -> rules.start(target, view.scrollY, view.height, content(view)); pad(view, rules.padding) }
-    eachAware { _, view, rules -> rules.start(target, view.scrollY, focused(view), overlayBottom()); pad(view, rules.padding) }
+    eachLift { _, view, rules -> KeyboardSteps.start(Side(view), rules, target) }
+    eachAware { _, view, rules -> KeyboardSteps.start(Side(view), rules, target, focused(view), overlayBottom()) }
   }
 
   /** One frame of the animation, [px] high. */
@@ -173,8 +173,8 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
     progress = KeyboardRules.progress(px.toDouble(), persistent.toDouble())
     if (persistent > 0) for (sticky in stickies.values) if (sticky.avoid) sticky.overlap = overlapOf(sticky, persistent)
     eachSticky()
-    eachLift { _, view, rules -> rules.move(px, view.scrollY, view.height, content(view))?.let { scroll(view, it) } }
-    eachAware { _, view, rules -> rules.move(px, view.scrollY, view.height, content(view))?.let { scroll(view, it) } }
+    eachLift { _, view, rules -> KeyboardSteps.move(Side(view), rules, px) }
+    eachAware { _, view, rules -> KeyboardSteps.move(Side(view), rules, px) }
   }
 
   /** The keyboard has stopped at [px]. */
@@ -188,8 +188,8 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
     height = px
     progress = if (px == 0) 0.0 else 1.0
     eachSticky()
-    eachLift { _, view, rules -> rules.end(px, view.scrollY, view.height, content(view)); pad(view, rules.padding) }
-    eachAware { _, view, rules -> rules.end(px, view.scrollY, focused(view), overlayBottom()); pad(view, rules.padding) }
+    eachLift { _, view, rules -> KeyboardSteps.end(Side(view), rules, px) }
+    eachAware { _, view, rules -> KeyboardSteps.end(Side(view), rules, px, focused(view), overlayBottom()) }
   }
 
   /** The layout of the window changed: a view that avoids the keyboard works out again how far the keyboard covers its anchor (nothing moves while the keyboard is on its way: each frame does). */
@@ -207,7 +207,7 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
    */
   override fun settle(px: Int) {
     if (moving || px == height) return
-    if (px > 0 && height > 0) resize(px) else {
+    if (KeyboardSteps.resizes(height, px)) resize(px) else {
       startFollowers(px)
       moveFollowers(px)
       endFollowers(px)
@@ -222,8 +222,8 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
     progress = 1.0
     for (sticky in stickies.values) if (sticky.avoid) sticky.overlap = overlapOf(sticky, px)
     eachSticky()
-    eachLift { _, view, rules -> rules.resize(px, view.scrollY, view.height, content(view))?.let { scroll(view, it) }; pad(view, rules.padding) }
-    eachAware { _, view, rules -> rules.resize(px, view.scrollY, focused(view), overlayBottom())?.let { scroll(view, it) }; pad(view, rules.padding) }
+    eachLift { _, view, rules -> KeyboardSteps.resize(Side(view), rules, px) }
+    eachAware { _, view, rules -> KeyboardSteps.resize(Side(view), rules, px, focused(view), overlayBottom()) }
   }
 
   /** The views of the tree have been put in their places (the end of a mounting batch): a view that was registered before the modal it is in was is left alone now. */
@@ -284,6 +284,15 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
   }
 
   private fun content(view: EngineScroll): Int = view.getChildAt(0)?.height ?: 0
+
+  /** A scroll view of the engine as the keyboard's steps see it ([ScrollSide]). */
+  private inner class Side(private val view: EngineScroll) : ScrollSide {
+    override val scrollY: Int get() = view.scrollY
+    override val viewport: Int get() = view.height
+    override val content: Int get() = content(view)
+    override fun pad(px: Int) = this@KeyboardDrive.pad(view, px)
+    override fun scroll(y: Int) = this@KeyboardDrive.scroll(view, y)
+  }
 
   /** Reports the end of [view] coming into view or leaving it (`onEndVisible`), on every scroll and layout pass of it; its first report is when it has been laid out. */
   private fun watch(tag: Int, view: EngineScroll, on: Boolean) {

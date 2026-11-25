@@ -317,6 +317,7 @@ private fun engine(main: String) {
   expect("an overflow view clips to the padding box of whichever drawable draws its box, with nothing allocated", draw.contains("BoxStyle.clipToPaddingBox(this, node, canvas)"), true)
   expect("the other overflow views keep the border-width rectangle", draw.contains("canvas.clipRect(widths[0], widths[1], width - widths[2], height - widths[3])"), true)
   expect("a view whose box is drawn clips itself when its direction resolves", view.contains("BoxStyle.directionChanged(this, node, layoutDirection)"), true)
+  expect("the direction can resolve in the constructor of the super class, before the node state exists", source("$java/BoxStyle.kt").contains("fun directionChanged(view: View, st: NodeState?, layoutDirection: Int)") && source("$java/BoxStyle.kt").contains("if (st == null || !st.boxStyle) return"), true)
   val props = source("$java/Props.kt")
   val common = props.substring(props.indexOf("fun applyCommon("))
   expect("applyCommon asks StyleRules who draws the box", common.contains("StyleRules.boxKind(shadows, p.border, p.sideColors, p.style.borderStyle, p.radii)"), true)

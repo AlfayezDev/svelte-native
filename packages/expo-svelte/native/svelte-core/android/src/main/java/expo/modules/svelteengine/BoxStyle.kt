@@ -107,8 +107,8 @@ internal object BoxStyle {
   }
 
   /**
-   * The view resolved its layout direction (`View.onRtlPropertiesChanged`, which comes just before its drawables are given the same direction): React Native's drawables resolve their edges
-   * by it, so the sides, written by the configuration's direction while the view had none, go to the edges that direction names. Nothing to do for the engine's own drawable, which has
+   * The view resolved its layout direction (`View.onRtlPropertiesChanged`, which comes after its drawables are given the same direction, `resolveDrawables` and `resolvePadding` first): React
+   * Native's drawables resolve their edges by it, so the sides, written by the configuration's direction while the view had none, go to the edges that direction names. Nothing to do for the engine's own drawable, which has
    * physical sides, or for a view React Native's drawables do not draw.
    */
   fun directionChanged(view: View, st: NodeState?, layoutDirection: Int) {

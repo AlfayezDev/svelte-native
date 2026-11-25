@@ -106,7 +106,23 @@ void encodeCommon(Records &r, const ShadowView &view, float scale) {
   r.begin(kOpacity);
   b.putFloat(static_cast<float>(p.opacity));
 
-  auto metrics = p.resolveBorderMetrics(layoutIsEmpty(lm) ? LayoutMetrics{} : lm);
+  const auto &layout = layoutIsEmpty(lm) ? LayoutMetrics{} : lm;
+  auto metrics = p.resolveBorderMetrics(layout);
+  // A right-to-left layout with `swapLeftAndRightInRTL` (React Native's default on Android) turns `left` and `right` of the colours, the radii and the styles of the props into `start` and
+  // `end` (`YogaLayoutableShadowNode::swapLeftAndRightInViewProps`), and does the same to the style Yoga lays out by, but not to the widths of the props, which `resolveBorderMetrics`
+  // reads: a style that names `borderLeftWidth` has its colour on the right and its width on the left. React Native's Java drawables draw all of it on the right, so the widths get the turn.
+  auto widths = p.getBorderWidths();
+  if (layout.wasLeftAndRightSwapped) {
+    if (widths.left.has_value()) {
+      widths.start = widths.left;
+      widths.left.reset();
+    }
+    if (widths.right.has_value()) {
+      widths.end = widths.right;
+      widths.right.reset();
+    }
+  }
+  metrics.borderWidths = widths.resolve(layout.layoutDirection == LayoutDirection::RightToLeft, 0);
 
   r.begin(kBorderRadius);
   b.putFloat(sanitize(metrics.borderRadii.topLeft.horizontal * scale));

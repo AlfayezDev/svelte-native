@@ -307,6 +307,14 @@ test("setNativeProps hands the engine converted colours and a converted box shad
   const layers = props.boxShadow as Array<Record<string, unknown>>;
   expect(layers).toHaveLength(1);
   expect(layers[0]).toMatchObject({ offsetX: 0, offsetY: 0, spreadDistance: 1, color: 0xff66666f | 0 });
+  // keys at the top and in the style collide: the last written wins, as in a style, and the style keeps none of them
+  const collided = configs.engineNativeProps({ borderColor: "red", style: [{ borderColor: "rgba(0,0,0,0.5)", transformOrigin: "top left", borderStyle: "dashed" }] }, "android");
+  expect(collided.borderColor).toBe(0x80000000 | 0);
+  expect(Array.isArray(collided.transformOrigin)).toBe(true);
+  expect(collided.style).toEqual([{ borderStyle: "dashed" }]);
+  const oneStyle = configs.engineNativeProps({ style: { transformOrigin: "top left", backgroundColor: "#fff", opacity: 0.5 } }, "android");
+  expect(oneStyle.style).toEqual({ opacity: 0.5 });
+  expect(oneStyle.backgroundColor).toBe(-1);
   // what has nothing to convert is returned as it came
   const plain = { style: { borderStyle: "dashed" } };
   expect(configs.engineNativeProps(plain, "android")).toBe(plain);

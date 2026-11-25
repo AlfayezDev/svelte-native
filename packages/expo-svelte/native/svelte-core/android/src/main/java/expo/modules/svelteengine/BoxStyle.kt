@@ -145,6 +145,8 @@ internal object BoxStyle {
     if (box.set(p.bg, p.sideColors, widthsDp, radiiDp, p.style.borderStyle)) view.invalidateOutline()
     p.radii.copyInto(st.radii)
     p.border.copyInto(st.border)
+    p.sideColors.copyInto(st.engineColors)
+    st.engineStyle = p.style.borderStyle
     st.bg = p.bg
     st.borderColor = p.borderColor
   }
@@ -153,6 +155,8 @@ internal object BoxStyle {
   fun dropEngine(view: View, st: NodeState) {
     if (view.background === st.engineBox) view.background = null
     st.engineBox = null
+    st.engineColors.fill(0)
+    st.engineStyle = 0
     st.bg = 0
     st.radii.fill(0f)
     st.border.fill(0f)
@@ -194,6 +198,16 @@ internal object BoxStyle {
     st.radii.fill(0f)
     st.border.fill(0f)
     st.borderColor = 0
+  }
+
+  private val moved = FloatArray(4)
+
+  /** Whether animated corner radii (px, in the order of record 3) make another drawable draw the box of a view that is not drawn by React Native's (`StyleRules.radiiMoveBox`). */
+  fun radiiMoveBox(st: NodeState, tl: Float, tr: Float, br: Float, bl: Float): Boolean {
+    if (st.boxStyle) return false
+    moved[0] = tl; moved[1] = tr; moved[2] = br; moved[3] = bl
+    val current = if (st.engineBox != null) StyleRules.BOX_ENGINE else StyleRules.BOX_PLAIN
+    return StyleRules.radiiMoveBox(current, st.border, st.engineColors, st.engineStyle, moved)
   }
 
   /** An animated `backgroundColor` or corner radius (px, in the order of record 3) of a view whose box is a [BoxDrawable]. */

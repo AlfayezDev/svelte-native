@@ -3,6 +3,7 @@ package expo.modules.svelteengine
 import android.graphics.Color
 import android.util.Log
 import android.view.View
+import com.facebook.react.modules.i18nmanager.I18nUtil
 import expo.modules.svelteengine.views.EngineHScroll
 import expo.modules.svelteengine.views.EngineInput
 import expo.modules.svelteengine.views.EngineNode
@@ -19,6 +20,8 @@ import kotlin.math.roundToInt
  * these through the SvelteEngine module instead. Everything here runs on the main thread.
  */
 object Commands {
+  private val sideColorKeys = setOf("borderLeftColor", "borderTopColor", "borderRightColor", "borderBottomColor", "borderStartColor", "borderEndColor")
+
   private const val TAG = "SvelteEngine"
 
   fun dispatch(mm: MountingManager, tag: Int, name: String, args: List<Any?>) {
@@ -94,18 +97,14 @@ object Commands {
     val sideColors = IntArray(4)
     var sideSet = 0
     val rtl = view.isRtlLayout()
+    val swap = I18nUtil.instance.doLeftAndRightSwapInRTL(view.context)
     for ((k, v) in flat) {
       when (k) {
         "opacity" -> num(v)?.let { p.opacity = it.toFloat() }
         "backgroundColor" -> color(v)?.let { p.bg = it }
         "borderColor" -> color(v)?.let { borderColor = it }
-        "borderLeftColor" -> color(v)?.let { sideColors[0] = it; sideSet = sideSet or 1 }
-        "borderTopColor" -> color(v)?.let { sideColors[1] = it; sideSet = sideSet or 2 }
-        "borderRightColor" -> color(v)?.let { sideColors[2] = it; sideSet = sideSet or 4 }
-        "borderBottomColor" -> color(v)?.let { sideColors[3] = it; sideSet = sideSet or 8 }
-        "borderStartColor" -> color(v)?.let { val side = if (rtl) 2 else 0; sideColors[side] = it; sideSet = sideSet or (1 shl side) }
-        "borderEndColor" -> color(v)?.let { val side = if (rtl) 0 else 2; sideColors[side] = it; sideSet = sideSet or (1 shl side) }
         "borderStyle" -> borderStyle = v as? String
+        in sideColorKeys -> color(v)?.let { c -> val side = StyleRules.sideOfColorKey(k, rtl, swap); sideColors[side] = c; sideSet = sideSet or (1 shl side) }
         "boxShadow" -> when (v) {
           null -> p.style.shadows = null
           is List<*> -> p.style.shadows = StyleRules.shadowLayers(v) { color(it) }
@@ -164,6 +163,14 @@ object Commands {
     val m = v as? Map<*, *> ?: return null
     fun side(k: String) = ((num(m[k]) ?: 0.0) * density).toFloat()
     return floatArrayOf(side("left"), side("top"), side("right"), side("bottom"))
+  }
+
+  /** Applies the box of [node] again with these corner radii (px, in the order of record 3): the shared decoder path with the view's current values read back, as `setNativeProps` does. */
+  fun restyle(view: View, node: expo.modules.svelteengine.views.NodeState, tl: Float, tr: Float, br: Float, bl: Float) {
+    val p = PropSet()
+    snapshot(view, node, p)
+    p.radii[0] = tl; p.radii[1] = tr; p.radii[2] = br; p.radii[3] = bl
+    Props.applyCommon(view, node, p, false)
   }
 
   private fun snapshot(view: View, node: expo.modules.svelteengine.views.NodeState, p: PropSet) {

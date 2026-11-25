@@ -694,12 +694,22 @@ export function createPayload(props: Props, config: ViewConfig): Payload | null 
   return payload;
 }
 
-/** The props of `setNativeProps` the engine reads converted, as a view's style is: a colour as an integer, a box shadow as the list `processBoxShadow` makes of it. */
-const engineConverted = ["boxShadow", "backgroundColor", "borderColor", "borderTopColor", "borderRightColor", "borderBottomColor", "borderLeftColor", "borderStartColor", "borderEndColor"];
+/** The props of `setNativeProps` the engine reads converted, as a view's style is: a colour as an integer, a box shadow as the list `processBoxShadow` makes of it, a transform origin as an array. */
+const engineConverted = ["boxShadow", "transformOrigin", "backgroundColor", "borderColor", "borderTopColor", "borderRightColor", "borderBottomColor", "borderLeftColor", "borderStartColor", "borderEndColor"];
+
+/** A style (one object or lists of them) without the converted keys: what is left is read as it is. */
+function withoutConverted(style: unknown): unknown {
+  if (Array.isArray(style)) return style.map(withoutConverted);
+  if (style === null || typeof style !== "object") return style;
+  const kept: Props = {};
+  for (const key in style as Props) if (!engineConverted.includes(key)) kept[key] = (style as Props)[key];
+  return kept;
+}
 
 /**
- * What `setNativeProps` hands the engine: the props as they came, with the colours and the box shadow (at the top or in `style`, one object or a list of them) converted the way the
- * view's own style is, so the engine reads integers and a list of layers and not the strings a style is written in (`"rgba(0,0,0,0.5)"`, `"0 0 0 1px red"`).
+ * What `setNativeProps` hands the engine: the props as they came, with the colours, the box shadow and the transform origin (at the top or in `style`, one object or a list of them)
+ * converted the way the view's own style is, so the engine reads integers and a list of layers and not the strings a style is written in (`"rgba(0,0,0,0.5)"`, `"0 0 0 1px red"`,
+ * `"top left"`). The converted values are at the top, the last one written winning as it does in a style; the style has no such key left, so a raw one cannot override a converted one.
  */
 export function engineNativeProps(props: Props, platform: Platform): Props {
   const picked: Props = {};
@@ -709,7 +719,10 @@ export function engineNativeProps(props: Props, platform: Platform): Props {
     for (const key of engineConverted) if (key in source) picked[key] = (source as Props)[key];
   }
   if (Object.keys(picked).length === 0) return props;
-  return { ...props, ...createPayload({ style: picked }, viewConfigFor("RCTView", platform)) };
+  const rest: Props = { ...props };
+  for (const key of engineConverted) delete rest[key];
+  if ("style" in props) rest.style = withoutConverted(props.style);
+  return { ...rest, ...createPayload({ style: picked }, viewConfigFor("RCTView", platform)) };
 }
 
 /** The payload for a cloned node: the native props whose value changed, `null` for each one that went away; `null` when nothing did. */

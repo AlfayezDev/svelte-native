@@ -81,6 +81,30 @@ int main(int argc, char **argv) {
   fixture.open(argv[1]);
 
   // The ids are the contract with StyleRecords.kt.
+  {
+    // The widths of a style turn with its colours in a right-to-left layout that swaps left and right.
+    std::optional<float> left, right, start, end;
+    left = 3.0f;
+    turnLeftAndRight(left, right, start, end);
+    CHECK(!left && !right && !end && start && *start == 3.0f, "borderLeftWidth becomes the start width");
+    left.reset(); right.reset(); start.reset(); end.reset();
+    right = 4.0f;
+    turnLeftAndRight(left, right, start, end);
+    CHECK(!left && !right && !start && end && *end == 4.0f, "borderRightWidth becomes the end width");
+    left = 1.0f; right = 2.0f; start = 9.0f; end = 8.0f;
+    turnLeftAndRight(left, right, start, end);
+    CHECK(!left && !right && start && *start == 1.0f && end && *end == 2.0f, "both turn and overwrite what start and end held, as Fabric's props do");
+    std::optional<float> none, none2, s2 = 5.0f, e2 = 6.0f;
+    turnLeftAndRight(none, none2, s2, e2);
+    CHECK(!none && !none2 && s2 && *s2 == 5.0f && e2 && *e2 == 6.0f, "start and end alone stay");
+    // Resolved as `CascadedRectangleEdges::resolve` does in a right-to-left layout (left reads the trailing edge `end`, right the leading edge `start`): a left width lands on the right.
+    std::optional<float> l3 = 3.0f, r3, s3, e3;
+    turnLeftAndRight(l3, r3, s3, e3);
+    const bool isRTL = true;
+    const std::optional<float> leading = isRTL ? e3 : s3, trailing = isRTL ? s3 : e3;
+    const float physicalLeft = l3.value_or(leading.value_or(0.0f)), physicalRight = r3.value_or(trailing.value_or(0.0f));
+    CHECK(physicalLeft == 0.0f && physicalRight == 3.0f, "a left width is drawn on the right in a right-to-left layout");
+  }
   CHECK(kBoxShadow == 140 && kBorderSides == 141 && kTransformOrigin == 142, "record ids");
   CHECK(kBlack == static_cast<int32_t>(0xFF000000), "black");
 

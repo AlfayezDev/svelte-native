@@ -196,6 +196,8 @@ object AnimatedProps {
   private fun setRadii(view: View, st: expo.modules.svelteengine.views.NodeState, tl: Float, tr: Float, br: Float, bl: Float) {
     val r = st.radii
     if (r[0] == tl && r[1] == tr && r[2] == br && r[3] == bl) return
+    // A radius that makes another drawable draw the box (a divider that is given round corners) is a commit's work: the box is built again from what the node has.
+    if (BoxStyle.radiiMoveBox(st, tl, tr, br, bl)) return Commands.restyle(view, st, tl, tr, br, bl)
     st.engineBox?.let { return BoxStyle.setEngineRadii(view, it, st, tl, tr, br, bl) }
     if (st.boxStyle) return BoxStyle.setRadii(view, st, tl, tr, br, bl)
     r[0] = tl; r[1] = tr; r[2] = br; r[3] = bl

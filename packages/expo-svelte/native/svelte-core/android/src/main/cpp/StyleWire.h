@@ -6,6 +6,7 @@
 // `begin(id)` (opens a record), `putInt(v)` and `putFloat(v)`.
 
 #include <cstdint>
+#include <optional>
 
 namespace expo::svelteengine::stylewire {
 
@@ -97,6 +98,21 @@ bool encodeOrigin(Out &out, const Origin &o) {
   out.putInt(o.yUnit);
   out.putFloat(o.y);
   return true;
+}
+
+// A right-to-left layout with `swapLeftAndRightInRTL` (React Native's default on Android) turns `left` and `right` of the colours, the radii and the styles of the props into `start` and
+// `end` (`YogaLayoutableShadowNode::swapLeftAndRightInViewProps`), overwriting what `start` and `end` held, and does the same to the style Yoga lays out by, but not to the widths of the props
+// that `resolveBorderMetrics` reads. This is that turn, for the optional edges of a cascaded width (`CascadedRectangleEdges`): after it `left` and `right` are unset.
+template <class T>
+void turnLeftAndRight(std::optional<T> &left, std::optional<T> &right, std::optional<T> &start, std::optional<T> &end) {
+  if (left.has_value()) {
+    start = left;
+    left.reset();
+  }
+  if (right.has_value()) {
+    end = right;
+    right.reset();
+  }
 }
 
 } // namespace expo::svelteengine::stylewire

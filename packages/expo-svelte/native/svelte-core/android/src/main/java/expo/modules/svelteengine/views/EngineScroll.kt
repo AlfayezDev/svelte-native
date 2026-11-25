@@ -513,8 +513,8 @@ class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineSc
 
   override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
     super.onLayout(changed, l, t, r, b)
-    // The platform's scroll view puts its content at its padding; React Native's is where Yoga put it, inside the border (a no-op where that is the origin).
-    Frames.layoutChildren(this)
+    // The platform's scroll view puts its content at its padding; React Native's is where Yoga put it, inside the border, and the padding is the header's (a no-op where that is the platform's).
+    Frames.layoutContent(this)
     bridge.onLaidOut()
   }
 
@@ -631,8 +631,8 @@ class EngineHScroll(context: Context) : HorizontalScrollView(context), EngineNod
 
   override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
     super.onLayout(changed, l, t, r, b)
-    // The platform's scroll view puts its content at its padding; React Native's is where Yoga put it, inside the border (a no-op where that is the origin).
-    Frames.layoutChildren(this)
+    // The platform's scroll view puts its content at its padding; React Native's is where Yoga put it, inside the border, and the padding is the header's (a no-op where that is the platform's).
+    Frames.layoutContent(this)
     bridge.onLaidOut()
   }
 

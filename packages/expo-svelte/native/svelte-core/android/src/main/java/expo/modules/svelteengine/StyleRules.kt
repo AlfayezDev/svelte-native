@@ -77,6 +77,13 @@ internal object StyleRules {
     return if (borderStyle == 0 && uniform(widths) && uniform(colors)) BOX_ENGINE else BOX_REACT
   }
 
+  /**
+   * Whether new corner [radii] (an animated `borderRadius`; px) change who draws a box whose drawable is [current] (a `BOX_*`), the widths in px, colours and style being what the box
+   * has: a divider that is given a radius is a border of round corners with one side, which only React Native's drawables draw. React Native's draw every box, so they stay.
+   */
+  fun radiiMoveBox(current: Int, widths: FloatArray, colors: IntArray, borderStyle: Int, radii: FloatArray): Boolean =
+    current != BOX_REACT && boxKind(null, widths, colors, borderStyle, radii) != current
+
   fun widest(widths: FloatArray): Float = maxOf(maxOf(widths[0], widths[1]), maxOf(widths[2], widths[3]))
 
   /**
@@ -109,6 +116,21 @@ internal object StyleRules {
    * engine can tell the edges apart (it holds the colour each side resolved to, not which edge gave it): `borderColor` colours every side; the colour of one side takes that side only
    * (the others keep what they had, or [uniform], the border's own colour, when the border had one colour); `borderStyle` dashed or dotted makes the border one that needs record 141.
    */
+  /**
+   * The side (0 left, 1 top, 2 right, 3 bottom) a colour key of `setNativeProps` is for, -1 for a key that is not one. `start` and `end` are the leading and trailing side; in a right-to-left
+   * layout that swaps left and right (`swapLeftAndRight`: React Native's default on Android, `I18nUtil.doLeftAndRightSwapInRTL`) `left` is the trailing side and `right` the leading one,
+   * as Fabric's props and `BorderColors.resolve` have them.
+   */
+  fun sideOfColorKey(key: String, rtl: Boolean, swapLeftAndRight: Boolean): Int = when (key) {
+    "borderTopColor" -> 1
+    "borderBottomColor" -> 3
+    "borderStartColor" -> if (rtl) 2 else 0
+    "borderEndColor" -> if (rtl) 0 else 2
+    "borderLeftColor" -> if (rtl && swapLeftAndRight) 2 else 0
+    "borderRightColor" -> if (rtl && swapLeftAndRight) 0 else 2
+    else -> -1
+  }
+
   fun setBorderColor(style: StyleRecords, color: Int) {
     if (style.hasSides) {
       style.sideMask = 15

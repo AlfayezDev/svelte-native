@@ -16,6 +16,7 @@ import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.Props
 import expo.modules.svelteengine.StyleRecords
 import expo.modules.svelteengine.BoxDrawable
+import expo.modules.svelteengine.ClipRules
 import expo.modules.svelteengine.PaddingBoxClip
 
 /** Per-view state the mounting layer keeps outside of View ids and tags. */
@@ -77,6 +78,9 @@ class NodeState {
   var boxStyle = false
   /** The box is drawn by [BoxDrawable] (`StyleRules.boxKind`): this one. It holds its own state, and a recycled view keeps it like [boxStyle]'s drawables. */
   var engineBox: BoxDrawable? = null
+  /** What [engineBox] has besides the node's [radii] and [border]: the colours of the sides and the border style, to ask `StyleRules.boxKind` again when the radii are animated. */
+  val engineColors = IntArray(4)
+  var engineStyle = 0
   /** What clips a view whose box is React Native's drawables to its padding box, without allocating for each draw (`BoxStyle.clipToPaddingBox`). */
   var boxClip: PaddingBoxClip? = null
   var boxRtl = false
@@ -143,6 +147,20 @@ object Frames {
     child.measure(View.MeasureSpec.makeMeasureSpec(st.w, exact), View.MeasureSpec.makeMeasureSpec(st.h, exact))
     child.layout(st.l, st.t, st.r, st.b)
     if (st.transformed) Props.applyPivot(child, st)
+  }
+
+  private val content = IntArray(4)
+
+  /** A scroll view's content child at Yoga's origin for it and the view's padding (`ClipRules.scrollContent`): a no-op where that is where the platform put it. */
+  fun layoutContent(parent: ViewGroup) {
+    val c = parent.getChildAt(0) ?: return
+    val st = (c as? EngineNode)?.node ?: return
+    if (!st.hasFrame) return
+    ClipRules.scrollContent(st.l, st.t, st.r, st.b, parent.paddingLeft, parent.paddingTop, content)
+    if (c.left != content[0] || c.top != content[1] || c.right != content[2] || c.bottom != content[3]) {
+      c.measure(View.MeasureSpec.makeMeasureSpec(st.w, exact), View.MeasureSpec.makeMeasureSpec(st.h, exact))
+      c.layout(content[0], content[1], content[2], content[3])
+    }
   }
 
   fun measureChildren(parent: ViewGroup) {

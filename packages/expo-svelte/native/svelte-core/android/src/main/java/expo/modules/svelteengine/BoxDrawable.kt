@@ -62,6 +62,7 @@ class BoxDrawable : Drawable() {
   private val line = FloatArray(4)
   private val quad = FloatArray(8)
   private val boundsRect = RectF()
+  private val rect = FloatArray(4)
   /** The resolved radii, dp, as [StyleRules.ensureNoOverlap] leaves them: top left (horizontal, vertical), top right, bottom right, bottom left. */
   private val computed = FloatArray(8)
   /** [computed] in px. */
@@ -124,35 +125,24 @@ class BoxDrawable : Drawable() {
   @Deprecated("Deprecated in Java")
   override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 
-  /** The radii of the bounds, dp, resolved against a width and a height in dp (`BorderRadiusStyle.resolve`). */
-  private fun resolve(into: FloatArray, width: Float, height: Float) {
-    for (k in 0..3) { into[2 * k] = radiiDp[k]; into[2 * k + 1] = radiiDp[k] }
-    StyleRules.ensureNoOverlap(into, width, height)
-  }
-
   private fun updatePath() {
     if (!needUpdatePath) return
     needUpdatePath = false
+    val density = PixelUtil.getDisplayMetricDensity()
     anyWidth = false
     for (side in 0..3) {
-      widthsPx[side] = PixelUtil.toPixelFromDIP(widthsDp[side])
+      widthsPx[side] = widthsDp[side] * density
       borders[side] = widthsPx[side].roundToInt()
       if (widthsDp[side] != 0f) anyWidth = true
       effects[side] = if (borderStyle == 0 || borders[side] <= 0) null else dashes(borderStyle, borders[side].toFloat())
     }
-    resolve(computed, PixelUtil.toDIPFromPixel(bounds.width().toFloat()), PixelUtil.toDIPFromPixel(bounds.height().toFloat()))
-    uniformRadii = computed[0] == computed[2] && computed[1] == computed[3] && computed[0] == computed[4] && computed[1] == computed[5] &&
-      computed[0] == computed[6] && computed[1] == computed[7]
+    BoxGeometry.resolveRadii(radiiDp, bounds.width() / density, bounds.height() / density, computed)
+    uniformRadii = BoxGeometry.uniformRadii(computed)
 
     // BackgroundDrawable.updatePath: the fill is the whole bounds, pulled in by `pathAdjustment` where the border is drawn over its rounded edge.
-    backgroundRect.set(bounds)
-    if (anyWidth && rounded) {
-      backgroundRect.left += PATH_ADJUSTMENT
-      backgroundRect.top += PATH_ADJUSTMENT
-      backgroundRect.right -= PATH_ADJUSTMENT
-      backgroundRect.bottom -= PATH_ADJUSTMENT
-    }
-    if (rounded) for (k in 0..7) radiiPx[k] = PixelUtil.toPixelFromDIP(computed[k])
+    BoxGeometry.fillRect(bounds.left, bounds.top, bounds.right, bounds.bottom, anyWidth, rounded, rect)
+    backgroundRect.set(rect[0], rect[1], rect[2], rect[3])
+    if (rounded) BoxGeometry.toPx(computed, density, radiiPx)
     if (rounded && !uniformRadii) {
       backgroundPath.reset()
       backgroundPath.addRoundRect(backgroundRect, radiiPx, Path.Direction.CW)
@@ -160,17 +150,13 @@ class BoxDrawable : Drawable() {
 
     // BorderDrawable.updatePath: the outer rounded rectangle, the centre line of the border, its path when the corners differ (round corners have one width, the first).
     if (rounded && anyWidth) {
-      val half = widthsPx[0] * 0.5f
       boundsRect.set(bounds)
       outerClipPath.reset()
       outerClipPath.addRoundRect(boundsRect, radiiPx, Path.Direction.CW)
-      centerRect.set(bounds)
-      centerRect.top += half
-      centerRect.bottom -= half
-      centerRect.left += half
-      centerRect.right -= half
+      BoxGeometry.centerRect(bounds.left, bounds.top, bounds.right, bounds.bottom, widthsPx[0], rect)
+      centerRect.set(rect[0], rect[1], rect[2], rect[3])
       if (!uniformRadii) {
-        for (k in 0..7) centerRadii[k] = radiiPx[k] - half
+        BoxGeometry.centerRadii(radiiPx, widthsPx[0], centerRadii)
         centerPath.reset()
         centerPath.addRoundRect(centerRect, centerRadii, Path.Direction.CW)
       }
@@ -185,7 +171,7 @@ class BoxDrawable : Drawable() {
     if (drawAlpha != 255) backgroundPaint.alpha = (((drawAlpha / 255f) * (Color.alpha(fill) / 255f)) * 255f).roundToInt()
     if (backgroundPaint.alpha != 0) {
       if (uniformRadii && rounded) {
-        canvas.drawRoundRect(backgroundRect, PixelUtil.toPixelFromDIP(computed[0]), PixelUtil.toPixelFromDIP(computed[1]), backgroundPaint)
+        canvas.drawRoundRect(backgroundRect, radiiPx[0], radiiPx[1], backgroundPaint)
       } else if (!rounded) {
         canvas.drawRect(backgroundRect, backgroundPaint)
       } else {
@@ -258,7 +244,7 @@ class BoxDrawable : Drawable() {
       borderPaint.style = Paint.Style.STROKE
       borderPaint.strokeWidth = widthPx
       if (uniformRadii) {
-        canvas.drawRoundRect(centerRect, PixelUtil.toPixelFromDIP(computed[0]) - widthPx * 0.5f, PixelUtil.toPixelFromDIP(computed[1]) - widthPx * 0.5f, borderPaint)
+        canvas.drawRoundRect(centerRect, radiiPx[0] - widthPx * 0.5f, radiiPx[1] - widthPx * 0.5f, borderPaint)
       } else {
         canvas.drawPath(centerPath, borderPaint)
       }
@@ -280,8 +266,7 @@ class BoxDrawable : Drawable() {
       return
     }
     // React Native resolves these against the bounds in px, as if they were dp. Round corners have one width, the border's, in dp.
-    resolve(scratch, bounds.width().toFloat(), bounds.height().toFloat())
-    for (k in 0..7) outlineRadii[k] = PixelUtil.toPixelFromDIP(scratch[k] + widthsDp[0])
+    BoxGeometry.outlineRadii(radiiDp, widthsDp[0], bounds.width(), bounds.height(), PixelUtil.getDisplayMetricDensity(), scratch, outlineRadii)
     outlinePath.reset()
     boundsRect.set(bounds)
     outlinePath.addRoundRect(boundsRect, outlineRadii, Path.Direction.CW)
@@ -311,8 +296,4 @@ class BoxDrawable : Drawable() {
     return (multipliedAlpha shl 24) or (color and 0x00FFFFFF)
   }
 
-  private companion object {
-    /** `BackgroundDrawable.pathAdjustment`. */
-    const val PATH_ADJUSTMENT = 0.8f
-  }
 }

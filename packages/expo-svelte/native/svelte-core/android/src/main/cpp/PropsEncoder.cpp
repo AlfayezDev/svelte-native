@@ -112,16 +112,7 @@ void encodeCommon(Records &r, const ShadowView &view, float scale) {
   // `end` (`YogaLayoutableShadowNode::swapLeftAndRightInViewProps`), and does the same to the style Yoga lays out by, but not to the widths of the props, which `resolveBorderMetrics`
   // reads: a style that names `borderLeftWidth` has its colour on the right and its width on the left. React Native's Java drawables draw all of it on the right, so the widths get the turn.
   auto widths = p.getBorderWidths();
-  if (layout.wasLeftAndRightSwapped) {
-    if (widths.left.has_value()) {
-      widths.start = widths.left;
-      widths.left.reset();
-    }
-    if (widths.right.has_value()) {
-      widths.end = widths.right;
-      widths.right.reset();
-    }
-  }
+  if (layout.wasLeftAndRightSwapped) stylewire::turnLeftAndRight(widths.left, widths.right, widths.start, widths.end);
   metrics.borderWidths = widths.resolve(layout.layoutDirection == LayoutDirection::RightToLeft, 0);
 
   r.begin(kBorderRadius);

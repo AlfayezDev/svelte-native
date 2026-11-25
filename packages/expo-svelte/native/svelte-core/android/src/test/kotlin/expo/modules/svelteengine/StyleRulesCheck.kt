@@ -352,7 +352,7 @@ private fun engine(main: String) {
   for (call in listOf("stylewire::encodeSides(", "stylewire::encodeOrigin(", "stylewire::encodeShadows(")) expect("PropsEncoder.cpp calls $call", encoder.contains(call), true)
   expect("a border side that has a colour is told from one that has none by resolving with two defaults", encoder.contains("p.borderColors.resolve(rtl, SharedColor(1))") && encoder.contains("p.borderColors.resolve(rtl, SharedColor(2))") && encoder.contains("sides.set[i] = *one[i] == *two[i];"), true)
   expect("the border widths are turned with the colours in a right-to-left layout that swaps left and right (Fabric turns the colours, the radii and the Yoga style, not the widths of the props)",
-    encoder.contains("auto widths = p.getBorderWidths();") && encoder.contains("if (layout.wasLeftAndRightSwapped) {") && encoder.contains("widths.start = widths.left;") && encoder.contains("widths.end = widths.right;") &&
+    encoder.contains("auto widths = p.getBorderWidths();") && encoder.contains("if (layout.wasLeftAndRightSwapped) stylewire::turnLeftAndRight(widths.left, widths.right, widths.start, widths.end);") &&
       encoder.contains("metrics.borderWidths = widths.resolve(layout.layoutDirection == LayoutDirection::RightToLeft, 0);"), true)
   expect("a shadow's colour goes as it came", encoder.contains("shadow.color = colorInt(layer.color);"), true)
 }
@@ -366,6 +366,7 @@ private fun boxDrawable(main: String, uimanager: String) {
   val java = "$main/java/expo/modules/svelteengine"
   val mine = source("$java/BoxDrawable.kt")
   val clip = source("$java/PaddingBoxClip.kt")
+  val geometry = source("$java/BoxGeometry.kt")
   val rules = source("$java/StyleRules.kt")
   val background = source("$uimanager/drawable/BackgroundDrawable.kt")
   val border = source("$uimanager/drawable/BorderDrawable.kt")
@@ -374,12 +375,12 @@ private fun boxDrawable(main: String, uimanager: String) {
   val radii = source("$uimanager/style/BorderRadiusStyle.kt")
 
   // BackgroundDrawable: the fill, pulled in where a border is drawn over its rounded edge, a round rectangle for even corners, a path for the others.
-  expect("the fill is pulled in by 0.8 px", background.contains("private val pathAdjustment = 0.8f") && mine.contains("const val PATH_ADJUSTMENT = 0.8f"), true)
-  expect("only where there is a border and a radius", background.contains("if (hasBorder && borderRadius?.hasRoundedBorders() == true) {") && mine.contains("if (anyWidth && rounded) {"), true)
+  expect("the fill is pulled in by 0.8 px", background.contains("private val pathAdjustment = 0.8f") && geometry.contains("const val PATH_ADJUSTMENT = 0.8f"), true)
+  expect("only where there is a border and a radius", background.contains("if (hasBorder && borderRadius?.hasRoundedBorders() == true) {") && geometry.contains("val adjust = if (hasBorder && rounded) PATH_ADJUSTMENT else 0f"), true)
   expect("on every side", background.contains("backgroundRect.left += pathAdjustment") && background.contains("backgroundRect.bottom -= pathAdjustment") &&
-    mine.contains("backgroundRect.left += PATH_ADJUSTMENT") && mine.contains("backgroundRect.bottom -= PATH_ADJUSTMENT"), true)
+    geometry.contains("out[0] = left + adjust") && geometry.contains("out[3] = bottom - adjust"), true)
   expect("a border is any side with a width", background.contains("computedBorderInsets?.left != 0f ||") && mine.contains("if (widthsDp[side] != 0f) anyWidth = true"), true)
-  expect("a round rectangle of the top left radii when the four agree", background.contains("computedBorderRadius?.topLeft?.horizontal?.dpToPx() ?: 0f,") && mine.contains("PixelUtil.toPixelFromDIP(computed[0]), PixelUtil.toPixelFromDIP(computed[1]), backgroundPaint)"), true)
+  expect("a round rectangle of the top left radii when the four agree", background.contains("computedBorderRadius?.topLeft?.horizontal?.dpToPx() ?: 0f,") && mine.contains("canvas.drawRoundRect(backgroundRect, radiiPx[0], radiiPx[1], backgroundPaint)"), true)
   expect("the fill's alpha is the view's by the fill's", background.contains("(((alpha / 255f) * (Color.alpha(backgroundColor) / 255f)) * 255f).roundToInt()") && mine.contains("(((drawAlpha / 255f) * (Color.alpha(fill) / 255f)) * 255f).roundToInt()"), true)
   expect("nothing is drawn with no alpha", background.contains("if (backgroundPaint.alpha != 0) {") && mine.contains("if (backgroundPaint.alpha != 0) {"), true)
 
@@ -403,22 +404,22 @@ private fun boxDrawable(main: String, uimanager: String) {
   expect("the border is clipped to the outer rounded rectangle", border.contains("canvas.clipPath(checkNotNull(outerClipPathForBorderRadius))") && mine.contains("canvas.clipPath(outerClipPath)"), true)
   expect("a stroke as wide as the border", border.contains("borderPaint.strokeWidth = fullBorderWidth") && mine.contains("borderPaint.strokeWidth = widthPx"), true)
   expect("a round rectangle with the radius less half the width", border.contains("((computedBorderRadius?.topLeft?.toPixelFromDIP()?.horizontal ?: 0f) -") && border.contains("borderWidth.left * 0.5f),") &&
-    mine.contains("PixelUtil.toPixelFromDIP(computed[0]) - widthPx * 0.5f, PixelUtil.toPixelFromDIP(computed[1]) - widthPx * 0.5f, borderPaint)"), true)
-  expect("the middle of the border", border.contains("tempRectForCenterDrawPath?.top =") && border.contains("borderWidth.top * 0.5f") && mine.contains("centerRect.top += half") && mine.contains("centerRect.right -= half") && mine.contains("val half = widthsPx[0] * 0.5f"), true)
-  expect("a path when the corners differ", border.contains("canvas.drawPath(checkNotNull(centerDrawPath), borderPaint)") && mine.contains("canvas.drawPath(centerPath, borderPaint)") && mine.contains("centerRadii[k] = radiiPx[k] - half"), true)
-  expect("the radii are resolved against the bounds in dp", border.contains("outerClipTempRectForBorderRadius?.width()?.pxToDp() ?: 0f,") && mine.contains("PixelUtil.toDIPFromPixel(bounds.width().toFloat()), PixelUtil.toDIPFromPixel(bounds.height().toFloat()))"), true)
+    mine.contains("radiiPx[0] - widthPx * 0.5f, radiiPx[1] - widthPx * 0.5f, borderPaint)"), true)
+  expect("the middle of the border", border.contains("tempRectForCenterDrawPath?.top =") && border.contains("borderWidth.top * 0.5f") && geometry.contains("out[1] = top + half") && geometry.contains("out[2] = right - half") && geometry.contains("val half = widthPx * 0.5f"), true)
+  expect("a path when the corners differ", border.contains("canvas.drawPath(checkNotNull(centerDrawPath), borderPaint)") && mine.contains("canvas.drawPath(centerPath, borderPaint)") && geometry.contains("out[k] = radiiPx[k] - half"), true)
+  expect("the radii are resolved against the bounds in dp", border.contains("outerClipTempRectForBorderRadius?.width()?.pxToDp() ?: 0f,") && mine.contains("BoxGeometry.resolveRadii(radiiDp, bounds.width() / density, bounds.height() / density, computed)"), true)
 
   // The outline of the composite: each radius in dp and the border's width, in px, resolved against the bounds in px.
-  expect("the outline is the rounded rectangle of the radii and the border", composite.contains("(it.topLeft.horizontal + (computedBorderInsets?.left ?: 0f)).dpToPx(),") && mine.contains("outlineRadii[k] = PixelUtil.toPixelFromDIP(scratch[k] + widthsDp[0])"), true)
-  expect("resolved against the bounds in px", composite.contains("bounds.width().toFloat(),") && mine.contains("resolve(scratch, bounds.width().toFloat(), bounds.height().toFloat())"), true)
+  expect("the outline is the rounded rectangle of the radii and the border", composite.contains("(it.topLeft.horizontal + (computedBorderInsets?.left ?: 0f)).dpToPx(),") && geometry.contains("out[k] = (scratch[k] + widthDp) * density"), true)
+  expect("resolved against the bounds in px", composite.contains("bounds.width().toFloat(),") && geometry.contains("resolveRadii(radiiDp, boundsWidth.toFloat(), boundsHeight.toFloat(), scratch)"), true)
   expect("a rectangle without a radius", composite.contains("outline.setRect(bounds)") && mine.contains("outline.setRect(bounds)"), true)
   expect("an empty rectangle is an empty outline, which is what Outline makes of one", mine.contains("if (bounds.isEmpty) {\n      outline.setEmpty()"), true)
 
   // The padding box.
-  expect("the padding box is the bounds less the border, in px", applicator.contains("paddingBoxRect.left = composite.bounds.left + (computedBorderInsets?.left?.dpToPx() ?: 0f)") && clip.contains("box.set(left + insetLeft, top + insetTop, right - insetRight, bottom - insetBottom)"), true)
-  expect("the radii of the padding box are resolved in dp against the bounds", applicator.contains("PixelUtil.toDIPFromPixel(composite.bounds.width().toFloat()),") && clip.contains("PixelUtil.toDIPFromPixel((right - left).toFloat())"), true)
+  expect("the padding box is the bounds less the border, in px", applicator.contains("paddingBoxRect.left = composite.bounds.left + (computedBorderInsets?.left?.dpToPx() ?: 0f)") && geometry.contains("box[0] = left + insetLeft") && geometry.contains("box[3] = bottom - insetBottom"), true)
+  expect("the radii of the padding box are resolved in dp against the bounds", applicator.contains("PixelUtil.toDIPFromPixel(composite.bounds.width().toFloat()),") && geometry.contains("resolveRadii(radiiDp, (right - left) / density, (bottom - top) / density, scratch)"), true)
   expect("each radius less the border, in px", applicator.contains("computedBorderRadius?.topLeft?.horizontal?.dpToPx(),") && applicator.contains("((computedRadius ?: 0f) - (borderWidth ?: 0f)).coerceAtLeast(0f)") &&
-    clip.contains("(PixelUtil.toPixelFromDIP(radiusDp) - insetPx).coerceAtLeast(0f)"), true)
+    geometry.contains("(radiusDp * density - insetPx).coerceAtLeast(0f)"), true)
   expect("the path is moved by the view's drawing rectangle", applicator.contains("paddingBoxPath.offset(drawingRect.left.toFloat(), drawingRect.top.toFloat())") && clip.contains("path.offset(drawing.left.toFloat(), drawing.top.toFloat())"), true)
 
   // The radii: the same arithmetic as BorderRadiusStyle.ensureNoOverlap, edge by edge.
@@ -436,7 +437,75 @@ private fun boxDrawable(main: String, uimanager: String) {
     expect("each corner is scaled by its two edges: $theirs", radii.contains(theirs) && rules.contains(ours), true)
   }
 
-  // The geometry, on numbers worked out by hand from `drawRectangularBorders`: a box of 252 by 112 px at 10, 20 (left 10, top 20, right 262, bottom 132).
+  expect("dp to px is a multiplication by the density, as PixelUtil does it (TypedValue.applyDimension)", mine.contains("widthsPx[side] = widthsDp[side] * density") && geometry.contains("resolvedDp[k] * density"), true)
+
+  // The geometry, on numbers worked out by hand from the sources: a 150 x 56 dp box at 2.625 (394 x 147 px).
+  val density = 2.625f
+  fun near(a: List<Float>, b: List<Float>, eps: Float = 1e-3f) = a.size == b.size && a.indices.all { kotlin.math.abs(a[it] - b[it]) <= eps }
+  val pill = floatArrayOf(999f, 999f, 999f, 999f)
+  val resolved = FloatArray(8)
+  val px = FloatArray(8)
+  BoxGeometry.resolveRadii(pill, 394f / density, 147f / density, resolved)
+  expect("a pill is half the height on every corner, in dp", near(resolved.toList(), List(8) { 28f }), true)
+  BoxGeometry.toPx(resolved, density, px)
+  expect("and 73.5 px", near(px.toList(), List(8) { 73.5f }), true)
+  expect("four equal radii are uniform", BoxGeometry.uniformRadii(resolved), true)
+  BoxGeometry.resolveRadii(floatArrayOf(4f, 16f, 28f, 0f), 150f, 56f, resolved)
+  expect("radii that differ keep what fits and are not uniform", Pair(resolved.toList(), BoxGeometry.uniformRadii(resolved)), Pair(listOf(4f, 4f, 16f, 16f, 28f, 28f, 0f, 0f), false))
+  BoxGeometry.resolveRadii(floatArrayOf(40f, 10f, 0f, 40f), 150f, 56f, resolved)
+  expect("a left edge of 80 dp in 56 scales its two corners alone, per corner (a GradientDrawable scales all of them)", near(resolved.toList(), listOf(28f, 28f, 10f, 10f, 0f, 0f, 28f, 28f)), true)
+  val rect = FloatArray(4)
+  BoxGeometry.fillRect(0, 0, 394, 147, hasBorder = true, rounded = true, out = rect)
+  expect("the fill of a bordered round box is pulled in by 0.8 px", near(rect.toList(), listOf(0.8f, 0.8f, 393.2f, 146.2f)), true)
+  BoxGeometry.fillRect(0, 0, 394, 147, hasBorder = true, rounded = false, out = rect)
+  expect("not where the corners are square", rect.toList(), listOf(0f, 0f, 394f, 147f))
+  BoxGeometry.fillRect(5, 7, 399, 154, hasBorder = false, rounded = true, out = rect)
+  expect("nor where there is no border, and it follows the bounds", rect.toList(), listOf(5f, 7f, 399f, 154f))
+  BoxGeometry.centerRect(0, 0, 394, 147, 5.25f, rect)
+  expect("the centre line of a 5.25 px border is 2.625 px in", near(rect.toList(), listOf(2.625f, 2.625f, 391.375f, 144.375f)), true)
+  val centre = FloatArray(8)
+  BoxGeometry.centerRadii(px, 5.25f, centre)
+  expect("with the radii less half the width", near(centre.toList(), List(8) { 70.875f }), true)
+  val outline = FloatArray(8)
+  BoxGeometry.outlineRadii(pill, 2f, 394, 147, density, FloatArray(8), outline)
+  expect("the outline resolves against the bounds in px as if they were dp (73.5), adds the border (2 dp) and converts: (73.5 + 2) x 2.625", near(outline.toList(), List(8) { 198.1875f }), true)
+  val box = FloatArray(4)
+  val inner = FloatArray(8)
+  val rounded = BoxGeometry.paddingBox(0, 0, 394, 147, floatArrayOf(2f, 2f, 2f, 2f), pill, density, FloatArray(8), box, inner)
+  expect("the padding box of a 2 dp border is 5.25 px in, its radii 5.25 less", Triple(rounded, near(box.toList(), listOf(5.25f, 5.25f, 388.75f, 141.75f)), near(inner.toList(), List(8) { 68.25f })), Triple(true, true, true))
+  val square = BoxGeometry.paddingBox(10, 20, 404, 167, floatArrayOf(1f, 2f, 3f, 4f), floatArrayOf(0f, 0f, 0f, 0f), density, FloatArray(8), box, inner)
+  expect("square corners are a rectangle: the widths of each side off the bounds", Pair(square, near(box.toList(), listOf(12.625f, 25.25f, 396.125f, 156.5f))), Pair(false, true))
+  BoxGeometry.paddingBox(0, 0, 394, 147, floatArrayOf(8f, 8f, 8f, 8f), floatArrayOf(2f, 2f, 2f, 2f), density, FloatArray(8), box, inner)
+  expect("a border wider than its radius leaves no radius, never a negative one", inner.toList(), List(8) { 0f })
+
+  val ring = 0xFF66666F.toInt()
+  val red = 0xFFFF0000.toInt()
+  val none = floatArrayOf(0f, 0f, 0f, 0f)
+  val three = floatArrayOf(3f, 3f, 3f, 3f)
+  // Who draws a box when its radius is animated: a divider that is given round corners is no longer the engine drawable's, a border of one colour is, whatever the radius.
+  val hairline = floatArrayOf(0f, 0f, 0f, 1f)
+  val oneColour = IntArray(4) { ring }
+  val roundCorners = floatArrayOf(31.5f, 31.5f, 31.5f, 31.5f)
+  val squareCorners = floatArrayOf(0f, 0f, 0f, 0f)
+  expect("a divider given a radius moves to React Native's", StyleRules.radiiMoveBox(StyleRules.BOX_ENGINE, hairline, oneColour, 0, roundCorners), true)
+  expect("a divider given no radius stays", StyleRules.radiiMoveBox(StyleRules.BOX_ENGINE, hairline, oneColour, 0, squareCorners), false)
+  expect("a border on all sides keeps the engine's drawable with a radius", StyleRules.radiiMoveBox(StyleRules.BOX_ENGINE, three, oneColour, 0, roundCorners), false)
+  expect("sides with widths of their own move", StyleRules.radiiMoveBox(StyleRules.BOX_ENGINE, floatArrayOf(5f, 6f, 5f, 5f), oneColour, 0, roundCorners), true)
+  expect("sides with colours of their own move", StyleRules.radiiMoveBox(StyleRules.BOX_ENGINE, three, intArrayOf(ring, ring, ring, red), 0, roundCorners), true)
+  expect("dashes move", StyleRules.radiiMoveBox(StyleRules.BOX_ENGINE, three, oneColour, 1, roundCorners), true)
+  expect("a fill whose radius is animated stays plain", StyleRules.radiiMoveBox(StyleRules.BOX_PLAIN, none, oneColour, 0, roundCorners), false)
+  expect("a fill that is given radii that differ moves to the engine's drawable", StyleRules.radiiMoveBox(StyleRules.BOX_PLAIN, none, oneColour, 0, floatArrayOf(31.5f, 0f, 31.5f, 0f)), true)
+  expect("a fill of the engine's drawable whose radii agree again moves to the plain one", StyleRules.radiiMoveBox(StyleRules.BOX_ENGINE, none, oneColour, 0, roundCorners), true)
+  expect("React Native's drawables draw every box: they stay", StyleRules.radiiMoveBox(StyleRules.BOX_REACT, hairline, oneColour, 0, squareCorners), false)
+
+  // The side a colour key of `setNativeProps` is for.
+  fun side(key: String, rtl: Boolean, swap: Boolean) = StyleRules.sideOfColorKey(key, rtl, swap)
+  expect("left to right: left, right, start and end are where they say", listOf("borderLeftColor", "borderRightColor", "borderStartColor", "borderEndColor").map { side(it, false, true) }, listOf(0, 2, 0, 2))
+  expect("right to left without the swap: left and right are physical, start and end turn", listOf("borderLeftColor", "borderRightColor", "borderStartColor", "borderEndColor").map { side(it, true, false) }, listOf(0, 2, 2, 0))
+  expect("right to left with the swap (the default): left is the trailing side, right the leading one, as Fabric has them", listOf("borderLeftColor", "borderRightColor", "borderStartColor", "borderEndColor").map { side(it, true, true) }, listOf(2, 0, 2, 0))
+  expect("top and bottom do not move, a key that is not a colour has no side", listOf(side("borderTopColor", true, true), side("borderBottomColor", true, true), side("borderWidth", true, true)), listOf(1, 3, -1))
+
+  // The geometry of square corners, from `drawRectangularBorders`: a box of 252 by 112 px at 10, 20 (left 10, top 20, right 262, bottom 132).
   val line = FloatArray(4)
   BoxGeometry.strokeLine(0, 10, 20, 262, 132, 3, line)
   expect("a 3 px left border's line is 1 px in (3 / 2 is 1)", line.toList(), listOf(11f, 20f, 11f, 132f))

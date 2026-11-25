@@ -83,7 +83,8 @@ export const tiles: Record<Mode, Tile[]> = {
   // Borders of square corners the engine's drawable draws in one: a divider (a bottom border only), sides with their own widths and colours, dashes and dots, the clip to the padding box.
   rect: [
     { id: "divider", style: { width: 150, height: 44, backgroundColor: "#ffffff", borderBottomWidth: 0.38, borderBottomColor: "#d4d4d8" } },
-    { id: "divider-top", style: { width: 150, height: 44, backgroundColor: "#ffffff", borderTopWidth: 1, borderTopColor: "#18181b" } },
+    // an animated radius on a divider: a bottom border with round corners is not the engine drawable's, so the box is built again when the radius appears
+    { id: "radius-divider", style: { width: 150, height: 56, backgroundColor: "#ffffff", borderBottomWidth: 4, borderBottomColor: "#18181b" }, to: { radius: 16 } },
     { id: "side-left", style: { width: 150, height: 44, backgroundColor: "#ffffff", borderLeftWidth: 4, borderLeftColor: "#7c3aed" } },
     // `setNativeProps` after mount: `borderColor` colours every side, a side's own colour, the dashes and the shadow are taken (the engine kept the border's first colour, ignored the rest)
     { id: "native-props", style: { width: 150, height: 56, backgroundColor: "#ffffff", borderWidth: 3, borderColor: "#3b82f6" }, after: { borderColor: "#22c55e", borderTopColor: "#ef4444", borderStyle: "dashed", boxShadow: "0 4px 8px rgba(0,0,0,0.3)" } },
@@ -100,7 +101,7 @@ export const tiles: Record<Mode, Tile[]> = {
   views: [
     { id: "image-shadow", kind: "image", style: { width: 96, height: 64, borderRadius: 16, boxShadow: "0 6px 10px rgba(0,0,0,0.4)" } },
     { id: "image-border", kind: "image", style: { width: 96, height: 64, borderRadius: 12, borderWidth: 3, borderColor: "#18181b" } },
-    { id: "image-plain", kind: "image", style: { width: 96, height: 64, borderRadius: 16 } },
+    { id: "radius-sides", style: { width: 150, height: 56, backgroundColor: "#ffffff", borderTopWidth: 2, borderBottomWidth: 6, borderLeftWidth: 3, borderColor: "#18181b" }, to: { radius: 16 } },
     { id: "scroll-shadow", kind: "scroll", style: { width: 150, height: 84, borderRadius: 16, backgroundColor: "#ffffff", boxShadow: "0 6px 12px rgba(9,9,11,0.3)" } },
     // 8 dp is 21 px: a whole number, so that the content container, which Yoga puts at a fraction inside the border, is rounded the same way (see SPEC "Not done": the engine rounds a frame's edges, React Native its origin and its size)
     { id: "scroll-border", kind: "scroll", style: { width: 150, height: 84, borderRadius: 16, borderWidth: 8, borderColor: "#18181b", backgroundColor: "#ffffff" } },

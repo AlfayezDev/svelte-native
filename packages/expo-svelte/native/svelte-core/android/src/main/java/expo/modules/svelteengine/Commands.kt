@@ -187,6 +187,7 @@ object Commands {
     p.transform[4] = view.rotation
     p.overflow = node.overflow
     p.pointer = node.pointer
+    p.viewFlags = node.viewFlags
     p.hitSlop = node.hitSlop?.copyOf()
     p.zIndex = node.zIndex
     p.elevation = node.elevation

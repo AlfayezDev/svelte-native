@@ -18,7 +18,7 @@ function Tile({ tile }) {
   let box;
   // React Native's own image cannot be made in the QA app's native build (`ReactImageManager` has no Fresco controller builder there, and the surface fails), so the image tiles are left empty here and are not compared.
   if (tile.kind === "image") box = h(View, { style: { width: style.width, height: style.height } });
-  else if (tile.kind === "scroll") box = h(ScrollView, { style, scrollEnabled: false, showsVerticalScrollIndicator: false }, ...scrollContent.map((part, i) => h(View, { key: i, style: part })));
+  else if (tile.kind === "scroll") box = h(ScrollView, { style, contentContainerStyle: tile.contentStyle, scrollEnabled: false, showsVerticalScrollIndicator: false }, ...scrollContent.map((part, i) => h(View, { key: i, style: part })));
   else if (tile.kind === "text") box = h(Text, { style }, tile.text);
   else box = h(View, { style }, tile.bar ? h(View, { style: tile.bar }) : null);
   return h(View, { style: cell }, box);

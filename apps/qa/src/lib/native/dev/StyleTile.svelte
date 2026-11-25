@@ -36,7 +36,7 @@
   {:else if tile.kind === "image"}
     <Image source={{ uri: imageUri }} style={tile.style} />
   {:else if tile.kind === "scroll"}
-    <ScrollView style={tile.style} scrollEnabled={false} showsVerticalScrollIndicator={false}>
+    <ScrollView style={tile.style} contentContainerStyle={tile.contentStyle} scrollEnabled={false} showsVerticalScrollIndicator={false}>
       {#each scrollContent as part, i (i)}<View style={part} />{/each}
     </ScrollView>
   {:else if tile.kind === "text"}

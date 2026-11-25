@@ -161,6 +161,8 @@ object Frames {
       c.measure(View.MeasureSpec.makeMeasureSpec(st.w, exact), View.MeasureSpec.makeMeasureSpec(st.h, exact))
       c.layout(content[0], content[1], content[2], content[3])
     }
+    // The pivot follows the size the content has now (`place` does the same): one set at mount, when the content had none, is the top left.
+    if (st.transformed) Props.applyPivot(c, st)
   }
 
   fun measureChildren(parent: ViewGroup) {

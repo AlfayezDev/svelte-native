@@ -102,8 +102,8 @@ export const tiles: Record<Mode, Tile[]> = {
   // The other kinds of view that take the same box styles (a shadow, a border, `overflow`), the radius that is animated, and radii that overflow.
   views: [
     { id: "image-shadow", kind: "image", style: { width: 96, height: 64, borderRadius: 16, boxShadow: "0 6px 10px rgba(0,0,0,0.4)" } },
-    // the content container of a scroll view with a transform and an origin: the pivot is the container's corner once it has its size, not the 0 x 0 it has at mount (the top left)
-    { id: "scroll-transform", kind: "scroll", style: { width: 150, height: 84, backgroundColor: "#ffffff", overflow: "hidden" }, contentStyle: { transform: [{ rotate: "-4deg" }], transformOrigin: "bottom right" } },
+    // the content container of a scroll view with a transform and an origin: the pivot is the container's corner once it has its size, not the 0 x 0 it has at mount (the top left); 128 dp is 336 px and the content 144 dp is 378: the engine's pivot is a whole number of pixels, React Native's a fraction of one
+    { id: "scroll-transform", kind: "scroll", style: { width: 128, height: 80, backgroundColor: "#ffffff", overflow: "hidden" }, contentStyle: { transform: [{ rotate: "-4deg" }], transformOrigin: "bottom right" } },
     { id: "radius-sides", style: { width: 150, height: 56, backgroundColor: "#ffffff", borderTopWidth: 2, borderBottomWidth: 6, borderLeftWidth: 3, borderColor: "#18181b" }, to: { radius: 16 } },
     { id: "scroll-shadow", kind: "scroll", style: { width: 150, height: 84, borderRadius: 16, backgroundColor: "#ffffff", boxShadow: "0 6px 12px rgba(9,9,11,0.3)" } },
     // 8 dp is 21 px: a whole number, so that the content container, which Yoga puts at a fraction inside the border, is rounded the same way (see SPEC "Not done": the engine rounds a frame's edges, React Native its origin and its size)

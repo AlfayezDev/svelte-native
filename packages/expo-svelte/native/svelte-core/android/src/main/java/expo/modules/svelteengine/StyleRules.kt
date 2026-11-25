@@ -112,11 +112,6 @@ internal object StyleRules {
   }
 
   /**
-   * What `setNativeProps` does to the sides of [style] (record 141's state), as React Native's `setBorderColor` and `setBorderStyle` do to the edges of its drawables, so far as the
-   * engine can tell the edges apart (it holds the colour each side resolved to, not which edge gave it): `borderColor` colours every side; the colour of one side takes that side only
-   * (the others keep what they had, or [uniform], the border's own colour, when the border had one colour); `borderStyle` dashed or dotted makes the border one that needs record 141.
-   */
-  /**
    * The side (0 left, 1 top, 2 right, 3 bottom) a colour key of `setNativeProps` is for, -1 for a key that is not one. `start` and `end` are the leading and trailing side; in a right-to-left
    * layout that swaps left and right (`swapLeftAndRight`: React Native's default on Android, `I18nUtil.doLeftAndRightSwapInRTL`) `left` is the trailing side and `right` the leading one,
    * as Fabric's props and `BorderColors.resolve` have them.
@@ -131,6 +126,11 @@ internal object StyleRules {
     else -> -1
   }
 
+  /**
+   * What `setNativeProps` does to the sides of [style] (record 141's state), as React Native's `setBorderColor` and `setBorderStyle` do to the edges of its drawables, so far as the
+   * engine can tell the edges apart (it holds the colour each side resolved to, not which edge gave it): `borderColor` colours every side; the colour of one side takes that side only
+   * (the others keep what they had, or [uniform], the border's own colour, when the border had one colour); `borderStyle` dashed or dotted makes the border one that needs record 141.
+   */
   fun setBorderColor(style: StyleRecords, color: Int) {
     if (style.hasSides) {
       style.sideMask = 15

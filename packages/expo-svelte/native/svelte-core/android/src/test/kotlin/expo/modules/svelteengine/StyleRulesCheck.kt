@@ -320,6 +320,26 @@ private fun engine(main: String) {
   expect("the direction can resolve in the constructor of the super class, before the node state exists", source("$java/BoxStyle.kt").contains("fun directionChanged(view: View, st: NodeState?, layoutDirection: Int)") && source("$java/BoxStyle.kt").contains("if (st == null || !st.boxStyle) return"), true)
   val props = source("$java/Props.kt")
   val common = props.substring(props.indexOf("fun applyCommon("))
+  // `setNativeProps` and an animated radius that moves the box (`Commands.restyle`) run `applyCommon` on a snapshot of the view: every field of the record that `applyCommon` reads is in it
+  // (`viewFlags` was not: the node's clickable flag, hardware layer and offscreen alpha were dropped by the first restyle), the scratch colours of the sides alone being worked out there.
+  fun body(text: String, header: String): String {
+    val start = text.indexOf(header)
+    var depth = 0
+    var i = text.indexOf("{", start)
+    val open = i
+    while (i < text.length) {
+      if (text[i] == '{') depth++ else if (text[i] == '}') { depth--; if (depth == 0) break }
+      i++
+    }
+    return text.substring(open, i + 1)
+  }
+  val commands = source("$java/Commands.kt")
+  val read = Regex("""\bp\.(\w+)""").findAll(body(props, "fun applyCommon(")).map { it.groupValues[1] }.toSet()
+  val snapped = Regex("""\bp\.(\w+)""").findAll(body(commands, "private fun snapshot(")).map { it.groupValues[1] }.toSet()
+  expect("every field applyCommon reads is in the snapshot a restyle applies it to", (read - snapped - setOf("sideColors")).toList(), emptyList<String>())
+  expect("the clickable flag and the layer flags are the node's", body(commands, "private fun snapshot(").contains("p.viewFlags = node.viewFlags"), true)
+  val content = body(source("$java/views/EngineView.kt"), "fun layoutContent(").lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("//") }
+  expect("the content is laid out and then pivoted (one that has a transform and an origin keeps the pivot of its size)", content.indexOf("c.layout(content[0], content[1], content[2], content[3])") in 0 until content.indexOf("if (st.transformed) Props.applyPivot(c, st)"), true)
   expect("applyCommon asks StyleRules who draws the box", common.contains("StyleRules.boxKind(shadows, p.border, p.sideColors, p.style.borderStyle, p.radii)"), true)
   expect("applyCommon takes the drawable a view no longer needs off, and puts the engine's on", common.contains("if (st.engineBox != null && kind != StyleRules.BOX_ENGINE) BoxStyle.dropEngine(view, st)") && common.contains("BoxStyle.applyEngine(view, st, p)"), true)
   expect("a view that clips itself to the padding box is not clipped to its outline", common.contains("val clipsItself = boxed && (view is EngineView || view is EngineText || view is EngineImage || view is EngineScrollable)") && common.contains("!clipsItself && !(boxed && st.boxOutset)"), true)
@@ -497,6 +517,23 @@ private fun boxDrawable(main: String, uimanager: String) {
   expect("a fill that is given radii that differ moves to the engine's drawable", StyleRules.radiiMoveBox(StyleRules.BOX_PLAIN, none, oneColour, 0, floatArrayOf(31.5f, 0f, 31.5f, 0f)), true)
   expect("a fill of the engine's drawable whose radii agree again moves to the plain one", StyleRules.radiiMoveBox(StyleRules.BOX_ENGINE, none, oneColour, 0, roundCorners), true)
   expect("React Native's drawables draw every box: they stay", StyleRules.radiiMoveBox(StyleRules.BOX_REACT, hairline, oneColour, 0, squareCorners), false)
+
+  // An animation of the radius of a divider, frame by frame: the box moves once, at the first frame with a radius, and React Native's drawables keep it after.
+  var current = StyleRules.BOX_ENGINE
+  val frames = listOf(0f, 2.6f, 10f, 31.5f, 20f, 0f).map { r ->
+    val radii = floatArrayOf(r, r, r, r)
+    val moved = StyleRules.radiiMoveBox(current, hairline, oneColour, 0, radii)
+    if (moved) current = StyleRules.boxKind(null, hairline, oneColour, 0, radii)
+    moved
+  }
+  expect("a divider's radius animated 0, 2.6, 10, 31.5, 20, 0 px moves the box at the second frame only", Pair(frames, current), Pair(listOf(false, true, false, false, false, false), StyleRules.BOX_REACT))
+  var plain = StyleRules.BOX_PLAIN
+  expect("a fill's radius never moves it", listOf(0f, 2.6f, 31.5f, 0f).map { r -> StyleRules.radiiMoveBox(plain, none, oneColour, 0, floatArrayOf(r, r, r, r)) }, List(4) { false })
+  var engine = StyleRules.BOX_ENGINE
+  expect("nor does a border of one colour on all sides", listOf(0f, 2.6f, 31.5f, 0f).map { r -> StyleRules.radiiMoveBox(engine, three, oneColour, 0, floatArrayOf(r, r, r, r)) }, List(4) { false })
+  // A transform origin on a scroll view's content container: the pivot of the size it has once laid out, where the one set at mount (0 x 0) was the top left.
+  expect("a pivot at the bottom right is the size, not the 0 it has at mount", Pair(StyleRules.pivot(StyleRules.UNIT_PERCENT, 100f, 0f), StyleRules.pivot(StyleRules.UNIT_PERCENT, 100f, 373f)), Pair(0f, 373f))
+  expect("and the centre is half of it", Pair(StyleRules.pivot(StyleRules.UNIT_NONE, 0f, 0f), StyleRules.pivot(StyleRules.UNIT_NONE, 0f, 389f)), Pair(0f, 194.5f))
 
   // The side a colour key of `setNativeProps` is for.
   fun side(key: String, rtl: Boolean, swap: Boolean) = StyleRules.sideOfColorKey(key, rtl, swap)

@@ -431,7 +431,12 @@ private fun session() {
   tape = Tape(); session = KeyboardSession(tape)
   session.prepare(0); session.start(0, 1); session.frame(300, 2)
   session.heal(0)
-  expect("a lost hide ends closed", tape.calls.toList(), listOf("start 0", "progress 300", "end 0"))
+  expect("a lost hide ends closed, at the height the insets say, which the followers are taken to first", tape.calls.toList(), listOf("start 0", "progress 300", "progress 0", "end 0"))
+  // The same at another height than the last frame's: the window came back with the keyboard at 750 while the last frame it heard said 300.
+  tape = Tape(); session = KeyboardSession(tape)
+  session.prepare(0); session.start(750, 1); session.frame(300, 2)
+  session.heal(750)
+  expect("healed at the real height: the followers reach it, and then the end", tape.calls.toList(), listOf("start 750", "progress 300", "progress 750", "end 750"))
   // Prepared and never started: nothing began, so there is nothing to end, and the insets are settled.
   tape = Tape(); session = KeyboardSession(tape)
   session.prepare(0)
@@ -450,7 +455,7 @@ private fun session() {
   expect("the old animation's end does not settle it", session.end(5) { 300 }, false)
   session.frame(100, 6)
   expect("the last one does", session.end(7) { 0 }, true)
-  expect("turned around: two starts, one end", tape.calls.toList(), listOf("start 750", "progress 300", "start 0", "progress 100", "end 0"))
+  expect("turned around: two starts, one end, at the height it ended at", tape.calls.toList(), listOf("start 750", "progress 300", "start 0", "progress 100", "progress 0", "end 0"))
   // The insets change with no animation: told as a settle, except while an animation runs.
   tape = Tape(); session = KeyboardSession(tape)
   session.idle(750)
@@ -500,8 +505,11 @@ private fun resize() {
   lift = ChatLift(ChatLift.ALWAYS, 0, threshold)
   lift.start(900, 2500, viewport, content); lift.move(900, 2500, viewport, content); lift.end(900, 3400, viewport, content)
   lift.start(750, 3400, viewport, content)
+  expect("animated smaller: the room stays while the keyboard is as tall as it was", lift.padding, 900)
   expect("animated smaller: the first frame is where it is", lift.move(900, 3400, viewport, content), 3400)
   expect("animated smaller: the last frame is 150 down", lift.move(750, 3400, viewport, content), 3250)
+  lift.end(750, 3250, viewport, content)
+  expect("animated smaller: the end takes the room to the new height's", lift.padding, 750)
   // A list that stayed (`whenAtEnd` up the list) stays when the keyboard goes to another height.
   lift = ChatLift(ChatLift.WHEN_AT_END, 0, threshold)
   lift.start(750, 500, viewport, content); lift.move(750, 500, viewport, content); lift.end(750, 500, viewport, content)
@@ -527,6 +535,84 @@ private fun resize() {
   expect("aware: the input that is 100 px under the new keyboard's top", aware.resize(1200, 700, 1500, 2400), 1000)
   expect("aware: the room", aware.padding, 1200)
   expect("aware: no input has the focus", aware.resize(1100, 1000, -1, 2400), null)
+  // Another height, animated: the room stays until the end.
+  val shrinking = AwareScroll(0, 0, true)
+  shrinking.start(900, 0, -1, 2400); shrinking.end(900, 0, -1, 2400)
+  shrinking.start(750, 0, -1, 2400)
+  expect("aware, animated smaller: the room stays", shrinking.padding, 900)
+  shrinking.end(750, 0, -1, 2400)
+  expect("aware, animated smaller: and the end takes it", shrinking.padding, 750)
+}
+
+/** A scroll view as Android's is: its scroll is held inside the range it has (the content and the room at its bottom), and a change of the room clamps it, as the layout that follows does. */
+private class FakeScroll(override val content: Int, override val viewport: Int, var y: Int = 0) : ScrollSide {
+  var padding = 0
+  override val scrollY: Int get() = y
+  private fun limit() = maxOf(content - viewport + padding, 0)
+  override fun pad(px: Int) { padding = px; y = minOf(y, limit()) }
+  override fun scroll(y: Int) { this.y = minOf(maxOf(y, 0), limit()) }
+}
+
+/** What the drive does for a chat thread, with the steps it uses (`KeyboardSteps`), on a [FakeScroll]. */
+private class LiftRig(val side: FakeScroll, val rules: ChatLift) : KeyboardSink {
+  var height = 0
+  override fun start(target: Int) { KeyboardSteps.start(side, rules, target) }
+  override fun progress(px: Int) { height = px; KeyboardSteps.move(side, rules, px) }
+  override fun end(px: Int) { height = px; KeyboardSteps.end(side, rules, px) }
+  override fun settle(px: Int) {
+    if (px == height) return
+    if (KeyboardSteps.resizes(height, px)) KeyboardSteps.resize(side, rules, px) else { start(px); progress(px); end(px) }
+    height = px
+  }
+}
+
+/** The thread's steps in order, against a scroll view that clamps: the room is given before the scroll that needs it, and a move that was cut short is made up for. */
+private fun followers() {
+  fun chat(y: Int = 2500): Triple<FakeScroll, LiftRig, KeyboardSession> {
+    val side = FakeScroll(4000, 1500, y)
+    val rig = LiftRig(side, ChatLift(ChatLift.ALWAYS, 0, 53))
+    return Triple(side, rig, KeyboardSession(rig))
+  }
+  // A thread at its end, opened to 750 (the range ends at 3250) and resized to 900: the 150 more are in the range only once the room is, so the room comes before the scroll.
+  val (side, _, session) = chat()
+  session.prepare(0); session.start(750, 1); session.frame(300, 2); session.frame(750, 3); session.end(4) { 750 }
+  expect("opened: lifted by the keyboard", side.y, 3250)
+  session.idle(900)
+  expect("resized at the end of the range: lifted by the 150 more", side.y, 3400)
+  expect("resized: the room is the new height's", side.padding, 900)
+  session.prepare(5); session.start(0, 6); session.frame(500, 7); session.frame(0, 8); session.end(9) { 0 }
+  expect("and the close goes back to where the thread was", side.y, 2500)
+  expect("and gives the room back", side.padding, 0)
+  // The window goes with the keyboard at 400 of 600 (the move is ended where it was), and comes back with it at 600: the content was lifted by 400, so it goes by the other 200.
+  val (side2, _, session2) = chat()
+  session2.prepare(0); session2.start(600, 1); session2.frame(400, 2)
+  expect("on the way: lifted by 400", side2.y, 2900)
+  session2.heal(session2.last)
+  expect("the window went: ended at 400", listOf(side2.y, side2.padding), listOf(2900, 400))
+  session2.idle(600)
+  expect("the window is back with the keyboard at 600: the other 200", listOf(side2.y, side2.padding), listOf(3100, 600))
+  // The watchdog heals at the height the insets say (600) while the last frame was 400: the thread gets to its destination.
+  val (side3, _, session3) = chat()
+  session3.prepare(0); session3.start(600, 1); session3.frame(400, 2)
+  session3.heal(600)
+  expect("healed at the real height: lifted by all of it", listOf(side3.y, side3.padding), listOf(3100, 600))
+  // An animated change from 900 to 750 keeps the room until the keyboard has got there: a smaller one at the start would clamp the scroll to the shorter range at once.
+  val (side4, _, session4) = chat()
+  session4.prepare(0); session4.start(900, 1); session4.frame(900, 2); session4.end(3) { 900 }
+  expect("open at 900", listOf(side4.y, side4.padding), listOf(3400, 900))
+  session4.prepare(4); session4.start(750, 5)
+  expect("shrinking: the content has not moved, nor the room", listOf(side4.y, side4.padding), listOf(3400, 900))
+  session4.frame(850, 6)
+  expect("shrinking: it goes down with the keyboard", side4.y, 3350)
+  session4.frame(750, 7); session4.end(8) { 750 }
+  expect("shrunk: lifted by 750, with the room of 750", listOf(side4.y, side4.padding), listOf(3250, 750))
+  // The aware scroll: the room first as well. The thread is at the end of the range the keyboard at 750 makes (3250) and the focused input, 1600 px down, is under the keyboard at 900.
+  val aside = FakeScroll(4000, 1500, 3250)
+  val aware = AwareScroll(0, 0, true)
+  KeyboardSteps.start(aside, aware, 750, 1600, 2400); KeyboardSteps.end(aside, aware, 750, 1600, 2400)
+  expect("aware: opened with the input above the keyboard", listOf(aside.y, aside.padding), listOf(3250, 750))
+  KeyboardSteps.resize(aside, aware, 900, 1600, 2400)
+  expect("aware, resized: the input is brought above the new keyboard, which the old range could not reach", listOf(aside.y, aside.padding), listOf(3350, 900))
 }
 
 /** A view that avoids the keyboard is registered again with another offset: its overlap is worked out with the offset it has now. */
@@ -593,6 +679,7 @@ fun main(args: Array<String>) {
   channel()
   session()
   resize()
+  followers()
   stickies()
   scrollEnd()
   inputs()

@@ -165,7 +165,8 @@ class EngineText(context: Context) : View(context), EngineNode {
     // `overflow: hidden` clips the text to the padding box, round corners included, when the box is the engine's drawable or React Native's (`ReactTextView.onDraw`): the
     // background, and the shadow it draws around the view, are drawn before this and are not clipped.
     if (node.overflow != 0) BoxStyle.clipToPaddingBox(this, node, canvas)
-    canvas.translate(node.padL, node.padT + verticalOffset)
+    // The text is drawn at the padding React Native's view has: its content insets floored to a pixel (`FabricMountingManager::writeUpdatePaddingMountItem`), where Yoga's are fractions.
+    canvas.translate(kotlin.math.floor(node.padL), kotlin.math.floor(node.padT) + verticalOffset)
     l.draw(canvas)
     canvas.restore()
   }

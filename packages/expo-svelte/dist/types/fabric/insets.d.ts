@@ -30,7 +30,7 @@ export type AvoidBehavior = "padding" | "height" | "position" | undefined;
 /**
  * How far the keyboard overlaps the view, React Native's `_relativeKeyboardHeight`. `viewY` and `viewHeight` are the view's
  * window frame, `rootHeight` the overlay's height and `keyboardHeight` what the keyboard covers of it, so the keyboard's
- * top edge is `rootHeight - keyboardHeight`. For "height" the view has already shrunk by `previous`, which is added back.
+ * top edge is `rootHeight - keyboardHeight`. For "height" the view has already shrunk by `previous` (what is applied to it now: 0 while it is disabled, whatever the overlap was), which is added back.
  */
 export declare function keyboardOverlap(args: {
     viewY: number;

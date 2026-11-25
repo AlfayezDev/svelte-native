@@ -351,6 +351,9 @@ private fun engine(main: String) {
   expect("the transform is resolved without the origin", encoder.contains("BaseViewProps::resolveTransform(") && encoder.contains("TransformOrigin{}") && !encoder.contains("p.resolveTransform("), true)
   for (call in listOf("stylewire::encodeSides(", "stylewire::encodeOrigin(", "stylewire::encodeShadows(")) expect("PropsEncoder.cpp calls $call", encoder.contains(call), true)
   expect("a border side that has a colour is told from one that has none by resolving with two defaults", encoder.contains("p.borderColors.resolve(rtl, SharedColor(1))") && encoder.contains("p.borderColors.resolve(rtl, SharedColor(2))") && encoder.contains("sides.set[i] = *one[i] == *two[i];"), true)
+  expect("the border widths are turned with the colours in a right-to-left layout that swaps left and right (Fabric turns the colours, the radii and the Yoga style, not the widths of the props)",
+    encoder.contains("auto widths = p.getBorderWidths();") && encoder.contains("if (layout.wasLeftAndRightSwapped) {") && encoder.contains("widths.start = widths.left;") && encoder.contains("widths.end = widths.right;") &&
+      encoder.contains("metrics.borderWidths = widths.resolve(layout.layoutDirection == LayoutDirection::RightToLeft, 0);"), true)
   expect("a shadow's colour goes as it came", encoder.contains("shadow.color = colorInt(layer.color);"), true)
 }
 

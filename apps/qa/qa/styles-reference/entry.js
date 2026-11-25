@@ -7,7 +7,9 @@
 // lab page's does and both sit on the same pixel grid, and `&runtime=on|off`, the state of the input below the grid in `shadow`.
 import "react-native/Libraries/Core/InitializeCore";
 import * as React from "react";
-import { AppRegistry, Image, Linking, Pressable, ScrollView, Text, View } from "react-native";
+import { AppRegistry, Linking, Pressable, ScrollView, Text, View } from "react-native";
+// The QA app's native build does not register React Native's `ImageLoader` (its Image module needs it), so the image is the native component `Image` renders, with the props it gives it.
+import ImageView from "react-native/Libraries/Image/ImageViewNativeComponent";
 import { endStyle, focusRing, imageUri, modes, runtimeInput, runtimeLabel, scrollContent, tiles } from "../../src/lib/native/dev/styles-cases.ts";
 
 const h = React.createElement;
@@ -16,7 +18,7 @@ const cell = { width: 168, height: 112, alignItems: "center", justifyContent: "c
 function Tile({ tile }) {
   const style = endStyle(tile);
   let box;
-  if (tile.kind === "image") box = h(Image, { source: { uri: imageUri }, style });
+  if (tile.kind === "image") box = h(ImageView, { source: [{ uri: imageUri }], resizeMode: "cover", style });
   else if (tile.kind === "scroll") box = h(ScrollView, { style, scrollEnabled: false, showsVerticalScrollIndicator: false }, ...scrollContent.map((part, i) => h(View, { key: i, style: part })));
   else if (tile.kind === "text") box = h(Text, { style }, tile.text);
   else box = h(View, { style }, tile.bar ? h(View, { style: tile.bar }) : null);

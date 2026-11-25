@@ -8,9 +8,7 @@
 import "react-native/Libraries/Core/InitializeCore";
 import * as React from "react";
 import { AppRegistry, Linking, Pressable, ScrollView, Text, View } from "react-native";
-// The QA app's native build does not register React Native's `ImageLoader` (its Image module needs it), so the image is the native component `Image` renders, with the props it gives it.
-import ImageView from "react-native/Libraries/Image/ImageViewNativeComponent";
-import { endStyle, focusRing, imageUri, modes, runtimeInput, runtimeLabel, scrollContent, tiles } from "../../src/lib/native/dev/styles-cases.ts";
+import { endStyle, focusRing, modes, runtimeInput, runtimeLabel, scrollContent, tiles } from "../../src/lib/native/dev/styles-cases.ts";
 
 const h = React.createElement;
 const cell = { width: 168, height: 112, alignItems: "center", justifyContent: "center", backgroundColor: "#f4f4f5" };
@@ -18,7 +16,8 @@ const cell = { width: 168, height: 112, alignItems: "center", justifyContent: "c
 function Tile({ tile }) {
   const style = endStyle(tile);
   let box;
-  if (tile.kind === "image") box = h(ImageView, { source: [{ uri: imageUri }], resizeMode: "cover", style });
+  // React Native's own image cannot be made in the QA app's native build (`ReactImageManager` has no Fresco controller builder there, and the surface fails), so the image tiles are left empty here and are not compared.
+  if (tile.kind === "image") box = h(View, { style: { width: style.width, height: style.height } });
   else if (tile.kind === "scroll") box = h(ScrollView, { style, scrollEnabled: false, showsVerticalScrollIndicator: false }, ...scrollContent.map((part, i) => h(View, { key: i, style: part })));
   else if (tile.kind === "text") box = h(Text, { style }, tile.text);
   else box = h(View, { style }, tile.bar ? h(View, { style: tile.bar }) : null);

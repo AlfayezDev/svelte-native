@@ -111,8 +111,9 @@ internal object BoxStyle {
    * by it, so the sides, written by the configuration's direction while the view had none, go to the edges that direction names. Nothing to do for the engine's own drawable, which has
    * physical sides, or for a view React Native's drawables do not draw.
    */
-  fun directionChanged(view: View, st: NodeState, layoutDirection: Int) {
-    if (!st.boxStyle) return
+  fun directionChanged(view: View, st: NodeState?, layoutDirection: Int) {
+    // A view resolves its padding, and so its direction, in the constructor of its super class (a `ScrollView` does): the node state of the Kotlin subclass is not there yet.
+    if (st == null || !st.boxStyle) return
     val rtl = layoutDirection == View.LAYOUT_DIRECTION_RTL
     if (st.boxRtl == rtl) return
     st.boxRtl = rtl

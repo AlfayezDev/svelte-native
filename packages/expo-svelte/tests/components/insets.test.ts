@@ -127,6 +127,66 @@ test("a KeyboardAvoidingView of height shrinks from the height it has now, not f
   expect(outer().style).toEqual([{ flex: 1 }, { height: 210, flex: 0 }]);
 });
 
+test("a KeyboardAvoidingView re-enabled with the keyboard still open avoids it by its overlap at once, whatever its behaviour (#125)", async () => {
+  // A 600 high window, a 140 high keyboard, the view filling the window: the overlap is 140 (a `height` view asks for 460, `padding` for 140, `position` lifts by 140).
+  for (const behavior of ["height", "padding", "position"] as const) {
+    const m = await loadModule();
+    const stub = m.engine;
+    stub.current = event({ frame: { x: 0, y: 0, width: 400, height: 600 } });
+    m.resetInsets();
+    const { app, props_of } = await mountFixture(m, { behavior });
+    const outer = () => props_of("native-view", 0);
+    const style = () => (behavior === "position" ? props_of("native-view", 1) : outer()).style;
+    // The view as the host would measure it: the height its style asks for, or the whole window.
+    const flat = () => { const s = outer().style; return (Array.isArray(s) ? Object.assign({}, ...s) : s) as { height?: number }; };
+    const measured = { measureInWindow: (callback: (...a: number[]) => void) => callback(0, 0, 400, flat().height ?? 600) };
+    (outer().ref as (h: unknown) => void)(measured);
+    const layout = async () => { (outer().onLayout as (e: unknown) => void)({ nativeEvent: {} }); await m.tick(); await m.tick(); };
+    const keyboard = async (open: boolean) => {
+      stub.listener?.(event({ frame: { x: 0, y: 0, width: 400, height: 600 }, ...(open ? { keyboardHeight: 140, keyboardVisible: true } : {}) }));
+      await m.tick();
+      await m.tick();
+    };
+    const enable = async (enabled: boolean) => { (app as { set(patch: object): void }).set({ enabled }); await m.tick(); await m.tick(); };
+    const avoiding = (bottom: number) => behavior === "height" ? [{ flex: 1 }, { height: 600 - bottom, flex: 0 }] : [{ flex: 1 }, behavior === "padding" ? { paddingBottom: bottom } : { bottom }];
+    const free = behavior === "height" ? { flex: 1 } : avoiding(0);
+
+    await layout();
+    await keyboard(true);
+    await layout();
+    expect(style()).toEqual(avoiding(140));
+    // Disabled: the view is as it is without the keyboard, and its natural layout is measured.
+    await enable(false);
+    expect(style()).toEqual(free);
+    await layout();
+    expect(style()).toEqual(free);
+    // Enabled again with the keyboard still open: the request is 140 less at once (it was 280 less, and corrected after the layout of that).
+    await enable(true);
+    expect(style()).toEqual(avoiding(140));
+    await layout();
+    expect(style()).toEqual(avoiding(140));
+
+    // Control: enabled again before the natural layout was measured.
+    await enable(false);
+    await enable(true);
+    expect(style()).toEqual(avoiding(140));
+    await layout();
+    expect(style()).toEqual(avoiding(140));
+
+    // Control: the keyboard is hidden while the view is disabled, and opens again after it is enabled.
+    await enable(false);
+    await layout();
+    await keyboard(false);
+    await layout();
+    await enable(true);
+    expect(style()).toEqual(free);
+    await keyboard(true);
+    expect(style()).toEqual(avoiding(140));
+    await layout();
+    expect(style()).toEqual(avoiding(140));
+  }
+});
+
 test("padding math", async () => {
   const { avoidingStyle, flattenStyle, keyboardOverlap, safeAreaStyle } = await loadModule();
   const insets = { top: 20, right: 1, bottom: 30, left: 2 };

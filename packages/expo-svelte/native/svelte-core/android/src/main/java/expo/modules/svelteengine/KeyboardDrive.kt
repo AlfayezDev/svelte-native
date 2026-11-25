@@ -19,18 +19,12 @@ import kotlin.math.roundToInt
  * shared values behind `createKeyboardMotion()` (a synchronous call into the UI runtime, which runs its mappers at once). Nothing of it goes through JavaScript, so a busy
  * JavaScript thread does not hold the keyboard's followers back; JavaScript only registers a view once, by tag, and the registration is dropped when the view is gone.
  */
-class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBottom: () -> Int) {
+class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBottom: () -> Int) : KeyboardSink {
   companion object {
     private const val TAG = "SvelteEngine"
     private const val EARLY_MAX = 64
     private const val FOCUS_STEPS = 16
   }
-
-  /**
-   * A view that follows the keyboard: a sticky view (offsets [closed] and [opened], dp), or one that avoids it ([avoid]): it goes up by how far the keyboard covers
-   * [anchor], the view of that tag, [closed] dp short of the keyboard's top, worked out when the keyboard starts to open ([overlap], px).
-   */
-  private class Sticky(var closed: Double, var opened: Double, var enabled: Boolean, var avoid: Boolean = false, var anchor: Int = 0, var overlap: Double = 0.0)
 
   private val stickies = HashMap<Int, Sticky>()
   private val lifts = HashMap<Int, ChatLift>()
@@ -116,14 +110,7 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
   }
 
   fun follow(tag: Int, closed: Double, opened: Double, enabled: Boolean, avoid: Boolean = false, anchor: Int = 0) {
-    val sticky = stickies.getOrPut(tag) { Sticky(closed, opened, enabled, avoid, anchor) }
-    sticky.avoid = avoid
-    sticky.anchor = anchor
-    sticky.closed = closed
-    sticky.opened = opened
-    sticky.enabled = enabled
-    // The overlap is worked out with the offset the view has now (it is the distance short of the keyboard's top).
-    if (avoid && height > 0) sticky.overlap = overlapOf(sticky, height)
+    val sticky = Sticky.register(stickies, tag, closed, opened, enabled, avoid, anchor, height) { sticky, target -> overlapOf(sticky, target) }
     if (!stick(tag, sticky)) stickies.remove(tag)
   }
 
@@ -159,7 +146,7 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
   }
 
   /** The keyboard is about to move to [target] px (0 when it is going away): the root insets hold its end state. */
-  fun start(target: Int) {
+  override fun start(target: Int) {
     startFollowers(target)
     channel.start(target)
   }
@@ -176,7 +163,7 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
   }
 
   /** One frame of the animation, [px] high. */
-  fun progress(px: Int) {
+  override fun progress(px: Int) {
     moveFollowers(px)
     channel.frame(px)
   }
@@ -191,7 +178,7 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
   }
 
   /** The keyboard has stopped at [px]. */
-  fun end(px: Int) {
+  override fun end(px: Int) {
     endFollowers(px)
     channel.end(px)
   }
@@ -213,15 +200,30 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
   }
 
   /**
-   * The keyboard changed its height with no animation (another keyboard, a layout): the new height at once. What it moves goes through a start, a frame and an end, as an
-   * animation of no length; what hears the frames is told that the height changed ([KeyboardChannel.settle]), not that the keyboard started to close and opened again.
+   * The keyboard changed its height with no animation (another keyboard, a layout): the new height at once. A keyboard that was up and is up goes through [resize]: what
+   * is lifted goes by the difference, not by the whole new height again. Otherwise (the keyboard comes or goes with no animation) what it moves goes through a start, a
+   * frame and an end, as an animation of no length. What hears the frames is told that the height changed ([KeyboardChannel.settle]), not that the keyboard started to close
+   * and opened again.
    */
-  fun settle(px: Int) {
+  override fun settle(px: Int) {
     if (moving || px == height) return
-    startFollowers(px)
-    moveFollowers(px)
-    endFollowers(px)
+    if (px > 0 && height > 0) resize(px) else {
+      startFollowers(px)
+      moveFollowers(px)
+      endFollowers(px)
+    }
     channel.settle(px)
+  }
+
+  private fun resize(px: Int) {
+    height = px
+    persistent = px
+    target = px
+    progress = 1.0
+    for (sticky in stickies.values) if (sticky.avoid) sticky.overlap = overlapOf(sticky, px)
+    eachSticky()
+    eachLift { _, view, rules -> rules.resize(px, view.scrollY, view.height, content(view))?.let { scroll(view, it) }; pad(view, rules.padding) }
+    eachAware { _, view, rules -> rules.resize(px, view.scrollY, focused(view), overlayBottom())?.let { scroll(view, it) }; pad(view, rules.padding) }
   }
 
   /** The views of the tree have been put in their places (the end of a mounting batch): a view that was registered before the modal it is in was is left alone now. */
@@ -239,12 +241,6 @@ class KeyboardDrive(private val viewFor: (Int) -> View?, private val overlayBott
   fun subscribe(listener: (Int, Int) -> Unit, navigationBarTranslucent: Boolean = true): Int = channel.subscribe(listener, navigationBarTranslucent)
 
   fun unsubscribe(id: Int) = channel.unsubscribe(id)
-
-  /** The window went with an animation running: nothing will end it, and what waits for its end does not wait. */
-  fun reset() {
-    moving = false
-    channel.reset()
-  }
 
   /** How far the keyboard, [target] px high, covers the anchor of [sticky] (px): its bottom edge in the window past the keyboard's top edge and the offset. */
   private fun overlapOf(sticky: Sticky, target: Int): Double {

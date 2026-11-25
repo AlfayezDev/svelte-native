@@ -38,13 +38,18 @@
     measure();
     onLayout?.(event);
   }
-  // The engine works out how far the keyboard covers the view itself, when the keyboard starts to open, and moves the container with the keyboard's progress.
+  // The engine works out how far the keyboard covers the view itself, when the keyboard starts to open, and moves the container with the keyboard's progress. The two effects are
+  // apart so that a new offset or `enabled` is one command that tunes what is registered (one main-thread post, the next frame already has it), not a release and a registration,
+  // which put the container back where its style has it for a frame.
   $effect(() => {
-    if (!driven || !inner || !outer) return;
+    if (!driven || !inner) return;
     const tag = inner.tag;
-    driveKeyboard(tag, "avoid", [outer.tag, keyboardVerticalOffset, enabled]);
     // The behaviour changed from `position` (or the view went): the container goes back to where its own style puts it, and the engine forgets it.
     return () => { driveKeyboard(tag, "release"); };
+  });
+  $effect(() => {
+    if (!driven || !inner || !outer) return;
+    driveKeyboard(inner.tag, "avoid", [outer.tag, keyboardVerticalOffset, enabled]);
   });
   $effect(() => {
     if (driven) return;

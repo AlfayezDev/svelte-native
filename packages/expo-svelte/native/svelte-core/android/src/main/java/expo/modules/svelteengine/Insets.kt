@@ -25,26 +25,23 @@ class Insets(private val root: EngineRoot, private val drive: KeyboardDrive, pri
   private val density = root.resources.displayMetrics.density
   private val location = IntArray(2)
   private var last: Map<String, Any?>? = null
+  /** The keyboard's animations, counted, and the heal of one that nothing ends ([KeyboardSession]); what follows the keyboard is told through it. */
+  private val session = KeyboardSession(drive)
   /** An IME animation is on its way (prepared and not ended): what publishes, settles and measures waits for its end. */
-  private val animating: Boolean get() = frames.busy
-  /** The IME animations that are running: a boolean lost a frame or two when one animation's end came after the next one's start. */
-  private val frames = KeyboardFrames()
+  private val animating: Boolean get() = session.busy
   private fun now() = android.os.SystemClock.uptimeMillis()
 
   /**
-   * Nothing ends an animation that was prepared and never started (a window that took it away): after [STUCK_MS] with no news the keyboard is taken to have settled, as the
-   * insets say, so what is gated on an animation (publishing, the settle of a resized keyboard, layout) does not stay dead.
+   * Nothing ends an animation that was prepared and never started or ended (a window that took it away): after [STUCK_MS] with no news the keyboard is taken to have settled,
+   * as the insets say, and its followers are ended where it is (`KeyboardSession.heal`), so what is gated on an animation (publishing, the settle of a resized keyboard, layout)
+   * does not stay dead and nothing is left in the middle of a move.
    */
   private val watchdog = object : Runnable {
     override fun run() {
-      if (!frames.busy) return
-      if (frames.stuck(now(), STUCK_MS)) {
-        frames.reset()
-        drive.reset()
+      if (!session.busy) return
+      if (session.stuck(now(), STUCK_MS)) {
+        session.heal(imeOverlap())
         publish()
-        val px = imeOverlap()
-        frames.settled(px)
-        drive.settle(px)
       } else {
         root.postDelayed(this, WATCH_MS)
       }
@@ -54,13 +51,13 @@ class Insets(private val root: EngineRoot, private val drive: KeyboardDrive, pri
   fun install() {
     drive.navigationBar = { ViewCompat.getRootWindowInsets(root)?.let { (it.getInsets(WindowInsetsCompat.Type.systemBars()).bottom - gapBottom()).coerceAtLeast(0) } ?: 0 }
     ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
-      if (!animating) { publish(); val px = imeOverlap(); drive.settle(px); frames.settled(px) }
+      if (!animating) { publish(); session.idle(imeOverlap()) }
       insets
     }
     ViewCompat.setWindowInsetsAnimationCallback(root, object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
       override fun onPrepare(animation: WindowInsetsAnimationCompat) {
         if (animation.typeMask and WindowInsetsCompat.Type.ime() != 0) {
-          frames.prepare(now())
+          session.prepare(now())
           root.removeCallbacks(watchdog)
           root.postDelayed(watchdog, WATCH_MS)
         }
@@ -68,34 +65,29 @@ class Insets(private val root: EngineRoot, private val drive: KeyboardDrive, pri
       override fun onStart(animation: WindowInsetsAnimationCompat, bounds: WindowInsetsAnimationCompat.BoundsCompat): WindowInsetsAnimationCompat.BoundsCompat {
         if (animation.typeMask and WindowInsetsCompat.Type.ime() != 0) {
           publish()
-          val target = imeOverlap()
-          frames.start(target, now())
-          drive.start(target)
+          session.start(imeOverlap(), now())
         }
         return bounds
       }
       override fun onProgress(insets: WindowInsetsCompat, runningAnimations: MutableList<WindowInsetsAnimationCompat>): WindowInsetsCompat {
         if (animating && runningAnimations.any { it.typeMask and WindowInsetsCompat.Type.ime() != 0 }) {
-          frames.frame((insets.getInsets(WindowInsetsCompat.Type.ime()).bottom - gapBottom()).coerceAtLeast(0), now())?.let { drive.progress(it) }
+          session.frame((insets.getInsets(WindowInsetsCompat.Type.ime()).bottom - gapBottom()).coerceAtLeast(0), now())
         }
         return insets
       }
       override fun onEnd(animation: WindowInsetsAnimationCompat) {
         if (animation.typeMask and WindowInsetsCompat.Type.ime() == 0) return
         // An animation that ends while another runs (the keyboard turned around) is not the keyboard settling.
-        if (!frames.end(now())) return
+        if (!session.end(now()) { imeOverlap() }) return
         root.removeCallbacks(watchdog)
         publish()
-        val px = imeOverlap()
-        frames.settled(px)
-        drive.end(px)
       }
     })
     root.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or, ob -> if (r - l != or - ol || b - t != ob - ot || l != ol || t != ot) publish() }
     root.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
       override fun onViewAttachedToWindow(v: View) { watchLayouts(); drive.install(v); v.requestApplyInsets(); publish() }
       // A window that goes during an IME animation does not deliver its end: the next window starts with none running.
-      override fun onViewDetachedFromWindow(v: View) { unwatchLayouts(); root.removeCallbacks(watchdog); frames.reset(); drive.reset() }
+      override fun onViewDetachedFromWindow(v: View) { unwatchLayouts(); root.removeCallbacks(watchdog); session.heal(session.last) }
     })
     if (root.isAttachedToWindow) {
       drive.install(root)
@@ -125,6 +117,7 @@ class Insets(private val root: EngineRoot, private val drive: KeyboardDrive, pri
   }
 
   fun uninstall() {
+    root.removeCallbacks(watchdog)
     drive.uninstall()
     unwatchLayouts()
     ViewCompat.setOnApplyWindowInsetsListener(root, null)

@@ -260,3 +260,23 @@ test("a KeyboardAvoidingView whose behaviour leaves position gives its container
   await m.tick();
   expect(drives(m)).toEqual([[21, "release", []]]);
 });
+
+test("a KeyboardAvoidingView of position whose offset or enabled changes is one command, not a release and a registration", async () => {
+  const m = await loadModule();
+  m.engine.current = insets({ keyboardHeight: 300, keyboardVisible: true });
+  m.resetInsets();
+  const { app, ref } = await mountFixture(m, "avoid", { behavior: "position", keyboardVerticalOffset: 0 });
+  ref("native-view", { tag: 20, measureInWindow: () => {} }, 0);
+  ref("native-view", { tag: 21 }, 1);
+  await m.tick();
+  m.engine.calls.length = 0;
+  app.set({ keyboardVerticalOffset: 30 });
+  await m.tick();
+  await m.tick();
+  expect(drives(m)).toEqual([[21, "avoid", [20, 30, true]]]);
+  m.engine.calls.length = 0;
+  app.set({ enabled: false });
+  await m.tick();
+  await m.tick();
+  expect(drives(m)).toEqual([[21, "avoid", [20, 30, false]]]);
+});

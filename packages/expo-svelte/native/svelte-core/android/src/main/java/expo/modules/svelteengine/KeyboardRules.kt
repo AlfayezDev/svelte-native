@@ -31,6 +31,12 @@ internal object KeyboardRules {
   /** `KeyboardAvoidingView`'s `position` (px, negative is up): `interpolate(progress, [0, 1], [0, overlap])` up, [overlap] being how far the keyboard covers the view when it is open. */
   fun avoid(overlap: Double, progress: Double, enabled: Boolean): Double = if (enabled) -overlap * progress else 0.0
 
+  /**
+   * Where `scrollToEnd` goes: the end of the content ([content]) and of the room the scroll view holds at its end ([paddingStart] and [paddingEnd]), the offset the platform's
+   * range ends at (`content + paddingBottom` as `ReactScrollView.scrollToEnd` asks, which the scroll view then clamps to its range, that is, to this).
+   */
+  fun endOffset(content: Int, viewport: Int, paddingStart: Int, paddingEnd: Int): Int = max(0, content + paddingStart + paddingEnd - viewport)
+
   /** `isScrollAtEnd` for a list that is not inverted: the bottom of the viewport is within [threshold] of the bottom of the content. */
   fun atEnd(scrollY: Int, viewport: Int, content: Int, threshold: Int): Boolean = scrollY + viewport >= content - threshold
 
@@ -72,6 +78,8 @@ internal class ChatLift(var behavior: Int, var offset: Int, private val threshol
    */
   fun start(height: Int, scrollY: Int, viewport: Int, content: Int) {
     val reversal = inFlight
+    // The keyboard is up and goes to another height (another keyboard, animated): what it lifted is already in the offset.
+    val up = !reversal && armed && padding > 0
     inFlight = true
     armed = true
     if (height > 0) {
@@ -82,8 +90,12 @@ internal class ChatLift(var behavior: Int, var offset: Int, private val threshol
     }
     val effective = KeyboardRules.effective(height, target, offset).roundToInt()
     if (height > 0) {
+      val lifted = padding
       padding = effective
-      if (!reversal) {
+      if (up) {
+        // The frames add the height to `before`, so it is the offset without the lift the old height made: the content goes by the difference, not by the whole height again.
+        if (!skip) before = scrollY - lifted
+      } else if (!reversal) {
         before = scrollY
         // `whenAtEnd`: a scroll view somewhere up its list stays where it is, and so does one that does not lift.
         skip = behavior == WHEN_AT_END && !KeyboardRules.atEnd(scrollY, viewport, content, threshold)
@@ -98,6 +110,23 @@ internal class ChatLift(var behavior: Int, var offset: Int, private val threshol
   fun attach(height: Int, scrollY: Int, viewport: Int, content: Int) {
     start(height, scrollY, viewport, content)
     end(height, scrollY, viewport, content)
+  }
+
+  /**
+   * The keyboard is up at one height and has another with no animation (another keyboard, an emoji pane): the room is the new height's, and the content that was lifted goes
+   * by the difference of the two, from where it is now, not by the whole new height again from where the lift left it. Returns the scroll offset to go to, or null when the
+   * scroll view stays (`never`, a `whenAtEnd` that was not at its end). react-native-keyboard-controller takes the lifted offset as its baseline again and adds the whole new
+   * height, which the end of the range cuts off for a list at its end and does not for one anywhere else.
+   */
+  fun resize(height: Int, scrollY: Int, viewport: Int, content: Int): Int? {
+    val before = KeyboardRules.effective(target, target, offset)
+    target = height
+    val after = KeyboardRules.effective(height, height, offset)
+    padding = after.roundToInt()
+    if (behavior == NEVER || skip) return null
+    val destination = min(max(scrollY + (after - before).roundToInt(), 0), max(content - viewport + padding, 0))
+    shift = destination - this.before
+    return destination
   }
 
   /** The parameters change (`keyboardLiftBehavior`, `offset`) while the keyboard is up: nothing about where the content is, and what the close goes back to, is forgotten. */
@@ -183,6 +212,14 @@ internal class AwareScroll(var bottomOffset: Int, var extra: Int, var scrollOnHi
     if (reversal) return
     base = scrollY
     distance = if (inputBottom < 0) 0.0 else max(inputBottom + bottomOffset - (window - height), 0).toDouble()
+  }
+
+  /** The keyboard is up at one height and has another with no animation: the room is the new height's, and the focused input is brought above it from where the scroll view is. */
+  fun resize(height: Int, scrollY: Int, inputBottom: Int, window: Int): Int? {
+    open = height
+    padding = height + extra
+    if (inputBottom < 0) return null
+    return refocus(scrollY, inputBottom, window)
   }
 
   /** A focus change while the keyboard is open, or a taller input: the distance from where the scroll view is now. */
@@ -297,6 +334,101 @@ internal object KeyboardTree {
       from = found
     }
     return null
+  }
+}
+
+/**
+ * A view that follows the keyboard: a sticky view (offsets [closed] and [opened], dp), or one that avoids it ([avoid]): it goes up by how far the keyboard covers [anchor],
+ * the view of that tag, [closed] dp short of the keyboard's top, worked out when the keyboard starts to open ([overlap], px).
+ */
+internal class Sticky(var closed: Double, var opened: Double, var enabled: Boolean, var avoid: Boolean = false, var anchor: Int = 0, var overlap: Double = 0.0) {
+  companion object {
+    /**
+     * Registers the view of [tag], or registers it again with other numbers. The overlap of one that avoids the keyboard is worked out ([overlapOf], from the sticky and the
+     * keyboard's height) with the numbers it has now: the offset it is short of the keyboard's top is one of them.
+     */
+    fun register(map: MutableMap<Int, Sticky>, tag: Int, closed: Double, opened: Double, enabled: Boolean, avoid: Boolean, anchor: Int, height: Int, overlapOf: (Sticky, Int) -> Double): Sticky {
+      val sticky = map.getOrPut(tag) { Sticky(closed, opened, enabled, avoid, anchor) }
+      sticky.avoid = avoid
+      sticky.anchor = anchor
+      sticky.closed = closed
+      sticky.opened = opened
+      sticky.enabled = enabled
+      if (avoid && height > 0) sticky.overlap = overlapOf(sticky, height)
+      return sticky
+    }
+  }
+}
+
+/** What follows the keyboard (`KeyboardDrive`), told how its animations go (`KeyboardSession`). */
+interface KeyboardSink {
+  fun start(target: Int)
+  fun progress(px: Int)
+  fun end(px: Int)
+  fun settle(px: Int)
+}
+
+/**
+ * The keyboard's animations as the engine hears them (`Insets`: the window insets animation callback and the watchdog), and what the followers are told of them ([KeyboardSink]). The
+ * animations are counted ([KeyboardFrames]); the keyboard has settled when the last one ends, and then the followers are ended at the height the insets say. An animation
+ * that nothing ends (a window that took it away: [heal], from the watchdog or the window's going) is ended the same way when it had started, which leaves nothing in
+ * the middle of a move: the lifts' room, the state `useAnimatedKeyboard` is told and the baselines of a turn are all those of a keyboard that has stopped.
+ */
+internal class KeyboardSession(private val sink: KeyboardSink) {
+  private val frames = KeyboardFrames()
+  private var moving = false
+  private var lastPx = 0
+
+  /** An animation is on its way (prepared and not ended): what publishes, settles and measures waits for its end. */
+  val busy: Boolean get() = frames.busy
+
+  /** The last height a frame or the end gave: what a window that goes in the middle of a move leaves its followers at. */
+  val last: Int get() = lastPx
+
+  fun prepare(now: Long) = frames.prepare(now)
+
+  fun start(target: Int, now: Long) {
+    frames.start(target, now)
+    moving = true
+    sink.start(target)
+  }
+
+  fun frame(px: Int, now: Long) {
+    frames.frame(px, now)?.let { lastPx = it; sink.progress(it) }
+  }
+
+  /** An animation ended. True when it was the last: the keyboard has settled at what [px] says. */
+  fun end(now: Long, px: () -> Int): Boolean {
+    if (!frames.end(now)) return false
+    finish(px())
+    return true
+  }
+
+  /** The insets changed with no animation running. */
+  fun idle(px: Int) {
+    if (busy) return
+    lastPx = px
+    frames.settled(px)
+    sink.settle(px)
+  }
+
+  /** Nothing will end what runs: the keyboard is where [px] says. */
+  fun heal(px: Int) {
+    frames.reset()
+    finish(px)
+  }
+
+  fun stuck(now: Long, limit: Long): Boolean = frames.stuck(now, limit)
+
+  private fun finish(px: Int) {
+    lastPx = px
+    frames.settled(px)
+    if (moving) {
+      moving = false
+      sink.end(px)
+    } else {
+      sink.settle(px)
+    }
   }
 }
 

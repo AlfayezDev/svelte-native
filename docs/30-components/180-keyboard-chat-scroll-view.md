@@ -52,7 +52,7 @@ It also takes the props of [`ScrollView`](scroll-view#props).
 | `'whenAtEnd'` | The content lifts only when the last message is in view, within 20 points of the end, at the moment the keyboard starts to open. A thread scrolled up to older messages stays where it is. |
 | `'never'` | The content stays where it is. |
 
-Whichever it is, the scroll view keeps the room the keyboard takes at its bottom for as long as the keyboard is up, so the thread can be scrolled past its last message, and gives it back when the keyboard has closed. When the keyboard closes, a thread that lifted comes back by the distance it lifted, not by the keyboard's height.
+Whichever it is, the scroll view keeps the room the keyboard takes at its bottom for as long as the keyboard is up, so the thread can be scrolled past its last message, and gives it back when the keyboard has closed. When the keyboard closes, a thread that lifted comes back by the distance it lifted, not by the keyboard's height. `scrollToEnd()` goes to the end of that room too, so a message sent with the keyboard up ends above the composer. A keyboard that changes height while it is up (another keyboard) moves the thread by the difference of the two heights.
 
 ## How it moves
 

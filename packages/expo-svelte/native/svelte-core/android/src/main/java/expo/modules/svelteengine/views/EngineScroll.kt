@@ -585,9 +585,10 @@ class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineSc
     }
   }
 
+  // The end is the end of the content and of the room at its bottom (padding: a keyboard's lift makes some), as `ReactScrollView.scrollToEnd` (the child's height and the bottom padding).
   override fun scrollToEndPx(animated: Boolean) {
     val h = getChildAt(0)?.height ?: 0
-    scrollToPx(scrollX, max(0, h - height), animated)
+    scrollToPx(scrollX, expo.modules.svelteengine.KeyboardRules.endOffset(h, height, paddingTop, paddingBottom), animated)
   }
 
   override fun flashIndicators() {
@@ -698,7 +699,7 @@ class EngineHScroll(context: Context) : HorizontalScrollView(context), EngineNod
 
   override fun scrollToEndPx(animated: Boolean) {
     val w = getChildAt(0)?.width ?: 0
-    scrollToPx(max(0, w - width), scrollY, animated)
+    scrollToPx(expo.modules.svelteengine.KeyboardRules.endOffset(w, width, paddingLeft, paddingRight), scrollY, animated)
   }
 
   override fun flashIndicators() {

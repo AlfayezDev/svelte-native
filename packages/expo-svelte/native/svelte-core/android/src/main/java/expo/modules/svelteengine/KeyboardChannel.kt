@@ -47,12 +47,6 @@ internal class ReanimatedKeyboard(private val deliver: (state: Int, px: Int) -> 
     deliver(state, px)
   }
 
-  /** The animation that was running will not end (its window went): the next one starts from the state the keyboard is in. */
-  fun abandon() {
-    active = 0
-    pending = false
-  }
-
   /** The keyboard has another height with no animation (another keyboard, a layout): the state is the one the height gives, an open keyboard stays open, and the height is told. */
   fun settle(height: Int) {
     px = height
@@ -159,12 +153,6 @@ internal class KeyboardChannel(
     if (px > 0) persistent = px
     reanimated.settle(px)
     raw(SETTLE, px)
-  }
-
-  /** The window went with an animation running: nothing will end it. */
-  fun reset() {
-    moving = false
-    reanimated.abandon()
   }
 
   private fun onMain(block: () -> Unit) {

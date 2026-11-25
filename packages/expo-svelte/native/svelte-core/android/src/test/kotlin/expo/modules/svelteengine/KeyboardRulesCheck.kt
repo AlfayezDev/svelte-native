@@ -396,14 +396,158 @@ private fun channel() {
   rig.channel.start(1050); rig.channel.frame(525); rig.channel.frame(1050)
   expect("the bad one is dropped once", rig.dropped, listOf(bad))
   expect("the others go on", whole.toList(), listOf("1:200", "1:400"))
-  // The window goes in the middle of an animation: the next starts from the state the keyboard is in, not as the turn of a running one.
-  rig = Rig(); whole = mutableListOf()
-  rig.reanimated(true, whole)
-  rig.channel.start(1050); rig.channel.frame(500)
-  rig.channel.reset()
-  whole.clear()
-  rig.channel.start(0); rig.channel.frame(300)
-  expect("after a reset a hide is a hide", whole.toList(), listOf("3:114"))
+}
+
+/** A sink that records what the followers are told, and an optional channel behind it for the state Reanimated's callers are given. */
+private class Tape(val channel: KeyboardChannel? = null) : KeyboardSink {
+  val calls = ArrayList<String>()
+  override fun start(target: Int) { calls.add("start $target"); channel?.start(target) }
+  override fun progress(px: Int) { calls.add("progress $px"); channel?.frame(px) }
+  override fun end(px: Int) { calls.add("end $px"); channel?.end(px) }
+  override fun settle(px: Int) { calls.add("settle $px"); channel?.settle(px) }
+}
+
+/**
+ * How the engine hears the keyboard's animations (`Insets` forwards each step of the platform's callback to a session), and what is left of one that nothing ends: the end
+ * is lost with the last frame at the target (the window went, the watchdog gave up), and the followers are ended there, not left in the middle of a move.
+ */
+private fun session() {
+  var tape = Tape()
+  var session = KeyboardSession(tape)
+  // A whole animation.
+  session.prepare(0); session.start(750, 1); session.frame(300, 2); session.frame(750, 3)
+  expect("busy until the end", session.busy, true)
+  expect("the end settles it at what the insets say", session.end(4) { 750 }, true)
+  expect("what the followers heard", tape.calls.toList(), listOf("start 750", "progress 300", "progress 750", "end 750"))
+  expect("not busy", session.busy, false)
+  // The end is lost with the last frame at the target: the watchdog heals, and the followers are ended (a settle would be ignored: the height is already 750).
+  tape = Tape(); session = KeyboardSession(tape)
+  session.prepare(0); session.start(750, 1); session.frame(750, 2)
+  expect("nothing for two seconds", session.stuck(2500, 2000), true)
+  session.heal(750)
+  expect("healed: the followers are ended, not left in the middle", tape.calls.toList(), listOf("start 750", "progress 750", "end 750"))
+  expect("and the session is idle", session.busy, false)
+  // A hide that was lost the same way ends closed.
+  tape = Tape(); session = KeyboardSession(tape)
+  session.prepare(0); session.start(0, 1); session.frame(300, 2)
+  session.heal(0)
+  expect("a lost hide ends closed", tape.calls.toList(), listOf("start 0", "progress 300", "end 0"))
+  // Prepared and never started: nothing began, so there is nothing to end, and the insets are settled.
+  tape = Tape(); session = KeyboardSession(tape)
+  session.prepare(0)
+  expect("stuck", session.stuck(3000, 2000), true)
+  session.heal(750)
+  expect("a prepared animation that never started is a settle", tape.calls.toList(), listOf("settle 750"))
+  // The window goes in the middle of a move: the followers are left where the last frame was.
+  tape = Tape(); session = KeyboardSession(tape)
+  session.prepare(0); session.start(750, 1); session.frame(400, 2)
+  session.heal(session.last)
+  expect("a window that goes ends the move at the last frame", tape.calls.toList(), listOf("start 750", "progress 400", "end 400"))
+  // The keyboard turns around, the old end after the new start: one end for the two.
+  tape = Tape(); session = KeyboardSession(tape)
+  session.prepare(0); session.start(750, 1); session.frame(300, 2)
+  session.prepare(3); session.start(0, 4)
+  expect("the old animation's end does not settle it", session.end(5) { 300 }, false)
+  session.frame(100, 6)
+  expect("the last one does", session.end(7) { 0 }, true)
+  expect("turned around: two starts, one end", tape.calls.toList(), listOf("start 750", "progress 300", "start 0", "progress 100", "end 0"))
+  // The insets change with no animation: told as a settle, except while an animation runs.
+  tape = Tape(); session = KeyboardSession(tape)
+  session.idle(750)
+  session.prepare(0); session.idle(900)
+  expect("idle settles, busy does not", tape.calls.toList(), listOf("settle 750"))
+  // What `useAnimatedKeyboard` is told after a healed move: the state it ends in is the keyboard's, not opening or closing for good.
+  val rig = Rig(); val seen = mutableListOf<String>()
+  rig.reanimated(true, seen)
+  val live = Tape(rig.channel); session = KeyboardSession(live)
+  session.prepare(0); session.start(1050, 1); session.frame(1050, 2)
+  session.heal(1050)
+  expect("a lost end leaves Reanimated's callers open", seen.toList(), listOf("1:400", "2:400"))
+  seen.clear()
+  session.prepare(10); session.start(0, 11); session.frame(0, 12)
+  session.heal(0)
+  expect("and a lost hide closed", seen.toList(), listOf("3:0", "4:0"))
+}
+
+/** The keyboard changes height while it is up, with no animation (an emoji pane over the letters). */
+private fun resize() {
+  val viewport = 1500
+  val content = 4000
+  val threshold = 53
+  // A chat at its end: opened to 750 it is at 3250. A resize to 900 lifts it by the 150 more, which is the end of the range.
+  var lift = ChatLift(ChatLift.ALWAYS, 0, threshold)
+  lift.start(750, 2500, viewport, content); lift.move(750, 2500, viewport, content); lift.end(750, 3250, viewport, content)
+  expect("at the end: the 150 more", lift.resize(900, 3250, viewport, content), 3400)
+  expect("the room is the new height's", lift.padding, 900)
+  lift.start(0, 3400, viewport, content)
+  expect("and the close goes back to where it was", lift.move(0, 3400, viewport, content), 2500)
+  // Anywhere else in the list the content is lifted by the difference only, not by the whole 900 again from where the lift left it (it went to 2150 before).
+  lift = ChatLift(ChatLift.ALWAYS, 0, threshold)
+  lift.start(750, 500, viewport, content); lift.move(750, 500, viewport, content); lift.end(750, 1250, viewport, content)
+  expect("mid list: only the difference", lift.resize(900, 1250, viewport, content), 1400)
+  lift.start(0, 1400, viewport, content)
+  expect("mid list: the close goes back to where the list was", lift.move(0, 1400, viewport, content), 500)
+  // The same change as an animation (the keyboard goes from 750 to 900 as a keyboard of another height comes in): the frames are the heights, and the content goes by the difference.
+  lift = ChatLift(ChatLift.ALWAYS, 0, threshold)
+  lift.start(750, 500, viewport, content); lift.move(750, 500, viewport, content); lift.end(750, 1250, viewport, content)
+  lift.start(900, 1250, viewport, content)
+  expect("animated, first frame: where it is", lift.move(750, 1250, viewport, content), 1250)
+  expect("animated, last frame: 150 more", lift.move(900, 1250, viewport, content), 1400)
+  lift.end(900, 1400, viewport, content)
+  lift.start(0, 1400, viewport, content)
+  expect("animated: the close goes back to where the list was", lift.move(0, 1400, viewport, content), 500)
+  // Smaller, as an animation, at the end of the list: the range shrinks with the room and the content goes down with it.
+  lift = ChatLift(ChatLift.ALWAYS, 0, threshold)
+  lift.start(900, 2500, viewport, content); lift.move(900, 2500, viewport, content); lift.end(900, 3400, viewport, content)
+  lift.start(750, 3400, viewport, content)
+  expect("animated smaller: the first frame is where it is", lift.move(900, 3400, viewport, content), 3400)
+  expect("animated smaller: the last frame is 150 down", lift.move(750, 3400, viewport, content), 3250)
+  // A list that stayed (`whenAtEnd` up the list) stays when the keyboard goes to another height.
+  lift = ChatLift(ChatLift.WHEN_AT_END, 0, threshold)
+  lift.start(750, 500, viewport, content); lift.move(750, 500, viewport, content); lift.end(750, 500, viewport, content)
+  lift.start(900, 500, viewport, content)
+  expect("animated, not lifting: no move", lift.move(900, 500, viewport, content), null)
+  // Smaller: the content goes down by the difference.
+  lift = ChatLift(ChatLift.ALWAYS, 0, threshold)
+  lift.start(900, 500, viewport, content); lift.move(900, 500, viewport, content); lift.end(900, 1400, viewport, content)
+  expect("a smaller keyboard", lift.resize(750, 1400, viewport, content), 1250)
+  expect("its room", lift.padding, 750)
+  // A list that does not lift keeps its place, and has the new room.
+  lift = ChatLift(ChatLift.WHEN_AT_END, 0, threshold)
+  lift.start(750, 500, viewport, content); lift.move(750, 500, viewport, content); lift.end(750, 500, viewport, content)
+  expect("whenAtEnd up the list: stays", lift.resize(900, 500, viewport, content), null)
+  expect("whenAtEnd up the list: the room", lift.padding, 900)
+  // With an offset (a tab bar under the list) the difference is the one of the effective heights.
+  lift = ChatLift(ChatLift.ALWAYS, 50, threshold)
+  lift.start(750, 500, viewport, content); lift.move(750, 500, viewport, content); lift.end(750, 1200, viewport, content)
+  expect("with an offset: 850 less 50 is 800, 750 less 50 is 700", lift.resize(850, 1200, viewport, content), 1300)
+  // The aware scroll: the input is brought above the new keyboard from where the scroll view is, and the room is the new one.
+  val aware = AwareScroll(0, 0, true)
+  aware.start(1000, 400, 1700, 2400); aware.end(1000, 700, 1700, 2400)
+  expect("aware: the input that is 100 px under the new keyboard's top", aware.resize(1200, 700, 1500, 2400), 1000)
+  expect("aware: the room", aware.padding, 1200)
+  expect("aware: no input has the focus", aware.resize(1100, 1000, -1, 2400), null)
+}
+
+/** A view that avoids the keyboard is registered again with another offset: its overlap is worked out with the offset it has now. */
+private fun stickies() {
+  val map = HashMap<Int, Sticky>()
+  // The keyboard covers the anchor by its bottom edge less the keyboard's top and the offset the view is short of it (px here, as the drive passes it).
+  val overlap = { sticky: Sticky, target: Int -> maxOf(2000.0 - (2400 - target - sticky.closed), 0.0) }
+  val first = Sticky.register(map, 3, 10.0, 0.0, true, true, 9, 0, overlap)
+  expect("registered with the keyboard down: no overlap yet", first.overlap, 0.0)
+  val again = Sticky.register(map, 3, 60.0, 0.0, true, true, 9, 700, overlap)
+  expect("registered again with the keyboard up: the same view", again === first, true)
+  near("its overlap uses the new offset, 60, not the old one, 10", again.overlap, 360.0)
+  expect("a view that does not avoid has none", Sticky.register(map, 4, 0.0, 34.0, true, false, 0, 700, overlap).overlap, 0.0)
+}
+
+/** Where `scrollToEnd` goes: the room at the bottom is part of the range. */
+private fun scrollEnd() {
+  expect("no room", KeyboardRules.endOffset(4000, 1500, 0, 0), 2500)
+  expect("the keyboard's room under the content", KeyboardRules.endOffset(4000, 1500, 0, 883), 3383)
+  expect("room at both ends", KeyboardRules.endOffset(4000, 1500, 275, 883), 3658)
+  expect("a short content stays at the top", KeyboardRules.endOffset(900, 1500, 0, 0), 0)
 }
 
 private fun read(main: File, name: String) = File(main, name).readText()
@@ -411,11 +555,10 @@ private fun read(main: File, name: String) = File(main, name).readText()
 private fun wiring(main: String) {
   val dir = File(main)
   val insets = read(dir, "Insets.kt")
-  expect("the IME's start reaches the drive", insets.contains("drive.start(target)"), true)
-  expect("every frame of the IME's animation reaches the drive", insets.contains("drive.progress("), true)
   expect("only the IME's animation does", insets.contains("runningAnimations.any { it.typeMask and WindowInsetsCompat.Type.ime() != 0 }"), true)
-  expect("its end reaches the drive", insets.contains("drive.end(px)"), true)
-  expect("a change with no animation reaches it too", insets.contains("drive.settle(px)"), true)
+  // What the session does with them is checked on its own (`session()`); here, that Insets tells it every step, and heals through it where an end can be lost.
+  expect("each step of an IME animation, the insets with no animation, the watchdog and the window's going go through the session", listOf("session.prepare(now())", "session.start(imeOverlap(), now())", "session.frame(", "session.end(now()) { imeOverlap() }", "session.idle(imeOverlap())", "session.stuck(now(), STUCK_MS)", "session.heal(imeOverlap())", "session.heal(session.last)").all { insets.contains(it) }, true)
+  expect("the watchdog stops with the tracker", insets.substringAfter("fun uninstall() {").substringBefore("}").contains("root.removeCallbacks(watchdog)"), true)
   expect("the record says when the keyboard is moving", insets.contains("\"keyboardAnimating\" to animating"), true)
   val props = read(dir, "Props.kt")
   expect("a commit's translation keeps the keyboard's move", props.contains("view.translationY = ty + st.drivenY"), true)
@@ -430,16 +573,15 @@ private fun wiring(main: String) {
   expect("createKeyboardMotion asks for the engine's own frames", module.contains("Function(\"keyboardMotionNext\")"), true)
   val scroll = read(dir, "views/EngineScroll.kt")
   expect("a watched scroll view tells the drive of each scroll and layout", scroll.split("watcher?.invoke()").size - 1, 2)
+  expect("scrollToEnd goes to the end of the room too, in both scroll views", scroll.split("KeyboardRules.endOffset(").size - 1, 2)
   expect("a pooled scroll view forgets the room made at its bottom", scroll.contains("if (paddingBottom != 0) setPadding(paddingLeft, paddingTop, paddingRight, 0)"), true)
-  expect("a running animation is counted, and the end of the last one settles", insets.contains("frames.prepare(now())") && insets.contains("if (!frames.end(now())) return") && insets.contains("frames.frame(") && insets.contains("frames.start(target, now())"), true)
   expect("a layout changes where a view that avoids the keyboard is", insets.contains("drive.layoutChanged()"), true)
   expect("the navigation bar Reanimated's callers are told of is the one the overlay does not cover", insets.contains("drive.navigationBar = {"), true)
   expect("the coordinates of the keyboard's top are the overlay's", read(dir, "MountingManager.kt").contains("root.getLocationInWindow(at)"), true)
   val drive = read(dir, "KeyboardDrive.kt")
   // The tree rules (`KeyboardTree`) are checked above on their own; here, that the drive asks them, and in the places where a follower is moved.
-  expect("a view in a modal is left to the modal", drive.contains("KeyboardTree.unlessModal(inModal(view), asked)") && drive.contains("KeyboardTree.hasAncestor<View>(view, { it.parent as? View }, { it is ModalLayer })") && drive.split("!inModal(view)").size - 1 >= 3, true)
+  expect("a view in a modal is left to the modal", drive.contains("KeyboardTree.unlessModal(inModal(view), asked)") && drive.contains("KeyboardTree.hasAncestor<View>(view, { it.parent as? View }, { it is ModalLayer })") && drive.split("!inModal(view)").size - 1 == 4, true)
   expect("what registered before its modal is put in its place is left alone at the end of the batch", drive.contains("fun placed()") && read(dir, "MountingManager.kt").contains("if (insert > 0) keyboard.placed()"), true)
-  expect("a keyboard that nothing ends is given up and the window's going resets the drive", insets.contains("frames.stuck(now(), STUCK_MS)") && insets.contains("frames.reset(); drive.reset()"), true)
   expect("the room is outside the clip, as the keyboard's scroll decorator makes it", drive.contains("view.clipToPadding = false"), true)
 }
 
@@ -449,6 +591,10 @@ fun main(args: Array<String>) {
   aware()
   frames()
   channel()
+  session()
+  resize()
+  stickies()
+  scrollEnd()
   inputs()
   modal()
   reanimated(args.getOrNull(1) ?: error("usage: KeyboardRulesCheck <main directory> <vendor/react-native-reanimated>"))

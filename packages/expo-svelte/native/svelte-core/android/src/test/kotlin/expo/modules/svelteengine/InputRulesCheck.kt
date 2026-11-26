@@ -51,15 +51,17 @@ private fun againstEngineInput(source: String) {
   expect("EngineInput.applyInputType takes the input type from InputRules.inputType, with the setting the view kept", text.contains("val type = InputRules.inputType(v.keyboard, v.secure, v.capitalize, autoCorrect, v.multiline)"), true)
   expect("and computes none of the flags itself any more", text.substringAfter("private fun applyInputType(").substringBefore("private fun applyCursorTint").contains("InputType.TYPE_TEXT_FLAG_"), false)
   val applying = text.substringAfter("private fun applyInputType(").substringBefore("private fun applyCursorTint")
-  expect("a view the platform kept single-line is made multi-line by hand, as React Native's multiline asks for any class", applying.contains("if (InputRules.platformKeepsSingleLine(type)) { setSingleLine(false)"), true)
-  expect("and the masking setSingleLine(false) removed is set again for a password type, after it", applying.indexOf("{ setSingleLine(false)") in 0 until applying.indexOf("if (InputRules.isPassword(type)) transformationMethod = PasswordTransformationMethod.getInstance()"), true)
+  expect("a view the platform kept single-line is made multi-line by hand, as React Native's multiline asks for any class", applying.contains("if (InputRules.platformKeepsSingleLine(type)) setSingleLine(false)"), true)
+  expect("and the masking is decided after it (it takes the masking away), by the rules, from what the platform left: a secure field is masked whatever the type says, and one that is not is not", applying.indexOf("setSingleLine(false)") in 0 until applying.indexOf("val wanted = InputRules.transformationFor(v.secure, v.keyboard, type, current)") && applying.contains("val current = when (transformationMethod) { is PasswordTransformationMethod -> InputRules.Transformation.PASSWORD is SingleLineTransformationMethod -> InputRules.Transformation.SINGLE_LINE else -> InputRules.Transformation.NONE }"), true)
+  expect("and not by the platform's predicate on the type any more (React Native's flags for a secure email, phone or url field are no password type to it)", applying.contains("isPassword("), false)
   // Each swap sets the text again and fires afterTextChanged with the selection at (0, 0): a number password made multi-line swaps three times. None of it is the user's.
   val guarded = applying.substringAfter("val was = settingText settingText = true try {").substringBefore("} finally { settingText = was }")
   expect("the type swaps run with settingText set, and it is put back as it was in a finally", applying.contains("val was = settingText settingText = true try {") && applying.contains("} finally { settingText = was }"), true)
-  for (inside in listOf("inputType = type", "setSingleLine(false)", "transformationMethod = PasswordTransformationMethod.getInstance()", "applyTypeface(family, weight, italic)", "setSelection(start, end)"))
+  for (inside in listOf("inputType = type", "setSingleLine(false)", "transformationMethod = when (wanted)", "applyTypeface(family, weight, italic)", "setSelection(start, end)"))
     expect("$inside is inside the guarded block, so it sends neither a change nor a selection event", guarded.contains(inside), true)
   expect("the text watcher and the selection listener both skip while settingText is set", text.contains("if (!settingText && created) {") && text.contains("if (!created || settingText ||"), true)
-  expect("the masking is PasswordTransformationMethod's", applying.contains("transformationMethod = PasswordTransformationMethod.getInstance()") && text.contains("import android.text.method.PasswordTransformationMethod"), true)
+  expect("the masking is PasswordTransformationMethod's, the unmasked single-line one SingleLineTransformationMethod's, and the other none", applying.contains("InputRules.Transformation.PASSWORD -> PasswordTransformationMethod.getInstance()") && applying.contains("InputRules.Transformation.SINGLE_LINE -> SingleLineTransformationMethod.getInstance()") && applying.contains("InputRules.Transformation.NONE -> null") && text.contains("import android.text.method.PasswordTransformationMethod") && text.contains("import android.text.method.SingleLineTransformationMethod"), true)
+  expect("an update that changes nothing in the type leaves the field alone: the masking is a function of the type", applying.contains("if (type == inputTypeKey) return"), true)
   expect("EngineInput keeps the setting an update carried", text.contains("autoCorrect = InputRules.autoCorrectAfter(autoCorrect, v.autoCorrect)"), true)
 }
 
@@ -308,6 +310,115 @@ private fun inputTypeAgainstReactNative(source: String) {
   expect("RN: reconcileAutoCapitalize and the staged type are committed after all the setters", text.contains("reconcileAutoCapitalize(view) view.commitStagedInputType()"), true)
 }
 
+/**
+ * What `TextView` does with a transformation method on `setInputType` and `setSingleLine` (AOSP's `TextView.setInputType(int)`, `applySingleLine`), for the three of them that matter: the masking, the single-line
+ * method and none. The platform masks a view only for a type its own `isPasswordInputType` says is a password, and lets go of a masking only when the type it was set for was one.
+ */
+private class FakeTextView(var currentType: Int, var singleLine: Boolean, var transformation: InputRules.Transformation) {
+  private fun password(type: Int) = InputRules.isPassword(type)
+  private fun visiblePassword(type: Int) = (type and (0xF or 0xFF0)) == (0x1 or 0x90)
+  private fun multilineType(type: Int) = (type and (0xF or 0x20000)) == (0x1 or 0x20000)
+  fun applyType(type: Int) {
+    val wasPassword = password(currentType)
+    val wasVisible = visiblePassword(currentType)
+    currentType = type
+    val isPassword = password(type)
+    val isVisible = visiblePassword(type)
+    var force = false
+    if (isPassword) transformation = InputRules.Transformation.PASSWORD
+    else if (isVisible || wasPassword || wasVisible) { if (transformation == InputRules.Transformation.PASSWORD) force = true }
+    val single = !multilineType(type)
+    if (singleLine != single || force) applySingleLine(single, !isPassword)
+  }
+  private fun applySingleLine(single: Boolean, applyTransformation: Boolean) {
+    singleLine = single
+    if (applyTransformation) transformation = if (single) InputRules.Transformation.SINGLE_LINE else InputRules.Transformation.NONE
+  }
+  fun makeSingleLine(single: Boolean) = applySingleLine(single, true)
+}
+
+/** `EngineInput.applyInputType`, with [engine] true; false is what it did before: the platform's masking and nothing more (after a multi-line number password's masking set again). */
+private fun applyLikeEngine(view: FakeTextView, keyboard: Int, secure: Boolean, multiline: Boolean, engine: Boolean = true) {
+  val type = InputRules.inputType(keyboard, secure, 3, InputRules.AUTO_CORRECT_CLEARED, multiline)
+  view.applyType(type)
+  if (InputRules.platformKeepsSingleLine(type)) {
+    view.makeSingleLine(false)
+    if (!engine && InputRules.isPassword(type)) view.transformation = InputRules.Transformation.PASSWORD
+  }
+  if (engine) view.transformation = InputRules.transformationFor(secure, keyboard, type, view.transformation)
+}
+
+private fun masking() {
+  val keyboards = (0..7).toList() + 99
+  val states = keyboards.flatMap { keyboard -> listOf(false, true).flatMap { secure -> listOf(false, true).map { multiline -> Triple(keyboard, secure, multiline) } } }
+  // The rows of the issue: React Native's flags for a secure field are kept, and the platform masks only one of them.
+  fun typeOf(keyboard: Int, secure: Boolean = true, multiline: Boolean = false) = InputRules.inputType(keyboard, secure, 3, InputRules.AUTO_CORRECT_CLEARED, multiline)
+  expect("React Native's flags for a secure email field are kept", typeOf(InputRules.KEYBOARD_EMAIL), 0x40a1)
+  expect("for a secure phone field", typeOf(InputRules.KEYBOARD_PHONE), 0x13)
+  expect("for a secure url field", typeOf(InputRules.KEYBOARD_URL), 0x80)
+  expect("for the default one", typeOf(0), 0x4081)
+  expect("for a number-pad one", typeOf(InputRules.KEYBOARD_NUMBER_PAD), 0x12)
+  expect("for visible-password", typeOf(InputRules.KEYBOARD_VISIBLE_PASSWORD), 0x90)
+  for (keyboard in listOf(InputRules.KEYBOARD_EMAIL, InputRules.KEYBOARD_PHONE, InputRules.KEYBOARD_URL))
+    expect("the platform alone leaves a secure field with keyboard $keyboard unmasked, which is why the field masks by itself", InputRules.isPassword(typeOf(keyboard)), false)
+  // Every keyboard, secure or not, single- or multi-line, mounted: masked exactly when it is secure and not visible-password.
+  for ((keyboard, secure, multiline) in states) for (start in listOf(FakeTextView(0x20001, false, InputRules.Transformation.NONE), FakeTextView(0x1, true, InputRules.Transformation.SINGLE_LINE))) {
+    applyLikeEngine(start, keyboard, secure, multiline)
+    expect("keyboard $keyboard, secure $secure, multiline $multiline, mounted: masked", start.transformation == InputRules.Transformation.PASSWORD, InputRules.masks(secure, keyboard))
+  }
+  // Every change of props (a keyboard changing at runtime, secureTextEntry on and off, multiline on and off) from every state to every state.
+  var wrong = 0
+  var transitions = 0
+  for (before in states) for (after in states) {
+    val view = FakeTextView(0x20001, false, InputRules.Transformation.NONE)
+    applyLikeEngine(view, before.first, before.second, before.third)
+    applyLikeEngine(view, after.first, after.second, after.third)
+    transitions++
+    if ((view.transformation == InputRules.Transformation.PASSWORD) != InputRules.masks(after.second, after.first)) wrong++
+  }
+  expect("$transitions changes of props, from every keyboard, secure and multiline state to every other: the masking is what the new props say", wrong, 0)
+  // What the engine did before (the platform's masking alone) fails exactly the changes this is for, and the ones of the issue are among them.
+  var failedBefore = 0
+  for (before in states) for (after in states) {
+    val view = FakeTextView(0x20001, false, InputRules.Transformation.NONE)
+    applyLikeEngine(view, before.first, before.second, before.third, engine = false)
+    applyLikeEngine(view, after.first, after.second, after.third, engine = false)
+    if ((view.transformation == InputRules.Transformation.PASSWORD) != InputRules.masks(after.second, after.first)) failedBefore++
+  }
+  expect("the platform's masking alone is wrong for some of them (the check can fail)", failedBefore > 0, true)
+  for (keyboard in listOf(InputRules.KEYBOARD_EMAIL, InputRules.KEYBOARD_PHONE, InputRules.KEYBOARD_URL)) {
+    val mounted = FakeTextView(0x20001, false, InputRules.Transformation.NONE)
+    applyLikeEngine(mounted, keyboard, true, false, engine = false)
+    expect("keyboard $keyboard, secure, the platform alone: shows the text", mounted.transformation == InputRules.Transformation.PASSWORD, false)
+    val changed = FakeTextView(0x20001, false, InputRules.Transformation.NONE)
+    applyLikeEngine(changed, 0, true, false, engine = false)
+    applyLikeEngine(changed, keyboard, true, false, engine = false)
+    expect("keyboard $keyboard, changed from the default secure field, the platform alone: unmasks it", changed.transformation == InputRules.Transformation.PASSWORD, false)
+    val withEngine = FakeTextView(0x20001, false, InputRules.Transformation.NONE)
+    applyLikeEngine(withEngine, 0, true, false)
+    applyLikeEngine(withEngine, keyboard, true, false)
+    expect("keyboard $keyboard, changed from the default secure field: still masked", withEngine.transformation, InputRules.Transformation.PASSWORD)
+  }
+  // Secure off unmasks, from every keyboard, and a field that is not masked is not left with a method that does not fit its lines.
+  for (keyboard in keyboards) for (multiline in listOf(false, true)) {
+    val view = FakeTextView(0x20001, false, InputRules.Transformation.NONE)
+    applyLikeEngine(view, keyboard, true, multiline)
+    applyLikeEngine(view, keyboard, false, multiline)
+    expect("keyboard $keyboard, multiline $multiline: secureTextEntry turned off unmasks", view.transformation == InputRules.Transformation.PASSWORD, false)
+    if (keyboard != InputRules.KEYBOARD_VISIBLE_PASSWORD) expect("keyboard $keyboard, multiline $multiline: and the method fits the lines", view.transformation, if (multiline) InputRules.Transformation.NONE else InputRules.Transformation.SINGLE_LINE)
+  }
+  // The engine returns early on a type it has seen: no two sets of props that differ in the masking have the same type, whatever else they say.
+  val maskOf = HashMap<Int, Boolean>()
+  var aliased = 0
+  for ((keyboard, secure, multiline) in states) for (capitalize in 0..3) for (autoCorrect in listOf(InputRules.AUTO_CORRECT_CLEARED, InputRules.AUTO_CORRECT_ON, InputRules.AUTO_CORRECT_OFF)) {
+    val type = InputRules.inputType(keyboard, secure, capitalize, autoCorrect, multiline)
+    val masks = InputRules.masks(secure, keyboard)
+    val seen = maskOf.getOrPut(type) { masks }
+    if (seen != masks) aliased++
+  }
+  expect("a type says whether the field is masked (the engine does not look at the props again when the type is the same)", aliased, 0)
+}
+
 fun main(args: Array<String>) {
   inputTypes(args.getOrNull(10))
   if (args.isNotEmpty()) inputTypeAgainstReactNative(args[0])
@@ -323,6 +434,7 @@ fun main(args: Array<String>) {
     watchersAgainstReactNative(args[0], args[5], args[6], args[7])
     watchersAgainstEngine(args[1], args[4], args[8], args[9])
   }
+  masking()
   val unset = InputRules.AUTO_CORRECT_CLEARED
   expect("a view starts unset", InputRules.autoCorrectAfter(unset, InputRules.AUTO_CORRECT_KEEP), unset)
   expect("false is a setting of its own", InputRules.autoCorrectAfter(unset, InputRules.AUTO_CORRECT_OFF), InputRules.AUTO_CORRECT_OFF)

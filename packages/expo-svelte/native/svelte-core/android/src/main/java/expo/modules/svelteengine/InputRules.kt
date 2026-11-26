@@ -140,6 +140,27 @@ object InputRules {
   }
 
   /**
+   * Whether a field masks its text: `secureTextEntry`, except under the `visible-password` keyboard, which wins over it (as it does in React Native's flags). Not a question for [isPassword] of
+   * the type: React Native's own flags for a secure field with the email, phone or url keyboard (`0x40a1`, `0x13`, `0x80`) are no password type to Android, whose `setInputType` then
+   * leaves the text unmasked (React Native shows it: a known gap of its own). A password shown in plain text is worse than a flag that differs, so the masking is the field's to set by itself.
+   */
+  fun masks(secure: Boolean, keyboard: Int): Boolean = secure && keyboard != KEYBOARD_VISIBLE_PASSWORD
+
+  /** What `TextView.getTransformationMethod` is: the masking, the single-line one (`SingleLineTransformationMethod`), or none. */
+  enum class Transformation { PASSWORD, SINGLE_LINE, NONE }
+
+  /**
+   * The transformation method a field has after an update: [current] is what the platform left it with after `setInputType(type)` (and `setSingleLine(false)` for a type it kept single-line).
+   * A field that [masks] is masked whatever the platform did. A field that does not is not: the platform lets go of a masking only when the type it was set for was a password type, and for a
+   * secure field with the email keyboard it was set by hand, so it is let go of by hand too (to the method a field of that type has: none when it has several lines, the single-line one when not).
+   */
+  fun transformationFor(secure: Boolean, keyboard: Int, type: Int, current: Transformation): Transformation = when {
+    masks(secure, keyboard) -> Transformation.PASSWORD
+    current == Transformation.PASSWORD -> if ((type and TYPE_TEXT_FLAG_MULTI_LINE) != 0) Transformation.NONE else Transformation.SINGLE_LINE
+    else -> current
+  }
+
+  /**
    * Whether the platform leaves a view of this [type] single-line although the type says multi-line: `TextView.setInputType` makes a view multi-line when the class is text and the flag is
    * set (`isMultilineInputType`), and React Native's `multiline` is the flag on any class. For a text class the platform already did what the flag asks (and kept the masking of a password
    * it set), so the view is made multi-line by hand only here.

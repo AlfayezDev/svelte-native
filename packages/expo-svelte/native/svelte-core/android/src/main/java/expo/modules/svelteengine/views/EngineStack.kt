@@ -8,6 +8,7 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
@@ -61,6 +62,78 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
   private var dragX = 0f
   private var tracker: VelocityTracker? = null
   private var predictive = false
+  /** How far from its place the screen a predictive back took over was drawn when the gesture began, in px on each axis: a push it cut short had not brought it in yet ([TransitionRules.takenOver]). */
+  private var takenX = 0f
+  private var takenY = 0f
+  /** The scale it had (a cancelled gesture springs back from the preview's scale, as low as 0.92). */
+  private var takenScale = 1f
+  /** The screen below, which the push moved with the screen on top, and where it was drawn: the cut puts it in place, and the gesture brings it there from where it was ([releaseBelow]). */
+  private var belowTaken: EngineScreen? = null
+  private var belowTakenX = 0f
+  /** The screen the gesture in progress previews: captured when it starts, so that a pop or a push during it (JavaScript's) does not make the steps move another screen ([TransitionRules.stillPreviewing]). */
+  private val previewTarget = TransitionRules.GestureTarget<EngineScreen>()
+  /** When the system gesture was abandoned (the stack changed in front of its screen): the end it still sends is its own only for a while ([TransitionRules.GestureTarget.onFinish]). */
+  private var abandonedAt = 0L
+  /** The screen a cancelled gesture is bringing back: while it springs, the screen below is still where the gesture left it, and it is put in place by the end of the spring or by whatever cancels it ([cancelRunning]). */
+  private var springBack: EngineScreen? = null
+  /** The screen the in-app edge swipe is dragging: captured when it claims the touch, like [previewTarget], so that a screen opened during the drag is not the one the rest of it moves, dismisses or restores. */
+  private val dragTarget = TransitionRules.GestureTarget<EngineScreen>()
+
+  /** The screen that is moving with [s] in a transition (below it, as a push or a pop moves it). */
+  private fun movedWith(s: EngineScreen): EngineScreen? {
+    for (i in 0 until childCount) {
+      val c = getChildAt(i) as? EngineScreen ?: continue
+      if (c.mover === s) return c
+    }
+    return null
+  }
+
+  /** The gesture is over: the screen below is in place, whatever was moving it. */
+  private fun releaseBelow() {
+    belowTaken?.let { it.animate().cancel(); it.translationX = 0f }
+    belowTaken = null
+  }
+
+  private fun abandonedFor() = SystemClock.uptimeMillis() - abandonedAt
+
+  /**
+   * The preview is of a screen that is not in front any more (JavaScript popped or pushed during the gesture), or the stack left the window: it is over. The screen it moved goes back where it
+   * rests, whole ([restoreAbandoned]), the one below it too, and the layer the gesture held is let go. Nothing of it is applied to the screen in front now.
+   */
+  private fun abandonPreview() {
+    val screen = previewTarget.screen
+    predictive = false
+    abandonedAt = SystemClock.uptimeMillis()
+    previewTarget.abandon()
+    releaseBelow()
+    if (screen != null) restoreAbandoned(screen)
+    releaseGesture()
+  }
+
+  /** The in-app edge swipe on a screen that is not in front any more: its drag ends, the screen it moved goes back to its place and the touch that is left moves nothing. */
+  private fun abandonDrag() {
+    val screen = dragTarget.screen
+    dragTarget.abandon()
+    if (screen != null) restoreAbandoned(screen)
+    releaseGesture()
+  }
+
+  /**
+   * A screen a gesture had moved, and that is not the gesture's any more, back at its rest: X 0, Y at its own rest (a sheet's offset, not 0), whole and unscaled. A screen another transition is moving
+   * (the push that opened over it moves it aside) is left to that transition, which owns its position; one that is leaving or gone is not touched.
+   */
+  private fun restoreAbandoned(s: EngineScreen) {
+    if (s.parent !== this || s.leaving) return
+    s.scaleX = 1f
+    s.scaleY = 1f
+    if (s.mover != null) {
+      // Another transition has it. One that moves it (a push that moves the screen below aside) owns its position; one that only fades it (the default's fade-through, a crossfade) does not, and the
+      // preview's offset goes now: it would stay through the fade and snap when the transition puts the screen back.
+      if (!s.movedByMover) { s.translationX = 0f; s.translationY = s.restY }
+      return
+    }
+    if (s.translationX != 0f || s.translationY != s.restY) animate(s, 0f, s.restY, 1f, 1f, 150L) { refresh() }
+  }
   private var lastTop: EngineScreen? = null
   /** The screen a gesture (predictive back, edge swipe) is moving: it is in a layer until the gesture has handed it to an animation. */
   private var gestureScreen: EngineScreen? = null
@@ -78,51 +151,106 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     gestureScreen = null
   }
 
+  /** The system's gesture has started and its end (a commit or a cancel) has not come: a back that comes with no start is a key (hardware, or the three buttons). */
+  private var systemGesture = false
+
   private val backCallback = object : OnBackPressedCallback(false) {
     override fun handleOnBackStarted(backEvent: BackEventCompat) {
+      systemGesture = true
       val top = top() ?: return
       if (!top.gestureEnabled || !top.dismissible) return
+      // The screen below a push that is cut is where the push had moved it, and the cut puts it in place at once; it is drawn there until the gesture brings it. A gesture that begins while
+      // another's cancel is still springing back carries that gesture's screen below, if it is one still: not the new top, not one that left or was removed ([TransitionRules.belowFor]).
+      val below = TransitionRules.belowFor(movedWith(top), belowTaken, top) { it.parent === this@EngineStack && !it.leaving }
+      if (belowTaken != null && belowTaken !== below) releaseBelow()
+      val belowX = below?.translationX ?: 0f
       freeUnder(top)
       cancelRunning(top)
       // A transition it cut short (a push still fading in) leaves the screen opaque: it follows the gesture whole.
       top.alpha = 1f
       top.transitioning = false
+      // It is drawn where the cut transition left it, and the preview goes on from there.
+      takenX = top.translationX
+      takenY = top.translationY - top.restY
+      takenScale = top.scaleX
+      belowTaken = below
+      belowTakenX = belowX
+      below?.translationX = belowX
       predictive = true
+      previewTarget.begin(top)
       holdGesture(top)
       refresh()
     }
 
     override fun handleOnBackProgressed(backEvent: BackEventCompat) {
-      val top = top()
-      if (!predictive || top == null) return
+      val shown = previewTarget.screen
+      if (!predictive || shown == null) return
+      if (previewTarget.onStep(top()) != TransitionRules.Step.MOVE) { abandonPreview(); return }
       val p = backEvent.progress
-      if (top is EngineSheet) {
+      belowTaken?.translationX = TransitionRules.takenAway(belowTakenX, p)
+      if (shown is EngineSheet) {
         // A sheet follows the gesture downwards.
-        top.translationY = top.restY + p * top.height * 0.25f
+        shown.translationY = TransitionRules.takenOver(shown.restY + p * shown.height * 0.25f, takenY, p)
         return
       }
-      top.translationX = p * width * 0.2f
-      top.pivotX = width / 2f
-      top.pivotY = height / 2f
-      top.scaleX = 1f - 0.08f * p
-      top.scaleY = 1f - 0.08f * p
+      shown.translationX = TransitionRules.takenOver(p * width * 0.2f, takenX, p)
+      shown.translationY = shown.restY + TransitionRules.takenAway(takenY, p)
+      shown.pivotX = width / 2f
+      shown.pivotY = height / 2f
+      shown.scaleX = TransitionRules.takenOver(1f - 0.08f * p, takenScale - 1f, p)
+      shown.scaleY = shown.scaleX
     }
 
     override fun handleOnBackPressed() {
+      // A key: no gesture is in progress, so whatever an abandoned gesture left (its end that went elsewhere) is not this key's to swallow.
+      if (!systemGesture) previewTarget.end()
+      systemGesture = false
+      val previewed = previewTarget.screen
+      val finish = previewTarget.onFinish(top(), committed = true, expired = abandonedFor() > ABANDONED_MS)
       predictive = false
-      // A sheet that is not dismissible takes the key and does nothing.
-      if (top()?.dismissible == false) {
+      previewTarget.end()
+      // The screen the gesture previewed is not in front any more (JavaScript opened a route or popped it meanwhile): it goes back to its rest, and the back the gesture asked for is not applied to
+      // what is in front now, which a second back would dismiss.
+      if (finish == TransitionRules.Finish.RESTORE) {
+        releaseBelow()
+        if (previewed != null) restoreAbandoned(previewed)
         releaseGesture()
         return
       }
+      // The gesture was abandoned when the stack changed (its screen went back to its rest then), and this is its end, which the system still sends: it applies to nothing. It is not a back key,
+      // which would dismiss the screen that opened.
+      if (finish == TransitionRules.Finish.ABANDONED) return
+      // A sheet that is not dismissible takes the key and does nothing.
+      if (top()?.dismissible == false) {
+        releaseBelow()
+        if (previewed != null) restoreAbandoned(previewed)
+        releaseGesture()
+        return
+      }
+      // The screen below comes into place over the exit, from where the gesture left it, and is in place for good when the exit ends ([dismissTop]).
       dismissTop()
       releaseGesture()
     }
 
     override fun handleOnBackCancelled() {
-      val top = top()
+      systemGesture = false
+      val previewed = previewTarget.screen
+      val finish = previewTarget.onFinish(top(), committed = false, expired = abandonedFor() > ABANDONED_MS)
       predictive = false
-      if (top != null) animate(top, 0f, top.restY, 1f, 1f, 150L) { refresh() }
+      previewTarget.end()
+      if (finish == TransitionRules.Finish.ABANDONED) return
+      if (finish == TransitionRules.Finish.SPRING && previewed != null) {
+        // The screen below is put in place with the end of the animation that brings this one back, or by whatever cancels it ([cancelRunning]): it is covered by then, and a strip of it that
+        // shows meanwhile does not move.
+        // Set after the animation starts: starting it cancels whatever ran on the screen, and the spring's own cancel path ([cancelRunning]) would put the screen below in place at once.
+        animate(previewed, 0f, previewed.restY, 1f, 1f, 150L) { springBack = null; releaseBelow(); refresh() }
+        // Only while it runs: with the animators off it ended (and put the screen below in place) before this line, and a spring that is not running would be cancelled by nothing.
+        if (previewed.running != null) springBack = previewed
+      } else {
+        // Its screen is not in front any more: it goes back to its rest, and what is in front is not restored in its place.
+        releaseBelow()
+        if (previewed != null) restoreAbandoned(previewed)
+      }
       releaseGesture()
       refresh()
     }
@@ -230,12 +358,29 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     refresh()
   }
 
+  override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+    super.onWindowFocusChanged(hasWindowFocus)
+    // A window that lost focus under a gesture may not send its end: the gesture is over.
+    if (!hasWindowFocus && previewTarget.open) { abandonPreview(); previewTarget.end() }
+  }
+
   override fun onDetachedFromWindow() {
     super.onDetachedFromWindow()
     attached.remove(this)
     backCallback.remove()
     backRegistered = false
-    releaseGesture()
+    // A gesture or a spring that was in progress is over with the window: nothing of it is held for the next one (the screen below a cut push stays displaced otherwise).
+    springBack = null
+    abandonPreview()
+    abandonDrag()
+    previewTarget.end()
+    dragTarget.end()
+    // A drag that was in progress when the stack left the window has no end to come: the touch state is reset, or the next touch would be swallowed by a drag that is not there.
+    dragging = false
+    edgeCandidate = false
+    tracker?.recycle()
+    tracker = null
+    downPointer.clear()
     // A landing may remove the screen (a pop cut short), so the list is taken first.
     val screens = (0 until childCount).mapNotNull { getChildAt(it) as? EngineScreen }
     for (s in screens) land(s)
@@ -303,7 +448,10 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
 
   private fun updateBackCallback() {
     ensureBackCallback()
-    backCallback.isEnabled = canDismiss()
+    val enabled = canDismiss()
+    // The callback is back (a sheet that could not be dismissed left) with no gesture on the screen: an abandoned gesture's end went to the sheet or nowhere, and the next back key is a key.
+    if (enabled && !backCallback.isEnabled && !predictive && previewTarget.screen == null) previewTarget.end()
+    backCallback.isEnabled = enabled
   }
 
   /**
@@ -340,6 +488,9 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     updateBackCallback()
     if (top !== lastTop) {
       lastTop = top
+      // A gesture that began on another screen is over the moment the stack changes in front (a push, a modal, a pop of JavaScript's): not at its next step.
+      if (previewTarget.onStackChange(top)) abandonPreview()
+      if (dragging && dragTarget.onStackChange(top)) abandonDrag()
       refreshBackCallbacks()
       SystemBars.invalidate(this)
     }
@@ -589,7 +740,8 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     }
     when (kind) {
       1 -> animate(s, s.translationX, s.translationY, 0f, 1f, duration, done)
-      2 -> animate(s, width.toFloat(), s.translationY, s.alpha, 1f, duration, done)
+      // Across the width, and to its place on the other axis: a gesture took a screen that slides in from the bottom here with what the preview left of its vertical offset.
+      2 -> animate(s, width.toFloat(), s.restY, s.alpha, 1f, duration, done)
       else -> animate(s, s.translationX, height.toFloat(), s.alpha, 1f, duration, done)
     }
   }
@@ -634,6 +786,7 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
       freeUnder(under)
       if (under.running != null) land(under)
       under.mover = s
+      under.movedByMover = m.moveUnder
       under.extendsEdge = m.extend && m.moveUnder
       // The surface under a fade is the coming screen's; a pop that goes on from a push keeps that push's, so the background does not change at the cut.
       under.silhouette = if (underFade == null) null else if (entering || resumed) s else under
@@ -683,6 +836,7 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     fun putBack() {
       if (under == null || (under.mover != null && under.mover !== s)) return
       under.mover = null
+      under.movedByMover = false
       under.extendsEdge = false
       under.silhouette = null
       under.veil = 0f
@@ -777,6 +931,8 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
   }
 
   private fun cancelRunning(s: EngineScreen) {
+    // The spring of a cancelled gesture ends here without its `done`: the screen below it, which the gesture left displaced, is put in place now.
+    if (s === springBack) { springBack = null; releaseBelow() }
     (s as? EngineSheet)?.cancelSettle()
     s.landing = null
     val running = s.running ?: return
@@ -807,7 +963,11 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     refresh()
     val remaining = if (kind == 2) 1f - s.translationX / max(1, width) else 1f
     val duration = max(120L, (DURATION * remaining).toLong())
+    // A commit comes at the progress the finger let go at, often before 1: the screen below, which the preview was bringing into place, goes the rest of the way over the exit, from where it is
+    // drawn (it jumped the whole of what was left at the commit), and is in place for good when the exit ends.
+    belowTaken?.let { it.animate().translationX(0f).setDuration(duration).setInterpolator(interpolator).start() }
     exitTo(s, kind, duration, moveUnder = !byGesture) {
+      releaseBelow()
       s.transitioning = false
       if (s.parent !== this) return@exitTo
       if (!s.dismissed) {
@@ -849,13 +1009,16 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
 
   override fun claims(dx: Float, dy: Float) = swipesBack(dx, dy)
 
-  override fun claim(ev: MotionEvent) = startDrag(ev)
+  // The swipe is measured from the DOWN, so the sample the claim was made at does not matter to it.
+  override fun claim(ev: MotionEvent, sample: Int) = startDrag(ev)
 
   override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
     // A drag that the root claimed before the gesture handlers saw the move: Android cancels the child now.
     if (dragging && ev.actionMasked != MotionEvent.ACTION_DOWN) return true
     when (ev.actionMasked) {
       MotionEvent.ACTION_DOWN -> {
+        // A finger on the app means no system gesture is in progress (the system owns the touches of one): an abandoned one whose end never came is over.
+        if (!predictive) previewTarget.end()
         downPointer.down(ev.getPointerId(0))
         downX = ev.x; downY = ev.y
         edgeCandidate = ev.x <= edge && canDrag()
@@ -894,7 +1057,8 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     parent?.requestDisallowInterceptTouchEvent(true)
     dragging = true
     dragX = 0f
-    top()?.let { freeUnder(it); holdGesture(it) }
+    dragTarget.begin(top())
+    dragTarget.screen?.let { freeUnder(it); holdGesture(it) }
     tracker?.recycle()
     tracker = VelocityTracker.obtain().also { it.addMovement(ev) }
     refresh()
@@ -903,15 +1067,17 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
   override fun onTouchEvent(event: MotionEvent): Boolean {
     if (!dragging) return super.onTouchEvent(event)
     tracker?.addMovement(event)
-    val top = top()
     when (event.actionMasked) {
       MotionEvent.ACTION_POINTER_UP -> downPointer.up(event.getPointerId(event.actionIndex))
       MotionEvent.ACTION_MOVE -> {
+        // The screen the drag began on, not the one in front: a screen opened during the drag (JavaScript's push, a modal, a sheet that cannot be dismissed) is not moved, dismissed or restored by it.
+        if (dragTarget.onStep(top()) == TransitionRules.Step.ABANDON) abandonDrag()
         // The drag follows the finger that started it; while that finger is up the screen stays where it was left.
         val index = event.findPointerIndex(downPointer.id)
-        if (index >= 0) {
+        val moved = dragTarget.screen
+        if (index >= 0 && moved != null) {
           dragX = (event.getX(index) - downX).coerceIn(0f, width.toFloat())
-          top?.translationX = dragX
+          moved.translationX = dragX
         }
       }
       MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -924,13 +1090,24 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
         edgeCandidate = false
         downPointer.clear()
         parent?.requestDisallowInterceptTouchEvent(false)
-        if (top != null && event.actionMasked == MotionEvent.ACTION_UP && (dragX > width / 3f || velocity > FLING_DP)) {
-          dismissTop(dragged = true)
-        } else if (top != null) {
-          top.transitioning = true
-          animate(top, 0f, 0f, 1f, 1f, 150L) { top.transitioning = false; refresh() }
-          refresh()
-        } else refresh()
+        val dragged = dragTarget.screen
+        val commits = event.actionMasked == MotionEvent.ACTION_UP && (dragX > width / 3f || velocity > FLING_DP)
+        val finish = dragTarget.onFinish(top(), commits)
+        dragTarget.end()
+        when (finish) {
+          // The screen the drag began on is not in front any more: it goes back to its rest, and nothing is dismissed or restored in front.
+          TransitionRules.Finish.RESTORE -> { if (dragged != null) restoreAbandoned(dragged); refresh() }
+          TransitionRules.Finish.DISMISS -> dismissTop(dragged = true)
+          TransitionRules.Finish.SPRING -> {
+            val back = dragged
+            if (back != null) {
+              back.transitioning = true
+              animate(back, 0f, back.restY, 1f, 1f, 150L) { back.transitioning = false; refresh() }
+            }
+            refresh()
+          }
+          TransitionRules.Finish.NONE, TransitionRules.Finish.ABANDONED -> refresh()
+        }
         // The animation that took over holds its own layer.
         releaseGesture()
       }
@@ -945,6 +1122,8 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     private const val EDGE_DP = 24f
     private const val FLING_DP = 800f
     private const val RESTORE_MS = 1500L
+    /** How long after the stack changed under a gesture its end is still taken for the gesture's own (a held finger can be long; a key after this is a key). */
+    private const val ABANDONED_MS = 30_000L
     /** What part of a screen's surface [drawSurface] draws children for: those along its right edge, along its left edge, or across it. */
     private const val REACH_RIGHT = 0
     private const val REACH_LEFT = 1

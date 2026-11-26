@@ -535,7 +535,7 @@ Every prop besides `component` goes to the native view as it is, so you pass the
 
 ## Touches
 
-A touch inside a native view goes to that view, not to your JavaScript. A tap on a map moves the map; a tap on a web page goes to the page. To handle the touches of a native view's frame in Svelte instead, give it `pointerEvents="box-only"`.
+A touch inside a native view goes to that view, not to your JavaScript. A tap on a map moves the map; a tap on a web page goes to the page; a pan on a map inside a `Pressable` does not press it. To handle the touches of a native view's frame in Svelte instead, give it `pointerEvents="box-only"`. On Android the touches of a few views go to your JavaScript as well: react-native-svg's [`Svg`](svg) and any view built on React Native's `ReactViewGroup` or Expo's `ExpoView` that takes no touch of its own (it declares no `onTouchEvent`, `dispatchTouchEvent` or `onInterceptTouchEvent`, nothing in it is clickable and nothing set a listener on it). A tap on one presses the `Pressable` around it, and the view still gets the touch. Every other view keeps its touches as before, whether or not it handles them itself: a WebView, a map, a video, a PDF view, a Lottie animation, and any view of a library that is not built on those two classes.
 
 Native views work inside [`List`](list) rows, sheets and modals.
 

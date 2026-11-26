@@ -1,4 +1,6 @@
 # This app's pnpm settings (pnpm reads them from this file; the app is its own workspace root).
+# pnpm cuts the name of a folder of node_modules/.pnpm that is longer than this to `limit - 33` characters and a hash: at 120 the library's folder, `expo-svelte@<version>_..._patch_hash=<hash>`, keeps its "=", which Android's prefab tool cannot take in a path; at 60 the cut is before it.
+virtualStoreDirMaxLength: 60
 allowBuilds:
   esbuild: true
 # expo depends on expo-modules-core by range (~58.1.0), so a fresh install takes the newest 58.1.x; the patch below is for 58.1.0 only.

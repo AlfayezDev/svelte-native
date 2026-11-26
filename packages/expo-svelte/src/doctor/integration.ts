@@ -29,12 +29,12 @@ export function metroFinding(appRoot: string): Finding {
 const pluginName = (entry: unknown): string | undefined => (typeof entry === "string" ? entry : Array.isArray(entry) && typeof entry[0] === "string" ? entry[0] : undefined);
 
 /**
- * Whether the app's Expo config lists the library's config plugin, by either of its names: the package's own name (its `app.plugin.js`, which Expo finds for a bare
- * package name), or that file's path `<library>/app.plugin`. In `app.json`'s `plugins`, or by name in an `app.config.*`. `<library>/expo` was a third name up to 0.4.0-rc.6;
+ * Whether the app's Expo config lists the library's config plugin, by any of its names: the package's own name (its `app.plugin.js`, which Expo finds for a bare
+ * package name), or that file's path `<library>/app.plugin` or its file name `<library>/app.plugin.js`. In `app.json`'s `plugins`, or by name in an `app.config.*`. `<library>/expo` was a third name up to 0.4.0-rc.6;
  * it is not in the package's `exports` any more, so a config that lists it is `removed`, whatever else it lists.
  */
 export function expoPluginFinding(appRoot: string, library: string): Finding {
-  const names = [library, `${library}/app.plugin`];
+  const names = [library, `${library}/app.plugin`, `${library}/app.plugin.js`];
   const removed = `${library}/expo`;
   const json = firstExisting(appRoot, ["app.json"]);
   const code = firstExisting(appRoot, APP_CONFIG_FILES);
@@ -70,7 +70,7 @@ export function appJson(appRoot: string, library: string): { file: string; expo:
   const parsed = file ? readJson(join(appRoot, file)) : undefined;
   if (!file || !parsed) return undefined;
   const expo = record(parsed.expo ?? parsed);
-  const names = [library, `${library}/app.plugin`];
+  const names = [library, `${library}/app.plugin`, `${library}/app.plugin.js`];
   const entry = (Array.isArray(expo.plugins) ? expo.plugins : []).find((candidate) => names.includes(pluginName(candidate) ?? ""));
   return { file, expo, plugin: entry === undefined ? undefined : record(Array.isArray(entry) ? entry[1] : undefined) };
 }

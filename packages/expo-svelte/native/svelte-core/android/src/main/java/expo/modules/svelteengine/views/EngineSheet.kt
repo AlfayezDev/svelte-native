@@ -19,6 +19,7 @@ import android.view.WindowInsets
 import android.view.animation.DecelerateInterpolator
 import android.widget.ScrollView
 import expo.modules.svelteengine.ChromeRules
+import expo.modules.svelteengine.ClaimRules
 import expo.modules.svelteengine.DownPointer
 import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.NavEvents
@@ -169,6 +170,9 @@ class EngineSheet(context: Context) : EngineScreen(context), NativeClaim {
   }
 
   private fun offsetFor(index: Int): Float = max(0, node.h - visibleFor(index)).toFloat()
+
+  /** Where detent [index] is now, for a settle that began with it: the detents may have been replaced since, and an index must not read past them. */
+  private fun offsetAt(index: Int): Float = if (detents.isEmpty()) 0f else offsetFor(min(index, detents.size - 1))
 
   override val restY: Float get() = if (detents.isEmpty()) 0f else offsetFor(min(current, detents.size - 1))
 
@@ -336,7 +340,7 @@ class EngineSheet(context: Context) : EngineScreen(context), NativeClaim {
 
   override fun claims(dx: Float, dy: Float) = !transitioning && !leaving && !dragging && dragsSheet(dx, dy)
 
-  override fun claim(ev: MotionEvent) = startDrag(ev)
+  override fun claim(ev: MotionEvent, sample: Int) = startDrag(ev, sample)
 
   override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
     // The stack's own transition owns the translation while it runs.
@@ -355,12 +359,12 @@ class EngineSheet(context: Context) : EngineScreen(context), NativeClaim {
         // The finger that went down, wherever it is in this event; once it has lifted there is no drag to measure.
         val index = ev.findPointerIndex(downPointer.id)
         if (index < 0) return false
-        val dx = rawX(ev, index) - downX
-        val dy = rawY(ev, index) - downY
-        GestureTrace.log { "sheet move: dy=${dy / density} dp (slop ${slop / density}), scroll under finger=${scrollUnderFinger != null}" }
-        if (dragsSheet(dx, dy)) {
+        GestureTrace.log { "sheet move: dy=${(rawY(ev, index) - downY) / density} dp (slop ${slop / density}), scroll under finger=${scrollUnderFinger != null}" }
+        // The first sample of the event that is a drag: the finger crossed the slop there, which a batched move may have done before the event's own position.
+        for (sample in 0..ev.historySize) {
+          if (!dragsSheet(rawXAt(ev, index, sample) - downX, rawYAt(ev, index, sample) - downY)) continue
           GestureTrace.log { "sheet takes the drag at translation ${translationY / density} dp" }
-          startDrag(ev)
+          startDrag(ev, sample)
           return true
         }
       }
@@ -379,7 +383,8 @@ class EngineSheet(context: Context) : EngineScreen(context), NativeClaim {
     return translationY > offsets.first() + 1f || scroll == null
   }
 
-  private fun startDrag(ev: MotionEvent) {
+  /** The drag follows the finger from where it was at [sample] of [ev] (the claim's sample: `historySize` for the event's own position), not from where the batch it came in ends. */
+  private fun startDrag(ev: MotionEvent, sample: Int = ev.historySize) {
     var p = parent
     while (p != null) {
       if (p is EngineRoot) { p.cancelActiveTouch(); break }
@@ -391,13 +396,21 @@ class EngineSheet(context: Context) : EngineScreen(context), NativeClaim {
     dragging = true
     if (!dragLayer) { dragLayer = true; holdLayer() }
     startTranslation = translationY
-    downY = rawY(ev, max(ev.findPointerIndex(downPointer.id), 0))
+    downY = rawYAt(ev, max(ev.findPointerIndex(downPointer.id), 0), sample)
   }
 
   /** Screen position of pointer [index]: `rawX`/`rawY` are pointer 0's, and every pointer of an event is offset by the same amount (`getRawX(int)` is API 29). */
   private fun rawX(ev: MotionEvent, index: Int) = ev.rawX + (ev.getX(index) - ev.getX(0))
 
   private fun rawY(ev: MotionEvent, index: Int) = ev.rawY + (ev.getY(index) - ev.getY(0))
+
+  /** [rawX] as it was at [sample] of [ev]: `historySize` is the event's own, an earlier one a sample the event carries since the last one. */
+  private fun rawXAt(ev: MotionEvent, index: Int, sample: Int) =
+    rawX(ev, index) - ClaimRules.travelSince(sample, ev.historySize, ev.getX(index)) { ev.getHistoricalX(index, it) }
+
+  /** [rawY] as it was at [sample] of [ev]. */
+  private fun rawYAt(ev: MotionEvent, index: Int, sample: Int) =
+    rawY(ev, index) - ClaimRules.travelSince(sample, ev.historySize, ev.getY(index)) { ev.getHistoricalY(index, it) }
 
   override fun onTouchEvent(event: MotionEvent): Boolean {
     if (!dragging) return super.onTouchEvent(event)
@@ -489,9 +502,12 @@ class EngineSheet(context: Context) : EngineScreen(context), NativeClaim {
     // The layer is taken before the old settle is cancelled, so it is handed over.
     holdLayer()
     cancelSettle()
-    val animator = ValueAnimator.ofFloat(translationY, target).setDuration(SETTLE_MS)
+    // The settle goes to a detent, not to a place: a layout during it (the window was resized) moves the detent, and the settle follows it and ends where it is by then.
+    val index = indexForOffset(target)
+    val from = translationY
+    val animator = ValueAnimator.ofFloat(0f, 1f).setDuration(SETTLE_MS)
     animator.interpolator = interpolator
-    animator.addUpdateListener { translationY = it.animatedValue as Float }
+    animator.addUpdateListener { translationY = ChromeRules.settleAt(from, offsetAt(index), it.animatedValue as Float) }
     animator.addListener(object : AnimatorListenerAdapter() {
       private var cancelled = false
       override fun onAnimationCancel(animation: Animator) { cancelled = true }
@@ -499,8 +515,7 @@ class EngineSheet(context: Context) : EngineScreen(context), NativeClaim {
         if (settler === animation) settler = null
         releaseLayer()
         if (cancelled) return
-        translationY = target
-        val index = indexForOffset(target)
+        translationY = offsetAt(index)
         current = index
         // The band follows the detent the sheet now rests at (the write above still saw the old one).
         syncToolbar()

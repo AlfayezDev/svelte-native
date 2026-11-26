@@ -11,8 +11,8 @@
    * `react-native-svg`'s `Svg`: the root of a drawing. `width` and `height` (or the style's), `viewBox` and `preserveAspectRatio` size and scale it as the
    * library does; the fill, stroke and font props are inherited by the elements inside. On Android the native view is a foreign view (SPEC.md,
    * "react-native-svg"): everything inside it is mounted by React Native, inside the frame the engine keeps for it. `ref` gets the handle with
-   * `toDataURL(callback, options)` and the geometry methods. Touches: `onPress` and the other press handlers are the host's Pressability on iOS; on Android
-   * they need `pointerEvents="box-only"`, which makes the engine keep the touches of the frame for JavaScript.
+   * `toDataURL(callback, options)` and the geometry methods. Touches: `onPress` and the other press handlers are the host's Pressability. On Android a tap on the Svg reaches JavaScript too (the view takes no touch of its
+   * own, SPEC.md "Foreign views"), so the `Svg`'s own `onPress` and a `Pressable` around it (an icon-only button) work without `pointerEvents`; a shape's own `onPress` does not run there.
    */
   let { children, ref, ...props }: Omit<SvgProps, "children"> & {
     children?: Snippet;

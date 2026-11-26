@@ -16,7 +16,7 @@ Expo Svelte has its own entry point and router, and runs no React. Remove:
 
 Keep `app.json` with its name, identifiers, icons, permissions and other plugins, your `assets/`, `eas.json`, your own Expo modules in `modules/`, and every library that doesn't need React ([Native libraries](native-libraries)).
 
-## 2. Allow esbuild and pin two packages
+## 2. Allow esbuild, pin two packages and shorten pnpm's store names
 
 The first install already needs these settings. If your project isn't a pnpm workspace, `pnpm-workspace.yaml` holds just them:
 
@@ -27,9 +27,10 @@ allowBuilds:
 overrides:
   expo-modules-core: 58.1.0
   "@react-native/metro-config": 0.88.1
+virtualStoreDirMaxLength: 60
 ```
 
-[Configuration](configuration#pnpm-workspaceyaml) says why each is there.
+[Configuration](configuration#pnpm-workspaceyaml) says why each is there. A project that already has `node_modules` installs again after the new `virtualStoreDirMaxLength`: pnpm asks to remove it (`pnpm install --config.confirmModulesPurge=false` when there is no terminal to ask).
 
 ## 3. Install the library
 

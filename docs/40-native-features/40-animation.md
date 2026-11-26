@@ -179,6 +179,26 @@ An item can show a single frame in the wrong place when it is reordered while it
 
 Write the directives on HTML elements (`div`, `p`, `li`, `button`, `img`, ...). Svelte takes a directive only on an element, so `svelte-check` reports one on a component such as `<View in:fly>`, even though Metro compiles it; `<div in:fly>` is checked, and builds the same native view. The elements that are components in their own right, `input`, `textarea` and `dialog`, take none: the build leaves it out and warns. On a `span` or other text inside a paragraph a transition runs its length and draws nothing, because React Native draws it as part of the paragraph.
 
+## Keyboard motion
+
+```ts
+const keyboard = createKeyboardMotion();
+```
+
+`createKeyboardMotion()` gives the keyboard's motion as three shared values, which move with every frame of the keyboard's animation: `height` (the points of the screen the keyboard covers), `progress` (0 closed, 1 open) and `state` (`'closed'`, `'opening'`, `'open'` or `'closing'`). Call it where you call `createSharedValue`, while the component initialises; the subscription ends with the component.
+
+```svelte
+<AnimatedView
+	style={{ height: 4, backgroundColor: '#0091ff' }}
+	animatedStyle={() => {
+		'worklet';
+		return { opacity: 1 - keyboard.progress.value };
+	}}
+/>
+```
+
+On Android the engine writes the values on the UI thread, inside the frame the keyboard moves in, and Reanimated runs the styles that depend on them at once, so a view follows the keyboard whatever JavaScript is doing. On iOS the values go to the keyboard's height when its animation starts, with a 250 ms timing. [`insets`](platform-apis#safe-area-and-keyboard) has the same facts as reactive state, once for each move.
+
 ## Running code on either thread
 
 | Function | What it does |

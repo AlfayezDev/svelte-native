@@ -1,6 +1,6 @@
 /**
  * React Native's JavaScript-only platform modules, typed, for an app that has no React: `Platform`, `Appearance`, `Dimensions`,
- * `Linking`, `Keyboard`, `AppState`, `BackHandler`, `PixelRatio`, `Share`, `Vibration` and `Alert`. They are React Native's own
+ * `Linking`, `Keyboard`, `KeyboardController`, `AppState`, `BackHandler`, `PixelRatio`, `Share`, `Vibration` and `Alert`. They are React Native's own
  * objects (the same instances `react-native` exports, so a library that imports them from the index sees the same state), reached by
  * the paths of `react-native/Libraries/…` because the `react-native` index would load React's components too. The entry also exports the
  * two lookups of native modules, `turboModule` and `nativeModule` (`native-modules.ts`), which load React Native's registry on their first call.
@@ -63,6 +63,17 @@ export const Linking: typeof ReactNative.Linking = lazyModule(() => (require("re
 /** The software keyboard: `dismiss()`, `isVisible()` and the show and hide events. The `insets` store reports its height. */
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- required on first use
 export const Keyboard: typeof ReactNative.Keyboard = lazyModule(() => (require("react-native/Libraries/Components/Keyboard/Keyboard") as { default: typeof ReactNative.Keyboard }).default);
+
+/**
+ * The calls of react-native-keyboard-controller's `KeyboardController` an app uses: `dismiss()` and `isVisible()` are `Keyboard`'s, and `setFocusTo("next" | "prev" | "current")`
+ * moves the focus to the input after or before the focused one (the order of the view tree), or gives the focused one the keyboard again. `setFocusTo` is Android's (the engine).
+ */
+export const KeyboardController = {
+  dismiss(): void { Keyboard.dismiss(); },
+  isVisible(): boolean { return Keyboard.isVisible(); },
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- the engine's module loads on the first call, not with this entry
+  setFocusTo(direction: "current" | "next" | "prev"): void { (require("./keyboard-drive.ts") as typeof import("./keyboard-drive.ts")).driveKeyboard(-1, "focus", [direction]); },
+};
 
 /** Whether the app is in the foreground: `currentState` and `addEventListener("change", …)`. */
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- required on first use

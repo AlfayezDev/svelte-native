@@ -623,7 +623,8 @@ function rnghManagerProblems(read2) {
 function reanimatedProblems(read2) {
   const base = "android/src/main";
   return [
-    ...inFile(read2, `${base}/java/com/swmansion/reanimated/SvelteEngineHook.kt`, [["has no `updater` hook", has("var updater")]]),
+    ...inFile(read2, `${base}/java/com/swmansion/reanimated/SvelteEngineHook.kt`, [["has no `updater` hook", has("var updater")], ["has no keyboard source for the engine", has("var keyboardSubscribe")]]),
+    ...inFile(read2, `${base}/java/com/swmansion/reanimated/keyboard/KeyboardAnimationManager.kt`, [["does not take the keyboard's events from the engine", has("SvelteEngineHook.keyboardSubscribe")]]),
     ...inFile(read2, `${base}/java/com/swmansion/reanimated/NativeProxy.kt`, [
       ["does not offer the engine's hook before React Native's prop dispatch", has("SvelteEngineHook.updater?.invoke(viewTag, props)")],
       ["has no direct path for opacity and translate/scale transforms", has("private fun applySimpleProps(")]
@@ -751,7 +752,7 @@ var init_patches = __esm({
       { package: "react-native-nitro-modules", vendored: true, does: "Nitro installs its JSI bindings through the overload React Native 0.87 and later call (iOS)", inspect: nitroProblems },
       { package: "react-native-pdf", vendored: true, does: "the pdf view's one event, which carries every message, no longer coalesces, and react-native is found from the app's directory (Android)", inspect: pdfProblems },
       { package: "react-native-quick-base64", vendored: true, does: "the module finds the JavaScript runtime without `RCTCxxBridge`, which React Native 0.88 removed (iOS)", inspect: quickBase64Problems },
-      { package: "react-native-reanimated", vendored: true, does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, and Worklets is the copy beside it", inspect: reanimatedProblems },
+      { package: "react-native-reanimated", vendored: true, does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, the keyboard's events come from the engine's frames, and Worklets is the copy beside it", inspect: reanimatedProblems },
       { package: "react-native-video", vendored: true, does: "only progress and bandwidth events coalesce; every other video event is delivered (Android)", inspect: videoProblems },
       { package: "react-native-worklets", vendored: true, does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems },
       { package: "rive-react-native", vendored: true, does: "the Rive view sends its events through the event dispatcher, not the old event emitter that a bridgeless app reports for every event (Android)", inspect: riveProblems }

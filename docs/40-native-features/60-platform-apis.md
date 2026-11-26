@@ -93,6 +93,7 @@ Svelte's own reactive window values work too, from the same import as on the web
 | `top`, `right`, `bottom`, `left` | The safe area insets, in points. |
 | `keyboardVisible` | Whether the keyboard is open. |
 | `keyboardHeight` | The keyboard's height, in points. 0 when it's closed. |
+| `keyboardState` | `'closed'`, `'opening'`, `'open'` or `'closing'`. It changes when the keyboard starts to move and when it has stopped, not on every frame; on iOS it is `'open'` or `'closed'`. |
 | `frame` | The app's window, `{ x, y, width, height }`. |
 
 ```svelte
@@ -108,6 +109,10 @@ Svelte's own reactive window values work too, from the same import as on the web
 Usually you don't need it directly. Content under a native header already starts below it, [`SafeAreaView`](safe-area-view) pads its content by the insets, and [`KeyboardAvoidingView`](keyboard-avoiding-view) moves content out of the keyboard's way.
 
 `Keyboard` is React Native's keyboard module: `Keyboard.dismiss()` closes the keyboard, `Keyboard.isVisible()` says whether it's open, and `Keyboard.addListener('keyboardDidShow', listener)` reports it opening.
+
+`insets` changes once for each move of the keyboard. To follow the keyboard frame by frame, use a [`KeyboardStickyView`](keyboard-sticky-view) for a composer or a bottom bar, a [`KeyboardChatScrollView`](keyboard-chat-scroll-view) for a chat thread and a [`KeyboardAwareScrollView`](keyboard-aware-scroll-view) for a form: on Android the engine moves them with the keyboard's own animation, with no JavaScript in between. For your own animation, `createKeyboardMotion()` gives the height and progress as [shared values](animation#keyboard-motion).
+
+`KeyboardController`, from `expo-svelte/platform`, has `dismiss()` and `isVisible()` as `Keyboard`'s, and `setFocusTo('next' | 'prev' | 'current')`, which moves the focus to the input after or before the focused one (the order of the view tree) or gives the focused one the keyboard again (Android).
 
 ## Links
 

@@ -154,7 +154,7 @@ A screen is `src/routes/<path>/+mobile.svelte`, next to the browser's `+page.sve
 </Screen>
 ```
 
-- Use native style objects (`style={{ padding: 24 }}`); there is no CSS. Primitives: `View`, `Text`, `TextInput` (`bind:value`), `Pressable` (`onPress`, `onPressChange`, `hitSlop`; `View` and `Text` take the same handlers), `ScrollView`, `Image`, `Switch`, `ActivityIndicator`, `Modal`, `SafeAreaView`, `KeyboardAvoidingView`, `List`. At build time `View`, `Text`, `ScrollView`, `Image`, `ActivityIndicator` and `Pressable` are lowered to host tags, so a row costs host nodes and no component instances. HTML elements work too, in the app's own files: `div`, `p`, `button`, `a`, `img`, `input`, `textarea`, `dialog` and the rest of the table in `docs/20-core-concepts/50-html-elements.md` become the same host tags and the `TextInput`, `Switch` and `Modal` components when the app is built for a device (never for the web), so one file can serve SvelteKit and the phone.
+- Use native style objects (`style={{ padding: 24 }}`); there is no CSS. Primitives: `View`, `Text`, `TextInput` (`bind:value`), `Pressable` (`onPress`, `onPressChange`, `hitSlop`; `View` and `Text` take the same handlers), `ScrollView`, `Image`, `Switch`, `ActivityIndicator`, `Modal`, `SafeAreaView`, `KeyboardAvoidingView`, `KeyboardStickyView`, `KeyboardChatScrollView`, `KeyboardAwareScrollView`, `List`. At build time `View`, `Text`, `ScrollView`, `Image`, `ActivityIndicator` and `Pressable` are lowered to host tags, so a row costs host nodes and no component instances. HTML elements work too, in the app's own files: `div`, `p`, `button`, `a`, `img`, `input`, `textarea`, `dialog` and the rest of the table in `docs/20-core-concepts/50-html-elements.md` become the same host tags and the `TextInput`, `Switch` and `Modal` components when the app is built for a device (never for the web), so one file can serve SvelteKit and the phone.
 - `router` is the nearest navigator's: `goto(href, { reset?, replaceState?, presentation? })`, `back()`, `current`, `entries`. `goto` resolves over the whole tree and never stacks the same screen twice. A link the app was launched with becomes the stack's base; later links are plain `goto`s.
 - `ref` callbacks follow React's contract: the handle when the element is built, `null` when it is destroyed, and the old callback gets `null` before a new one gets the handle. `ScrollView` and `TextInput` handles have `scrollTo`, `focus`, `blur`, `measure`, `dispatchCommand`.
 - `export const presentation = "modal"` in the module script (a literal: `push`, `modal`, `transparentModal`, `sheet`, `formSheet`) sets how a page enters.
@@ -470,7 +470,7 @@ peer dependencies
 vendored packages
   pass  react-native-mmkv 4.3.2 comes with expo-svelte (vendor/react-native-mmkv); the app does not list it
   …
-  pass  react-native-reanimated: the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, and Worklets is the copy beside it (in expo-svelte's copy)
+  pass  react-native-reanimated: the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android), the Android synchronous update is on by default, the keyboard's events come from the engine's frames, and Worklets is the copy beside it (in expo-svelte's copy)
   pass  libraries turned on: expo-image, react-native-maps; the others are not linked, and Metro stubs them
 
 patches

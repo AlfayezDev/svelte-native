@@ -263,7 +263,7 @@ describe("what `files` packs", () => {
       expect([name, listed.filter((path) => path.startsWith(`vendor/${name}/`) && (path.endsWith(".map") || path.includes("/lib/commonjs/") || path.includes("/windows/") || path.includes("/gradle/wrapper/") || /\/gradlew(?:\.bat)?$/.test(path)))]).toEqual([name, []]);
     }
     // The patches are applied to the copies when the library is written; the files are packed too, beside them (`vendor-patches/<name>/`: VENDOR.md lists each with its sha256).
-    expect(listed.filter((path) => path.startsWith("vendor-patches/react-native-reanimated/")).length).toBe(3);
+    expect(listed.filter((path) => path.startsWith("vendor-patches/react-native-reanimated/")).length).toBe(4);
     expect(listed.some((path) => /^patches\/react-native-(?:gesture-handler|reanimated|worklets)@/.test(path))).toBe(false);
   });
 

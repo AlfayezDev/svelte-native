@@ -23,6 +23,8 @@ export type AnimLog = {
   eventHandlers?: FakeEventHandler[];
   /** The `(tag, state)` calls of the fake `_setGestureStateSync` the gesture tests install on the global object (RNGH 3's UI-runtime function). */
   gestureStates?: [tag: number, state: number][];
+  /** The keyboard subscriptions (`subscribeForKeyboardEvents`): the handler the library gave, to call as the engine's frames do, and whether it was unsubscribed. */
+  keyboard?: { id: number; handler: (kind: number, px: number) => void; options: unknown; off: boolean }[];
   /** A test sets it to make `makeMutable` throw, as Reanimated does when it cannot make a shared value. */
   failMutable?: boolean;
   /** Every `withTiming` that a shared value was given (the animation a transition plays), in order; `callback` is the one the transition handed over, which a test calls to finish it. */
@@ -55,6 +57,9 @@ export const reanimatedStubs: Record<string, string> = {
     export const isSharedValue = (v) => v?._isReanimatedSharedValue === true;
     export const startMapper = (worklet, inputs) => { const id = A.mappers.length + 1; A.mappers.push({ id, worklet, inputs, stopped: false }); return id; };
     export const stopMapper = (id) => { A.mappers.find((m) => m.id === id).stopped = true; };`,
+  "react-native-reanimated/src/core": `${head}
+    export const subscribeForKeyboardEvents = (handler, options) => { const id = -((A.keyboard ??= []).length + 1); A.keyboard.push({ id, handler, options, off: false }); return id; };
+    export const unsubscribeFromKeyboardEvents = (id) => { A.keyboard.find((k) => k.id === id).off = true; };`,
   "react-native-reanimated/src/commonTypes": "export const LayoutAnimationType = { ENTERING: 1, EXITING: 2, LAYOUT: 3 };",
   // The colours of animated props are Reanimated's own function in the tests that look at them (`foreign/svg/colors.test.ts`).
   "react-native-reanimated/src/common/style/processors/colors": "export const processColorsInProps = () => {};",

@@ -16,11 +16,13 @@ function body(name: string): string {
 }
 
 test("an IME animation is published when it starts and when it ends, not when it is prepared", () => {
-  expect(body("onPrepare")).toContain("animating = true");
+  // A prepared animation makes the keyboard busy (`animating` is `session.busy`, the count of `KeyboardFrames`), which holds the publishing back until the start.
+  expect(source).toContain("private val animating: Boolean get() = session.busy");
+  expect(body("onPrepare")).toContain("session.prepare(");
   expect(body("onPrepare")).not.toContain("publish()");
   expect(body("onStart")).toContain("publish()");
   expect(body("onStart")).toContain("return bounds");
-  expect(body("onEnd")).toContain("animating = false");
+  expect(body("onEnd")).toContain("session.end(");
   expect(body("onEnd")).toContain("publish()");
   // Each step looks at IME animations only.
   for (const name of ["onPrepare", "onStart", "onEnd"]) expect(body(name)).toContain("WindowInsetsCompat.Type.ime()");

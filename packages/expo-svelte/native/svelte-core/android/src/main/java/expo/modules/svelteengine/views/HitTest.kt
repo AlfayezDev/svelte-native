@@ -95,9 +95,12 @@ object HitTest {
     if (v is EngineForeign && pe != BOX_ONLY) {
       // A foreign view takes its touches itself, the way the platform delivers them (SPEC.md, "Foreign views"): the
       // target is the view, which carries no engine tag, so the gesture is claimed and JavaScript's touch dispatch hears
-      // nothing of it. Before the view exists, the frame is the target (and has no emitter to tell either).
+      // nothing of it. Before the view exists, the frame is the target (and has no emitter to tell either). A view that has
+      // no touch handling of its own (an Svg) is not one that takes them: the target is its frame, which has the tag, so
+      // JavaScript hears the touch and the responders above the view (a Pressable) press, as in React Native; with
+      // box-none the frame is no target, as for any view, and the parent is.
       val content = v.content
-      if (content != null && inside && content.visibility == View.VISIBLE) return content
+      if (content != null && inside && content.visibility == View.VISIBLE && !v.passesTouchesToParent()) return content
     } else if (v is ViewGroup && pe != BOX_ONLY) {
       val clips = st.overflow == 1 || v is ScrollView || v is HorizontalScrollView
       if (inside || !clips) {

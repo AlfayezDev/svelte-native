@@ -13,6 +13,9 @@ const kept: Record<string, string> = {
   "expo/modules/svelteengine/SvelteEngineModule.kt": 'Class.forName("com.swmansion.reanimated.SvelteEngineHook") getMethod("setUpdater" getMethod("setKeyboardSubscribe" getMethod("setKeyboardUnsubscribe"',
   // A field of Fabric's event dispatcher, kept by the module's `consumer-rules.pro`.
   "expo/modules/svelteengine/EventBeat.kt": 'getDeclaredField("postEventDispatchListeners")',
+  // The platform's `Canvas` Z ordering before API 29 (`insertReorderBarrier` and `insertInorderBarrier` are hidden there, as `CanvasUtil` in React Native reaches them), and the
+  // lookup of one on API 28 through `Class.getDeclaredMethod` itself: framework classes, not the app's code. From API 29 the calls are `Canvas.enableZ` and `disableZ`.
+  "expo/modules/svelteengine/views/CanvasZ.kt": 'getDeclaredMethod("getDeclaredMethod" getDeclaredMethod("insertReorderBarrier") getDeclaredMethod("insertInorderBarrier")',
   // A field of the framework's scroll views, which are not in the app's code.
   "expo/modules/svelteengine/views/EngineScroll.kt": 'getDeclaredField("mScroller")',
   // The framework's `View.mListenerInfo.mOnTouchListener`, read to see whether a listener was set on a foreign view (`EngineForeign.hasTouchListener`): fields of the platform, not of the app's code. Not

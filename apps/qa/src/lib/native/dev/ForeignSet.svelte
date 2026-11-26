@@ -23,13 +23,15 @@
    * to them as the control the tap checks compare with. Every event is recorded under `source` (`record`), and the set's
    * commands are in `foreignHandles` under the same name while it is mounted.
    */
-  let { source, version = "v1", height = 110, kinds = ["web", "map", "video"], markers = true }: {
+  let { source, version = "v1", height = 110, kinds = ["web", "map", "video"], markers = true, cards = false }: {
     source: string;
     version?: string;
     height?: number;
     kinds?: readonly Kind[];
     /** Whether the map carries its marker (the leak cycles run it both ways). */
     markers?: boolean;
+    /** Each WebView and map sits in a `Pressable` card of its own (`web-card-press`, `map-card-press`): a view that takes touches itself must not press it (SPEC.md, "Foreign views"). */
+    cards?: boolean;
   } = $props();
   const report = (event: string, detail?: unknown) => record(source, event, detail);
 
@@ -59,27 +61,34 @@
   foreignHandles.set(own, handles);
 </script>
 
+{#snippet webBox()}
+  <View style={{ height, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: theme.border }}>
+    <WebView source={{ uri: labPage(version) }} ref={(handle) => { web = handle; }}
+      onMessage={(event) => report("web-message", event.nativeEvent.data)}
+      onLoadStart={() => report("web-load-start")}
+      onLoadEnd={() => report("web-load-end")}
+      onError={(event) => report("web-error", event.nativeEvent)} />
+  </View>
+{/snippet}
+{#snippet mapBox()}
+  <View style={{ height, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: theme.border }}>
+    <MapView ref={(handle) => { map = handle; }} style={{ flex: 1 }}
+      initialRegion={{ latitude: 24.7136, longitude: 46.6753, latitudeDelta: 0.2, longitudeDelta: 0.2 }}
+      onMapReady={() => report("map-ready")}
+      onPanDrag={() => report("map-pan-drag")}
+      onPress={(event) => report("map-press", event.nativeEvent)}
+      onRegionChangeComplete={(event) => report("map-region", event.nativeEvent)}>
+      {#if markers}<Marker coordinate={{ latitude: 24.7136, longitude: 46.6753 }} title="Riyadh" pinColor="#d33" onPress={() => report("marker-press")} />{/if}
+    </MapView>
+  </View>
+{/snippet}
+
 <View onTouchStart={() => report("js-touch")} style={{ gap: 12 }}>
   {#if kinds.includes("web")}
-    <View style={{ height, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: theme.border }}>
-      <WebView source={{ uri: labPage(version) }} ref={(handle) => { web = handle; }}
-        onMessage={(event) => report("web-message", event.nativeEvent.data)}
-        onLoadStart={() => report("web-load-start")}
-        onLoadEnd={() => report("web-load-end")}
-        onError={(event) => report("web-error", event.nativeEvent)} />
-    </View>
+    {#if cards}<Pressable accessibilityLabel="Web card" onPress={() => report("web-card-press")}>{@render webBox()}</Pressable>{:else}{@render webBox()}{/if}
   {/if}
   {#if kinds.includes("map")}
-    <View style={{ height, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: theme.border }}>
-      <MapView ref={(handle) => { map = handle; }} style={{ flex: 1 }}
-        initialRegion={{ latitude: 24.7136, longitude: 46.6753, latitudeDelta: 0.2, longitudeDelta: 0.2 }}
-        onMapReady={() => report("map-ready")}
-        onPanDrag={() => report("map-pan-drag")}
-        onPress={(event) => report("map-press", event.nativeEvent)}
-        onRegionChangeComplete={(event) => report("map-region", event.nativeEvent)}>
-        {#if markers}<Marker coordinate={{ latitude: 24.7136, longitude: 46.6753 }} title="Riyadh" pinColor="#d33" onPress={() => report("marker-press")} />{/if}
-      </MapView>
-    </View>
+    {#if cards}<Pressable accessibilityLabel="Map card" onPress={() => report("map-card-press")}>{@render mapBox()}</Pressable>{:else}{@render mapBox()}{/if}
   {/if}
   {#if kinds.includes("video")}
     <View style={{ height, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: theme.border }}>

@@ -985,10 +985,27 @@ async function svg(c: Ctx): Promise<void> {
       c.check("animation: animatedProps move the native ring (its bottom arc and the dot appear and go)", seen.size >= 2, `states seen: ${[...seen].join(", ")}`);
     }
   }
-  if (!c.canTap) { c.skip("events: a press on the Svg (pointerEvents box-only) reaches its onPress", "a press needs a finger: the lab has none on the iPhone (XCUITest does not run on it)"); return; }
+  if (!c.canTap) {
+    c.skip("events: a press on the Svg (pointerEvents box-only) reaches its onPress", "a press needs a finger: the lab has none on the iPhone (XCUITest does not run on it)");
+    c.skip("events: a tap on an Svg inside a Pressable (no pointerEvents) presses the Pressable", "a press needs a finger: the lab has none on the iPhone (XCUITest does not run on it)");
+    c.skip("events: an Svg's own onPress runs without pointerEvents box-only", "a press needs a finger: the lab has none on the iPhone (XCUITest does not run on it)");
+    return;
+  }
   const presses = c.events("svg-press");
   await c.tap(root as unknown as Host);
   c.check("events: a press on the Svg (pointerEvents box-only) reaches its onPress", await c.until(() => c.events("svg-press") > presses, 3000));
+  // An icon-only button: the tap lands on the icon, which is a view of its own that takes no touch (a foreign view that passes it on), and the Pressable around it presses once.
+  // The Svg's own onPress, with no pointerEvents on it: the touch reaches JavaScript on the Svg's tag (the view takes no touch itself) and the Svg's Pressability presses.
+  const own = handles.own;
+  if (!own) { c.check("mounts: the section handed out the Svg with its own onPress", false); return; }
+  const ownPresses = c.events("svg-own-press");
+  await c.tap(own as unknown as Host);
+  c.check("events: an Svg's own onPress runs without pointerEvents box-only", await c.until(() => c.events("svg-own-press") === ownPresses + 1, 3000), `presses ${c.events("svg-own-press") - ownPresses}`);
+  const button = handles.button;
+  if (!button) { c.check("mounts: the section handed out the icon button's Svg", false); return; }
+  const taps = c.events("svg-button-press");
+  await c.tap(button as unknown as Host);
+  c.check("events: a tap on an Svg inside a Pressable, without pointerEvents box-only, presses the Pressable once", await c.until(() => c.events("svg-button-press") === taps + 1, 3000), `presses ${c.events("svg-button-press") - taps}`);
 }
 
 export const libraryChecks: Record<LibraryKind, (c: Ctx) => Promise<void>> = {

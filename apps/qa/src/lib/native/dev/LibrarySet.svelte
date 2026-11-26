@@ -18,7 +18,7 @@
     /** The number the animated text shows on the UI thread; null until the text section is mounted. */
     count: SharedValue<number> | null;
     /** The first static icon's `Path` and the gradient card's `Svg`: `getTotalLength`, `getBBox`, `toDataURL`, ...; null until the SVG section is mounted. */
-    svg: { path: SvgHandle | null; root: SvgRootHandle | null; heart: SvgRootHandle | null; ringSvg: SvgRootHandle | null };
+    svg: { path: SvgHandle | null; root: SvgRootHandle | null; heart: SvgRootHandle | null; ringSvg: SvgRootHandle | null; button: SvgRootHandle | null; own: SvgRootHandle | null };
     /** The progress (0 to 1) the animated ring and dot of the SVG section follow on the UI thread; null until the section is mounted. */
     ring: SharedValue<number> | null;
     pickDate(): Promise<Date | null>;
@@ -135,7 +135,7 @@
     "worklet";
     return { r: 3 + 3 * (progress ? progress.value : 0) };
   };
-  const svgHandles: LibraryHandles["svg"] = { path: null, root: null, heart: null, ringSvg: null };
+  const svgHandles: LibraryHandles["svg"] = { path: null, root: null, heart: null, ringSvg: null, button: null, own: null };
   onMount(() => {
     if (count) count.value = withRepeat(withTiming(100, { duration: 5000, reduceMotion: ReduceMotion.Never }), -1);
     if (progress) progress.value = withRepeat(withTiming(1, { duration: 1800, reduceMotion: ReduceMotion.Never }), -1, true);
@@ -266,6 +266,16 @@
                 <Rect width="100%" height="100%" rx={8} fill={`url(#${own}-card)`} />
                 <SvgText x="29" y="22" fill="#ffffff" fontSize={13} fontWeight="bold" textAnchor="middle">SVG</SvgText>
               </Svg>
+              <!-- An Svg with an onPress of its own and no pointerEvents: the tap reaches JavaScript on the Svg's own tag, with no box-only. -->
+              <Svg width={30} height={30} viewBox="0 0 24 24" accessibilityLabel="Own press" onPress={() => report("svg-own-press")} ref={(handle) => { svgHandles.own = handle; }}>
+                <Circle cx={12} cy={12} r={10} fill="#8e4ec6" />
+              </Svg>
+              <!-- An icon-only button: an Svg in a Pressable, and no pointerEvents on it. A tap on the icon reaches JavaScript and presses the Pressable (SPEC.md, "Foreign views": a foreign view that takes no touch itself). -->
+              <Pressable accessibilityRole="button" accessibilityLabel="Svg icon button" onPress={() => report("svg-button-press")} style={{ padding: 3, borderRadius: 8, borderWidth: 1, borderColor: theme.border }}>
+                <Svg width={26} height={26} viewBox="0 0 24 24" fill="none" stroke={theme.foreground} strokeWidth={2} strokeLinecap="round" ref={(handle) => { svgHandles.button = handle; }}>
+                  <Path d="M12 5v14M5 12h14" />
+                </Svg>
+              </Pressable>
               <Svg width={34} height={34} viewBox="0 0 36 36" accessibilityLabel="Progress ring" ref={(handle) => { svgHandles.ringSvg = handle; }}>
                 <Circle cx={18} cy={18} r={14} fill="none" stroke={theme.border} strokeWidth={4} />
                 <Circle cx={18} cy={18} r={14} fill="none" stroke="#0091ff" strokeWidth={4} strokeLinecap="round" strokeDasharray={[circumference]} strokeDashoffset={circumference} transform="rotate(-90 18 18)" animatedProps={ringProps} />

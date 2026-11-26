@@ -8,6 +8,8 @@ import android.text.Editable
 import android.text.InputFilter
 import android.text.InputType
 import android.text.TextWatcher
+import android.text.method.PasswordTransformationMethod
+import android.text.method.SingleLineTransformationMethod
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -355,44 +357,43 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
   }
 
   private fun applyInputType(v: ViewProps) {
-    var type = when (v.keyboard) {
-      1 -> InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED
-      2 -> InputType.TYPE_CLASS_NUMBER
-      3 -> InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-      4 -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-      5 -> InputType.TYPE_CLASS_PHONE
-      6 -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-      7 -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-      else -> InputType.TYPE_CLASS_TEXT
-    }
-    val isNumber = (type and InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_NUMBER
-    if (v.secure && v.keyboard != 6) {
-      type = if (isNumber) {
-        InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-      } else {
-        InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-      }
-    } else if ((type and InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_TEXT) {
-      type = type or when (v.capitalize) {
-        1 -> InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
-        2 -> InputType.TYPE_TEXT_FLAG_CAP_WORDS
-        3 -> InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-        else -> 0
-      }
-      // As `ReactTextInputManager.setAutoCorrect`: true asks for auto-correction, false turns suggestions off (which also keeps the
-      // platform's spell checker, a main-thread binder call at attach and on every edit, from starting), unset leaves the type alone.
-      type = type or InputRules.suggestionFlag(autoCorrect, autoCorrectFlag = InputType.TYPE_TEXT_FLAG_AUTO_CORRECT, noSuggestionsFlag = InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS)
-    }
-    if (v.multiline && (type and InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_TEXT) {
-      type = type or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-    }
+    // The flags React Native's ReactTextInputManager leaves in the staged input type for these props (`InputRules.inputType`): the keyboard reads the capitalisation, the suggestions
+    // and the variation from them. `autoCorrect` is React Native's tri-state: true asks for auto-correction, false turns suggestions off (which also keeps the platform's spell
+    // checker, a main-thread binder call at attach and on every edit, from starting), unset leaves the type alone.
+    val type = InputRules.inputType(v.keyboard, v.secure, v.capitalize, autoCorrect, v.multiline)
     if (type == inputTypeKey) return
     inputTypeKey = type
     val start = selectionStart; val end = selectionEnd
-    inputType = type
-    // Changing the input type resets the typeface (password fields become monospace): put ours back.
-    applyTypeface(family, weight, italic)
-    if (start >= 0 && end >= 0 && start <= length() && end <= length()) setSelection(start, end)
+    // Each swap below sets the text again (`setKeyListenerOnly`, `setTransformationMethod`), which fires `afterTextChanged` and puts the selection at (0, 0): none of it is the user's, so no change
+    // event goes to JavaScript (it would bump `nativeEventCount` and make a stale value of an edit that JavaScript has not heard yet) and no selection event for the move and the restore.
+    val was = settingText
+    settingText = true
+    try {
+      inputType = type
+      // The platform makes a view multi-line only for a text class with the flag (`TextView.isMultilineInputType`), and React Native's multiline is the flag on any class: a number class with the
+      // flag is made multi-line here. `setSingleLine(false)` sets the transformation method to null (`TextView.applySingleLine`), which unmasks a password that `setInputType` masked.
+      if (InputRules.platformKeepsSingleLine(type)) setSingleLine(false)
+      // The masking is the field's own, not what the platform made of the type: React Native's flags for a secure field with the email, phone or url keyboard are no password type to it, and it
+      // leaves them unmasked (and unmasks a field that was masked when only the keyboard changes). A secure field is masked after every update, and one that is not secure is not.
+      val current = when (transformationMethod) {
+        is PasswordTransformationMethod -> InputRules.Transformation.PASSWORD
+        is SingleLineTransformationMethod -> InputRules.Transformation.SINGLE_LINE
+        else -> InputRules.Transformation.NONE
+      }
+      val wanted = InputRules.transformationFor(v.secure, v.keyboard, type, current)
+      if (wanted != current) {
+        transformationMethod = when (wanted) {
+          InputRules.Transformation.PASSWORD -> PasswordTransformationMethod.getInstance()
+          InputRules.Transformation.SINGLE_LINE -> SingleLineTransformationMethod.getInstance()
+          InputRules.Transformation.NONE -> null
+        }
+      }
+      // Changing the input type resets the typeface (password fields become monospace): put ours back.
+      applyTypeface(family, weight, italic)
+      if (start >= 0 && end >= 0 && start <= length() && end <= length()) setSelection(start, end)
+    } finally {
+      settingText = was
+    }
   }
 
   private fun applyCursorTint(v: ViewProps) {

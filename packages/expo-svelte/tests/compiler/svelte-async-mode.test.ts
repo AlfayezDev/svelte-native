@@ -31,7 +31,8 @@ function sources(directory: string, found: string[] = []): string[] {
 test("the Metro transformer compiles components and modules without Svelte's async mode, unless the app asks for it", () => {
   // The transformer takes its options from `componentOptions` and `moduleOptions` (`compile-options.ts`) and nowhere else.
   const transformer = read("packages/expo-svelte/src/transformer.ts");
-  expect(transformer).toContain("compile(lowerPrimitives(src, { filename, html: lowersHtml(filename) }), componentOptions(filename))");
+  expect(transformer).toContain("const lowering = lowerWithMap(src, { filename, html: lowersHtml(filename) });");
+  expect(transformer).toContain("svelteCompiler().compile(lowering.code, componentOptions(filename))");
   expect(transformer).toContain("compileModule(code, moduleOptions(filename))");
   // Without the app's setting (the environment variable `withExpoSvelte(config, { async })` sets) there is no async option for either.
   const saved = process.env[ASYNC_ENVIRONMENT_VARIABLE];

@@ -119,7 +119,8 @@
       "expo-svelte-source": "./src/expo.ts",
       "types": "./dist/types/expo.d.ts",
       "default": "./app.plugin.js"
-    }
+    },
+    "./app.plugin.js": "./app.plugin.js"
   },
   "imports": {
     "#vendor/react-native-mmkv": {

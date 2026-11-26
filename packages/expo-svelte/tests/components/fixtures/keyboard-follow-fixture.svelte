@@ -9,7 +9,7 @@
   export function set(patch) { Object.assign(props, patch); }
 </script>
 {#if kind === "sticky"}
-  <KeyboardStickyView {...props} style={{ flex: 1 }}><native-view testID="content"></native-view></KeyboardStickyView>
+  <KeyboardStickyView {...props} style={props.style ?? { flex: 1 }}><native-view testID="content"></native-view></KeyboardStickyView>
 {:else if kind === "chat"}
   <KeyboardChatScrollView {...props} onEndVisible={props.watch ? (visible) => ends.push(visible) : undefined}><native-view testID="content"></native-view></KeyboardChatScrollView>
 {:else if kind === "aware"}

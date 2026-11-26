@@ -24,6 +24,13 @@ export declare function subscribeInsets(listener: (event: InsetsEvent) => void):
 type StyleValue = unknown;
 /** Flattens a React Native style (arrays, falsy entries) into one object; sufficient for the padding keys the components read. */
 export declare function flattenStyle(style: StyleValue): Record<string, unknown>;
+/**
+ * The `transform` of a view that sticks to the keyboard (without the engine's frames), for the `own` transform its style has: the keyboard's `translateY` first, then the view's own
+ * entries. A transform list applies the later entries before the earlier ones (React Native multiplies the matrices in order), so a translation put first is outside the rest: a view
+ * with `scale: 0.95` is moved by the whole of the keyboard's height, not by 95% of it. The style's own transform used to be replaced by the keyboard's (two styles with a `transform` each,
+ * of which the flattening keeps the last). A transform written as a string (`"scale(0.95)"`) follows a translation written as a string too.
+ */
+export declare function keyboardTransform(own: unknown, translateY: number): unknown;
 /** `[style, padding]` for a SafeAreaView: each selected edge's padding is the style's own padding for that side plus the inset, like safe-area-context's padding mode. */
 export declare function safeAreaStyle(style: StyleValue, insets: Pick<InsetsEvent, Edge>, edges?: readonly Edge[]): StyleValue[];
 export type AvoidBehavior = "padding" | "height" | "position" | undefined;

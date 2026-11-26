@@ -91,6 +91,80 @@ test("without the engine a sticky view stands where the keyboard will be, in one
   expect(propsOf("native-view").style).toEqual([{ flex: 1 }, { transform: [{ translateY: 0 }] }]);
 });
 
+type Payload = { transform?: unknown; opacity?: number } | null;
+/** The component and the host's own payload builder (`createPayload` with the view config of an `RCTView` of the platform), with the converters of React Native. */
+const loadPayload = (platform: "android" | "ios") => load<Loaded & { createPayload: (props: Props, config: unknown) => Payload; viewConfigFor: (name: string, platform: string) => unknown }>({
+  entry: `import Fixture from ${JSON.stringify(resolve(import.meta.dirname, "fixtures/keyboard-follow-fixture.svelte"))};
+    import renderer, { NativeNode } from ${JSON.stringify(src("renderer.ts"))};
+    import { mergeHostProps } from ${JSON.stringify(src("native-props.ts"))};
+    import { insets as store, applyInsets, resetInsets } from ${JSON.stringify(src("insets.svelte.ts"))};
+    import { keyboardDriven } from ${JSON.stringify(src("keyboard-drive.ts"))};
+    import { createPayload, viewConfigFor } from ${JSON.stringify(src("fabric/view-configs.ts"))};
+    import { mount, unmount, tick } from 'svelte';
+    export { state as engine } from 'expo-modules-core';
+    export { Fixture, renderer, NativeNode, mergeHostProps, store, applyInsets, resetInsets, keyboardDriven, createPayload, viewConfigFor, mount, unmount, tick };`,
+  stubs: { "expo-modules-core": engineModule },
+  platform,
+  define: { __DEV__: "false" },
+});
+
+/** Where the view's centre goes under a transform list: the later entries apply first (the matrices are multiplied in the order they are listed), about the view's centre. */
+function shiftOf(list: { translateY?: number; scale?: number }[]): number {
+  let y = 0;
+  for (const entry of [...list].reverse()) {
+    if (entry.translateY !== undefined) y += entry.translateY;
+    if (entry.scale !== undefined) y *= entry.scale;
+  }
+  return y;
+}
+
+for (const platform of ["android", "ios"] as const) {
+  test(`without the engine a sticky view keeps its own transform in the payload, with the keyboard's translation outside it (#132, ${platform})`, async () => {
+    const m = await loadPayload(platform);
+    m.engine.installed = false;
+    m.engine.current = insets();
+    m.resetInsets();
+    const own = [{ scale: 0.95 }, { translateY: 12 }];
+    const { propsOf, app } = await mountFixture(m, "sticky", { offset: { closed: 0, opened: 34 }, style: { transform: own, opacity: 0.9 } });
+    expect(m.keyboardDriven()).toBe(false);
+    const payload = () => m.createPayload(m.mergeHostProps(propsOf("native-view")), m.viewConfigFor("RCTView", platform));
+    const transform = () => payload()?.transform as { translateY?: number; scale?: number }[];
+    const settle = async () => { await m.tick(); await m.tick(); };
+    // Closed: the keyboard adds nothing, and the view keeps what it has been given.
+    expect(transform()).toEqual([{ translateY: 0 }, { scale: 0.95 }, { translateY: 12 }]);
+    expect(payload()?.opacity).toBe(0.9);
+    // Open at 300 with `opened: 34`: the keyboard's 266 up, outside the scale: the view's centre is 266 up from where its own transform puts it, not 95% of that.
+    m.engine.listeners.insets?.(insets({ keyboardHeight: 300, keyboardVisible: true }));
+    await settle();
+    expect(transform()).toEqual([{ translateY: -266 }, { scale: 0.95 }, { translateY: 12 }]);
+    expect(shiftOf(transform()) - shiftOf(own)).toBe(-266);
+    expect(payload()?.opacity).toBe(0.9);
+    // Disabled with `closed: 4` while the keyboard is open: the closed offset only.
+    app.set({ enabled: false, offset: { closed: 4, opened: 34 } });
+    await settle();
+    expect(transform()).toEqual([{ translateY: 4 }, { scale: 0.95 }, { translateY: 12 }]);
+    expect(shiftOf(transform()) - shiftOf(own)).toBe(4);
+    expect(payload()?.opacity).toBe(0.9);
+  });
+
+  test(`without the engine a sticky view whose style has no transform, several, or one written as a string still moves with the keyboard (#132, ${platform})`, async () => {
+    const m = await loadPayload(platform);
+    m.engine.installed = false;
+    m.engine.current = insets({ keyboardHeight: 300, keyboardVisible: true });
+    m.resetInsets();
+    const payload = async (style: unknown) => {
+      const { propsOf, app } = await mountFixture(m, "sticky", { offset: { opened: 34 }, style });
+      const result = m.createPayload(m.mergeHostProps(propsOf("native-view")), m.viewConfigFor("RCTView", platform));
+      m.unmount(app);
+      return result;
+    };
+    expect((await payload({ flex: 1 }))?.transform).toEqual([{ translateY: -266 }]);
+    // The last style that has a transform is the view's own, as it is for any view.
+    expect((await payload([{ transform: [{ rotate: "10deg" }] }, { transform: [{ scale: 2 }] }]))?.transform).toEqual([{ translateY: -266 }, { scale: 2 }]);
+    expect((await payload({ transform: "scale(0.95)" }))?.transform).toEqual([{ translateY: -266 }, { scale: 0.95 }]);
+  });
+}
+
 test("a disabled sticky view says so to the engine", async () => {
   const m = await loadModule();
   const { ref } = await mountFixture(m, "sticky", { enabled: false, offset: { closed: 10 } });

@@ -7,6 +7,7 @@
   import { createNativeProps } from "../native-props.ts";
   import { connectInsets, insets } from "../insets.svelte.ts";
   import { driveKeyboard, keyboardDriven } from "../keyboard-drive.ts";
+  import { flattenStyle, keyboardTransform } from "../fabric/insets.ts";
   /**
    * A view that sticks to the keyboard: its translation follows the keyboard's height, `height + interpolate(progress, [0, 1], [closed, opened])`, as
    * react-native-keyboard-controller's `KeyboardStickyView`. On Android the engine moves it with every frame of the keyboard's animation, on the main thread, in the
@@ -31,15 +32,16 @@
   $effect(() => {
     if (driven && handle) driveKeyboard(handle.tag, "follow", [closed, opened, enabled]);
   });
+  const keep = (value: HostHandle | null) => { handle = value; ref?.(value); };
   // Without the engine's frames the view is where the keyboard will be, at once.
-  const stepped = $derived({ transform: [{ translateY: enabled ? -(insets.keyboardVisible ? insets.keyboardHeight : 0) + closed + (opened - closed) * (insets.keyboardVisible ? 1 : 0) : closed }] });
+  const authored = $derived(resolveProps({ ...attributes, collapsable: false, ref: keep }));
+  const stepped = $derived({ transform: keyboardTransform(flattenStyle(authored.style).transform, enabled ? -(insets.keyboardVisible ? insets.keyboardHeight : 0) + closed + (opened - closed) * (insets.keyboardVisible ? 1 : 0) : closed) });
   // The component goes: nothing of the registration is left in the engine (a scroll view's report of its end, its room), whenever the view itself goes.
   $effect(() => {
     const tag = handle?.tag;
     return () => { if (tag !== undefined) driveKeyboard(tag, "release"); };
   });
-  const keep = (value: HostHandle | null) => { handle = value; ref?.(value); };
   // `collapsable: false`: a view that has no transform of its own does not form a stacking context, and Fabric then flattens its children out of it (they would stay where they are while the view moves).
-  const nativeProps = $derived(resolveProps({ ...attributes, collapsable: false, style: driven ? attributes.style : [attributes.style, stepped], ref: keep }));
+  const nativeProps = $derived(driven ? authored : { ...authored, style: [authored.style, stepped] });
 </script>
 <native-view {nativeProps}>{@render children?.()}</native-view>

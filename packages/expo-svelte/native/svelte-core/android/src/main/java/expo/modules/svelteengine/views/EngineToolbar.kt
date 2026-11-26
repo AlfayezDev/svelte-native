@@ -22,6 +22,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import expo.modules.svelteappearance.isNight
 import expo.modules.svelteengine.A11y
 import expo.modules.svelteengine.Fragment
+import expo.modules.svelteengine.InsetRules
 import expo.modules.svelteengine.NavEvents
 import expo.modules.svelteengine.NavProps
 import expo.modules.svelteengine.TextLayouts
@@ -590,15 +591,14 @@ class EngineToolbar(context: Context) : EngineView(context) {
   private fun reportMetrics() {
     val inset = cachedInset
     if (inset < 0 || visibility == GONE) return
-    val height = round2((barPx + inset) / density)
-    val dp = round2(inset / density)
+    val height = InsetRules.metric((barPx + inset).toFloat(), density)
+    val dp = InsetRules.metric(inset.toFloat(), density)
     if (height == reportedHeight && dp == reportedInset) return
     reportedHeight = height
     reportedInset = dp
     NavEvents.metrics(node.tag, height, dp)
   }
 
-  private fun round2(v: Float) = (v * 100f).roundToInt() / 100f
 
   // The window dispatches insets again when they change: the band only lays out again when its own bottom inset moved.
   override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {

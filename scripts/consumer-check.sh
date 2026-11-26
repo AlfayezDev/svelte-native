@@ -248,6 +248,11 @@ st_patches() {
     grep -qF "$key" <(sed -n '/^patchedDependencies:/,/^$/p' pnpm-lock.yaml) || die "$key is not in the lockfile's patchedDependencies"
     echo "patched: $key"
   done
+  # The patch is what puts `patch_hash=<hash>` into the library's folder: only now can its name have an "=" (pnpm cuts a name longer than virtualStoreDirMaxLength, or with an uppercase letter, to `limit - 33` characters and a hash,
+  # which at 120 keeps the "=" and at the template's 60 does not). Android's prefab tool takes a package path with one for an option (CXX1429, `no such option`).
+  grep -q '^virtualStoreDirMaxLength: 60$' pnpm-workspace.yaml || die "the template has no virtualStoreDirMaxLength: 60"
+  case "$(realpath node_modules/expo-svelte)" in *=*) die "the library is at $(realpath node_modules/expo-svelte), a path with an \"=\" in it: Android's prefab tool cannot take it" ;; esac
+  echo "library folder: $(basename "$(dirname "$(dirname "$(realpath node_modules/expo-svelte)")")")"
 }
 
 st_hook() {
@@ -285,12 +290,21 @@ st_add() {
 # The command of the guide. It installs and runs the doctor itself.
 st_init() {
   cd "$app"
-  cap pnpm exec expo-svelte init
+  # Without CI, as a person runs it from a script or an editor's terminal: this init writes `virtualStoreDirMaxLength` into a project whose node_modules exists (`sv create` and the add stage installed it
+  # with pnpm's default), so the install after it has pnpm remove node_modules, which it asks to confirm, and without a terminal and without CI it stops with ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY.
+  # CI=1 (exported above for every other stage) would hide that. `CI=false` turns it off for ci-info, which also reads BUILD_NUMBER, RUN_ID, CONTINUOUS_INTEGRATION and the variables of CI vendors (`env -u CI` leaves
+  # those to say it is one), and stdin is /dev/null: the caller's terminal, if it has one, would answer the question.
+  [ -d node_modules ] || die "no node_modules: this stage would not meet the question pnpm asks before it removes them"
+  grep -m1 virtualStoreDirMaxLength node_modules/.modules.yaml || echo "(node_modules/.modules.yaml has no virtualStoreDirMaxLength)"
+  cap env CI=false pnpm exec expo-svelte init </dev/null
   [ -f .expo-svelte/entry.ts ] || echo "(the entry is written by sync, below)"
   for file in metro.config.cjs app.json src/routes/+layout.mobile.svelte src/routes/+mobile.svelte src/routes/details/+mobile.svelte patches/expo-svelte; do
     [ -e "$file" ] || die "init did not write $file"
   done
   grep -q "expoSvelte" vite.config.ts || die "init did not change vite.config.ts"
+  # The library's pnpm store folder is hashed, not named `expo-svelte@<version>_..._patch_hash=<hash>`: Android's prefab tool cannot take a package path with an "=" in it (CXX1429, `no such option`).
+  grep -q '^virtualStoreDirMaxLength: 60$' pnpm-workspace.yaml || die "init did not write virtualStoreDirMaxLength: 60 into pnpm-workspace.yaml"
+  case "$(realpath node_modules/expo-svelte)" in *=*) die "the library is at $(realpath node_modules/expo-svelte), a path with an \"=\" in it" ;; esac
   echo "package.json: svelte $(dev_spec svelte), @sveltejs/kit $(dev_spec @sveltejs/kit)"
   grep -m1 "resolution: {commit" pnpm-lock.yaml | sed 's/^ */lockfile: /'
 }

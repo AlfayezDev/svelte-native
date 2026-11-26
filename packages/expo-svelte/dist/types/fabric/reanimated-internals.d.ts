@@ -19,7 +19,7 @@ export class CSSManager {
   unmountCleanup(): void;
 }
 export function markNodeAsRemovable(shadowNodeWrapper: object): void;
-export function filterCSSAndStyleProperties(style: Record<string, unknown>): [unknown, unknown, unknown, unknown, Record<string, unknown>];
+export function filterCSSAndStyleProperties(style: Record<string, unknown>): [unknown, unknown, unknown, Record<string, unknown>];
 export function hasInlineStyles(style: Record<string, unknown>): boolean;
 export function getInlineStyle(style: Record<string, unknown>, isFirstRender: boolean): Record<string, unknown>;
 export class InlinePropManager {

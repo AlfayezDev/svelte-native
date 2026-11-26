@@ -3223,7 +3223,7 @@
 		},
 		"lab-styles-origin--light-rtl-normal": {
 			"file": "lab-styles-origin--light-rtl-normal.png",
-			"sha256": "aa07aa3015ccb01769d5b5e9b6d2f4ae338b633e32292182c508fac606eb71b0",
+			"sha256": "cd5d83f7d41c1cef322be67ea9d66b7a7eb1345d3649bdc6afd6c010fa0c4c33",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3248,9 +3248,9 @@
 			"theme": "light",
 			"direction": "rtl",
 			"fontScale": 1,
-			"updatedAt": "2026-11-25T15:12:48.921Z",
+			"updatedAt": "2026-11-25T23:32:00.174Z",
 			"source": {
-				"commit": "2d6f11235e",
+				"commit": "b3d271b1",
 				"dirty": true
 			}
 		},

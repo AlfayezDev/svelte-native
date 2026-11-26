@@ -56,7 +56,8 @@ java -cp "$work/input-rules-check.jar" expo.modules.svelteengine.InputRulesCheck
   "$rn/ReactAndroid/src/main/java/com/facebook/react/views/textinput/ReactTextScrollWatcher.kt" \
   "$rn/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ScrollEvent.kt" \
   "$here/../main/cpp/InputEvents.cpp" \
-  "$here/../main/java/expo/modules/svelteengine/ViewEvents.kt"
+  "$here/../main/java/expo/modules/svelteengine/ViewEvents.kt" \
+  "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/platforms/android-36/android.jar"
 
 # What a header and a sheet decide from measurements that are not there yet (the first layout of a screen runs detached): the bar's offset, when a header lays out
 # again, when a layout puts a sheet at its rest. The sources of EngineHeader, EngineSheet and EngineStack are read for the calls that use them.

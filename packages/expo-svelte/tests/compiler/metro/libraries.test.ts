@@ -123,6 +123,11 @@ describe("the libraries the app's config turns on", () => {
     const origin = byPath.path("src/a.ts");
     expect(resolveFrom(config, origin, "expo-image")).toBe(`/real/${copy("expo-image")} (from ${origin})`);
     expect(resolveFrom(config, origin, "expo-video")).toBe(stubOf(byPath, "qa", "expo-video"));
+    // By the file's name (the package's `exports` lists it), not a path: the same plugin, with its options.
+    using byFile = project([["expo-svelte/app.plugin.js", { libraries: { "expo-image": true } }]]);
+    const named = withExpoSvelte(fakeConfig(byFile.directory), { variant: "qa" });
+    expect(resolveFrom(named, byFile.path("src/a.ts"), "expo-image")).toBe(`/real/${copy("expo-image")} (from ${byFile.path("src/a.ts")})`);
+    expect(resolveFrom(named, byFile.path("src/a.ts"), "expo-video")).toBe(stubOf(byFile, "qa", "expo-video"));
     using none = project(["expo-font"]);
     const keeps = withExpoSvelte(fakeConfig(none.directory), { variant: "qa" });
     for (const name of libraryNames) expect(resolveFrom(keeps, none.path("src/a.ts"), name), name).toBe(`/real/${copy(name)} (from ${none.path("src/a.ts")})`);

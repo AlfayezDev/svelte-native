@@ -17,6 +17,7 @@
   let animated = $state(false);
   let cssNode = $state(false);
   let scrolling = $state([1, 2, 3]);
+  let zoomed = $state([1, 2, 3]);
   const [send, receive] = crossfade({ duration: 200, fallback: (node) => fade(node, { duration: 100 }) });
   export function setIntro(value) { intro = value; }
   export function setOutro(value) { outro = value; }
@@ -32,6 +33,7 @@
   export function setAnimated(value) { animated = value; }
   export function setCss(value) { cssNode = value; }
   export function setScrolling(value) { scrolling = value; }
+  export function setZoomed(value) { zoomed = value; }
   export function seen() { return events; }
 </script>
 {#if intro}
@@ -94,4 +96,10 @@
 </native-scroll>
 <native-view testID="scaled" nativeStyle={{ transform: [{ scale: 2 }] }}>
   <native-view testID="scaled-inner"></native-view>
+  <native-view testID="scaled-own" nativeStyle={{ transform: [{ scale: 0.5 }], transformOrigin: "10px 10px" }}></native-view>
+</native-view>
+<native-view testID="zoom" nativeStyle={{ transform: [{ scale: 2 }] }}>
+  {#each zoomed as item (item)}
+    <native-view testID={`zoom-${item}`} animate:flip={{ duration: 300 }}></native-view>
+  {/each}
 </native-view>

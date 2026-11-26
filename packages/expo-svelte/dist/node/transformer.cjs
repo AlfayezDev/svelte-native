@@ -2174,6 +2174,25 @@ function classExpression(content, attribute) {
   }
   return `${template}\``;
 }
+function classSpans(attribute) {
+  const value = attribute.value;
+  if (value === true) return [];
+  if (!Array.isArray(value)) return [value.expression];
+  return value.filter((part) => part.type !== "Text").map((part) => part.expression);
+}
+function copiedSpans(content, text, firstAt, spans) {
+  const copies = [];
+  let from = firstAt;
+  for (const span of spans) {
+    const source = content.slice(span.start, span.end);
+    if (!source) continue;
+    const at = text.indexOf(source, from);
+    if (at < 0) continue;
+    copies.push({ at, source: span.start, length: source.length });
+    from = at + source.length;
+  }
+  return copies;
+}
 function couldBeFunction(expression) {
   switch (expression.type) {
     case "Literal":
@@ -2198,13 +2217,14 @@ function walk(value, visit) {
   if (typeof node.type === "string") visit(node);
   for (const key in node) if (key !== "metadata") walk(node[key], visit);
 }
-function lowerPrimitives(content, options = {}) {
-  if (!content.includes(PACKAGE2) && !(options.html && mayHaveHtml(content))) return content;
+function lowerWithMap(content, options = {}) {
+  const unchanged = () => ({ code: content, original: (line, column) => ({ line, column }) });
+  if (!content.includes(PACKAGE2) && !(options.html && mayHaveHtml(content))) return unchanged();
   let ast;
   try {
     ast = (0, import_compiler.parse)(content, { modern: true, filename: options.filename });
   } catch {
-    return content;
+    return unchanged();
   }
   const locals = /* @__PURE__ */ new Map();
   const actions = /* @__PURE__ */ new Set();
@@ -2212,7 +2232,7 @@ function lowerPrimitives(content, options = {}) {
   collectImports(ast.module?.content, locals, actions);
   const warn = options.warn ?? ((message) => console.warn(message));
   const html = options.html ? lowerHtml(ast, content, options.filename, warn) : void 0;
-  if (!locals.size && !html?.elements.size && !html?.edits.length) return content;
+  if (!locals.size && !html?.elements.size && !html?.edits.length) return unchanged();
   const edits = html ? [...html.edits] : [];
   const helpers = new Set(html?.helpers);
   const wrap = (expression, helper) => {
@@ -2242,10 +2262,15 @@ function lowerPrimitives(content, options = {}) {
       const written = `nativeClass={${classHelper}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`}${styleArgument})}`;
       const dropped = classes.reduce((count, attribute) => count + content.slice(attribute.start, attribute.end).split("\n").length - 1, 0) - (written.split("\n").length - 1);
       const value = dropped > 0 ? written + "\n".repeat(dropped) : written;
+      const copies = copiedSpans(content, written, `nativeClass={${classHelper}(`.length, [
+        ...own2 ? classSpans(own2) : [],
+        ...directives.map((directive) => directive.expression),
+        ...style !== void 0 && copy !== void 0 ? [style.value.expression] : []
+      ]);
       helpers.add(classHelper);
       const at = own2 ?? (spreads ? void 0 : classes[0]);
       if (at === void 0) edits.push({ start: node.attributes[0].start, end: node.attributes[0].start, text: `${value} ` });
-      for (const attribute of classes) edits.push({ start: attribute.start, end: attribute.end, text: attribute === at ? value : "" });
+      for (const attribute of classes) edits.push({ start: attribute.start, end: attribute.end, text: attribute === at ? value : "", ...attribute === at && copies.length ? { copies } : {} });
     }
     for (const attribute of node.attributes) {
       if (classes.includes(attribute) || lowered?.handled.has(attribute)) continue;
@@ -2297,7 +2322,7 @@ function lowerPrimitives(content, options = {}) {
       edits.push({ start: close + 2, end: close + 2 + node.name.length, text: tag });
     }
   });
-  if (!edits.length) return content;
+  if (!edits.length) return unchanged();
   const script = ast.instance ?? ast.module;
   const names = [...helpers].sort().map((helper) => `${HELPER_EXPORTS[helper]} as ${helper}`);
   const setup = html?.setup ?? [];
@@ -2307,7 +2332,36 @@ function lowerPrimitives(content, options = {}) {
   edits.sort((a, b) => b.start - a.start || b.end - a.end);
   let output = content;
   for (const edit of edits) output = output.slice(0, edit.start) + edit.text + output.slice(edit.end);
-  return output;
+  return { code: output, original: (line, column) => positionIn(content, output, edits, line, column) };
+}
+function offsetAt(text, line, column) {
+  let offset = 0;
+  for (let at = 1; at < line; at++) {
+    const next = text.indexOf("\n", offset);
+    if (next < 0) return text.length;
+    offset = next + 1;
+  }
+  return offset + column;
+}
+function lineAndColumn(text, offset) {
+  const before2 = text.slice(0, offset);
+  const line = before2.split("\n").length;
+  return { line, column: offset - (before2.lastIndexOf("\n") + 1) };
+}
+function positionIn(content, lowered, edits, line, column) {
+  const target = offsetAt(lowered, line, column);
+  let delta = 0;
+  for (let at = edits.length - 1; at >= 0; at--) {
+    const edit = edits[at];
+    const from = edit.start + delta;
+    if (target < from) break;
+    if (target < from + edit.text.length) {
+      const copy = edit.copies?.find((one2) => target >= from + one2.at && target < from + one2.at + one2.length);
+      return lineAndColumn(content, copy ? copy.source + (target - from - copy.at) : edit.start);
+    }
+    delta += edit.text.length - (edit.end - edit.start);
+  }
+  return lineAndColumn(content, Math.max(0, Math.min(content.length, target - delta)));
 }
 
 // src/svelte-compiler.ts
@@ -2937,6 +2991,33 @@ function assertWorkletsReadNoState(filename, code, runes) {
   const what = names ? `${names}, which Svelte compiled into reactive state` : "reactive state (Svelte's runtime, `$`)";
   throw new Error(`${filename}: a worklet reads ${what}. A worklet runs on the UI runtime, which has no Svelte, so it cannot read state; on the device it would throw "Tried to synchronously call a Remote Function" when the screen mounts. ${runes ? "State in runes mode is `$state`, `$derived` and props: copy the value into a shared value (`createSharedValue`) on the JavaScript side and read that in the worklet." : "This component is not in runes mode (the library compiles the app's components in runes mode unless the file has `<svelte:options runes={false} />`, the app sets `runes: false`, or the file is a library below `node_modules`), where a variable that the markup mutates (`count.value = ...` in a handler) is state even when it is a `const`. Put the component in runes mode with `<svelte:options runes />`: there a `const` shared value stays a plain constant."}`);
 }
+function frameOf(source, line, column) {
+  const lines2 = source.split("\n").map((text) => text.replace(/\r$/, ""));
+  const last = Math.min(lines2.length, line + 2);
+  const width = String(last).length;
+  const frame = [];
+  for (let at = Math.max(1, line - 2); at <= last; at++) {
+    const text = lines2[at - 1] ?? "";
+    frame.push(`${at === line ? ">" : " "} ${String(at).padStart(width)} | ${text}`);
+    if (at === line) frame.push(`  ${" ".repeat(width)} | ${text.slice(0, column).replace(/[^\t]/g, " ")}^`);
+  }
+  return frame.join("\n");
+}
+function metroError(error, source, locate) {
+  if (!(error instanceof Error) || error.name !== "CompileError") return error;
+  const { start, code } = error;
+  const failure = Object.assign(new Error(error.message), { name: error.name, ...code === void 0 ? {} : { code } });
+  const at = start ? locate(start.line, start.column) : void 0;
+  if (!at) return failure;
+  return Object.assign(failure, { type: "CompileError", loc: { line: at.line, column: at.column }, codeFrame: frameOf(source, at.line, at.column) });
+}
+function compiling(compile, source, locate) {
+  try {
+    return compile();
+  } catch (error) {
+    throw metroError(error, source, locate);
+  }
+}
 function transform(input) {
   const { filename } = input;
   const src = sourceOf(input);
@@ -2946,7 +3027,8 @@ function transform(input) {
   const compiledBySvelte = /\.svelte(\.[jt]s)?$/.test(filename);
   if (filename.endsWith(".svelte")) {
     requireCustomRenderer();
-    const result = svelteCompiler().compile(lowerPrimitives(src, { filename, html: lowersHtml(filename) }), componentOptions(filename));
+    const lowering = lowerWithMap(src, { filename, html: lowersHtml(filename) });
+    const result = compiling(() => svelteCompiler().compile(lowering.code, componentOptions(filename)), src, lowering.original);
     if (result.css?.code.trim()) throw new Error(`${filename}: use native style props; browser CSS is not supported`);
     code = result.js.code;
     runes = result.metadata.runes;
@@ -2960,7 +3042,12 @@ function transform(input) {
       maps.push(new import_trace_mapping.TraceMap(stripped.map));
     }
     if (svelteModule) {
-      const result = svelteCompiler().compileModule(code, moduleOptions(filename));
+      const typeMap = maps[0];
+      const result = compiling(() => svelteCompiler().compileModule(code, moduleOptions(filename)), src, (line, column) => {
+        if (!typeMap) return { line, column };
+        const original = (0, import_trace_mapping.originalPositionFor)(typeMap, { line, column });
+        return original.line === null || original.column === null ? void 0 : { line: original.line, column: original.column };
+      });
       code = result.js.code;
       if (result.js.map) maps.unshift(new import_trace_mapping.TraceMap(result.js.map.toString()));
     }

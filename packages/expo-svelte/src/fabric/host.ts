@@ -1514,9 +1514,10 @@ function ancestorMap(node: NativeNode): Affine {
 }
 
 /**
- * A node's box as `getBoundingClientRect` reports it, from React Native's synchronous layout read of the committed tree: its layout box moved by what its ancestors' transforms do
- * (`ancestorMap`), then by its own transform about its origin. The own transform is the one an animation of the node draws now when one does (the UI thread draws it, the committed
- * tree does not have it), and the one its style gives it otherwise. A rotation is not applied. Null for a node that has no view yet.
+ * A node's box as `getBoundingClientRect` reports it, from React Native's synchronous layout read of the committed tree: its layout box moved by its own transform about its origin, then by
+ * what its ancestors' transforms do (`ancestorMap`). The own transform is in the units of the space the node is in, which its ancestors scale with everything in it, so it comes first: under
+ * a parent scaled by 2, an animation that has moved the node 12.5 has moved it 25 in the window. It is the transform an animation of the node draws now when one does (the UI thread draws it,
+ * the committed tree does not have it), and the one its style gives it otherwise. A rotation is not applied. Null for a node that has no view yet.
  */
 function layoutOf(node: NativeNode): Rect | null {
   if (!binding?.getBoundingClientRect) return null;
@@ -1527,12 +1528,12 @@ function layoutOf(node: NativeNode): Rect | null {
   const current = stateOf(node);
   const laid = current ? readBox(current, false) : null;
   if (!laid) return null;
-  const map = ancestorMap(node);
-  const base = { x: map.sx * laid.x + map.tx, y: map.sy * laid.y + map.ty, width: map.sx * laid.width, height: map.sy * laid.height };
   const drawn = node.dom?.animation ? module?.drawnTransform(node) ?? null : null;
   const style = effectiveStyle(node.peekProps(), node.dom?.inline ?? null);
   const ops = drawn?.ops ?? transformOps(style.transform);
-  return ops.length === 0 ? base : transformRect(base, ops, parseOrigin(drawn?.origin ?? style.transformOrigin, base));
+  const own = ops.length === 0 ? laid : transformRect(laid, ops, parseOrigin(drawn?.origin ?? style.transformOrigin, laid));
+  const map = ancestorMap(node);
+  return { x: map.sx * own.x + map.tx, y: map.sy * own.y + map.ty, width: map.sx * own.width, height: map.sy * own.height };
 }
 
 /**

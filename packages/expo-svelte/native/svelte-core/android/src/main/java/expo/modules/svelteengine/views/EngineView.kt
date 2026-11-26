@@ -18,6 +18,7 @@ import expo.modules.svelteengine.StyleRecords
 import expo.modules.svelteengine.BoxDrawable
 import expo.modules.svelteengine.ClipRules
 import expo.modules.svelteengine.PaddingBoxClip
+import expo.modules.svelteengine.StackRules
 
 /** Per-view state the mounting layer keeps outside of View ids and tags. */
 class NodeState {
@@ -191,8 +192,8 @@ object Frames {
  * Plain container: no measure of its own, children are laid out by their stored frames.
  *
  * Stacking: siblings draw in `zIndex` order (stable, ties keep insertion order) through `getChildDrawingOrder`;
- * `View.elevation` (px, from the `elevation` prop only) additionally lets Android's own Z sort lift a child. Hit
- * testing walks the same order top-down: (elevation, zIndex, index), see [HitTest].
+ * `View.elevation` (px, from the `elevation` prop only) gives a child its shadow and orders nothing ([drawChild]).
+ * Hit testing walks the same order top-down, see [HitTest] and [StackRules.order].
  */
 open class EngineView(context: Context) : ViewGroup(context), EngineNode {
   override val node = NodeState()
@@ -273,6 +274,18 @@ open class EngineView(context: Context) : ViewGroup(context), EngineNode {
     canvas.restoreToCount(saved)
   }
 
+  /**
+   * `ReactViewGroup.drawChild`: a child with an elevation is drawn with Z ordering on for its own draw only. Left to the platform, the children are drawn in one chunk sorted
+   * by Z, and an elevated sibling that comes before another (a menu's plate, which carries the shadow, before the card that clips its contents) is drawn over it.
+   */
+  override fun drawChild(canvas: Canvas, child: View, drawingTime: Long): Boolean {
+    val withZ = child.elevation > 0f
+    if (withZ) CanvasZ.enable(canvas, true)
+    val drawn = super.drawChild(canvas, child, drawingTime)
+    if (withZ) CanvasZ.enable(canvas, false)
+    return drawn
+  }
+
   override fun onRtlPropertiesChanged(layoutDirection: Int) {
     super.onRtlPropertiesChanged(layoutDirection)
     BoxStyle.directionChanged(this, node, layoutDirection)
@@ -306,18 +319,10 @@ open class EngineView(context: Context) : ViewGroup(context), EngineNode {
 
   private fun sortOrders() {
     val n = childCount
-    val byZ = arrayOfNulls<Int>(n)
-    val byHit = arrayOfNulls<Int>(n)
-    for (i in 0 until n) { byZ[i] = i; byHit[i] = i }
-    fun z(i: Int) = (getChildAt(i) as? EngineNode)?.node?.zIndex ?: 0f
-    fun e(i: Int) = (getChildAt(i) as? EngineNode)?.node?.elevation ?: 0f
-    byZ.sortWith { a, b -> z(a!!).compareTo(z(b!!)) }
-    byHit.sortWith { a, b ->
-      val c = e(a!!).compareTo(e(b!!))
-      if (c != 0) c else z(a).compareTo(z(b))
-    }
-    drawOrder = IntArray(n) { byZ[it]!! }
-    hitOrder = IntArray(n) { byHit[it]!! }
+    val order = StackRules.order(FloatArray(n) { (getChildAt(it) as? EngineNode)?.node?.zIndex ?: 0f })
+    // The topmost child is the last one drawn: React Native's `TouchTargetHelper` walks the children by `zIndex` too, and an elevation does not move a child over the ones after it.
+    drawOrder = order
+    hitOrder = order
     orderDirty = false
   }
 

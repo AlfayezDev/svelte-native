@@ -199,5 +199,5 @@ class Insets(private val root: EngineRoot, private val drive: KeyboardDrive, pri
     const val STUCK_MS = 2000L
   }
 
-  private fun dp(px: Int): Double = Math.round(px / density * 100.0) / 100.0
+  private fun dp(px: Int): Double = InsetRules.dp(px, density)
 }

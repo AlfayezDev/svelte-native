@@ -155,6 +155,14 @@ kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/StackRules.kt" \
   "$here/kotlin/expo/modules/svelteengine/StackRulesCheck.kt" -include-runtime -d "$work/stack-rules-check.jar"
 java -cp "$work/stack-rules-check.jar" expo.modules.svelteengine.StackRulesCheckKt "$views/EngineView.kt"
 
+# The insets' dp: the pixels divided by the density as a float, as `PixelUtil.toDIPFromPixel` does, not rounded to two decimals.
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/InsetRules.kt" \
+  "$here/kotlin/expo/modules/svelteengine/InsetRulesCheck.kt" -include-runtime -d "$work/inset-rules-check.jar"
+java -cp "$work/inset-rules-check.jar" expo.modules.svelteengine.InsetRulesCheckKt \
+  "$rn/ReactAndroid/src/main/java/com/facebook/react/uimanager/PixelUtil.kt" \
+  "$here/../main/java/expo/modules/svelteengine/Insets.kt" \
+  "$views"
+
 # What follows the keyboard frame by frame (SPEC.md, "Keyboard motion"): the sticky view's translation, the chat lift's sequence of paddings and scroll targets for always,
 # whenAtEnd and never, and the aware scroll's interpolation, with react-native-keyboard-controller's own numbers; the sources of the insets, the commit path and the scroll
 # views are read for the calls that bring the frames to them and keep a commit from taking the move away.

@@ -108,7 +108,9 @@ private fun againstStack(path: String) {
   val started = text.substringAfter("override fun handleOnBackStarted(backEvent: BackEventCompat) {").substringBefore("override fun handleOnBackProgressed")
   expect("a predictive back holds the screen it moves", started.contains("holdGesture(top)"), true)
   val cancelled = text.substringAfter("override fun handleOnBackCancelled() {").substringBefore("private var backRegistered")
-  expect("the animation that cancels a predictive back is an animation of the stack (the sheet's layout sees it as running)", cancelled.contains("animate(top, 0f, top.restY, 1f, 1f, 150L)"), true)
+  // The spring goes through the stack's `animate`, which is what sets `running` on the screen, and a sheet is busy while `running != null`. It is the previewed screen that springs back, which is not `top()` when the gesture was abandoned.
+  expect("the animation that cancels a predictive back is an animation of the stack (the sheet's layout sees it as running)", cancelled.contains("animate(previewed, 0f, previewed.restY, 1f, 1f, 150L)"), true)
+  expect("the spring is marked as the gesture's after it starts: starting it cancels what ran, and that would end it", cancelled.indexOf("animate(previewed, 0f, previewed.restY") in 0 until cancelled.indexOf("springBack = previewed"), true)
 }
 
 fun main(args: Array<String>) {

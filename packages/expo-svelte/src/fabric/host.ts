@@ -9,7 +9,7 @@
  * flattening, colours, transforms), and events arrive through `registerEventHandler` with the Svelte node as target.
  */
 import { bootSummary, mark, runBootTasks } from "../boot-marks.ts";
-import { loadReanimated } from "./reanimated-load.ts";
+import { loadReanimated, onReanimatedLoaded } from "./reanimated-load.ts";
 import { onFirstCommit } from "../updates/launch.ts";
 import { resolveAssetSource, Platform, pixelRatio, appearance } from "./deps-rn.ts";
 import { styleValue, textColor, type Scheme } from "../system-colors.ts";
@@ -73,13 +73,27 @@ export function mayAnimate(attributes: Record<string, unknown>): boolean {
  * first commit that can. One animated button, a row's icon or a handful of badges stay below it.
  */
 export const BULK_ANIMATED_NODES = 8;
+/**
+ * Tells the engine, once, that Reanimated is loaded after it: its mounting delegate must sit behind Reanimated's layout-animation proxy, and the engine re-orders itself. Whoever loads Reanimated
+ * first causes this (`onReanimatedLoaded`, at install): the host on its first animated node, but also the public `animation` module and the gesture builders, which can come long before it.
+ * The proxy attaches to a surface while Reanimated loads and sees nothing of the engine's mutations until the delegate is behind it: a node created in between is not in the proxy's tree, and
+ * its next update crashes `mqt_v_js` with a null dereference in `LayoutAnimationsProxy::updateLightNodeProps`. The word has to follow the load within the same turn of JavaScript.
+ */
+function announceReanimated(): void {
+  if (reanimatedAnnounced) return;
+  reanimatedAnnounced = true;
+  if (!engineInstalled || reanimatedAtInstall) return;
+  // Called from the load's own listeners: a throw of the engine's must not fail the `require` that came first (the animation that asked for Reanimated gets it either way).
+  try {
+    engineModule?.reanimatedLoaded?.();
+  } catch (error) {
+    console.warn("expo-svelte: the engine could not be told that Reanimated is loaded", error);
+  }
+}
 /** Loads Reanimated (also upgrading the public `animation` module's exports to its own functions) and tells the engine once. */
 function ensureReanimated(): void {
   loadReanimated();
-  if (reanimatedAnnounced) return;
-  reanimatedAnnounced = true;
-  // The engine's mounting delegate must sit behind Reanimated's layout-animation proxy; the engine re-orders itself.
-  if (engineInstalled && !reanimatedAtInstall) engineModule?.reanimatedLoaded?.();
+  announceReanimated();
 }
 function loadAnimation(): AnimationModule {
   if (animation) return animation;
@@ -1579,6 +1593,8 @@ export function startSurface<Props extends Record<string, unknown>>(rootTag: num
     reanimatedAtInstall = typeof (globalThis as { __reanimatedModuleProxy?: unknown }).__reanimatedModuleProxy !== "undefined";
     engineInstalled = engine ? engine.install(reanimatedAtInstall) : false;
     engineModule = engine as typeof engineModule;
+    // Now, when Reanimated is already loaded (a load that came before the engine did); at the load otherwise, whoever makes it.
+    onReanimatedLoaded(announceReanimated);
     const published = (globalThis as { __svelteFabric?: { engine: boolean } }).__svelteFabric;
     if (published) published.engine = engineInstalled;
   }

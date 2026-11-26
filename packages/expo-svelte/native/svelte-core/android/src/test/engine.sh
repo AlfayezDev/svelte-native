@@ -133,6 +133,18 @@ kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/ClipRules.kt" \
   "$here/kotlin/expo/modules/svelteengine/ClipRulesCheck.kt" -include-runtime -d "$work/clip-check.jar"
 java -cp "$work/clip-check.jar" expo.modules.svelteengine.ClipRulesCheckKt "$views"
 
+# The order an elevated child is drawn in: React Native's ReactViewGroup.drawChild brackets it with enableZ, EngineView does the same (the sources are read).
+kotlinc -nowarn "$here/kotlin/expo/modules/svelteengine/DrawOrderCheck.kt" -include-runtime -d "$work/draw-order-check.jar"
+java -cp "$work/draw-order-check.jar" expo.modules.svelteengine.DrawOrderCheckKt \
+  "$rn/ReactAndroid/src/main/java/com/facebook/react/views/view/ReactViewGroup.kt" \
+  "$rn/ReactAndroid/src/main/java/com/facebook/react/views/view/CanvasUtil.kt" \
+  "$views/EngineView.kt" "$views/CanvasZ.kt"
+
+# The order siblings are drawn and hit in: zIndex, then insertion order, an elevation orders nothing.
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/StackRules.kt" \
+  "$here/kotlin/expo/modules/svelteengine/StackRulesCheck.kt" -include-runtime -d "$work/stack-rules-check.jar"
+java -cp "$work/stack-rules-check.jar" expo.modules.svelteengine.StackRulesCheckKt "$views/EngineView.kt"
+
 # What follows the keyboard frame by frame (SPEC.md, "Keyboard motion"): the sticky view's translation, the chat lift's sequence of paddings and scroll targets for always,
 # whenAtEnd and never, and the aware scroll's interpolation, with react-native-keyboard-controller's own numbers; the sources of the insets, the commit path and the scroll
 # views are read for the calls that bring the frames to them and keep a commit from taking the move away.

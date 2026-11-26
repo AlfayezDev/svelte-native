@@ -429,14 +429,26 @@ private fun textMetrics(editText: String?, textAttributes: String?, engineInput:
   expect("a weight turns them on, 400 too (fontWeight '400' is a weight)", InputRules.exactAdvances(null, 400, false), true)
   expect("so does a style that is not italic (the record carries 400 for it)", InputRules.exactAdvances(null, 400, false), true)
   expect("a weight and a style that are not set keep the hinted paint", InputRules.exactAdvances(null, 0, false), false)
+  expect("a field that allows font scaling takes the scaled px (1.3 times the font)", InputRules.effectivePx(true, 42f, 54.6f), 54.6f)
+  expect("one that does not keeps dp times the density", InputRules.effectivePx(false, 42f, 54.6f), 42f)
+  expect("a letter spacing of -0.5 dp scales with the font (React Native has no sign test)", InputRules.scales(true, -0.5f * 2.625f), true)
+  expect("a value of 0 is left alone", InputRules.scales(true, 0f), false)
+  expect("a field that does not allow font scaling scales nothing", InputRules.scales(false, 42f), false)
+  expect("a negative spacing at 1.3 is -1.3 times as long", InputRules.effectivePx(true, -1.3125f, -1.7062f), -1.7062f)
+  expect("an unset maxFontSizeMultiplier is no cap (0)", InputRules.maxFontScale(Float.NaN), 0f)
+  expect("a set one is the cap", InputRules.maxFontScale(1.5f), 1.5f)
   expect("the line height span is the line height rounded up", InputRules.lineHeightSpanPx(57.75f, 5), 58)
   expect("an empty field has none", InputRules.lineHeightSpanPx(57.75f, 0), 0)
   expect("a field with no line height has none", InputRules.lineHeightSpanPx(0f, 5), 0)
   if (textAttributes != null) {
     val body = java.io.File(textAttributes).readText().replace(Regex("\\s+"), " ")
     expect("RN: the font size is rounded up", body.contains("Math.ceil(PixelUtil.toPixelFromSP("), true)
+    expect("RN: the size is scaled with the system's font when the field allows it", body.contains("return if (allowFontScaling) { Math.ceil(PixelUtil.toPixelFromSP(fontSize, effectiveMaxFontSizeMultiplier).toDouble()) .toInt() } else { Math.ceil(PixelUtil.toPixelFromDIP(fontSize).toDouble()).toInt() }"), true)
+    expect("RN: so are the line height and the letter spacing", body.contains("if (allowFontScaling) PixelUtil.toPixelFromSP(lineHeight, effectiveMaxFontSizeMultiplier) else PixelUtil.toPixelFromDIP(lineHeight)") && body.contains("if (allowFontScaling) PixelUtil.toPixelFromSP(letterSpacing, effectiveMaxFontSizeMultiplier) else PixelUtil.toPixelFromDIP(letterSpacing)"), true)
   }
   if (editText != null) {
+    val rnBody = java.io.File(editText).readText().replace(Regex("\\s+"), " ")
+    expect("RN: a field applies its text attributes again when the configuration changes", rnBody.contains("public override fun onConfigurationChanged(newConfig: Configuration) { super.onConfigurationChanged(newConfig) if ( ReactNativeNewArchitectureFeatureFlags.enableBridgelessArchitecture() && ReactNativeFeatureFlags.enableFontScaleChangesUpdatingLayout() ) { applyTextAttributes() } }"), true)
     val body = java.io.File(editText).readText().replace(Regex("\\s+"), " ")
     expect("RN: a family, a weight or a style turn subpixel text on", body.contains("fontStyle != ReactConstants.UNSET || fontWeight != ReactConstants.UNSET || fontFamily != null") && body.contains("paintFlags or Paint.SUBPIXEL_TEXT_FLAG"), true)
     expect("RN: and linear text", body.contains("paintFlags or Paint.LINEAR_TEXT_FLAG"), true)
@@ -450,11 +462,14 @@ private fun textMetrics(editText: String?, textAttributes: String?, engineInput:
   if (encoder != null) {
     val body = java.io.File(encoder).readText().replace(Regex("\\s+"), " ")
     expect("the record carries includeFontPadding", body.contains("b.putInt(p.paragraphAttributes.includeFontPadding ? 1 : 0);"), true)
+    expect("the record carries allowFontScaling and the cap, and no multiplier of the props (there is none on Android)", body.contains("b.putInt(ta.allowFontScaling.value_or(true) ? 1 : 0); b.putFloat(static_cast<float>(ta.maxFontSizeMultiplier));") && !body.substringAfter("void encodeInput(").substringBefore("o.begin(kInputTextProp)").contains("* multiplier"), true)
     expect("and 0 for a weight and a style that are not set", body.contains("(ta.fontStyle.has_value() ? 400 : 0)"), true)
   }
   if (engineInput != null) {
     val body = java.io.File(engineInput).readText().replace(Regex("\\s+"), " ")
-    expect("EngineInput rounds the size up", body.contains("InputRules.fontSizePx(v.fontSize)"), true)
+    expect("EngineInput rounds the size up", body.contains("InputRules.fontSizePx(effectivePx(rawSize))"), true)
+    expect("and scales the size, the line height and the letter spacing as React Native does", body.contains("PixelUtil.toPixelFromSP(px / resources.displayMetrics.density, InputRules.maxFontScale(maxScale))") && body.contains("effectivePx(rawHeight)") && body.contains("effectivePx(rawSpacing)") && body.contains("InputRules.scales(scalable, px)"), true)
+    expect("and again when the font scale changes", body.contains("override fun onConfigurationChanged(newConfig: Configuration) { super.onConfigurationChanged(newConfig) if (scalable) applyTextMetrics() }"), true)
     expect("EngineInput sets the advances from the rule", body.contains("InputRules.exactAdvances(family, weight, italic)") && body.contains("Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG"), true)
     expect("EngineInput puts the line height on the text as a span", body.contains("InputRules.lineHeightSpanPx(lineHeightPx, length)") && body.contains("TextLayouts.LineHeight(lineHeightPx)") && !body.contains("setLineSpacing(extra"), true)
     expect("EngineInput takes the font padding from the prop", body.contains("includeFontPadding = v.includeFontPadding") && !body.contains("includeFontPadding = false"), true)

@@ -14,3 +14,4 @@ export { updateLayoutAnimations } from "react-native-reanimated/src/UpdateLayout
 export { LayoutAnimationType } from "react-native-reanimated/src/commonTypes";
 export { processColorsInProps } from "react-native-reanimated/src/common/style/processors/colors";
 export { WorkletEventHandler } from "react-native-reanimated/src/WorkletEventHandler";
+export { subscribeForKeyboardEvents, unsubscribeFromKeyboardEvents } from "react-native-reanimated/src/core";

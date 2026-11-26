@@ -3,6 +3,7 @@ export * from "./core.ts";
 // `animation.ts` and `gestures/index.ts` import nothing of Reanimated or the gesture builders until a name is used; `svg.ts` names its two elements `SvgText` and `SvgImage`,
 // since `Text` and `Image` are the views. `runOnJS` and `scheduleOnRN` come from `animation.ts` and `gestures/index.ts` both: the same bindings.
 export * from "./animation.ts";
+export { createKeyboardMotion, type KeyboardMotion } from "./keyboard-motion.ts";
 export * from "./gestures/index.ts";
 export * from "./svg.ts";
 // The library's own native blur (`native/svelte-core`), not a third-party view: `/foreign` exports it too.

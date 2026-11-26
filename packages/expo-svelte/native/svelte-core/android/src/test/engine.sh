@@ -119,6 +119,14 @@ kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/ClipRules.kt" \
   "$here/kotlin/expo/modules/svelteengine/ClipRulesCheck.kt" -include-runtime -d "$work/clip-check.jar"
 java -cp "$work/clip-check.jar" expo.modules.svelteengine.ClipRulesCheckKt "$views"
 
+# What follows the keyboard frame by frame (SPEC.md, "Keyboard motion"): the sticky view's translation, the chat lift's sequence of paddings and scroll targets for always,
+# whenAtEnd and never, and the aware scroll's interpolation, with react-native-keyboard-controller's own numbers; the sources of the insets, the commit path and the scroll
+# views are read for the calls that bring the frames to them and keep a commit from taking the move away.
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/KeyboardRules.kt" "$here/../main/java/expo/modules/svelteengine/KeyboardChannel.kt" "$here/../main/java/expo/modules/svelteengine/views/ModalLayout.kt" \
+  "$here/kotlin/expo/modules/svelteengine/KeyboardRulesCheck.kt" -include-runtime -d "$work/keyboard-rules-check.jar"
+# The library's copy of Reanimated is read for the states and the dips `useAnimatedKeyboard` is given.
+java -cp "$work/keyboard-rules-check.jar" expo.modules.svelteengine.KeyboardRulesCheckKt "$here/../main/java/expo/modules/svelteengine" "$here/../../../../../vendor/react-native-reanimated"
+
 # The default of the status and navigation bars (SPEC.md, "Screen API contract": `auto` follows the system) and that the window is written the first time.
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/SystemBarsRules.kt" \
   "$here/kotlin/expo/modules/svelteengine/SystemBarsRulesCheck.kt" -include-runtime -d "$work/system-bars-check.jar"

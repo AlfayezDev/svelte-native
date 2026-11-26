@@ -121,8 +121,12 @@ class ScrollBridge(private val view: ViewGroup, private val node: NodeState) {
     }
   }
 
+  /** Called after every scroll and layout pass of a scroll view the keyboard's chat lift watches (`KeyboardDrive`: `onEndVisible`); null for the rest. */
+  var watcher: (() -> Unit)? = null
+
   /** After a layout pass: applies the initial `contentOffset` once the content has its Yoga frame. */
   fun onLaidOut() {
+    watcher?.invoke()
     val o = pendingOffset ?: return
     val content = view.getChildAt(0) as? EngineNode ?: return
     if (!content.node.hasFrame) return
@@ -311,6 +315,7 @@ class ScrollBridge(private val view: ViewGroup, private val node: NodeState) {
     activelyScrolling = true
     emit(0)
     pushState(false)
+    watcher?.invoke()
   }
 
   /** Called first for every touch event the scroll view dispatches (tracks velocity, stops a running fling). */
@@ -373,6 +378,7 @@ class ScrollBridge(private val view: ViewGroup, private val node: NodeState) {
    * unset, so no event goes out for a tag that is gone) and `MountingManager` hands the view its new `native`.
    */
   fun resetForReuse() {
+    watcher = null
     cancelPostTouchScrolling()
     tracker?.recycle()
     tracker = null
@@ -524,6 +530,8 @@ class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineSc
     bridge.native = null
     resetOffset(this, standIn, scrollX != 0 || scrollY != 0, ::scrollTo)
     bridge.resetForReuse()
+    // The room the keyboard's chat lift or aware scroll made at the bottom (`KeyboardDrive`).
+    if (paddingBottom != 0) setPadding(paddingLeft, paddingTop, paddingRight, 0)
     // Edge glows of the previous owner would otherwise keep animating on the next one.
     overScrollMode = OVER_SCROLL_NEVER
     overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS
@@ -577,9 +585,10 @@ class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineSc
     }
   }
 
+  // The end is the end of the content and of the room at its bottom (padding: a keyboard's lift makes some), as `ReactScrollView.scrollToEnd` (the child's height and the bottom padding).
   override fun scrollToEndPx(animated: Boolean) {
     val h = getChildAt(0)?.height ?: 0
-    scrollToPx(scrollX, max(0, h - height), animated)
+    scrollToPx(scrollX, expo.modules.svelteengine.KeyboardRules.endOffset(h, height, paddingTop, paddingBottom), animated)
   }
 
   override fun flashIndicators() {
@@ -690,7 +699,7 @@ class EngineHScroll(context: Context) : HorizontalScrollView(context), EngineNod
 
   override fun scrollToEndPx(animated: Boolean) {
     val w = getChildAt(0)?.width ?: 0
-    scrollToPx(max(0, w - width), scrollY, animated)
+    scrollToPx(expo.modules.svelteengine.KeyboardRules.endOffset(w, width, paddingLeft, paddingRight), scrollY, animated)
   }
 
   override fun flashIndicators() {

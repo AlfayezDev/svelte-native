@@ -21,7 +21,7 @@ The newest 4.x that supports the library's React Native, moved with a Worklets v
 
 ## Local changes
 
-`0001-engine-views-and-direct-props.patch` (Android: the engine's views are written natively, and opacity, translate and scale skip React Native's prop path), `0002-worklets-is-the-copy-beside-it.patch` (`scripts/validate-worklets-version.js` finds the Worklets copy beside it), `0003-android-synchronous-props-on-by-default.patch` (`src/featureFlags/staticFlags.json`: `ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS` on). Doctor shape: `reanimatedProblems`.
+`0001-engine-views-and-direct-props.patch` (Android: the engine's views are written natively, and opacity, translate and scale skip React Native's prop path), `0002-worklets-is-the-copy-beside-it.patch` (`scripts/validate-worklets-version.js` finds the Worklets copy beside it), `0003-android-synchronous-props-on-by-default.patch` (`src/featureFlags/staticFlags.json`: `ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS` on). `0004-keyboard-events-from-the-engine.patch` (`SvelteEngineHook.keyboardSubscribe` and `keyboardUnsubscribe`; `KeyboardAnimationManager` takes the keyboard's events from them when the engine has set them, so Reanimated's own insets listener never runs). Doctor shape: `reanimatedProblems`.
 
 ## What the library relies on
 

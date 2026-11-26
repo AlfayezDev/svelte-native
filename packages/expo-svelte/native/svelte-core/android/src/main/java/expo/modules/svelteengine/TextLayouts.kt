@@ -230,6 +230,7 @@ object TextLayouts {
     return builder.build()
   }
 
+  /** The paint of a text that has no span: the first fragment's own size, colour and typeface (it can't ellipsize, so nothing measures with the paint itself). */
   private fun basePaint(first: Fragment): TextPaint {
     val paint = TextPaint(TextPaint.ANTI_ALIAS_FLAG)
     val size = pixelSize(first.size)
@@ -238,6 +239,21 @@ object TextLayouts {
     paint.typeface = typeface(first.family, first.weight, first.italic)
     paint.isSubpixelText = first.styled
     paint.isLinearText = first.styled
+    if (size > 0f) paint.letterSpacing = first.letterSpacing / size
+    return paint
+  }
+
+  /**
+   * The paint `ReactTextView` (a `TextView`) lays a text out with when it draws, which is not the one `TextLayoutManager` measures with: the platform's default typeface at
+   * the paragraph's size with the hinted flags a `TextView` starts with, and the letter spacing as an em share of that size. The fragments' typeface and the rest come from
+   * their spans. It matters where the layout measures with the paint itself and not with a span: the ellipsis (`Layout.calculateEllipsis` measures "…" with the layout's
+   * paint), so a line that ends in one fits a letter more or less by how wide that "…" is in the font the view has, not the text's.
+   */
+  private fun viewPaint(first: Fragment): TextPaint {
+    val paint = TextPaint(TextPaint.ANTI_ALIAS_FLAG)
+    val size = pixelSize(first.size)
+    paint.textSize = size
+    paint.color = first.color
     if (size > 0f) paint.letterSpacing = first.letterSpacing / size
     return paint
   }
@@ -446,10 +462,12 @@ object TextLayouts {
 
   private fun buildUncached(spec: TextSpec, frags: List<Fragment>, width: Int, height: Int): BuiltText {
 
-    val paint = basePaint(frags[0])
+    // A text that can end in an ellipsis has its font from a span, as React Native's has, and the view's paint under it; one that can't keeps its font in the paint.
+    val bare = TextPaintRules.fontInPaint(frags.size, frags[0].plain, spec.fit, spec.maxLines)
+    val paint = if (bare) basePaint(frags[0]) else viewPaint(frags[0])
     val text: CharSequence
     var spans: ArrayList<FragmentSpan>? = null
-    if (frags.size == 1 && frags[0].plain && !spec.fit) {
+    if (bare) {
       val only = frags[0]
       val s = transformed(only.text, only.transform)
       text = if (only.lineHeight > 0f) android.text.SpannableString(s).also {

@@ -248,7 +248,7 @@ try { transformer.transform({ filename: process.cwd() + "/src/Plain.svelte", src
 
   test("the bare package name and expo-svelte/app.plugin: @expo/config-plugins loads the config plugin by each and runs it; expo-svelte/expo, removed in 0.4.0-rc.7, is not found", () => {
     type Summary = { mods: string[]; remote: { origin: string }; pluginFile: string; isPluginFile: boolean; kind: string };
-    const result = probe("expo.cjs") as { bare: Summary; appPlugin: Summary; sameAppPlugin: boolean; removed: string };
+    const result = probe("expo.cjs") as { bare: Summary; appPlugin: Summary; sameAppPlugin: boolean; removed: string; warnings: string[] };
     for (const summary of [result.bare, result.appPlugin]) {
       expect(summary.mods).toEqual(["android", "ios"]);
       expect(summary.remote.origin).toBe("https://app.example.com");
@@ -259,12 +259,14 @@ try { transformer.transform({ filename: process.cwd() + "/src/Plain.svelte", src
     expect(result.appPlugin.pluginFile).toBe(join(installed, "app.plugin.js"));
     expect(result.sameAppPlugin).toBe(true);
     expect(result.removed).toBe("PLUGIN_NOT_FOUND");
+    // Expo asks Node for `<name>/app.plugin.js` after it loaded the file by the package's name, and says so on every build when the package's `exports` does not list it (`The config plugin for "expo-svelte" was loaded from "app.plugin.js", but the "exports" field ...`).
+    expect(result.warnings).toEqual([]);
   });
 
   test("the paths 0.4.0-rc.7 removed are not exported by the installed package: Node refuses each, and still resolves the entries that stay", () => {
     const resolveFrom = (specifier: string) => run(["-e", `try { console.log(require.resolve(${JSON.stringify(specifier)})); } catch (error) { console.log(error.code); }`]).stdout.trim();
     for (const specifier of removedSpecifiers) expect([specifier, resolveFrom(specifier)]).toEqual([specifier, "ERR_PACKAGE_PATH_NOT_EXPORTED"]);
-    for (const [specifier, file] of [["expo-svelte/app.plugin", "app.plugin.js"], ["expo-svelte/metro", "dist/node/metro.cjs"], ["expo-svelte/package.json", "package.json"]])
+    for (const [specifier, file] of [["expo-svelte/app.plugin", "app.plugin.js"], ["expo-svelte/app.plugin.js", "app.plugin.js"], ["expo-svelte/metro", "dist/node/metro.cjs"], ["expo-svelte/package.json", "package.json"]])
       expect([specifier, resolveFrom(specifier)]).toEqual([specifier, join(installed, file)]);
   });
 

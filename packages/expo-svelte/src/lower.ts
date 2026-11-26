@@ -27,7 +27,8 @@ export const LOWERED_TAGS: Record<string, string> = {
 // The Svelte AST is walked structurally, so nodes are deliberately loosely typed.
 // biome-ignore lint/suspicious/noExplicitAny: structural AST walk
 type Node = { type: string; start: number; end: number; [key: string]: any }; // eslint-disable-line @typescript-eslint/no-explicit-any
-type Edit = { start: number; end: number; text: string };
+/** `copies`: where the text of an edit holds a span of the file as it is written (`at` in the text, `source` in the file), so a position inside the span is that character of the file, not the start of the edit. */
+type Edit = { start: number; end: number; text: string; copies?: { at: number; source: number; length: number }[] };
 
 /**
  * The press handlers of a lowered tag. Svelte compiles `onPress={enabled ? go : undefined}` to an event listener that stays on the node for good and calls whatever
@@ -84,6 +85,29 @@ function classExpression(content: string, attribute: Node): string {
     template += part.type === "Text" ? part.data.replace(/[`\\]/g, (match: string) => `\\${match}`) : `\${(${content.slice(part.expression.start, part.expression.end)}) ?? ""}`;
   }
   return `${template}\``;
+}
+
+/** The expressions of a `class` attribute's value, in the order [classExpression] writes them. */
+function classSpans(attribute: Node): Node[] {
+  const value = attribute.value;
+  if (value === true) return [];
+  if (!Array.isArray(value)) return [value.expression];
+  return (value as Node[]).filter((part) => part.type !== "Text").map((part) => part.expression);
+}
+
+/** Where [text] holds the source of each of [spans] (in order, each after the one before, the first from [firstAt]) exactly as the file has it. A span that was changed on its way (put on one line) is not found and keeps no copy. */
+function copiedSpans(content: string, text: string, firstAt: number, spans: readonly Node[]): NonNullable<Edit["copies"]> {
+  const copies: NonNullable<Edit["copies"]> = [];
+  let from = firstAt;
+  for (const span of spans) {
+    const source = content.slice(span.start, span.end);
+    if (!source) continue;
+    const at = text.indexOf(source, from);
+    if (at < 0) continue;
+    copies.push({ at, source: span.start, length: source.length });
+    from = at + source.length;
+  }
+  return copies;
 }
 
 /** True when an attribute expression could evaluate to a function (a literal, an object, an array or an operator's result cannot). */
@@ -190,10 +214,16 @@ export function lowerWithMap(content: string, options: LowerOptions = {}): Lower
       const written = `nativeClass={${classHelper}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`}${styleArgument})}`;
       const dropped = classes.reduce((count, attribute) => count + content.slice(attribute.start, attribute.end).split("\n").length - 1, 0) - (written.split("\n").length - 1);
       const value = dropped > 0 ? written + "\n".repeat(dropped) : written;
+      // The expressions are copied into the call as they are written (a multi-line one keeps its lines): an error inside one is at its place in the file.
+      const copies = copiedSpans(content, written, `nativeClass={${classHelper}(`.length, [
+        ...(own ? classSpans(own) : []),
+        ...directives.map((directive) => directive.expression),
+        ...(style !== undefined && copy !== undefined ? [style.value.expression] : []),
+      ]);
       helpers.add(classHelper);
       const at = own ?? (spreads ? undefined : classes[0]);
       if (at === undefined) edits.push({ start: node.attributes[0].start, end: node.attributes[0].start, text: `${value} ` });
-      for (const attribute of classes) edits.push({ start: attribute.start, end: attribute.end, text: attribute === at ? value : "" });
+      for (const attribute of classes) edits.push({ start: attribute.start, end: attribute.end, text: attribute === at ? value : "", ...(attribute === at && copies.length ? { copies } : {}) });
     }
     for (const attribute of node.attributes as Node[]) {
       if (classes.includes(attribute) || lowered?.handled.has(attribute)) continue;
@@ -298,7 +328,10 @@ function positionIn(content: string, lowered: string, edits: readonly Edit[], li
     const edit = edits[at] as Edit;
     const from = edit.start + delta;
     if (target < from) break;
-    if (target < from + edit.text.length) return lineAndColumn(content, edit.start);
+    if (target < from + edit.text.length) {
+      const copy = edit.copies?.find((one) => target >= from + one.at && target < from + one.at + one.length);
+      return lineAndColumn(content, copy ? copy.source + (target - from - copy.at) : edit.start);
+    }
     delta += edit.text.length - (edit.end - edit.start);
   }
   return lineAndColumn(content, Math.max(0, Math.min(content.length, target - delta)));

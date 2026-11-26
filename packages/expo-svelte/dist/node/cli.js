@@ -1802,7 +1802,7 @@ var init_init_app = __esm({
     };
     alwaysPatched = ["expo-modules-core"];
     plugin = "expo-svelte";
-    pluginNames = [plugin, `${plugin}/app.plugin`];
+    pluginNames = [plugin, `${plugin}/app.plugin`, `${plugin}/app.plugin.js`];
     removedPluginName = `${plugin}/expo`;
     scripts = { native: "expo-svelte dev", android: "expo-svelte android", ios: "expo-svelte ios", "check-setup": "expo-svelte doctor" };
     gitignore = [".expo-svelte", ".expo", "/android", "/ios"];
@@ -2038,7 +2038,7 @@ function metroFinding(appRoot) {
   return { state: /\bwithExpoSvelte\b/.test(code) ? "found" : "unclear", file };
 }
 function expoPluginFinding(appRoot, library2) {
-  const names = [library2, `${library2}/app.plugin`];
+  const names = [library2, `${library2}/app.plugin`, `${library2}/app.plugin.js`];
   const removed = `${library2}/expo`;
   const json = firstExisting(appRoot, ["app.json"]);
   const code = firstExisting(appRoot, APP_CONFIG_FILES);
@@ -2063,7 +2063,7 @@ function appJson(appRoot, library2) {
   const parsed = file ? readJson2(join7(appRoot, file)) : void 0;
   if (!file || !parsed) return void 0;
   const expo2 = record(parsed.expo ?? parsed);
-  const names = [library2, `${library2}/app.plugin`];
+  const names = [library2, `${library2}/app.plugin`, `${library2}/app.plugin.js`];
   const entry = (Array.isArray(expo2.plugins) ? expo2.plugins : []).find((candidate) => names.includes(pluginName(candidate) ?? ""));
   return { file, expo: expo2, plugin: entry === void 0 ? void 0 : record(Array.isArray(entry) ? entry[1] : void 0) };
 }
@@ -2611,7 +2611,7 @@ var init_libraries = __esm({
     };
     libraryNames = optionalPackages.map((vendored2) => vendored2.name);
     isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
-    PLUGIN_NAMES = /* @__PURE__ */ new Set(["expo-svelte", "expo-svelte/app.plugin", "expo-svelte/expo"]);
+    PLUGIN_NAMES = /* @__PURE__ */ new Set(["expo-svelte", "expo-svelte/app.plugin", "expo-svelte/app.plugin.js", "expo-svelte/expo"]);
   }
 });
 

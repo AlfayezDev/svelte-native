@@ -56,7 +56,7 @@ With `horizontal`, the same props are widths.
 | `horizontal` | `boolean` | `false` | Scrolls sideways. |
 | `overscan` | `number` | `4` | Rows kept mounted before and after the visible ones. |
 | `initialNumToRender` | `number` | `10` | Rows mounted before the list knows its size. |
-| `initialScrollIndex` | `number` | | The row the list starts scrolled to. |
+| `initialScrollIndex` | `number` | | The row the list starts scrolled to, below the `header`. It is scrolled to once, when the list, its header and its rows have been laid out; rows that arrive in chunks are scrolled to with the first chunk (the list ends where the rows it has end, when the row is not among them). |
 | `onEndReached` | `() => void` | | Called when the end comes within `onEndReachedThreshold`. Load the next page here. |
 | `onEndReachedThreshold` | `number` | `0.5` | How close to the end, in screen heights, `onEndReached` fires. |
 | `onViewableItemsChanged` | `(info: { viewableItems, changed }) => void` | | Called with the rows that became visible or hidden. Each entry has `item`, `key`, `index` and `isViewable`. |

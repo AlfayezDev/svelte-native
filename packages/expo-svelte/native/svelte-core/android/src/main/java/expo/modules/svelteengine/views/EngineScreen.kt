@@ -65,6 +65,8 @@ open class EngineScreen(context: Context) : EngineView(context) {
   internal var running: Any? = null
   /** The screen whose transition moves or fades this one as the full screen below it ([EngineStack.system]); null otherwise. */
   internal var mover: EngineScreen? = null
+  /** Whether [mover]'s transition moves this screen (a push that moves the one below aside) or only fades it: a fade leaves its position to whoever else moves it. */
+  internal var movedByMover = false
   /** A transition is moving this screen less than the width: the stack draws the strip it uncovers in the screen's own colours (the framework's `extend`). */
   internal var extendsEdge = false
   /** While this screen is the one below a transition that fades it ([EngineStack.system]): the screen whose surface the stack draws under it, the one coming. */

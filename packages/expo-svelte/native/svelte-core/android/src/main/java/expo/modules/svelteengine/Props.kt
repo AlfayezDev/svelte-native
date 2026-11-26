@@ -383,13 +383,13 @@ object Props {
 
   /**
    * Translate (px), scale and rotation (degrees) about the view's transform origin ([applyPivot]; the centre by default); shared by committed props (prop 6) and
-   * animated writes (AnimatedProps) so both decompose and pivot the same way.
+   * animated writes (AnimatedProps) so both decompose and pivot the same way. A view the keyboard moves ([NodeState.drivenY]) keeps that move on top of the translation.
    */
   fun setTransform(view: View, st: NodeState, tx: Float, ty: Float, sx: Float, sy: Float, rot: Float) {
-    val identity = tx == 0f && ty == 0f && sx == 1f && sy == 1f && rot == 0f
+    val identity = tx == 0f && ty == 0f && sx == 1f && sy == 1f && rot == 0f && st.drivenY == 0f
     if (!identity || st.transformed) {
       view.translationX = tx
-      view.translationY = ty
+      view.translationY = ty + st.drivenY
       view.scaleX = sx
       view.scaleY = sy
       view.rotation = rot

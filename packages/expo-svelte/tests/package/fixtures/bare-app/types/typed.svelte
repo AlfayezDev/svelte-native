@@ -2,12 +2,12 @@
      app that has the packed package in its node_modules and no declaration of its own: it has to pass, and so does everything the library's own source imports. -->
 <script lang="ts">
   import {
-    View, Text, TextInput, Pressable, ScrollView, Image, Switch, ActivityIndicator, Modal, SafeAreaView, KeyboardAvoidingView, List,
+    View, Text, TextInput, Pressable, ScrollView, Image, Switch, ActivityIndicator, Modal, SafeAreaView, KeyboardAvoidingView, KeyboardStickyView, KeyboardChatScrollView, KeyboardAwareScrollView, List,
     Screen, Stack, Tabs, Native, useRouter, useHeader, useToolbar, inTabPane, insets, bootSummary, openLaunchURL,
-    AnimatedView, createSharedValue, withTiming, withSpring, withRepeat, withSequence, withDelay, runOnUISync, runOnUIAsync,
+    AnimatedView, createSharedValue, createKeyboardMotion, withTiming, withSpring, withRepeat, withSequence, withDelay, runOnUISync, runOnUIAsync,
     Gesture, GestureDetector, BlurView, Svg, Path, SvgText, SvgImage, type SvgHandle,
   } from "expo-svelte";
-  import { Platform, Appearance, Dimensions, Linking, Keyboard, AppState, BackHandler, PixelRatio, Share, Vibration, Alert, turboModule, nativeModule } from "expo-svelte/platform";
+  import { Platform, Appearance, Dimensions, Linking, Keyboard, KeyboardController, AppState, BackHandler, PixelRatio, Share, Vibration, Alert, turboModule, nativeModule } from "expo-svelte/platform";
   import { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
   import { checkForUpdateAsync, fetchUpdateAsync, reloadAsync, isEnabled } from "expo-svelte/updates";
 
@@ -19,6 +19,9 @@
   const header = useHeader();
   const toolbar = useToolbar();
   const x = createSharedValue(0);
+  const keyboard = createKeyboardMotion();
+  void keyboard.progress;
+  KeyboardController.setFocusTo("next");
   const pan = Gesture.Pan().onUpdate((e) => { x.value = e.translationX; }).onEnd(() => { x.value = withSpring(0); });
   const root = useRouter("root");
   router.back(); router.replaceBase("/x"); void router.openURL("x"); void [router.current.url, router.entries, router.screens, root.current.params];
@@ -83,6 +86,9 @@
       <ScrollView ref={(h) => { h?.scrollTo({ y: 0 }); h?.dispatchCommand("scrollToEnd", [true]); }} gesture={pan} horizontal />
       <SafeAreaView edges={["top"]} />
       <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={10} />
+      <KeyboardStickyView offset={{ closed: 0, opened: 34 }} enabled style={{ padding: 4 }} />
+      <KeyboardChatScrollView keyboardLiftBehavior="whenAtEnd" offset={10} onEndVisible={(visible) => (on = visible)} contentContainerStyle={{ padding: 4 }} />
+      <KeyboardAwareScrollView bottomOffset={20} extraKeyboardSpace={4} disableScrollOnKeyboardHide enabled keyboardShouldPersistTaps="handled" />
       <Modal visible={on} transparent onRequestClose={() => {}} animationType="fade" />
       <List bind:this={list} items={rows} rowHeight={56} keyOf={(row) => row.id} estimatedRowHeight={40} rowHeights={() => 5} horizontal initialScrollIndex={0}
         onEndReached={() => {}} onEndReachedThreshold={0.5} onViewableItemsChanged={({ viewableItems }) => viewableItems.length} viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}

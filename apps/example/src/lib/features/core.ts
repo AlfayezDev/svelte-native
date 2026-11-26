@@ -12,6 +12,7 @@ export const coreFeatures: Feature[] = [
   { title: "Classes", summary: "Tailwind classes: utilities, dark:, breakpoints, your own CSS classes", group: "Layout and style", route: "/classes" },
   { title: "Lists", summary: "A plain list beside a windowed list of 5,000 rows", group: "Lists and input", route: "/lists" },
   { title: "Inputs and forms", summary: "TextInput, Switch, validation and the keyboard", group: "Lists and input", route: "/inputs" },
+  { title: "Keyboard", summary: "A composer that rides the keyboard and a chat that lifts with it, frame by frame", group: "Lists and input", route: "/keyboard" },
   { title: "Stack", summary: "Push and pop screens, native headers, route parameters", group: "Navigation", route: "/navigation/stack", also: ["/navigation/stack/[id]"] },
   { title: "Tabs", summary: "A tab bar whose tabs each keep their own stack", group: "Navigation", route: "/navigation/tabs", also: ["/navigation/tabs/feed", "/navigation/tabs/feed/[id]", "/navigation/tabs/profile"] },
   { title: "Header and toolbar", summary: "Search in the header, a native bottom toolbar with actions and a badge", group: "Navigation", route: "/navigation/header" },

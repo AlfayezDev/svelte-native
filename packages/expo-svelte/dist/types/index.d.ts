@@ -1,5 +1,6 @@
 export * from "./core.js";
 export * from "./animation.js";
+export { createKeyboardMotion, type KeyboardMotion } from "./keyboard-motion.js";
 export * from "./gestures/index.js";
 export * from "./svg.js";
 export { default as BlurView } from "./components/BlurView.svelte";

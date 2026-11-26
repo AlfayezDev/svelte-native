@@ -3042,7 +3042,7 @@ function checkLibraries(option) {
   const wanted = withRequired(listed.keys());
   return { listed, enabled: libraryNames.filter((name) => wanted.includes(name)) };
 }
-var PLUGIN_NAMES = /* @__PURE__ */ new Set(["expo-svelte", "expo-svelte/app.plugin", "expo-svelte/expo"]);
+var PLUGIN_NAMES = /* @__PURE__ */ new Set(["expo-svelte", "expo-svelte/app.plugin", "expo-svelte/app.plugin.js", "expo-svelte/expo"]);
 function isLibraryPlugin(entry) {
   if (typeof entry !== "string") return false;
   if (PLUGIN_NAMES.has(entry)) return true;

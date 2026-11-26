@@ -21,39 +21,76 @@ import expo.modules.svelteengine.views.EngineRoot
  * state between the two, so the root insets still hold the start state in `onPrepare` (the content moved only once the
  * keyboard had finished opening or closing, #109).
  */
-class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>) -> Unit) {
+class Insets(private val root: EngineRoot, private val drive: KeyboardDrive, private val emit: (Map<String, Any?>) -> Unit) {
   private val density = root.resources.displayMetrics.density
   private val location = IntArray(2)
   private var last: Map<String, Any?>? = null
-  private var animating = false
+  /** The keyboard's animations, counted, and the heal of one that nothing ends ([KeyboardSession]); what follows the keyboard is told through it. */
+  private val session = KeyboardSession(drive)
+  /** An IME animation is on its way (prepared and not ended): what publishes, settles and measures waits for its end. */
+  private val animating: Boolean get() = session.busy
+  private fun now() = android.os.SystemClock.uptimeMillis()
+
+  /**
+   * Nothing ends an animation that was prepared and never started or ended (a window that took it away): after [STUCK_MS] with no news the keyboard is taken to have settled,
+   * as the insets say, and its followers are ended where it is (`KeyboardSession.heal`), so what is gated on an animation (publishing, the settle of a resized keyboard, layout)
+   * does not stay dead and nothing is left in the middle of a move.
+   */
+  private val watchdog = object : Runnable {
+    override fun run() {
+      if (!session.busy) return
+      if (session.stuck(now(), STUCK_MS)) {
+        session.heal(imeOverlap())
+        publish()
+      } else {
+        root.postDelayed(this, WATCH_MS)
+      }
+    }
+  }
 
   fun install() {
+    drive.navigationBar = { ViewCompat.getRootWindowInsets(root)?.let { (it.getInsets(WindowInsetsCompat.Type.systemBars()).bottom - gapBottom()).coerceAtLeast(0) } ?: 0 }
     ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
-      if (!animating) publish()
+      if (!animating) { publish(); session.idle(imeOverlap()) }
       insets
     }
     ViewCompat.setWindowInsetsAnimationCallback(root, object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
       override fun onPrepare(animation: WindowInsetsAnimationCompat) {
-        if (animation.typeMask and WindowInsetsCompat.Type.ime() != 0) animating = true
+        if (animation.typeMask and WindowInsetsCompat.Type.ime() != 0) {
+          session.prepare(now())
+          root.removeCallbacks(watchdog)
+          root.postDelayed(watchdog, WATCH_MS)
+        }
       }
       override fun onStart(animation: WindowInsetsAnimationCompat, bounds: WindowInsetsAnimationCompat.BoundsCompat): WindowInsetsAnimationCompat.BoundsCompat {
-        if (animation.typeMask and WindowInsetsCompat.Type.ime() != 0) publish()
+        if (animation.typeMask and WindowInsetsCompat.Type.ime() != 0) {
+          publish()
+          session.start(imeOverlap(), now())
+        }
         return bounds
       }
-      override fun onProgress(insets: WindowInsetsCompat, runningAnimations: MutableList<WindowInsetsAnimationCompat>) = insets
+      override fun onProgress(insets: WindowInsetsCompat, runningAnimations: MutableList<WindowInsetsAnimationCompat>): WindowInsetsCompat {
+        if (animating && runningAnimations.any { it.typeMask and WindowInsetsCompat.Type.ime() != 0 }) {
+          session.frame((insets.getInsets(WindowInsetsCompat.Type.ime()).bottom - gapBottom()).coerceAtLeast(0), now())
+        }
+        return insets
+      }
       override fun onEnd(animation: WindowInsetsAnimationCompat) {
         if (animation.typeMask and WindowInsetsCompat.Type.ime() == 0) return
-        animating = false
+        // An animation that ends while another runs (the keyboard turned around) is not the keyboard settling.
+        if (!session.end(now()) { imeOverlap() }) return
+        root.removeCallbacks(watchdog)
         publish()
       }
     })
     root.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or, ob -> if (r - l != or - ol || b - t != ob - ot || l != ol || t != ot) publish() }
     root.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-      override fun onViewAttachedToWindow(v: View) { watchLayouts(); v.requestApplyInsets(); publish() }
+      override fun onViewAttachedToWindow(v: View) { watchLayouts(); drive.install(v); v.requestApplyInsets(); publish() }
       // A window that goes during an IME animation does not deliver its end: the next window starts with none running.
-      override fun onViewDetachedFromWindow(v: View) { unwatchLayouts(); animating = false }
+      override fun onViewDetachedFromWindow(v: View) { unwatchLayouts(); root.removeCallbacks(watchdog); session.heal(session.last) }
     })
     if (root.isAttachedToWindow) {
+      drive.install(root)
       watchLayouts()
       root.requestApplyInsets()
     }
@@ -66,7 +103,7 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
    * [compute] takes the overlay to fill it, and every layout pass of the window publishes what
    * changed, so the first pass of the new window sends the measured values even though the overlay's own frame did not change.
    */
-  private val globalLayout = android.view.ViewTreeObserver.OnGlobalLayoutListener { if (!animating) publish() }
+  private val globalLayout = android.view.ViewTreeObserver.OnGlobalLayoutListener { if (!animating) { publish(); drive.layoutChanged() } }
   private var watched: android.view.ViewTreeObserver? = null
 
   private fun watchLayouts() {
@@ -80,6 +117,8 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
   }
 
   fun uninstall() {
+    root.removeCallbacks(watchdog)
+    drive.uninstall()
     unwatchLayouts()
     ViewCompat.setOnApplyWindowInsetsListener(root, null)
     ViewCompat.setWindowInsetsAnimationCallback(root, null)
@@ -135,8 +174,29 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
       "left" to dp((bars.left - gapLeft).coerceAtLeast(0)),
       "keyboardHeight" to dp(keyboardPx),
       "keyboardVisible" to (keyboardPx > 0),
+      "keyboardAnimating" to animating,
       "frame" to frame,
     )
+  }
+
+  /** The overlay's gap to the window's bottom edge (px), 0 until the window and the overlay are laid out: the part of the IME's inset the overlay does not cover. */
+  private fun gapBottom(): Int {
+    val windowHeight = root.rootView.height
+    if (windowHeight <= 0 || root.height <= 0 || root.rootView.width <= 0 || root.width <= 0) return 0
+    root.getLocationInWindow(location)
+    return windowHeight - (location[1] + root.height)
+  }
+
+  /** How much of the overlay the IME covers (px) in the root insets: what [compute] reports as the keyboard's height, and the end state of an animation from its start on. */
+  private fun imeOverlap(): Int {
+    val all = ViewCompat.getRootWindowInsets(root) ?: return 0
+    if (!root.isAttachedToWindow || !all.isVisible(WindowInsetsCompat.Type.ime())) return 0
+    return (all.getInsets(WindowInsetsCompat.Type.ime()).bottom - gapBottom()).coerceAtLeast(0)
+  }
+
+  private companion object {
+    const val WATCH_MS = 500L
+    const val STUCK_MS = 2000L
   }
 
   private fun dp(px: Int): Double = Math.round(px / density * 100.0) / 100.0

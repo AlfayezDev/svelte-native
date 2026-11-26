@@ -1,11 +1,15 @@
 import { subscribeInsets, type Frame, type InsetsEvent } from "./fabric/insets.ts";
 
+export type KeyboardState = "closed" | "opening" | "open" | "closing";
+
 /**
  * Safe-area and keyboard insets in dp, reactive, fed by the engine (see `connectInsets`).
- * `frame` is the overlay in window coordinates (its height is the surface height).
+ * `frame` is the overlay in window coordinates (its height is the surface height). The keyboard's fields change when its animation starts and when it ends, not
+ * every frame: `keyboardHeight` is the height it is going to have, and `keyboardState` where it is on the way (on iOS an animation is not reported, so it is
+ * `open` or `closed`). The frames themselves are `createKeyboardMotion()`'s.
  */
-export const insets = $state<{ top: number; right: number; bottom: number; left: number; keyboardHeight: number; keyboardVisible: boolean; frame: Frame }>({
-  top: 0, right: 0, bottom: 0, left: 0, keyboardHeight: 0, keyboardVisible: false, frame: { x: 0, y: 0, width: 0, height: 0 },
+export const insets = $state<{ top: number; right: number; bottom: number; left: number; keyboardHeight: number; keyboardVisible: boolean; keyboardState: KeyboardState; frame: Frame }>({
+  top: 0, right: 0, bottom: 0, left: 0, keyboardHeight: 0, keyboardVisible: false, keyboardState: "closed", frame: { x: 0, y: 0, width: 0, height: 0 },
 });
 
 let connected = false;
@@ -18,6 +22,7 @@ export function applyInsets(event: InsetsEvent): void {
   insets.left = event.left;
   insets.keyboardHeight = event.keyboardHeight;
   insets.keyboardVisible = event.keyboardVisible;
+  insets.keyboardState = event.keyboardAnimating ? (event.keyboardVisible ? "opening" : "closing") : event.keyboardVisible ? "open" : "closed";
   insets.frame.x = event.frame.x;
   insets.frame.y = event.frame.y;
   insets.frame.width = event.frame.width;

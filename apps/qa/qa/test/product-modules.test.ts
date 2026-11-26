@@ -135,6 +135,8 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 		"animatedBatch",
 		// two hints with no content: the commits JavaScript makes next belong together (a layout read and the first frames of an animation), so the engine applies them in one message
 		"holdMounts", "releaseMounts",
+		// the views that follow the keyboard, registered by tag (`KeyboardDrive`): a registration reads nothing of the app's
+		"keyboardDrive", "keyboardMotionNext",
 	];
 	const engineSource = () => readFileSync(resolve(libraryDirectory, "native/svelte-core/android/src/main/java/expo/modules/svelteengine/SvelteEngineModule.kt"), "utf8");
 	/** Every `Function(...)` and `AsyncFunction(...)` the module defines, and the lab check it opens with (the first statement after the lambda's parameters), if any. */

@@ -50,6 +50,8 @@ class NodeState {
   var expandedLocal = 0
   var a11yDelegate = false
   var transformed = false
+  /** How far the keyboard's followers have moved the view (px, `KeyboardDrive`): added to the translation `Props.setTransform` writes, so a commit does not take it away. */
+  var drivenY = 0f
   var outlineClip = false
   /** Record 15 as applied (Props.applyCommon). */
   var viewFlags = 0
@@ -118,6 +120,7 @@ class NodeState {
     a11y = null
     expandedLocal = 0
     transformed = false
+    drivenY = 0f
     bg = 0
     radii.fill(0f)
     border.fill(0f)

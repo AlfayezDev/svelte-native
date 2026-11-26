@@ -104,7 +104,7 @@ export function libraryLinks(enabled: readonly string[]): LibraryLinks {
 export const expoModuleSearchPaths = (expo: readonly string[], root?: string): string[] => expo.map((name) => vendoredRoot(name, root));
 
 /** The packages whose options a plugin entry of the app's config may carry: the library's plugin under its own name, or under the names Expo resolves to the same file. */
-const PLUGIN_NAMES: ReadonlySet<string> = new Set(["expo-svelte", "expo-svelte/app.plugin", "expo-svelte/expo"]);
+const PLUGIN_NAMES: ReadonlySet<string> = new Set(["expo-svelte", "expo-svelte/app.plugin", "expo-svelte/app.plugin.js", "expo-svelte/expo"]);
 
 /** What `appPluginOptions` read: the options the app's config gives the library's plugin, or why they are not known (`unknown`). */
 export type PluginOptionsRead = { options: Record<string, unknown> | undefined } | { unknown: string; error?: unknown };

@@ -230,6 +230,16 @@ describe("init in a project that already has things", () => {
     expect(readJson(root, "app.json").expo.plugins).toEqual([name]);
   });
 
+  test("an app.json that lists the plugin by the file's name, expo-svelte/app.plugin.js, keeps it: init adds no second entry, with or without options", () => {
+    const expo = { name: "Mine", slug: "mine", scheme: "mine", version: "1.0.0", android: { package: "dev.example.myapp" }, ios: { bundleIdentifier: "dev.example.myapp" } };
+    for (const listed of ["expo-svelte/app.plugin.js", ["expo-svelte/app.plugin.js", { androidProfileable: true }]] as const) {
+      const root = project((dir) => writeFileSync(join(dir, "app.json"), `${JSON.stringify({ expo: { ...expo, plugins: ["expo-font", listed] } }, null, 2)}\n`));
+      run(root);
+      expect(readJson(root, "app.json").expo.plugins).toEqual(["expo-font", listed]);
+      expect(run(root).out).toContain("Nothing to change");
+    }
+  });
+
   test("an app.json that lists expo-svelte/expo, which 0.4.0-rc.7 removed, gets the package's name in its place, with the entry's options", () => {
     const expo = { name: "Mine", slug: "mine", scheme: "mine", version: "1.0.0", android: { package: "dev.example.myapp" }, ios: { bundleIdentifier: "dev.example.myapp" } };
     for (const [listed, wanted] of [["expo-svelte/expo", "expo-svelte"], [["expo-svelte/expo", { androidProfileable: true }], ["expo-svelte", { androidProfileable: true }]]] as const) {

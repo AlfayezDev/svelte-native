@@ -465,6 +465,9 @@ describe("the app's configs", () => {
     // `<library>/app.plugin` is the same file.
     const path = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [`${library.name}/app.plugin`] } }) } }).checks;
     expect(find(path, `app.json lists the ${library.name}/app.plugin plugin`)?.status).toBe("pass");
+    // And its file name, which Expo resolves too (the package's `exports` lists it).
+    const file = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [`${library.name}/app.plugin.js`] } }) } }).checks;
+    expect(find(file, `app.json lists the ${library.name}/app.plugin.js plugin`)?.status).toBe("pass");
     const code = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [] } }), "app.config.ts": `export default ({ config }) => ({ ...config, plugins: [["${library.name}", {}]] });\n` } }).checks;
     expect(find(code, `app.config.ts lists the ${library.name} plugin`)?.status).toBe("pass");
     const dynamic = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [] } }), "app.config.ts": "export default ({ config }) => ({ ...config, plugins: pluginsFor(process.env) });\n" } }).checks;

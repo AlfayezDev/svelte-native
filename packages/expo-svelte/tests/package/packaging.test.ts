@@ -51,6 +51,8 @@ describe("the manifest holds nothing that only resolves inside this repository",
   test("the config plugin is reachable by the package's own name (app.plugin.js, which Expo looks for first) and by its path `/app.plugin`, both at the built file; `/expo`, which named that file up to 0.4.0-rc.6, is not an entry", () => {
     expect(manifest.exports["./expo"]).toBeUndefined();
     expect(manifest.exports["./app.plugin"]).toEqual({ "expo-svelte-source": "./src/expo.ts", types: "./dist/types/expo.d.ts", default: "./app.plugin.js" });
+    // Expo, which loaded the file by the package's name, asks Node for it by its own name too and warns on every build when `exports` does not list it.
+    expect(manifest.exports["./app.plugin.js"]).toBe("./app.plugin.js");
     expect(manifest.files).toContain("dist/node");
     expect(manifest.files).toContain("dist/types");
     expect(manifest.files).toContain("app.plugin.js");

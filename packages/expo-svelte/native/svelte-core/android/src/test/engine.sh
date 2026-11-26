@@ -70,7 +70,8 @@ java -cp "$work/input-rules-check.jar" expo.modules.svelteengine.InputRulesCheck
   "$rn/ReactAndroid/src/main/java/com/facebook/react/views/textinput/ReactTextScrollWatcher.kt" \
   "$rn/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ScrollEvent.kt" \
   "$here/../main/cpp/InputEvents.cpp" \
-  "$here/../main/java/expo/modules/svelteengine/ViewEvents.kt"
+  "$here/../main/java/expo/modules/svelteengine/ViewEvents.kt" \
+  "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/platforms/android-36/android.jar"
 
 # What a header and a sheet decide from measurements that are not there yet (the first layout of a screen runs detached): the bar's offset, when a header lays out
 # again, when a layout puts a sheet at its rest. The sources of EngineHeader, EngineSheet and EngineStack are read for the calls that use them.
@@ -121,11 +122,24 @@ kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/GestureRules.kt" \
 java -cp "$work/rules.jar" expo.modules.svelteengine.GestureRulesCheckKt "$views/HitTest.kt" "$views/EngineRoot.kt" "$views/EngineStack.kt" "$views/EngineSheet.kt" \
   "$rngh/android/src/main/java/com/swmansion/gesturehandler/core/PanGestureHandler.kt" "$here/../main/java/expo/modules/svelteengine/SvelteEngineModule.kt"
 
+# Which foreign views pass a touch on to JavaScript (SPEC.md, "Foreign views"): the rule on its inputs, and the sources of HitTest and EngineForeign for what feeds it and what it decides.
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/ForeignTouchRules.kt" \
+  "$here/kotlin/expo/modules/svelteengine/ForeignTouchRulesCheck.kt" -include-runtime -d "$work/foreign-touch-check.jar"
+java -cp "$work/foreign-touch-check.jar" expo.modules.svelteengine.ForeignTouchRulesCheckKt "$views/HitTest.kt" "$views/EngineForeign.kt"
+
 # What clips a scroll view's content to its viewport (SPEC.md, "Scroll viewport clip"): the rectangle from the view's bounds, border and scroll offset, and the sources of
 # the engine's scroll views read for the clip they apply around their children's draw.
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/ClipRules.kt" \
   "$here/kotlin/expo/modules/svelteengine/ClipRulesCheck.kt" -include-runtime -d "$work/clip-check.jar"
 java -cp "$work/clip-check.jar" expo.modules.svelteengine.ClipRulesCheckKt "$views"
+
+# What follows the keyboard frame by frame (SPEC.md, "Keyboard motion"): the sticky view's translation, the chat lift's sequence of paddings and scroll targets for always,
+# whenAtEnd and never, and the aware scroll's interpolation, with react-native-keyboard-controller's own numbers; the sources of the insets, the commit path and the scroll
+# views are read for the calls that bring the frames to them and keep a commit from taking the move away.
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/KeyboardRules.kt" "$here/../main/java/expo/modules/svelteengine/KeyboardChannel.kt" "$here/../main/java/expo/modules/svelteengine/views/ModalLayout.kt" \
+  "$here/kotlin/expo/modules/svelteengine/KeyboardRulesCheck.kt" -include-runtime -d "$work/keyboard-rules-check.jar"
+# The library's copy of Reanimated is read for the states and the dips `useAnimatedKeyboard` is given.
+java -cp "$work/keyboard-rules-check.jar" expo.modules.svelteengine.KeyboardRulesCheckKt "$here/../main/java/expo/modules/svelteengine" "$here/../../../../../vendor/react-native-reanimated"
 
 # The default of the status and navigation bars (SPEC.md, "Screen API contract": `auto` follows the system) and that the window is written the first time.
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/SystemBarsRules.kt" \

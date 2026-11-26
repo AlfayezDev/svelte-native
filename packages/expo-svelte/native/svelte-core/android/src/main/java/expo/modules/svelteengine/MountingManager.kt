@@ -109,6 +109,14 @@ class MountingManager(private val reactContext: ReactApplicationContext, private
 
   val root: EngineRoot = EngineRoot(reactContext)
 
+  /** What follows the keyboard, frame by frame (SPEC.md, "Keyboard motion"): `Insets` feeds it. */
+  val keyboard = KeyboardDrive(::viewFor) {
+    // The overlay's bottom edge in the window: the keyboard's heights are what it covers of the overlay, so its top edge is that far above this (the window's own height is the same edge to edge).
+    val at = IntArray(2)
+    root.getLocationInWindow(at)
+    at[1] + root.height
+  }
+
   /**
    * The context of every engine view, built when it is first needed (the first batch, which knows the surface, or
    * [enableGestures]). Not the bare Application context: react-native-gesture-handler reads the surface id of an event's view
@@ -473,6 +481,8 @@ class MountingManager(private val reactContext: ReactApplicationContext, private
       val t2 = System.nanoTime()
       flushScreens()
       screensNs = System.nanoTime() - t2
+      // A view the keyboard follows may be in a modal now that the batch has put it in its place (a view is created and registered before it is inserted).
+      if (insert > 0) keyboard.placed()
       expireEarlyAnimated()
     } finally {
       dirtyTexts.clear()
@@ -605,6 +615,7 @@ class MountingManager(private val reactContext: ReactApplicationContext, private
     registry.put(tag, view)
     applyProps(view, kind, p, true)
     replayEarlyAnimated(tag, view)
+    keyboard.viewCreated(tag)
     if (view is EngineForeign) foreign.created(tag, view)
   }
 

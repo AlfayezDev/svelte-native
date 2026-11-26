@@ -19,7 +19,7 @@ export class CSSManager {
   unmountCleanup(): void;
 }
 export function markNodeAsRemovable(shadowNodeWrapper: object): void;
-export function filterCSSAndStyleProperties(style: Record<string, unknown>): [unknown, unknown, unknown, unknown, Record<string, unknown>];
+export function filterCSSAndStyleProperties(style: Record<string, unknown>): [unknown, unknown, unknown, Record<string, unknown>];
 export function hasInlineStyles(style: Record<string, unknown>): boolean;
 export function getInlineStyle(style: Record<string, unknown>, isFirstRender: boolean): Record<string, unknown>;
 export class InlinePropManager {
@@ -39,3 +39,6 @@ export class WorkletEventHandler<Event extends object = object> {
   registerForEvents(viewTag: number, fallbackEventName?: string): void;
   unregisterFromEvents(viewTag: number): void;
 }
+/** What Reanimated's `useAnimatedKeyboard` listens with: `eventHandler` is a worklet, called on the UI runtime with the two numbers the keyboard source sends (the engine's, here: `keyboard-motion.ts`). */
+export function subscribeForKeyboardEvents(eventHandler: (state: number, height: number) => void, options: { isStatusBarTranslucentAndroid?: boolean; isNavigationBarTranslucentAndroid?: boolean }): number;
+export function unsubscribeFromKeyboardEvents(listenerId: number): void;

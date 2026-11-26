@@ -97,4 +97,4 @@ Animate numbers (`r`, `cx`, `strokeDashoffset`, `opacity`), a path's `d`, or a c
 
 ## Touches
 
-Elements take `onPress`, `onLongPress`, `onPressIn` and `onPressOut`. On Android, a touch inside an `Svg` goes to the native view and never reaches JavaScript, so a shape's `onPress` doesn't run there. To make a drawing tappable on both platforms, give the `Svg` `pointerEvents="box-only"` and put `onPress` on the `Svg` itself, or wrap it in a [`Pressable`](pressable).
+Elements take `onPress`, `onLongPress`, `onPressIn` and `onPressOut`. On Android, a tap on an `Svg` reaches JavaScript: a [`Pressable`](pressable) or a `View` with `onPress` around it presses (an icon-only button), and so does the `Svg`'s own `onPress`. A shape's own `onPress` doesn't run there: put it on the `Svg`, or on a `Pressable` around it. Inside a `Pressable`, a tap on a shape that has an `onPress` of its own presses the `Pressable`, not the shape. `pointerEvents="box-only"` is not needed for any of this.

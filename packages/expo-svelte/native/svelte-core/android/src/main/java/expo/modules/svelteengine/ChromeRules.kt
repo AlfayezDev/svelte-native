@@ -26,4 +26,11 @@ object ChromeRules {
    * the sheet was put at by a settle is not mistaken for a stale one, and one that moved (the stack got its size, the window reported the status bar) is applied.
    */
   fun sheetMoves(at: Float, rest: Float, changed: Boolean, busy: Boolean): Boolean = !busy && (changed || at != rest)
+
+  /**
+   * Where a sheet's settle is at [fraction] (0 to 1, after its curve) of its way from [from] to the place of the detent it goes to, [to], which is read at each frame and not once when the
+   * settle starts: a layout during the settle (a split-screen window resized, a status bar that came) moves every detent, and the settle that had written its first target at its end left
+   * the sheet there, short of or past the detent it reported, until a later layout moved it (#118).
+   */
+  fun settleAt(from: Float, to: Float, fraction: Float): Float = from + (to - from) * fraction
 }

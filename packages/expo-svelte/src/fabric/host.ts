@@ -9,7 +9,7 @@
  * flattening, colours, transforms), and events arrive through `registerEventHandler` with the Svelte node as target.
  */
 import { bootSummary, mark, runBootTasks } from "../boot-marks.ts";
-import { loadReanimated } from "./reanimated-load.ts";
+import { loadReanimated, onReanimatedLoaded } from "./reanimated-load.ts";
 import { onFirstCommit } from "../updates/launch.ts";
 import { resolveAssetSource, Platform, pixelRatio, appearance } from "./deps-rn.ts";
 import { styleValue, textColor, type Scheme } from "../system-colors.ts";
@@ -73,13 +73,27 @@ export function mayAnimate(attributes: Record<string, unknown>): boolean {
  * first commit that can. One animated button, a row's icon or a handful of badges stay below it.
  */
 export const BULK_ANIMATED_NODES = 8;
+/**
+ * Tells the engine, once, that Reanimated is loaded after it: its mounting delegate must sit behind Reanimated's layout-animation proxy, and the engine re-orders itself. Whoever loads Reanimated
+ * first causes this (`onReanimatedLoaded`, at install): the host on its first animated node, but also the public `animation` module and the gesture builders, which can come long before it.
+ * The proxy attaches to a surface while Reanimated loads and sees nothing of the engine's mutations until the delegate is behind it: a node created in between is not in the proxy's tree, and
+ * its next update crashes `mqt_v_js` with a null dereference in `LayoutAnimationsProxy::updateLightNodeProps`. The word has to follow the load within the same turn of JavaScript.
+ */
+function announceReanimated(): void {
+  if (reanimatedAnnounced) return;
+  reanimatedAnnounced = true;
+  if (!engineInstalled || reanimatedAtInstall) return;
+  // Called from the load's own listeners: a throw of the engine's must not fail the `require` that came first (the animation that asked for Reanimated gets it either way).
+  try {
+    engineModule?.reanimatedLoaded?.();
+  } catch (error) {
+    console.warn("expo-svelte: the engine could not be told that Reanimated is loaded", error);
+  }
+}
 /** Loads Reanimated (also upgrading the public `animation` module's exports to its own functions) and tells the engine once. */
 function ensureReanimated(): void {
   loadReanimated();
-  if (reanimatedAnnounced) return;
-  reanimatedAnnounced = true;
-  // The engine's mounting delegate must sit behind Reanimated's layout-animation proxy; the engine re-orders itself.
-  if (engineInstalled && !reanimatedAtInstall) engineModule?.reanimatedLoaded?.();
+  announceReanimated();
 }
 function loadAnimation(): AnimationModule {
   if (animation) return animation;
@@ -1515,9 +1529,10 @@ function ancestorMap(node: NativeNode): Affine {
 }
 
 /**
- * A node's box as `getBoundingClientRect` reports it, from React Native's synchronous layout read of the committed tree: its layout box moved by what its ancestors' transforms do
- * (`ancestorMap`), then by its own transform about its origin. The own transform is the one an animation of the node draws now when one does (the UI thread draws it, the committed
- * tree does not have it), and the one its style gives it otherwise. A rotation is not applied. Null for a node that has no view yet.
+ * A node's box as `getBoundingClientRect` reports it, from React Native's synchronous layout read of the committed tree: its layout box moved by its own transform about its origin, then by
+ * what its ancestors' transforms do (`ancestorMap`). The own transform is in the units of the space the node is in, which its ancestors scale with everything in it, so it comes first: under
+ * a parent scaled by 2, an animation that has moved the node 12.5 has moved it 25 in the window. It is the transform an animation of the node draws now when one does (the UI thread draws it,
+ * the committed tree does not have it), and the one its style gives it otherwise. A rotation is not applied. Null for a node that has no view yet.
  */
 function layoutOf(node: NativeNode): Rect | null {
   if (!binding?.getBoundingClientRect) return null;
@@ -1528,12 +1543,12 @@ function layoutOf(node: NativeNode): Rect | null {
   const current = stateOf(node);
   const laid = current ? readBox(current, false) : null;
   if (!laid) return null;
-  const map = ancestorMap(node);
-  const base = { x: map.sx * laid.x + map.tx, y: map.sy * laid.y + map.ty, width: map.sx * laid.width, height: map.sy * laid.height };
   const drawn = node.dom?.animation ? module?.drawnTransform(node) ?? null : null;
   const style = effectiveStyle(node.peekProps(), node.dom?.inline ?? null);
   const ops = drawn?.ops ?? transformOps(style.transform);
-  return ops.length === 0 ? base : transformRect(base, ops, parseOrigin(drawn?.origin ?? style.transformOrigin, base));
+  const own = ops.length === 0 ? laid : transformRect(laid, ops, parseOrigin(drawn?.origin ?? style.transformOrigin, laid));
+  const map = ancestorMap(node);
+  return { x: map.sx * own.x + map.tx, y: map.sy * own.y + map.ty, width: map.sx * own.width, height: map.sy * own.height };
 }
 
 /**
@@ -1580,6 +1595,8 @@ export function startSurface<Props extends Record<string, unknown>>(rootTag: num
     reanimatedAtInstall = typeof (globalThis as { __reanimatedModuleProxy?: unknown }).__reanimatedModuleProxy !== "undefined";
     engineInstalled = engine ? engine.install(reanimatedAtInstall) : false;
     engineModule = engine as typeof engineModule;
+    // Now, when Reanimated is already loaded (a load that came before the engine did); at the load otherwise, whoever makes it.
+    onReanimatedLoaded(announceReanimated);
     const published = (globalThis as { __svelteFabric?: { engine: boolean } }).__svelteFabric;
     if (published) published.engine = engineInstalled;
   }

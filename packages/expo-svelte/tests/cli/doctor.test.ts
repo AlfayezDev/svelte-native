@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { runChecks, type Check, type Context } from "../../src/doctor/checks.ts";
+import { runChecks, storePath, type Check, type Context } from "../../src/doctor/checks.ts";
 import { patchedDependenciesOfYaml } from "../../src/doctor/declared.ts";
 import { parsePatch } from "../../src/doctor/hunks.ts";
 import { formatReport, runDoctor } from "../../src/doctor/index.ts";
@@ -53,6 +53,89 @@ describe("an app that is set up", () => {
     expect(find(checks, `react ${peerVersion("react")} satisfies ${peerVersion("react")}`)?.status).toBe("pass");
     expect(find(checks, "node 26.0.0")?.status).toBe("pass");
     expect(find(checks, "pnpm 12.3.4")?.status).toBe("pass");
+  });
+});
+
+describe("a library installed at a path with an \"=\" in it", () => {
+  // pnpm names the library's folder `expo-svelte@<version>_@sveltejs+kit@3.4.0_patch_hash=<hash>_<hash>`, cut at `virtualStoreDirMaxLength - 33` characters when it is longer than the limit (at the default of
+  // 120, 87 stay and the "=" with them; at 60 it goes), and Android's prefab tool, which the CMake builds of react-native-mmkv and react-native-reanimated run, reads a package path with an "=" as an
+  // option: `no such option /.../expo-svelte@..._patch_hash` (CXX1429).
+  const folder = "expo-svelte@0.4.0-rc.11_@sveltejs+kit@3.4.0_patch_hash=abc_def";
+  const installedIn = (dir: string, store: string) => {
+    const packageRoot = join(dir, "node_modules/.pnpm", store, "node_modules/expo-svelte");
+    mkdirSync(packageRoot, { recursive: true });
+    return packageRoot;
+  };
+
+  test("a folder of pnpm's store with one fails, says why and says what to set in pnpm-workspace.yaml; a path without one adds no check", () => {
+    const dir = createProject({}, "doctor-equals-").directory;
+    apps.push(dir);
+    const packageRoot = installedIn(dir, folder);
+    const [equals] = storePath({ appRoot: dir, packageRoot }, "expo-svelte");
+    expect(equals).toMatchObject({ status: "fail", group: "build integration" });
+    expect(equals?.message).toContain(`installed in pnpm's folder ${folder}`);
+    expect(equals?.message).toContain("CXX1429");
+    expect(equals?.fix).toContain("virtualStoreDirMaxLength: 60");
+    expect(equals?.fix).toContain("limit - 33");
+    expect(equals?.fix).toContain("--config.confirmModulesPurge=false");
+    // The path a link to it has is not the one that counts: it is where the files are.
+    const link = join(dir, "node_modules", "expo-svelte");
+    symlinkSync(packageRoot, link);
+    expect(storePath({ appRoot: dir, packageRoot: link }, "expo-svelte")).toHaveLength(1);
+    // The same library at a path without one adds no line to a set-up app's checks.
+    expect(storePath({ appRoot: dir, packageRoot: join(repository, "packages/expo-svelte") }, "expo-svelte")).toEqual([]);
+    expect(check().checks.filter((entry) => entry.message.includes('"="'))).toEqual([]);
+  });
+
+  test("an \"=\" in the path of the project, outside pnpm's folder name, is not failed: the doctor could not tell, and says both ways out", () => {
+    const dir = createProject({}, "doctor-job=7-").directory;
+    apps.push(dir);
+    const packageRoot = installedIn(dir, "expo-svelte@0.4.0-rc.11_@sv_abc");
+    const [equals] = storePath({ appRoot: dir, packageRoot }, "expo-svelte");
+    expect(equals).toMatchObject({ status: "unknown", group: "build integration" });
+    expect(equals?.message).toContain("outside pnpm's folder for it");
+    expect(equals?.message).toContain("doctor-job=7-");
+    expect(equals?.fix).toContain("move the project");
+    expect(equals?.fix).toContain("virtualStoreDir");
+  });
+
+  test("a virtual store that is not node_modules/.pnpm (pnpm's virtualStoreDir) with an \"=\" in a folder name gets the same unknown, not the advice for the project's path", () => {
+    const dir = createProject({}, "doctor-vstore-").directory;
+    apps.push(dir);
+    const packageRoot = join(dir, "node_modules/.vstore", folder, "node_modules/expo-svelte");
+    mkdirSync(packageRoot, { recursive: true });
+    const [equals] = storePath({ appRoot: dir, packageRoot }, "expo-svelte");
+    expect(equals?.status).toBe("unknown");
+    expect(equals?.message).toContain(folder);
+    expect(equals?.fix).toContain("virtualStoreDirMaxLength: 60");
+  });
+
+  test("the last .pnpm of a path is the library's folder: an earlier folder with an \"=\" in it is not the library's", () => {
+    const dir = createProject({}, "doctor-nested-").directory;
+    apps.push(dir);
+    const packageRoot = join(dir, "node_modules/.pnpm", "outer=1", "node_modules/pkg/node_modules/.pnpm", "expo-svelte@0.4.0-rc.11_@sv_abc", "node_modules/expo-svelte");
+    mkdirSync(packageRoot, { recursive: true });
+    const [equals] = storePath({ appRoot: dir, packageRoot }, "expo-svelte");
+    expect(equals?.status).toBe("unknown");
+    expect(equals?.message).toContain('"outer=1"');
+    // A last folder with one is the failure.
+    const inner = join(dir, "node_modules/.pnpm", "outer", "node_modules/pkg/node_modules/.pnpm", folder, "node_modules/expo-svelte");
+    mkdirSync(inner, { recursive: true });
+    expect(storePath({ appRoot: dir, packageRoot: inner }, "expo-svelte")[0]).toMatchObject({ status: "fail" });
+  });
+
+  test("an app that does not build for Android is not failed for it, and is told so", () => {
+    const dir = createProject({}, "doctor-ios-only-").directory;
+    apps.push(dir);
+    writeFileSync(join(dir, "app.json"), JSON.stringify({ expo: { name: "x", platforms: ["ios"] } }));
+    const [equals] = storePath({ appRoot: dir, packageRoot: installedIn(dir, folder) }, "expo-svelte");
+    expect(equals).toMatchObject({ status: "skip", group: "build integration" });
+    expect(equals?.message).toContain("platforms has no android");
+    // The same with android among the platforms, and with none named.
+    writeFileSync(join(dir, "app.json"), JSON.stringify({ expo: { platforms: ["ios", "android"] } }));
+    expect(storePath({ appRoot: dir, packageRoot: join(dir, "node_modules/.pnpm", folder, "node_modules/expo-svelte") }, "expo-svelte")[0]?.status).toBe("fail");
+    writeFileSync(join(dir, "app.json"), JSON.stringify({ expo: { name: "x" } }));
+    expect(storePath({ appRoot: dir, packageRoot: join(dir, "node_modules/.pnpm", folder, "node_modules/expo-svelte") }, "expo-svelte")[0]?.status).toBe("fail");
   });
 });
 
@@ -161,7 +244,7 @@ describe("the packages the library carries", () => {
     const shapeFiles: Record<string, string[]> = {
       "react-native-gesture-handler": ["apple/RNGestureHandlerManager.h", "apple/RNGestureHandlerManager.mm", "scripts/gesture_handler_utils.rb"],
       "react-native-reanimated": [
-        "android/src/main/java/com/swmansion/reanimated/SvelteEngineHook.kt", "android/src/main/java/com/swmansion/reanimated/NativeProxy.kt", "android/src/main/cpp/reanimated/android/NativeProxy.cpp",
+        "android/src/main/java/com/swmansion/reanimated/SvelteEngineHook.kt", "android/src/main/java/com/swmansion/reanimated/keyboard/KeyboardAnimationManager.kt", "android/src/main/java/com/swmansion/reanimated/NativeProxy.kt", "android/src/main/cpp/reanimated/android/NativeProxy.cpp",
         "android/src/main/cpp/reanimated/android/NativeProxy.h", "scripts/validate-worklets-version.js", "src/featureFlags/staticFlags.json",
       ],
       "react-native-worklets": ["lib/module/runLoop/uiRuntime/requestAnimationFrame.js", "src/runLoop/uiRuntime/requestAnimationFrame.ts"],
@@ -465,6 +548,9 @@ describe("the app's configs", () => {
     // `<library>/app.plugin` is the same file.
     const path = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [`${library.name}/app.plugin`] } }) } }).checks;
     expect(find(path, `app.json lists the ${library.name}/app.plugin plugin`)?.status).toBe("pass");
+    // And its file name, which Expo resolves too (the package's `exports` lists it).
+    const file = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [`${library.name}/app.plugin.js`] } }) } }).checks;
+    expect(find(file, `app.json lists the ${library.name}/app.plugin.js plugin`)?.status).toBe("pass");
     const code = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [] } }), "app.config.ts": `export default ({ config }) => ({ ...config, plugins: [["${library.name}", {}]] });\n` } }).checks;
     expect(find(code, `app.config.ts lists the ${library.name} plugin`)?.status).toBe("pass");
     const dynamic = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [] } }), "app.config.ts": "export default ({ config }) => ({ ...config, plugins: pluginsFor(process.env) });\n" } }).checks;

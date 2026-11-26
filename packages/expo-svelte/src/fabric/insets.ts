@@ -7,8 +7,11 @@ import { EventEmitter, requireOptionalNativeModule } from "expo-modules-core";
 
 export type Edge = "top" | "right" | "bottom" | "left";
 export type Frame = { x: number; y: number; width: number; height: number };
-/** Values in dp. `keyboardHeight` is how much of the overlay the keyboard covers; `frame` is the overlay in window coordinates. */
-export type InsetsEvent = { top: number; right: number; bottom: number; left: number; keyboardHeight: number; keyboardVisible: boolean; frame: Frame };
+/**
+ * Values in dp. `keyboardHeight` is how much of the overlay the keyboard covers (the height it is going to have, from the start of its animation); `keyboardAnimating` says it
+ * is moving (Android; iOS does not send it); `frame` is the overlay in window coordinates.
+ */
+export type InsetsEvent = { top: number; right: number; bottom: number; left: number; keyboardHeight: number; keyboardVisible: boolean; keyboardAnimating?: boolean; frame: Frame };
 type Emitter = { addListener(name: string, listener: (event: InsetsEvent) => void): { remove(): void } };
 type EngineModule = Partial<Emitter> & { getInsets?: () => InsetsEvent | null };
 
@@ -30,6 +33,18 @@ export function flattenStyle(style: StyleValue): Record<string, unknown> {
   if (!style) return {};
   if (Array.isArray(style)) return Object.assign({}, ...style.map(flattenStyle));
   return typeof style === "object" ? style as Record<string, unknown> : {};
+}
+
+/**
+ * The `transform` of a view that sticks to the keyboard (without the engine's frames), for the `own` transform its style has: the keyboard's `translateY` first, then the view's own
+ * entries. A transform list applies the later entries before the earlier ones (React Native multiplies the matrices in order), so a translation put first is outside the rest: a view
+ * with `scale: 0.95` is moved by the whole of the keyboard's height, not by 95% of it. The style's own transform used to be replaced by the keyboard's (two styles with a `transform` each,
+ * of which the flattening keeps the last). A transform written as a string (`"scale(0.95)"`) follows a translation written as a string too.
+ */
+export function keyboardTransform(own: unknown, translateY: number): unknown {
+  if (Array.isArray(own)) return [{ translateY }, ...own];
+  if (typeof own === "string" && own.trim() !== "") return `translateY(${translateY}px) ${own}`;
+  return [{ translateY }];
 }
 
 const sides: Record<Edge, { own: string; axis: string; key: string }> = {
@@ -57,7 +72,7 @@ export type AvoidBehavior = "padding" | "height" | "position" | undefined;
 /**
  * How far the keyboard overlaps the view, React Native's `_relativeKeyboardHeight`. `viewY` and `viewHeight` are the view's
  * window frame, `rootHeight` the overlay's height and `keyboardHeight` what the keyboard covers of it, so the keyboard's
- * top edge is `rootHeight - keyboardHeight`. For "height" the view has already shrunk by `previous`, which is added back.
+ * top edge is `rootHeight - keyboardHeight`. For "height" the view has already shrunk by `previous` (what is applied to it now: 0 while it is disabled, whatever the overlap was), which is added back.
  */
 export function keyboardOverlap(args: { viewY: number; viewHeight: number; rootHeight: number; keyboardHeight: number; offset?: number; behavior?: AvoidBehavior; previous?: number }): number {
   if (args.keyboardHeight <= 0) return 0;

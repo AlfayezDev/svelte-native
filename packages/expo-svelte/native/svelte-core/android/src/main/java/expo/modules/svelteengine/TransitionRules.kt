@@ -87,6 +87,84 @@ internal object TransitionRules {
     return if (left > 0f) Fade(left, 1f, 0f, FADE_THROUGH, onProgress = true) else fade
   }
 
+  /**
+   * Where a screen is, on the axis a predictive back gesture moves it along, at [progress] (0 to 1) of a gesture that took it over from a transition: the gesture's own position
+   * [preview] there, plus what is left of [taken], how far from its place the screen was drawn when the gesture began (a push still sliding in, cut short). The preview moves the screen
+   * the way the finger goes, to the right or down, so an offset behind it (negative) leaves as the gesture goes on, and one ahead of it (positive) stays: the screen goes on from
+   * where it is drawn and never moves against the finger, as it did when the offset left whatever it was (a `slide_from_right` screen cut with more than a fifth of the width left
+   * moved left for the whole gesture, a sheet barely in moved up). The preview alone put it where the gesture is, whatever the transition had left: a `slide_from_left` screen
+   * half in jumped by half its width at the first step, and a sheet by its whole offset (#121).
+   */
+  fun takenOver(preview: Float, taken: Float, progress: Float): Float = preview + if (taken < 0f) taken * (1f - progress.coerceIn(0f, 1f)) else taken
+
+  /**
+   * An offset on an axis the preview does not move the screen along (the vertical one of a screen that slides in from the bottom, the screen below a push moved aside), or the scale a
+   * cancelled gesture was springing back from: it goes to nothing as the gesture goes on, whichever way it points, with no step.
+   */
+  fun takenAway(taken: Float, progress: Float): Float = taken * (1f - progress.coerceIn(0f, 1f))
+
+  /**
+   * The screen below [top] a gesture begins on: the one that is moving with it in a transition ([mover]), or else the one the last gesture left displaced ([carried], a cancel still springing back),
+   * when it is still one ([valid]: in the stack and not leaving) and not [top] itself. A stale one (the spring was cancelled by a push, a pop or an edge swipe; the stack was detached) is none: the new
+   * top would otherwise be taken for the screen below and moved aside.
+   */
+  fun <S : Any> belowFor(mover: S?, carried: S?, top: S, valid: (S) -> Boolean): S? = mover ?: carried?.takeIf { it !== top && valid(it) }
+
+  /** The gesture's steps and its commit are for the screen it began on, and only while that is the one in front: JavaScript may pop or push during a gesture, and a step would move another screen. */
+  fun <S : Any> stillPreviewing(previewed: S?, top: S?): Boolean = previewed != null && previewed === top
+
+  /** What one step of a gesture does, given the screen in front now ([GestureTarget.onStep]). */
+  enum class Step { NONE, MOVE, ABANDON }
+
+  /**
+   * What the end of a gesture does ([GestureTarget.onFinish]): dismiss its screen (a commit), bring it back (a cancel), put it back at its rest because it is not in front any more, nothing (the gesture was
+   * abandoned when the stack changed, and its end, which the system still sends, applies to nothing), or no gesture at all (a plain back key, which dismisses the top).
+   */
+  enum class Finish { NONE, DISMISS, SPRING, RESTORE, ABANDONED }
+
+  /**
+   * The screen a gesture began on (the system's predictive back, the in-app edge swipe: one of these for each), captured at its start, and what the rest of the gesture does with it. A gesture is for that
+   * screen only: when the stack changes in front of it (JavaScript's push, a modal, a sheet that cannot be dismissed, a pop) the gesture is over, its screen goes back to its rest, and the screen in front
+   * now is not moved, dismissed or restored by what is left of it (#124, #121). The system still sends the end of an abandoned gesture (its commit or its cancel): that is [Finish.ABANDONED], not a back
+   * key, which would dismiss what is in front. Plain Kotlin, so that the interleavings are replayed on the host.
+   */
+  class GestureTarget<S : Any> {
+    var screen: S? = null
+      private set
+    /** A gesture began and has not ended: its end is still to come, whether or not its screen is. */
+    var open = false
+      private set
+
+    fun begin(top: S?) { screen = top; open = true }
+
+    /** The gesture is over because the stack changed (or the stack left the window): its screen is let go of, its end is still to come. */
+    fun abandon() { screen = null }
+
+    /** The end of the gesture has come (a commit, a cancel, a release): nothing is left of it. */
+    fun end() { screen = null; open = false }
+
+    /** A step (a progress of the system's gesture, a move of the finger) with [top] in front: the screen moves, the gesture is over, or there was none. */
+    fun onStep(top: S?): Step = when {
+      screen == null -> Step.NONE
+      stillPreviewing(screen, top) -> Step.MOVE
+      else -> Step.ABANDON
+    }
+
+    /**
+     * The end of the gesture, a commit or a cancel, with [top] in front. [expired]: the gesture was abandoned so long ago that this is not its end but a back key after an end that never came
+     * (the system pairs every start with a commit or a cancel; a window that lost focus or a process that was rebuilt may not), and a key is not swallowed for it.
+     */
+    fun onFinish(top: S?, committed: Boolean, expired: Boolean = false): Finish = when {
+      screen == null -> if (open && !expired) Finish.ABANDONED else Finish.NONE
+      !stillPreviewing(screen, top) -> Finish.RESTORE
+      committed -> Finish.DISMISS
+      else -> Finish.SPRING
+    }
+
+    /** The stack changed in front (the top is [top] now): a gesture on another screen is over at once, not at its next step. */
+    fun onStackChange(top: S?): Boolean = screen != null && screen !== top
+  }
+
   // The kinds of `EngineScreen.transitionKind`: 0 none, 1 a modal fading in alone, 2 a modal from the right, 3 a modal or sheet from the bottom (those four
   // move one screen, `EngineStack.animate`), and the push screens' transitions between two screens below (`EngineStack.system`, [motion]).
   const val KIND_DEFAULT = 4

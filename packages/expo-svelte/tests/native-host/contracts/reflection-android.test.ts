@@ -10,11 +10,14 @@ const kept: Record<string, string> = {
   // React Native's `PreparedLayout`: its getters are `@DoNotStrip`, and the fields are the fallback.
   "expo/modules/svelteengine/TextLayouts.kt": 'getMethod("getLayout") getMethod("getVerticalOffset") getDeclaredField("layout") getDeclaredField("verticalOffset")',
   // The vendored Reanimated's hook, kept by its own rules (`com.swmansion.reanimated.**`).
-  "expo/modules/svelteengine/SvelteEngineModule.kt": 'Class.forName("com.swmansion.reanimated.SvelteEngineHook") getMethod("setUpdater"',
+  "expo/modules/svelteengine/SvelteEngineModule.kt": 'Class.forName("com.swmansion.reanimated.SvelteEngineHook") getMethod("setUpdater" getMethod("setKeyboardSubscribe" getMethod("setKeyboardUnsubscribe"',
   // A field of Fabric's event dispatcher, kept by the module's `consumer-rules.pro`.
   "expo/modules/svelteengine/EventBeat.kt": 'getDeclaredField("postEventDispatchListeners")',
   // A field of the framework's scroll views, which are not in the app's code.
   "expo/modules/svelteengine/views/EngineScroll.kt": 'getDeclaredField("mScroller")',
+  // The framework's `View.mListenerInfo.mOnTouchListener`, read to see whether a listener was set on a foreign view (`EngineForeign.hasTouchListener`): fields of the platform, not of the app's code. Not
+  // finding them is handled (logged once, the listener is not seen).
+  "expo/modules/svelteengine/views/EngineForeign.kt": 'getDeclaredField("mListenerInfo") Class.forName("android.view.View\\$ListenerInfo") getDeclaredField("mOnTouchListener")',
 };
 
 function kotlinFiles(directory: string): string[] {

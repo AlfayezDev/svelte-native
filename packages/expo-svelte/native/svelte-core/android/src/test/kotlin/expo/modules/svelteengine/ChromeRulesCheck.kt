@@ -49,6 +49,20 @@ private fun sheet() {
   expect("a layout after the cancel animation ended finds the sheet at its rest", ChromeRules.sheetMoves(0f, 0f, false, false), false)
 }
 
+/**
+ * A settle goes to a detent, whose place a layout can move meanwhile (#118): the report's 800 px box, resized to 600 px half way through the 220 ms. The sheet is released at 300 px and goes to the
+ * half detent, at 400 px of the 800 px box and 300 px of the 600 px one; the curve (a decelerating one of factor 1.5) is 87.5 % of the way at half the time.
+ */
+private fun detentSettle() {
+  val half = 0.875f
+  expect("the settle starts where the sheet was released", ChromeRules.settleAt(300f, 400f, 0f), 300f)
+  expect("half way through, with nothing resized, it is at 387.5", ChromeRules.settleAt(300f, 400f, half), 387.5f)
+  expect("it ends at the detent's place", ChromeRules.settleAt(300f, 400f, 1f), 400f)
+  expect("a window resized to 600 px moves the half detent to 300: the next frame is at the new place", ChromeRules.settleAt(300f, 300f, half), 300f)
+  expect("and the end is the place the detent has by then, not the 400 px it had when the settle started", ChromeRules.settleAt(300f, 300f, 1f), 300f)
+  expect("a window that grew puts the end at the detent's new place too", ChromeRules.settleAt(300f, 500f, 1f), 500f)
+}
+
 private fun normalized(path: String) = java.io.File(path).readText().replace(Regex("\\s+"), " ")
 
 /** `EngineHeader` asks the window through the rule, and asks for the second layout when it attaches. */
@@ -75,6 +89,13 @@ private fun againstSheet(path: String) {
   val attach = text.substringAfter("override fun onAttachedToWindow() {").substringBefore("override fun onDetachedFromWindow()")
   expect("EngineSheet lays out again once attached", attach.contains("requestLayout()"), true)
   expect("EngineSheet lays out again when the window's status bar is not the one its detents were worked out with", text.contains("if (ChromeRules.insetStale(topSeen, stack?.let { SafeArea.top(it) })) requestLayout()"), true)
+  // The settle goes to a detent and reads where it is at every frame and at its end (#118), not the place it had when the settle started.
+  val settle = text.substringAfter("private fun settleTo(target: Float) {").substringBefore("private companion object")
+  expect("EngineSheet's settle finds the detent it goes to when it starts", settle.contains("val index = indexForOffset(target)"), true)
+  expect("and animates a fraction of the way to the detent's place now, a frame at a time", settle.contains("ValueAnimator.ofFloat(0f, 1f)") && settle.contains("translationY = ChromeRules.settleAt(from, offsetAt(index), it.animatedValue as Float)"), true)
+  expect("its end is the detent's place now", settle.contains("translationY = offsetAt(index)"), true)
+  expect("no write of the target the settle started with is left", settle.contains("translationY = target") || settle.contains("ofFloat(translationY, target)"), false)
+  expect("what it reports is that detent's", settle.contains("current = index") && settle.contains("NavEvents.detentChange(node.tag, index, fraction)"), true)
 }
 
 /** `EngineStack` marks the screen a gesture moves for as long as it holds it: predictive back, and the edge swipe. */
@@ -87,12 +108,15 @@ private fun againstStack(path: String) {
   val started = text.substringAfter("override fun handleOnBackStarted(backEvent: BackEventCompat) {").substringBefore("override fun handleOnBackProgressed")
   expect("a predictive back holds the screen it moves", started.contains("holdGesture(top)"), true)
   val cancelled = text.substringAfter("override fun handleOnBackCancelled() {").substringBefore("private var backRegistered")
-  expect("the animation that cancels a predictive back is an animation of the stack (the sheet's layout sees it as running)", cancelled.contains("animate(top, 0f, top.restY, 1f, 1f, 150L)"), true)
+  // The spring goes through the stack's `animate`, which is what sets `running` on the screen, and a sheet is busy while `running != null`. It is the previewed screen that springs back, which is not `top()` when the gesture was abandoned.
+  expect("the animation that cancels a predictive back is an animation of the stack (the sheet's layout sees it as running)", cancelled.contains("animate(previewed, 0f, previewed.restY, 1f, 1f, 150L)"), true)
+  expect("the spring is marked as the gesture's after it starts: starting it cancels what ran, and that would end it", cancelled.indexOf("animate(previewed, 0f, previewed.restY") in 0 until cancelled.indexOf("springBack = previewed"), true)
 }
 
 fun main(args: Array<String>) {
   header()
   sheet()
+  detentSettle()
   if (args.isNotEmpty()) againstHeader(args[0])
   if (args.size > 1) againstSheet(args[1])
   if (args.size > 2) againstStack(args[2])

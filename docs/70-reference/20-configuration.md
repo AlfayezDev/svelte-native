@@ -42,7 +42,7 @@ What `expo-svelte init` writes, file by file, and the options of the Vite, Metro
 
 ## pnpm-workspace.yaml
 
-`sv` writes this file for pnpm. `init` adds `overrides` and `patchedDependencies`:
+`sv` writes this file for pnpm. `init` adds `overrides`, `patchedDependencies` and `virtualStoreDirMaxLength`:
 
 ```yaml
 /// file: pnpm-workspace.yaml
@@ -56,11 +56,14 @@ overrides:
 patchedDependencies:
   "@sveltejs/kit@3.4.0": patches/expo-svelte/@sveltejs__kit@3.4.0.patch
   expo-modules-core@58.1.0: patches/expo-svelte/expo-modules-core@58.1.0.patch
+
+virtualStoreDirMaxLength: 60
 ```
 
 - `allowBuilds` lets esbuild run its install script. Without it, pnpm stops with `ERR_PNPM_IGNORED_BUILDS`.
 - `overrides` pins two packages that come with others and are asked for by a range. `expo-modules-core` stays at the version its patch is for. `@react-native/metro-config` stays at React Native's version; otherwise a fresh install can take another one.
 - `patchedDependencies` lists the patches (below).
+- `virtualStoreDirMaxLength` is how long a folder name of `node_modules/.pnpm` may be before pnpm cuts it. pnpm names a folder of `node_modules/.pnpm` after the dependency path, and with the patched SvelteKit that `init` declares the library's is `expo-svelte@<version>_@sveltejs+kit@3.4.0_patch_hash=<hash>_<hash>`. A name no longer than `virtualStoreDirMaxLength` and with no uppercase letter stays as it is; a longer one, or one with an uppercase letter (unless it starts with `file+`), is cut to its first `limit - 33` characters (all of it, when it is shorter) and a hash is added (`depPathToFilename`, in pnpm's `@pnpm/dependency-path`), so the `=` of `patch_hash=` goes only when the cut falls before it. At the default, 120, 87 characters stay and it stays; at 60, 27 stay, which end inside the first peer's name (`expo-svelte@0.4.0-rc.11_@sv`), and it goes. Android's prefab tool, which the CMake builds of the libraries the package carries run, reads a package path with an `=` in it as an option: `Error: no such option /…/expo-svelte@…_patch_hash` (`CXX1429`). `expo-svelte doctor` fails on such a folder (and reports an `=` elsewhere in the path, the project's own or a `virtualStoreDir`'s, as unknown). `init` writes the setting and lowers a larger one, keeping the comment on its line; install again after it (pnpm asks to remove `node_modules`; `init` passes `--config.confirmModulesPurge=false` when it has no terminal to ask). Every prefab package the library links is in its own folder, so that is the path that counts; a package of your own patches whose `name@version` is up to 15 characters keeps its `=` at 60 (set the limit to its length plus 44 or less if it publishes a prefab package).
 
 ## Patches
 

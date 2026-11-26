@@ -1227,10 +1227,12 @@ __export(init_app_exports, {
   applyPlan: () => applyPlan,
   expoSvelteViteConfig: () => expoSvelteViteConfig,
   formatPlan: () => formatPlan,
+  installArguments: () => installArguments,
   mergeWorkspaceYaml: () => mergeWorkspaceYaml,
   parseInitArguments: () => parseInitArguments,
   planInit: () => planInit,
-  runInit: () => runInit
+  runInit: () => runInit,
+  virtualStoreDirMaxLength: () => virtualStoreDirMaxLength
 });
 import { spawnSync } from "node:child_process";
 import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync3, readdirSync as readdirSync4, writeFileSync as writeFileSync2 } from "node:fs";
@@ -1343,12 +1345,17 @@ function planPackageJson(root2, original, patches2, options) {
   const text3 = `${JSON.stringify(ordered, null, indentOf(original))}${original.endsWith("\n") ? "\n" : ""}`;
   return { text: text3, summary, warnings, kitVersion, hasKit, changed: text3 !== original, name: typeof manifest.name === "string" ? manifest.name : void 0 };
 }
-function mergeWorkspaceYaml(text3, blocks) {
+function mergeWorkspaceYaml(text3, blocks, atMost = {}) {
   const crlf = text3.includes("\r\n");
   const lines = text3.replaceAll("\r\n", "\n").split("\n");
   if (lines.at(-1) === "") lines.pop();
   const changes = [];
   const manual = [];
+  if (/^\s*\{/.test(lines.find((line) => line.trim() !== "" && !line.trim().startsWith("#")) ?? "")) {
+    for (const [block2, wanted] of Object.entries(blocks)) manual.push(`${block2}: ${Object.entries(wanted).map(([key, value]) => `${keyOf(key)}: ${value}`).join(", ")}`);
+    for (const [key, limit] of Object.entries(atMost)) manual.push(`${key}: ${limit}`);
+    return { text: text3, changes, manual };
+  }
   let separated = false;
   for (const [block2, wanted] of Object.entries(blocks)) {
     const start = lines.findIndex((line) => new RegExp(`^${block2}:\\s*(?:#.*)?$`).test(line));
@@ -1389,6 +1396,18 @@ function mergeWorkspaceYaml(text3, blocks) {
       }
     }
     lines.splice(last + 1, 0, ...inserted);
+  }
+  for (const [key, limit] of Object.entries(atMost)) {
+    const index = lines.findIndex((line) => new RegExp(`^${key}:`).test(line));
+    const written = index < 0 ? void 0 : /^([^:\s]+:\s*)("[^"]*"|'[^']*'|[^\s#]*)(\s*(?:#.*)?)$/.exec(lines[index] ?? "");
+    const was = index < 0 ? void 0 : (written?.[2] ?? "").replace(/^["']|["']$/g, "");
+    if (was !== void 0 && /^\d+$/.test(was) && Number(was) <= limit) continue;
+    if (index >= 0) lines[index] = written ? `${written[1]}${limit}${written[3]}` : `${key}: ${limit}`;
+    else {
+      if (lines.length > 0 && lines.at(-1) !== "") lines.push("");
+      lines.push(`${key}: ${limit}`);
+    }
+    changes.push(was === void 0 ? key : `${key} (was ${was === "" ? "empty" : was})`);
   }
   const merged = `${lines.join("\n")}
 `;
@@ -1511,7 +1530,8 @@ function planInit(root2, options = {}) {
   const reactNative = appDependencies["react-native"];
   if (reactNative !== void 0) overrides["@react-native/metro-config"] = reactNative;
   const patched = Object.fromEntries(needed.map((patch) => [patchKey(patch), `patches/expo-svelte/${patch.file}`]));
-  const merged = mergeWorkspaceYaml(workspaceText ?? "", { allowBuilds: { esbuild: "true" }, overrides, patchedDependencies: patched });
+  const merged = mergeWorkspaceYaml(workspaceText ?? "", { allowBuilds: { esbuild: "true" }, overrides, patchedDependencies: patched }, { virtualStoreDirMaxLength });
+  if (merged.changes.length > 0) plan.changes.push({ path: "pnpm-workspace.yaml", action: workspaceText === void 0 ? "create" : "edit", summary: merged.changes.join("; "), text: merged.text });
   if (merged.manual.length > 0) {
     plan.changes.push({
       path: "pnpm-workspace.yaml",
@@ -1520,9 +1540,8 @@ function planInit(root2, options = {}) {
       instructions: `Add these to pnpm-workspace.yaml:
 ${merged.manual.map((line) => `  ${line}`).join("\n")}`
     });
-  } else if (merged.changes.length > 0) {
-    plan.changes.push({ path: "pnpm-workspace.yaml", action: workspaceText === void 0 ? "create" : "edit", summary: merged.changes.join("; "), text: merged.text });
-  } else plan.changes.push({ path: "pnpm-workspace.yaml", action: "keep", summary: "has everything" });
+  }
+  if (merged.changes.length === 0 && merged.manual.length === 0) plan.changes.push({ path: "pnpm-workspace.yaml", action: "keep", summary: "has everything" });
   if (workspaceText !== void 0) {
     for (const key of patchedKeys(workspaceText)) {
       const at = key.lastIndexOf("@");
@@ -1754,7 +1773,7 @@ function runInit(root2, args2, io = processIo) {
 Wrote ${plural(written, "file")}.`);
   if (options.install === false) return manual > 0 ? 1 : 0;
   io.out("\n==> pnpm install");
-  const install = spawnSync("pnpm", ["install", "--no-frozen-lockfile"], { cwd: root2, stdio: "inherit", shell: process.platform === "win32" });
+  const install = spawnSync("pnpm", installArguments({ stdin: Boolean(process.stdin.isTTY), stdout: Boolean(process.stdout.isTTY) }), { cwd: root2, stdio: "inherit", shell: process.platform === "win32" });
   if (install.status !== 0) {
     io.err("expo-svelte init: pnpm install failed; fix what it says and run `pnpm install` and `pnpm exec expo-svelte doctor`.");
     return install.status ?? 1;
@@ -1767,7 +1786,7 @@ Next: the first \`pnpm android\` (or \`pnpm ios\`, on a Mac) builds the native a
 First, the ${plural(manual, "change")} listed above for you to make.` : ""}`);
   return manual > 0 ? 1 : 0;
 }
-var appDependencies, alwaysPatched, plugin, pluginNames, removedPluginName, scripts, gitignore, read, plural, quoteOf, exactVersion, keyOf, viteInstructions, metroConfig, themeModule, layoutRoute, homeRoute, detailsRoute, USAGE, processIo, WORD;
+var appDependencies, alwaysPatched, plugin, pluginNames, removedPluginName, scripts, gitignore, virtualStoreDirMaxLength, installArguments, read, plural, quoteOf, exactVersion, keyOf, viteInstructions, metroConfig, themeModule, layoutRoute, homeRoute, detailsRoute, USAGE, processIo, WORD;
 var init_init_app = __esm({
   "src/init-app.ts"() {
     "use strict";
@@ -1787,6 +1806,8 @@ var init_init_app = __esm({
     removedPluginName = `${plugin}/expo`;
     scripts = { native: "expo-svelte dev", android: "expo-svelte android", ios: "expo-svelte ios", "check-setup": "expo-svelte doctor" };
     gitignore = [".expo-svelte", ".expo", "/android", "/ios"];
+    virtualStoreDirMaxLength = 60;
+    installArguments = (terminal) => ["install", "--no-frozen-lockfile", ...terminal.stdin && terminal.stdout ? [] : ["--config.confirmModulesPurge=false"]];
     read = (file) => existsSync3(file) ? readFileSync3(file, "utf8") : void 0;
     plural = (count2, word) => `${count2} ${word.endsWith("y") ? count2 === 1 ? word : `${word.slice(0, -1)}ies` : count2 === 1 ? word : `${word}s`}`;
     quoteOf = (text3) => /from\s+"/.test(text3) ? '"' : "'";
@@ -2595,7 +2616,7 @@ var init_libraries = __esm({
 });
 
 // src/doctor/checks.ts
-import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
+import { existsSync as existsSync6, readFileSync as readFileSync7, realpathSync as realpathSync3 } from "node:fs";
 import { join as join9 } from "node:path";
 function environment(context) {
   const checks = [];
@@ -2791,6 +2812,42 @@ function integration(context, name) {
   };
   return [metro(metroFinding(context.appRoot)), plugin2(expoPluginFinding(context.appRoot, name))];
 }
+function targetsAndroid(appRoot) {
+  const expo2 = readJson2(join9(appRoot, "app.json"))?.expo;
+  const platforms = typeof expo2 === "object" && expo2 !== null ? expo2.platforms : void 0;
+  return !Array.isArray(platforms) || platforms.includes("android");
+}
+function storePath(context, name) {
+  let path;
+  try {
+    path = realpathSync3(context.packageRoot);
+  } catch {
+    return [];
+  }
+  if (!path.includes("=")) return [];
+  const segments = path.split(/[\\/]/);
+  let store = -1;
+  for (let at = segments.length - 1; at > 0 && store < 0; at--) if (segments[at] === ".pnpm" && segments[at - 1] === "node_modules") store = at;
+  const folder = store < 0 ? void 0 : segments[store + 1];
+  if (!targetsAndroid(context.appRoot)) {
+    return [{ group: "build integration", status: "skip", message: `${name} is installed at ${path}, a path with an "=" in it, which Android's prefab tool cannot take: not checked, app.json's platforms has no android` }];
+  }
+  if (folder?.includes("=")) {
+    return [{
+      group: "build integration",
+      status: "fail",
+      message: `${name} is installed in pnpm's folder ${folder}, a name with an "=" in it: Android's prefab tool reads the path as an option and the CMake build of ${name}'s native libraries stops with CXX1429 ("no such option")`,
+      fix: `set \`virtualStoreDirMaxLength: 60\` in pnpm-workspace.yaml (\`pnpm exec expo-svelte init\` writes it) and install again: pnpm cuts a folder name longer than the limit, or with an uppercase letter, to \`limit - 33\` characters and adds a hash, which at the default of 120 keeps the "=" of \`patch_hash=\` and at 60 does not; pnpm removes node_modules and installs again (\`pnpm install --config.confirmModulesPurge=false\` when there is no terminal to ask)`
+    }];
+  }
+  const marked = segments.filter((segment) => segment.includes("="));
+  return [{
+    group: "build integration",
+    status: "unknown",
+    message: `${name} is installed at ${path}, a path with an "=" in it outside pnpm's folder for it (${marked.map((segment) => `"${segment}"`).join(", ")}): Android's prefab tool reads a package path with an "=" as an option and the CMake build of ${name}'s native libraries may stop with CXX1429 ("no such option")`,
+    fix: "if the \"=\" is in the project's own path, move the project; if it is in the name of a folder of a virtual store that is not node_modules/.pnpm (pnpm's virtualStoreDir), pnpm's virtualStoreDirMaxLength cuts the name before it (`virtualStoreDirMaxLength: 60`, as `pnpm exec expo-svelte init` writes it)"
+  }];
+}
 function runChecks(context) {
   const own2 = readJson2(join9(context.packageRoot, "package.json")) ?? {};
   const name = text2(own2.name) ?? "expo-svelte";
@@ -2810,6 +2867,7 @@ function runChecks(context) {
     ...patches(context, name, optional),
     library(context, name, text2(own2.version) ?? "?", appPackage),
     ...integration(context, name),
+    ...storePath(context, name),
     ...pushChecks(context, { name, version: text2(own2.version) ?? "?" }, appPackage)
   ];
 }
@@ -3516,7 +3574,7 @@ __export(doctor_exports, {
   runDoctor: () => runDoctor
 });
 import { spawnSync as spawnSync2 } from "node:child_process";
-import { existsSync as existsSync7, realpathSync as realpathSync3 } from "node:fs";
+import { existsSync as existsSync7, realpathSync as realpathSync4 } from "node:fs";
 import { basename as basename2, dirname as dirname6, join as join10, resolve as resolve8 } from "node:path";
 function formatReport(checks, { color = false, appRoot = "", title = "expo-svelte doctor" } = {}) {
   const paint = (status) => color ? `\x1B[${COLORS[status]}m${WORDS[status]}\x1B[0m` : WORDS[status];
@@ -3552,8 +3610,8 @@ function isRepositoryApp(appRoot, packageRoot2) {
   const packages = dirname6(packageRoot2);
   if (basename2(packages) !== "packages") return false;
   try {
-    const root2 = workspaceRoot(realpathSync3(appRoot));
-    return root2 !== void 0 && root2 === realpathSync3(dirname6(packages));
+    const root2 = workspaceRoot(realpathSync4(appRoot));
+    return root2 !== void 0 && root2 === realpathSync4(dirname6(packages));
   } catch {
     return false;
   }

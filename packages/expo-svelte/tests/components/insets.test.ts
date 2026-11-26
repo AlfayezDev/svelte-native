@@ -187,6 +187,59 @@ test("a KeyboardAvoidingView re-enabled with the keyboard still open avoids it b
   }
 });
 
+/**
+ * A `height` KeyboardAvoidingView in a window that changes size (#134): every request the component commits, from the first layout to the last one the host acknowledges. The view stands at
+ * the top of the window and is as tall as it, less `footer` (a bar under it), unless it has been given a height; the host reports the new insets before it lays the view out again, and
+ * answers each request with the layout the view then has.
+ */
+async function windowRun(from: number, to: number, options: { keyboard?: boolean; footer?: number } = {}): Promise<string[]> {
+  const { keyboard = true, footer = 0 } = options;
+  const m = await loadModule();
+  const stub = m.engine;
+  let window = from;
+  const report = (open: boolean) => event({ frame: { x: 0, y: 0, width: 400, height: window }, ...(open ? { keyboardHeight: 140, keyboardVisible: true } : {}) });
+  stub.current = report(false);
+  m.resetInsets();
+  const { props_of } = await mountFixture(m, { behavior: "height" });
+  const outer = () => props_of("native-view", 0);
+  const flat = () => { const style = outer().style; return (Array.isArray(style) ? Object.assign({}, ...style) : style) as { height?: number }; };
+  const laidOut = () => flat().height ?? window - footer;
+  (outer().ref as (h: unknown) => void)({ measureInWindow: (callback: (...a: number[]) => void) => callback(0, 0, 400, laidOut()) });
+  const requests: string[] = [];
+  const sample = () => { const request = JSON.stringify(outer().style); if (requests.at(-1) !== request) requests.push(request); };
+  const settle = async () => { await m.tick(); await m.tick(); sample(); };
+  const layout = async () => { (outer().onLayout as (e: unknown) => void)({ nativeEvent: {} }); await settle(); };
+  const insets = async (open: boolean) => { stub.listener?.(report(open)); await settle(); };
+  sample();
+  await layout();
+  if (keyboard) { await insets(true); await layout(); }
+  window = to;
+  await insets(keyboard);
+  for (let acknowledged = 0; acknowledged < 6; acknowledged++) await layout();
+  return requests;
+}
+const plain = JSON.stringify({ flex: 1 });
+const asked = (height: number) => JSON.stringify([{ flex: 1 }, { height, flex: 0 }]);
+
+test("a KeyboardAvoidingView of height in a window that grows with the keyboard open asks for the avoided height at once, never for the whole of it (#134)", async () => {
+  // 350 to 600 with a 140 keyboard: 210, then 460 (the request that left it with no height let the view extend under the keyboard until the next layout, and it asked for 210 again).
+  expect(await windowRun(350, 600)).toEqual([plain, asked(210), asked(460)]);
+  // 350 to 450: 310.
+  expect(await windowRun(350, 450)).toEqual([plain, asked(210), asked(310)]);
+  // A window that shrinks: 600 to 350.
+  expect(await windowRun(600, 350)).toEqual([plain, asked(460), asked(210)]);
+  // The keyboard is closed: ordinary flex, nothing asked.
+  expect(await windowRun(350, 600, { keyboard: false })).toEqual([plain]);
+});
+
+test("a KeyboardAvoidingView of height with a bar under it, in a window that grows with the keyboard open, is as tall as the keyboard leaves it (#134)", async () => {
+  // The view is 100 shorter than the window (a bar under it, more than the inset at the bottom): it is measured as it is, and settles where the keyboard leaves it, 460 of its natural 500.
+  const requests = await windowRun(350, 600, { footer: 100 });
+  expect(requests.at(-1)).toBe(asked(460));
+  // And a bar of the size of the bottom inset is at the bottom of the window as far as the view is concerned: the view ends where the keyboard begins, at once.
+  expect(await windowRun(350, 600, { footer: 34 })).toEqual([plain, asked(210), asked(460)]);
+});
+
 test("padding math", async () => {
   const { avoidingStyle, flattenStyle, keyboardOverlap, safeAreaStyle } = await loadModule();
   const insets = { top: 20, right: 1, bottom: 30, left: 2 };

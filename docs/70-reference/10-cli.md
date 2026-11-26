@@ -97,7 +97,7 @@ patches
   …
 
 build integration
-  pass  expo-svelte 0.4.0-rc.11 is a dependency of the app
+  pass  expo-svelte 0.4.0-rc.12 is a dependency of the app
   pass  metro.config.cjs uses withExpoSvelte
   pass  app.json lists the expo-svelte plugin
 

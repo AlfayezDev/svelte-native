@@ -350,7 +350,7 @@ export function animationProps(node: object, target: AnimationTarget, props: Rec
     const merged: Values = Object.assign({}, ...mapped, cssTop);
     if (record.css === null || !shallowEqual(record.css, merged)) record.cssChanged = true;
     record.css = merged;
-    style = cssInStyle || cssTop ? [filterCSSAndStyleProperties(merged)[4]] : mapped;
+    style = cssInStyle || cssTop ? [filterCSSAndStyleProperties(merged)[3]] : mapped;
   } else {
     if (record.css !== null) record.cssChanged = true;
     record.css = null;

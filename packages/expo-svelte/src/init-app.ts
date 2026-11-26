@@ -29,9 +29,9 @@ export const appDependencies: Readonly<Record<string, string>> = {
  * Worklets, svg, the view libraries, ...) are not here and not in `appDependencies`: their patches are in the library's own copies of them (`vendor-patches/`), and the app lists none of them and declares nothing for them.
  */
 const alwaysPatched = ["expo-modules-core"];
-// The package's own name: Expo finds the package's `app.plugin.js`, the same plugin as `expo-svelte/app.plugin`.
+// The package's own name: Expo finds the package's `app.plugin.js`, the same plugin as `expo-svelte/app.plugin` and `expo-svelte/app.plugin.js` (the file's name, which a hand-written entry may have: init keeps it and adds no second one).
 const plugin = "expo-svelte";
-const pluginNames: readonly string[] = [plugin, `${plugin}/app.plugin`];
+const pluginNames: readonly string[] = [plugin, `${plugin}/app.plugin`, `${plugin}/app.plugin.js`];
 // The path of the plugin's built file, which was a name for it up to 0.4.0-rc.6 and was removed in 0.4.0-rc.7: it no longer resolves.
 const removedPluginName = `${plugin}/expo`;
 const scripts: Readonly<Record<string, string>> = { native: "expo-svelte dev", android: "expo-svelte android", ios: "expo-svelte ios", "check-setup": "expo-svelte doctor" };

@@ -419,7 +419,50 @@ private fun masking() {
   expect("a type says whether the field is masked (the engine does not look at the props again when the type is the same)", aliased, 0)
 }
 
+/** The size and the advances of a field's text (SPEC.md, "TextInput: text metrics"): the rules, and that React Native's sources still do what they stand for and the view calls them. */
+private fun textMetrics(editText: String?, textAttributes: String?, engineInput: String?, inputManager: String?, encoder: String?) {
+  expect("22 sp at 2.625 is 58 px", InputRules.fontSizePx(22f * 2.625f), 58f)
+  expect("16 sp at 2.625 is 42 px", InputRules.fontSizePx(16f * 2.625f), 42f)
+  expect("a size that is not set stays", InputRules.fontSizePx(0f), 0f)
+  expect("a family turns the exact advances on", InputRules.exactAdvances("IBMPlexSans", 0, false), true)
+  expect("an italic turns them on", InputRules.exactAdvances(null, 0, true), true)
+  expect("a weight turns them on, 400 too (fontWeight '400' is a weight)", InputRules.exactAdvances(null, 400, false), true)
+  expect("so does a style that is not italic (the record carries 400 for it)", InputRules.exactAdvances(null, 400, false), true)
+  expect("a weight and a style that are not set keep the hinted paint", InputRules.exactAdvances(null, 0, false), false)
+  expect("the line height span is the line height rounded up", InputRules.lineHeightSpanPx(57.75f, 5), 58)
+  expect("an empty field has none", InputRules.lineHeightSpanPx(57.75f, 0), 0)
+  expect("a field with no line height has none", InputRules.lineHeightSpanPx(0f, 5), 0)
+  if (textAttributes != null) {
+    val body = java.io.File(textAttributes).readText().replace(Regex("\\s+"), " ")
+    expect("RN: the font size is rounded up", body.contains("Math.ceil(PixelUtil.toPixelFromSP("), true)
+  }
+  if (editText != null) {
+    val body = java.io.File(editText).readText().replace(Regex("\\s+"), " ")
+    expect("RN: a family, a weight or a style turn subpixel text on", body.contains("fontStyle != ReactConstants.UNSET || fontWeight != ReactConstants.UNSET || fontFamily != null") && body.contains("paintFlags or Paint.SUBPIXEL_TEXT_FLAG"), true)
+    expect("RN: and linear text", body.contains("paintFlags or Paint.LINEAR_TEXT_FLAG"), true)
+    expect("RN: the line height is a span on the text, not the platform's line spacing", body.contains("CustomLineHeightSpan(lineHeight)") && !body.contains("setLineSpacing("), true)
+    expect("RN: an empty field's text is null", body.contains("if (reactTextUpdate.text.length == 0) { text = null }"), true)
+  }
+  if (inputManager != null) {
+    val body = java.io.File(inputManager).readText().replace(Regex("\\s+"), " ")
+    expect("RN: the includeFontPadding prop is the view's, true by default", body.contains("@ReactProp(name = ViewProps.INCLUDE_FONT_PADDING, defaultBoolean = true) public fun setIncludeFontPadding(view: ReactEditText, includepad: Boolean) { view.includeFontPadding = includepad }"), true)
+  }
+  if (encoder != null) {
+    val body = java.io.File(encoder).readText().replace(Regex("\\s+"), " ")
+    expect("the record carries includeFontPadding", body.contains("b.putInt(p.paragraphAttributes.includeFontPadding ? 1 : 0);"), true)
+    expect("and 0 for a weight and a style that are not set", body.contains("(ta.fontStyle.has_value() ? 400 : 0)"), true)
+  }
+  if (engineInput != null) {
+    val body = java.io.File(engineInput).readText().replace(Regex("\\s+"), " ")
+    expect("EngineInput rounds the size up", body.contains("InputRules.fontSizePx(v.fontSize)"), true)
+    expect("EngineInput sets the advances from the rule", body.contains("InputRules.exactAdvances(family, weight, italic)") && body.contains("Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG"), true)
+    expect("EngineInput puts the line height on the text as a span", body.contains("InputRules.lineHeightSpanPx(lineHeightPx, length)") && body.contains("TextLayouts.LineHeight(lineHeightPx)") && !body.contains("setLineSpacing(extra"), true)
+    expect("EngineInput takes the font padding from the prop", body.contains("includeFontPadding = v.includeFontPadding") && !body.contains("includeFontPadding = false"), true)
+  }
+}
+
 fun main(args: Array<String>) {
+  textMetrics(args.getOrNull(11), args.getOrNull(12), args.getOrNull(1), args.getOrNull(0), args.getOrNull(4))
   inputTypes(args.getOrNull(10))
   if (args.isNotEmpty()) inputTypeAgainstReactNative(args[0])
   flags()

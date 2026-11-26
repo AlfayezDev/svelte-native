@@ -71,7 +71,9 @@ java -cp "$work/input-rules-check.jar" expo.modules.svelteengine.InputRulesCheck
   "$rn/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ScrollEvent.kt" \
   "$here/../main/cpp/InputEvents.cpp" \
   "$here/../main/java/expo/modules/svelteengine/ViewEvents.kt" \
-  "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/platforms/android-36/android.jar"
+  "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/platforms/android-36/android.jar" \
+  "$rn/ReactAndroid/src/main/java/com/facebook/react/views/textinput/ReactEditText.kt" \
+  "$rn/ReactAndroid/src/main/java/com/facebook/react/views/text/TextAttributes.kt"
 
 # Which paint a text is laid out with: a text that can end in an ellipsis keeps its font in spans and the view's paint under it, as React Native's ReactTextView has it.
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/TextPaintRules.kt" \

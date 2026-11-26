@@ -2,11 +2,13 @@ package expo.modules.svelteengine.views
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.Build
 import android.text.Editable
 import android.text.InputFilter
 import android.text.InputType
+import android.text.Spannable
 import android.text.TextWatcher
 import android.text.method.PasswordTransformationMethod
 import android.text.method.SingleLineTransformationMethod
@@ -109,6 +111,7 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
 
     private const val TAG = "SvelteEngine"
     private const val RESTOCK_MS = 300L
+    private const val EXACT_ADVANCES = Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG
   }
 
   var nativeEventCount = 0
@@ -123,6 +126,8 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
   /** The `autoCorrect` setting (`InputRules`): an update that does not carry the prop leaves it. */
   private var autoCorrect = InputRules.AUTO_CORRECT_CLEARED
   private var family: String? = null
+  /** The line height the props asked for, in px (0 for none). */
+  private var lineHeightPx = 0f
   private var weight = 400
   private var italic = false
   private var created = false
@@ -147,8 +152,7 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
 
   init {
     background = null
-    // Yoga owns the box: no font padding of its own, the frame comes from the layout.
-    includeFontPadding = false
+    // Yoga owns the box and the padding. The font padding is the `includeFontPadding` prop's (`applyTextStyle`), true unless it says false, as in React Native's `ReactEditText`.
     setPadding(0, 0, 0, 0)
     addTextChangedListener(object : TextWatcher {
       override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -161,6 +165,9 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
           if (n <= 3) android.util.Log.i("SvelteEngine", "input change #$n tag=${node.tag} length=${s?.length ?: 0} focused=$isFocused")
           ViewEvents.input(node.tag, ViewEvents.INPUT_CHANGE, s?.toString() ?: "", n, selectionStart, selectionEnd)
         }
+        // The text of a field is laid out under one line-height span, as React Native's state puts it on every update; an edit that made the text from nothing (`setText(null)` drops
+        // the Editable and its spans) or replaced all of it has to have it again.
+        syncLineHeight()
         // After the change event, for text from JavaScript too, as ReactEditText's TextWatcherDelegator does. The edit's own layout has followed it by now:
         // an Editable tells the layout of its text before it calls `afterTextChanged`. The frame stays Yoga's, so no layout pass follows an edit to tell the new size.
         reportContentSize()
@@ -338,22 +345,48 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
   }
 
   private fun applyTextStyle(v: ViewProps) {
-    if (textSize != v.fontSize) setTextSize(TypedValue.COMPLEX_UNIT_PX, v.fontSize)
+    // `ReactTextInputManager.setIncludeFontPadding` (the prop, true by default): the hint is laid out without the line-height span, by the font's own top and bottom.
+    if (includeFontPadding != v.includeFontPadding) includeFontPadding = v.includeFontPadding
+    // `TextAttributes.effectiveFontSize`: the scaled size rounded up to a whole pixel; the letter spacing is its share of that size.
+    val size = InputRules.fontSizePx(v.fontSize)
+    if (textSize != size) setTextSize(TypedValue.COMPLEX_UNIT_PX, size)
     setTextColor(if (v.hasColor) v.color else 0xFF000000.toInt())
-    if (v.fontSize > 0f && letterSpacing != v.letterSpacing / v.fontSize) letterSpacing = v.letterSpacing / v.fontSize
-    if (v.lineHeight > 0f) {
-      val extra = v.lineHeight - paint.getFontMetricsInt(null)
-      setLineSpacing(extra, 1f)
-    } else {
-      setLineSpacing(0f, 1f)
+    if (size > 0f && letterSpacing != v.letterSpacing / size) letterSpacing = v.letterSpacing / size
+    // `ReactEditText` manages the line height itself, with `CustomLineHeightSpan` on the text (`addSpansFromStyleAttributes`), never through the platform's line spacing.
+    setLineSpacing(0f, 1f)
+    if (lineHeightPx != v.lineHeight) {
+      lineHeightPx = v.lineHeight
+      syncLineHeight()
     }
     applyTypeface(v.family, v.weight, v.italic)
+  }
+
+  /**
+   * `CustomLineHeightSpan` over all of the text, as React Native's text updates have it, and none on an empty field (its text is null there, and the hint is laid out plain).
+   * An empty span would be a line the cursor is placed by while the hint is what the field is centred on.
+   */
+  private fun syncLineHeight() {
+    val editable = text ?: return
+    val length = editable.length
+    val spans = editable.getSpans(0, length, TextLayouts.LineHeight::class.java)
+    val wanted = InputRules.lineHeightSpanPx(lineHeightPx, length)
+    if (wanted == 0) {
+      for (span in spans) editable.removeSpan(span)
+      return
+    }
+    if (spans.size == 1 && spans[0].lineHeight == wanted && editable.getSpanStart(spans[0]) == 0 && editable.getSpanEnd(spans[0]) == length) return
+    for (span in spans) editable.removeSpan(span)
+    editable.setSpan(TextLayouts.LineHeight(lineHeightPx), 0, length, Spannable.SPAN_INCLUSIVE_INCLUSIVE or Spannable.SPAN_PRIORITY)
   }
 
   private fun applyTypeface(family: String?, weight: Int, italic: Boolean) {
     this.family = family; this.weight = weight; this.italic = italic
     val tf: Typeface = TextLayouts.typeface(family, weight, italic)
     if (typeface !== tf) typeface = tf
+    // `ReactEditText.maybeUpdateTypeface`: a family, a weight or a style turns on subpixel and linear text (the advances React Native measures and draws with); plain default text keeps the hinted paint.
+    val exact = InputRules.exactAdvances(family, weight, italic)
+    val flags = if (exact) paintFlags or EXACT_ADVANCES else paintFlags and EXACT_ADVANCES.inv()
+    if (flags != paintFlags) paintFlags = flags
   }
 
   private fun applyInputType(v: ViewProps) {

@@ -616,6 +616,7 @@ class EngineHeader(context: Context) : EngineView(context) {
 
   private fun applyInputProps(input: EngineInput, slot: EngineHeaderSlot) {
     val v = ViewProps()
+    v.includeFontPadding = false
     v.fontSize = SEARCH_SP * density * fontScale
     v.hasColor = true
     v.color = ink()
@@ -637,6 +638,7 @@ class EngineHeader(context: Context) : EngineView(context) {
     if (slot != null) {
       input.node.tag = slot.node.tag
       val v = ViewProps()
+      v.includeFontPadding = false
       v.fontSize = SEARCH_SP * density * fontScale
       input.apply(v, true)
       applyInputProps(input, slot)

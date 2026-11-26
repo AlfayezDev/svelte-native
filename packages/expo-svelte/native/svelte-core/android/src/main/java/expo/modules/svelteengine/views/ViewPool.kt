@@ -132,6 +132,8 @@ class ViewPool(private val capacity: Int = DEFAULT_CAPACITY) {
     if (view is EngineView && view.offscreenAlpha) view.offscreenAlpha = false
     if (view.layerType != View.LAYER_TYPE_NONE) view.setLayerType(View.LAYER_TYPE_NONE, null)
     st.viewFlags = 0
+    // React Native's drawables (shadows, borders) stay on the view, with what `NodeState` remembers they hold: the next node of a view that needs them rewrites what differs (`BoxStyle.apply`),
+    // which costs far less than making them again, and one that does not takes them off (`Props.applyCommon`).
     A11y.setClickable(view, false)
     view.tag = null
     // The id is the node tag (MountingManager.createView): a pooled view has no node, and no gesture handler is found on it.

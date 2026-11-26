@@ -33,6 +33,7 @@ object AnimatedProps {
       if (view.alpha != a) view.alpha = a
     }
 
+    if (props.hasKey("transformOrigin")) applyOrigin(view, st, props.getArray("transformOrigin"), density)
     if (props.hasKey("transform")) applyTransform(view, st, props.getArray("transform"), density)
 
     if (props.hasKey("backgroundColor") && props.getType("backgroundColor") == ReadableType.Number) {
@@ -106,6 +107,22 @@ object AnimatedProps {
     }
   }
 
+  /** `transformOrigin` as JavaScript's `processTransformOrigin` leaves it, `[x, y, z]`: a number is dp, `"50%"` a percentage, null the centre. The view turns about it from now on. */
+  private fun applyOrigin(view: View, st: expo.modules.svelteengine.views.NodeState, origin: ReadableArray?, density: Float) {
+    val values = FloatArray(2)
+    var xUnit = StyleRules.UNIT_NONE
+    var yUnit = StyleRules.UNIT_NONE
+    if (origin != null && origin.size() >= 2) {
+      for (axis in 0..1) {
+        val number = if (origin.getType(axis) == ReadableType.Number) origin.getDouble(axis) else null
+        val text = if (origin.getType(axis) == ReadableType.String) origin.getString(axis) else null
+        val unit = StyleRules.originAxis(number, text, density, values, axis)
+        if (axis == 0) xUnit = unit else yUnit = unit
+      }
+    }
+    Props.setOrigin(view, st, xUnit, values[0], yUnit, values[1])
+  }
+
   private fun applyTransform(view: View, st: expo.modules.svelteengine.views.NodeState, ops: ReadableArray?, density: Float) {
     if (ops == null) {
       Props.setTransform(view, st, 0f, 0f, 1f, 1f, 0f)
@@ -159,6 +176,8 @@ object AnimatedProps {
 
   private fun setBackground(view: View, st: expo.modules.svelteengine.views.NodeState, color: Int) {
     if (st.bg == color) return
+    st.engineBox?.let { return BoxStyle.setEngineBackground(it, st, color) }
+    if (st.boxStyle) return BoxStyle.setBackground(view, st, color)
     st.bg = color
     var d = st.drawable
     if (d == null) {
@@ -177,6 +196,10 @@ object AnimatedProps {
   private fun setRadii(view: View, st: expo.modules.svelteengine.views.NodeState, tl: Float, tr: Float, br: Float, bl: Float) {
     val r = st.radii
     if (r[0] == tl && r[1] == tr && r[2] == br && r[3] == bl) return
+    // A radius that makes another drawable draw the box (a divider that is given round corners) is a commit's work: the box is built again from what the node has.
+    if (BoxStyle.radiiMoveBox(st, tl, tr, br, bl)) return Commands.restyle(view, st, tl, tr, br, bl)
+    st.engineBox?.let { return BoxStyle.setEngineRadii(view, it, st, tl, tr, br, bl) }
+    if (st.boxStyle) return BoxStyle.setRadii(view, st, tl, tr, br, bl)
     r[0] = tl; r[1] = tr; r[2] = br; r[3] = bl
     st.drawable?.let { applyRadii(it, r) }
     // An overflow-hidden view with a rounded outline clip re-reads st.radii here.

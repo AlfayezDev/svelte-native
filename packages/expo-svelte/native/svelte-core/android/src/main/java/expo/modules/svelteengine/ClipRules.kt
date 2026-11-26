@@ -23,4 +23,16 @@ internal object ClipRules {
     out[3] = scrollY + height - border[3]
     return true
   }
+
+  /**
+   * Where a scroll view's content child sits in it, written to [out] as left, top, right, bottom: where Yoga put it (`frame*`: inside the view's border and padding) and Android's
+   * padding besides ([paddingLeft], [paddingTop]: what `EngineHeader` gives a scroll view under a large or translucent header, its own height). The platform's scroll view puts its
+   * child at the padding alone, which loses Yoga's offset (a bordered scroll view's content sat on the border); Yoga's offset alone loses the header's.
+   */
+  fun scrollContent(frameLeft: Int, frameTop: Int, frameRight: Int, frameBottom: Int, paddingLeft: Int, paddingTop: Int, out: IntArray) {
+    out[0] = frameLeft + paddingLeft
+    out[1] = frameTop + paddingTop
+    out[2] = frameRight + paddingLeft
+    out[3] = frameBottom + paddingTop
+  }
 }

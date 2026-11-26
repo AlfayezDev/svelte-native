@@ -35,3 +35,6 @@ export function diffPayload(previous: Record<string, unknown>, next: Record<stri
   if (compare) compare.checks.push({ kind: "diff", view, mine: json(mine), reactNative: json(compare.reference.diff(previous, next, compare.reference.get(view).validAttributes)) });
   return mine;
 }
+
+/** What `setNativeProps` hands the engine: not a payload of a node, so nothing is compared. */
+export const engineNativeProps = real.engineNativeProps;

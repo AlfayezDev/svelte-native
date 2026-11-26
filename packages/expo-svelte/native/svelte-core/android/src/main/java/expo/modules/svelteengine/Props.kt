@@ -5,8 +5,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.graphics.Outline
+import expo.modules.svelteengine.views.EngineImage
 import expo.modules.svelteengine.views.EngineNode
 import expo.modules.svelteengine.views.EngineScreen
+import expo.modules.svelteengine.views.EngineScrollable
+import expo.modules.svelteengine.views.EngineText
 import expo.modules.svelteengine.views.EngineView
 import expo.modules.svelteengine.views.NodeState
 import kotlin.math.max
@@ -91,6 +94,10 @@ class PropSet {
   val radii = FloatArray(4)
   val border = FloatArray(4)
   var borderColor = 0
+  /** Records 140..142 (StyleWire.kt). */
+  val style = StyleRecords()
+  /** The colour of each side, left, top, right, bottom ([StyleRules.sideColors]); scratch of `applyCommon`. */
+  val sideColors = IntArray(4)
   val transform = floatArrayOf(0f, 0f, 1f, 1f, 0f)
   var overflow = 0
   var pointer = 0
@@ -159,6 +166,7 @@ class PropSet {
   fun reset() {
     if (views.touched) views.reset()
     if (nav.touched) nav.reset()
+    if (style.touched) style.reset()
     bg = 0; opacity = 1f
     radii.fill(0f); border.fill(0f); borderColor = 0
     transform[0] = 0f; transform[1] = 0f; transform[2] = 1f; transform[3] = 1f; transform[4] = 0f
@@ -250,6 +258,7 @@ object Props {
           fr.tag = FragmentWire.tag(ops, i); fr.link = FragmentWire.isLink(ops, i)
           i += FragmentWire.TARGET_INTS
         }
+        in 140..149 -> i = out.style.decode(id, ops, i)
         in 110..139 -> i = PropsNav.decode(id, ops, i, strings, out.nav)
         in 40..109 -> i = PropsViews.decode(id, ops, i, strings, out.views)
         30 -> out.horizontal = ops[i++]
@@ -278,18 +287,24 @@ object Props {
 
   /** Applies the props every view kind shares. The record is complete, so absent props reset to defaults. */
   fun applyCommon(view: View, st: NodeState, p: PropSet, create: Boolean) {
-    // background, radii, border
+    // background, radii, border: the engine's plain background, its own drawable, or React Native's own drawables (BoxStyle.kt, BoxDrawable.kt, SPEC.md "Box styles")
+    val shadows = p.style.shadows
+    val widest = StyleRules.widest(p.border)
+    if (widest > 0f || shadows != null) StyleRules.sideColors(p.style, p.borderColor, p.sideColors) else p.sideColors.fill(0)
+    val kind = StyleRules.boxKind(shadows, p.border, p.sideColors, p.style.borderStyle, p.radii)
+    val react = kind == StyleRules.BOX_REACT
+    if (st.boxStyle && !react) BoxStyle.drop(view, st)
+    if (st.engineBox != null && kind != StyleRules.BOX_ENGINE) BoxStyle.dropEngine(view, st)
     val radiiChanged = create || !st.radii.contentEquals(p.radii)
-    val borderChanged = create || !st.border.contentEquals(p.border) || st.borderColor != p.borderColor
     val bgChanged = create || st.bg != p.bg
-    if (radiiChanged || borderChanged || bgChanged) {
+    if (react) BoxStyle.apply(view, st, p, shadows) else if (kind == StyleRules.BOX_ENGINE) BoxStyle.applyEngine(view, st, p)
+    if (kind == StyleRules.BOX_PLAIN && (radiiChanged || bgChanged)) {
+      // A fill and one radius for every corner, with no border: a `GradientDrawable` (the same pixels as React Native's).
       p.radii.copyInto(st.radii)
       p.border.copyInto(st.border)
       st.borderColor = p.borderColor
       st.bg = p.bg
-      val hasRadius = p.radii.any { it > 0f }
-      val borderW = max(max(p.border[0], p.border[1]), max(p.border[2], p.border[3]))
-      val need = (p.bg ushr 24) != 0 || hasRadius || borderW > 0f
+      val need = (p.bg ushr 24) != 0 || p.radii[0] > 0f
       if (need) {
         var d = st.drawable
         if (d == null) {
@@ -298,17 +313,7 @@ object Props {
           view.background = d
         }
         if (bgChanged) d.setColor(p.bg)
-        if (radiiChanged) {
-          val r = p.radii
-          if (r[0] == r[1] && r[1] == r[2] && r[2] == r[3]) {
-            d.cornerRadius = r[0]
-          } else {
-            d.cornerRadii = floatArrayOf(r[0], r[0], r[1], r[1], r[2], r[2], r[3], r[3])
-          }
-        }
-        if (borderChanged) {
-          d.setStroke(Math.round(borderW), p.borderColor)
-        }
+        if (radiiChanged) d.cornerRadius = p.radii[0]
       } else if (st.drawable != null) {
         st.drawable = null
         view.background = null
@@ -318,7 +323,8 @@ object Props {
     // A screen's translation and alpha belong to its stack transitions (EngineStack).
     if (view !is EngineScreen && view.alpha != p.opacity) view.alpha = p.opacity
 
-    // transform
+    // transform, about the origin (the centre unless `transformOrigin` says otherwise)
+    st.rememberStyle(p.style)
     val t = p.transform
     if (view !is EngineScreen) setTransform(view, st, t[0], t[1], t[2], t[3], t[4])
 
@@ -330,7 +336,12 @@ object Props {
       view.clipChildren = false
     } else if (view is ViewGroup) view.clipChildren = hidden
     val maxRadius = max(max(p.radii[0], p.radii[1]), max(p.radii[2], p.radii[3]))
-    if (hidden && maxRadius > 0f) {
+    // A view whose box is the engine's drawable or React Native's clips what it draws to the padding box itself, as React Native's views do (`EngineView.dispatchDraw`, a scroll view's
+    // `dispatchDraw`, `EngineText.onDraw` and `EngineImage.onDraw`: the background, and the shadow it draws around the view, are not clipped), and a clip of the whole view to its
+    // outline would cut that shadow off. Another kind of view (an input) keeps the outline clip unless a shadow of it is outset.
+    val boxed = st.boxStyle || st.engineBox != null
+    val clipsItself = boxed && (view is EngineView || view is EngineText || view is EngineImage || view is EngineScrollable)
+    if (hidden && maxRadius > 0f && !clipsItself && !(boxed && st.boxOutset)) {
       if (!st.outlineClip) {
         st.outlineClip = true
         view.outlineProvider = RoundedOutline(st)
@@ -371,7 +382,7 @@ object Props {
   }
 
   /**
-   * Translate (px), scale and rotation (degrees) about the view centre; shared by committed props (prop 6) and
+   * Translate (px), scale and rotation (degrees) about the view's transform origin ([applyPivot]; the centre by default); shared by committed props (prop 6) and
    * animated writes (AnimatedProps) so both decompose and pivot the same way. A view the keyboard moves ([NodeState.drivenY]) keeps that move on top of the translation.
    */
   fun setTransform(view: View, st: NodeState, tx: Float, ty: Float, sx: Float, sy: Float, rot: Float) {
@@ -383,11 +394,23 @@ object Props {
       view.scaleY = sy
       view.rotation = rot
       st.transformed = !identity
-      if (!identity) {
-        view.pivotX = view.width / 2f
-        view.pivotY = view.height / 2f
-      }
+      if (!identity) applyPivot(view, st)
     }
+  }
+
+  /** The pivot the transform turns about: the transform origin (record 142) resolved against the view's frame, the centre where the origin gives an axis nothing. */
+  fun applyPivot(view: View, st: NodeState) {
+    val s = st.style
+    view.pivotX = StyleRules.pivot(s?.originXUnit ?: 0, s?.originX ?: 0f, st.w.toFloat())
+    view.pivotY = StyleRules.pivot(s?.originYUnit ?: 0, s?.originY ?: 0f, st.h.toFloat())
+  }
+
+  /** Sets the transform origin of a view from an animated write or `setNativeProps`: a unit and a value (px or percent) per axis ([StyleRules.originAxis]). */
+  fun setOrigin(view: View, st: NodeState, xUnit: Int, x: Float, yUnit: Int, y: Float) {
+    val s = st.style ?: StyleRecords().also { st.style = it }
+    if (s.originXUnit == xUnit && s.originX == x && s.originYUnit == yUnit && s.originY == y) return
+    s.originXUnit = xUnit; s.originX = x; s.originYUnit = yUnit; s.originY = y
+    if (st.transformed) applyPivot(view, st)
   }
 
   /** zIndex orders siblings (draw order and hit order); elevation (px) is View.elevation. See EngineView. */

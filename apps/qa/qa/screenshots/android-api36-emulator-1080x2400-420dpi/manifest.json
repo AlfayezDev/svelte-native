@@ -2726,6 +2726,1590 @@
 				"dirty": true
 			}
 		},
+		"lab-styles-border--dark-ltr-large": {
+			"file": "lab-styles-border--dark-ltr-large.png",
+			"sha256": "44fbf25186db83c09ae5c6451eec34cae4359511fff5c37dd6b43425072b4a74",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-border",
+			"route": "/__dev/styles?mode=border",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "ltr",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:15:45.353Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-border--dark-ltr-normal": {
+			"file": "lab-styles-border--dark-ltr-normal.png",
+			"sha256": "79aa1f3a76efcc753bc44348532c06d499d7f81a3e4c35aeba004a9b2bed8d9b",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-border",
+			"route": "/__dev/styles?mode=border",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "ltr",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:14:45.033Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-border--dark-rtl-large": {
+			"file": "lab-styles-border--dark-rtl-large.png",
+			"sha256": "0ec2f61ec5dae3bf9aef711fcb2e16247d10653251d4cb5c65a12777b18bdc1f",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-border",
+			"route": "/__dev/styles?mode=border",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "rtl",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:17:48.421Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-border--dark-rtl-normal": {
+			"file": "lab-styles-border--dark-rtl-normal.png",
+			"sha256": "6f21f5f98eaff34fed64c6b7c87dbdf970cb223b9f0abfb8842e034e3ad71555",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-border",
+			"route": "/__dev/styles?mode=border",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "rtl",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:16:45.054Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-border--light-ltr-large": {
+			"file": "lab-styles-border--light-ltr-large.png",
+			"sha256": "4a6a38ddbe7658c0244ad3ef3ed551bccc0d1c0f15e42de550e44c8e7d03a668",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-border",
+			"route": "/__dev/styles?mode=border",
+			"state": "ready",
+			"theme": "light",
+			"direction": "ltr",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:11:37.604Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-border--light-ltr-normal": {
+			"file": "lab-styles-border--light-ltr-normal.png",
+			"sha256": "1931a70ab7b24691fb602e4605a3897c9f95374746cb0a55581081381171e30d",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-border",
+			"route": "/__dev/styles?mode=border",
+			"state": "ready",
+			"theme": "light",
+			"direction": "ltr",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:10:40.802Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-border--light-rtl-large": {
+			"file": "lab-styles-border--light-rtl-large.png",
+			"sha256": "ede9a32c3cc9fd40f2bfbe3b98f49671be684a1c98b4b5403e4e6f607feefce3",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-border",
+			"route": "/__dev/styles?mode=border",
+			"state": "ready",
+			"theme": "light",
+			"direction": "rtl",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:13:43.472Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-border--light-rtl-normal": {
+			"file": "lab-styles-border--light-rtl-normal.png",
+			"sha256": "41ab208e453bef412257758acb73d5caf38208852d8dd508b7a2160aaf286104",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-border",
+			"route": "/__dev/styles?mode=border",
+			"state": "ready",
+			"theme": "light",
+			"direction": "rtl",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:12:40.236Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-origin--dark-ltr-large": {
+			"file": "lab-styles-origin--dark-ltr-large.png",
+			"sha256": "982f6a5b010d2325b98d43feb863b5b50cd90126c9dc0a47fdb19431b10b4a1c",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-origin",
+			"route": "/__dev/styles?mode=origin",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "ltr",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:15:53.389Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-origin--dark-ltr-normal": {
+			"file": "lab-styles-origin--dark-ltr-normal.png",
+			"sha256": "b022a299f067953255444e940dfecaadc831bf9afffa7c3b58e091abac281399",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-origin",
+			"route": "/__dev/styles?mode=origin",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "ltr",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:14:53.081Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-origin--dark-rtl-large": {
+			"file": "lab-styles-origin--dark-rtl-large.png",
+			"sha256": "f1382ea7d8c3415b5ac1541d5b9ea535ef8ca1af6b2b5d304fbd53ffd9e3c400",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-origin",
+			"route": "/__dev/styles?mode=origin",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "rtl",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:17:56.663Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-origin--dark-rtl-normal": {
+			"file": "lab-styles-origin--dark-rtl-normal.png",
+			"sha256": "15ab66f3d15f349dbdc5730a843da198c29ce88c389b8ebebdc11832df3b0239",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-origin",
+			"route": "/__dev/styles?mode=origin",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "rtl",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:16:54.485Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-origin--light-ltr-large": {
+			"file": "lab-styles-origin--light-ltr-large.png",
+			"sha256": "2623227a30d03ad557ada30b32a2499d288f8e374d0566fd143446f1abd79b54",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-origin",
+			"route": "/__dev/styles?mode=origin",
+			"state": "ready",
+			"theme": "light",
+			"direction": "ltr",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:11:45.889Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-origin--light-ltr-normal": {
+			"file": "lab-styles-origin--light-ltr-normal.png",
+			"sha256": "b9b4d118e7fa5e72c6745677328d35c170e9fc1b9ad94f6989ccf8c7795e3382",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-origin",
+			"route": "/__dev/styles?mode=origin",
+			"state": "ready",
+			"theme": "light",
+			"direction": "ltr",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:10:48.683Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-origin--light-rtl-large": {
+			"file": "lab-styles-origin--light-rtl-large.png",
+			"sha256": "e16a26d9a968055bdbcdcda8b68190b04f460f375f43efc142c3bd3ca59105f2",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-origin",
+			"route": "/__dev/styles?mode=origin",
+			"state": "ready",
+			"theme": "light",
+			"direction": "rtl",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:13:52.887Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-origin--light-rtl-normal": {
+			"file": "lab-styles-origin--light-rtl-normal.png",
+			"sha256": "cd5d83f7d41c1cef322be67ea9d66b7a7eb1345d3649bdc6afd6c010fa0c4c33",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-origin",
+			"route": "/__dev/styles?mode=origin",
+			"state": "ready",
+			"theme": "light",
+			"direction": "rtl",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T23:32:00.174Z",
+			"source": {
+				"commit": "b3d271b1",
+				"dirty": true
+			}
+		},
+		"lab-styles-rect--dark-ltr-large": {
+			"file": "lab-styles-rect--dark-ltr-large.png",
+			"sha256": "b37dc2785c8fac34a0586cf8bbe0ffaf5f82d882db0883b02d8b8ef0c66a88ed",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-rect",
+			"route": "/__dev/styles?mode=rect",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "ltr",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:16:13.703Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-rect--dark-ltr-normal": {
+			"file": "lab-styles-rect--dark-ltr-normal.png",
+			"sha256": "11d594bfd5af3f42fa14c7e3aa5001688c4fa2f50f803cb5bc51a9525480d9b9",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-rect",
+			"route": "/__dev/styles?mode=rect",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "ltr",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:15:13.885Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-rect--dark-rtl-large": {
+			"file": "lab-styles-rect--dark-rtl-large.png",
+			"sha256": "60d48b2d219bff1752428ed28db67f900764ba731285a5b22674932422814634",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-rect",
+			"route": "/__dev/styles?mode=rect",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "rtl",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:18:16.734Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-rect--dark-rtl-normal": {
+			"file": "lab-styles-rect--dark-rtl-normal.png",
+			"sha256": "6048fa4f9d8b190cc5f22c22031bee0e3a95f369676d837d47041b6b5db6a1d2",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-rect",
+			"route": "/__dev/styles?mode=rect",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "rtl",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:17:16.471Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-rect--light-ltr-large": {
+			"file": "lab-styles-rect--light-ltr-large.png",
+			"sha256": "7323d8b0716757cf9c5e9a0d0139f629d955d70783585dfa58433994ef880e3b",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-rect",
+			"route": "/__dev/styles?mode=rect",
+			"state": "ready",
+			"theme": "light",
+			"direction": "ltr",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:12:06.732Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-rect--light-ltr-normal": {
+			"file": "lab-styles-rect--light-ltr-normal.png",
+			"sha256": "6f9b204e0cd2802e42590680194ceca7ff8af58db202778b1c367840e4239e43",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-rect",
+			"route": "/__dev/styles?mode=rect",
+			"state": "ready",
+			"theme": "light",
+			"direction": "ltr",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:11:07.138Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-rect--light-rtl-large": {
+			"file": "lab-styles-rect--light-rtl-large.png",
+			"sha256": "292c7714579025d480acc54d28c29fd72f85615313bf3b2c054cbce05e0424ad",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-rect",
+			"route": "/__dev/styles?mode=rect",
+			"state": "ready",
+			"theme": "light",
+			"direction": "rtl",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:14:12.602Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-rect--light-rtl-normal": {
+			"file": "lab-styles-rect--light-rtl-normal.png",
+			"sha256": "230788fc6c0e462c645bd15801983ef3485df2203103b169045f41f9ad1f4527",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-rect",
+			"route": "/__dev/styles?mode=rect",
+			"state": "ready",
+			"theme": "light",
+			"direction": "rtl",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:13:09.888Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-shadow--dark-ltr-large": {
+			"file": "lab-styles-shadow--dark-ltr-large.png",
+			"sha256": "cb929b65c589c742d9ad2b3a80a865eb19d98cebad144bc18f1e4b40d851c339",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-shadow",
+			"route": "/__dev/styles?mode=shadow",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "ltr",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:15:35.927Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-shadow--dark-ltr-normal": {
+			"file": "lab-styles-shadow--dark-ltr-normal.png",
+			"sha256": "1369a4407fcc3f6508a85860b9e8614cfae47206b3dcdbd57b71c130cb6a4020",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-shadow",
+			"route": "/__dev/styles?mode=shadow",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "ltr",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:14:35.804Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-shadow--dark-rtl-large": {
+			"file": "lab-styles-shadow--dark-rtl-large.png",
+			"sha256": "0225b365519623e874f390841ac182dde72fc4b46dd283c0e1832e08afdac3cd",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-shadow",
+			"route": "/__dev/styles?mode=shadow",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "rtl",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:17:39.393Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-shadow--dark-rtl-normal": {
+			"file": "lab-styles-shadow--dark-rtl-normal.png",
+			"sha256": "1c3c51d7dbe60e1dbcaab93bd69a20659f1322f6bd0dc23ead533f5aad431ebf",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-shadow",
+			"route": "/__dev/styles?mode=shadow",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "rtl",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:16:36.005Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-shadow--light-ltr-large": {
+			"file": "lab-styles-shadow--light-ltr-large.png",
+			"sha256": "ec409fd9a45854329434664a7fef1fe4c1066788de20e743982f5be30f21d172",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-shadow",
+			"route": "/__dev/styles?mode=shadow",
+			"state": "ready",
+			"theme": "light",
+			"direction": "ltr",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:11:27.443Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-shadow--light-ltr-normal": {
+			"file": "lab-styles-shadow--light-ltr-normal.png",
+			"sha256": "e3f9bd6e6da23c3d93a30f6b198c9551145b19461126a38968f332095c002d84",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-shadow",
+			"route": "/__dev/styles?mode=shadow",
+			"state": "ready",
+			"theme": "light",
+			"direction": "ltr",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:10:31.389Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-shadow--light-rtl-large": {
+			"file": "lab-styles-shadow--light-rtl-large.png",
+			"sha256": "206532442f689d0ab3d15139867b46f205ae4e1f91b0b6b2813c65c6ba91ab19",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-shadow",
+			"route": "/__dev/styles?mode=shadow",
+			"state": "ready",
+			"theme": "light",
+			"direction": "rtl",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:13:33.929Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-shadow--light-rtl-normal": {
+			"file": "lab-styles-shadow--light-rtl-normal.png",
+			"sha256": "bed483d9d9884b753ca2fb0a4030fc0d3b3a469cce3684d646f41a7ef05fc825",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-shadow",
+			"route": "/__dev/styles?mode=shadow",
+			"state": "ready",
+			"theme": "light",
+			"direction": "rtl",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:12:28.987Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-uniform--dark-ltr-large": {
+			"file": "lab-styles-uniform--dark-ltr-large.png",
+			"sha256": "ae24a008c4534c0643de2e012629fe33873cef6f5911e21a6563b10376b03c83",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-uniform",
+			"route": "/__dev/styles?mode=uniform",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "ltr",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:16:02.765Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-uniform--dark-ltr-normal": {
+			"file": "lab-styles-uniform--dark-ltr-normal.png",
+			"sha256": "27c1acd97dc6092822b1bfc22d2862db4ed73bc289ac0070b532271bd6db48cd",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-uniform",
+			"route": "/__dev/styles?mode=uniform",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "ltr",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:15:02.438Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-uniform--dark-rtl-large": {
+			"file": "lab-styles-uniform--dark-rtl-large.png",
+			"sha256": "da18cb76c62aaaae43e9b2115482af52f8d990352cfe9d0524aa9e77585b9009",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-uniform",
+			"route": "/__dev/styles?mode=uniform",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "rtl",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:18:05.947Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-uniform--dark-rtl-normal": {
+			"file": "lab-styles-uniform--dark-rtl-normal.png",
+			"sha256": "7ad80c27b1eb6e4562316c75239185d99ce5e6c1ec72bd5a3a68dbd1eefa49b2",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-uniform",
+			"route": "/__dev/styles?mode=uniform",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "rtl",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:17:05.629Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-uniform--light-ltr-large": {
+			"file": "lab-styles-uniform--light-ltr-large.png",
+			"sha256": "250739fd927943dc141f76f1f64168af4337e233d07a9fcd9ef198c5c62fb30d",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-uniform",
+			"route": "/__dev/styles?mode=uniform",
+			"state": "ready",
+			"theme": "light",
+			"direction": "ltr",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:11:56.776Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-uniform--light-ltr-normal": {
+			"file": "lab-styles-uniform--light-ltr-normal.png",
+			"sha256": "92b3a8f04a9c0ebd6f33938bf20dc0d62edd90682758adea97e67d494a5b5717",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-uniform",
+			"route": "/__dev/styles?mode=uniform",
+			"state": "ready",
+			"theme": "light",
+			"direction": "ltr",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:10:57.648Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-uniform--light-rtl-large": {
+			"file": "lab-styles-uniform--light-rtl-large.png",
+			"sha256": "7c390d3f3070d8a601f7e806d3a2d899e9a546bcee76ed7d1ef88ffa8cc50a61",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-uniform",
+			"route": "/__dev/styles?mode=uniform",
+			"state": "ready",
+			"theme": "light",
+			"direction": "rtl",
+			"fontScale": 2,
+			"updatedAt": "2026-11-25T15:14:02.800Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-uniform--light-rtl-normal": {
+			"file": "lab-styles-uniform--light-rtl-normal.png",
+			"sha256": "091a4ebfd32c6c26fc3d34761df7713afc730d439bf5f92bf61f8f966158d99a",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-uniform",
+			"route": "/__dev/styles?mode=uniform",
+			"state": "ready",
+			"theme": "light",
+			"direction": "rtl",
+			"fontScale": 1,
+			"updatedAt": "2026-11-25T15:12:58.673Z",
+			"source": {
+				"commit": "2d6f11235e",
+				"dirty": true
+			}
+		},
+		"lab-styles-views--dark-ltr-large": {
+			"file": "lab-styles-views--dark-ltr-large.png",
+			"sha256": "e82e65694ce6eefbee37f84f7e18d418bf1bbe13c3d4baf52654ac129064c824",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-views",
+			"route": "/__dev/styles?mode=views",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "ltr",
+			"fontScale": 2,
+			"updatedAt": "2026-11-26T00:42:15.608Z",
+			"source": {
+				"commit": "b3d271b1",
+				"dirty": true
+			}
+		},
+		"lab-styles-views--dark-ltr-normal": {
+			"file": "lab-styles-views--dark-ltr-normal.png",
+			"sha256": "09e666508565cb4ed9421c4d44cd444e5268e75b2611cf9fa9b9d0ea185af837",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-views",
+			"route": "/__dev/styles?mode=views",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "ltr",
+			"fontScale": 1,
+			"updatedAt": "2026-11-26T00:42:01.778Z",
+			"source": {
+				"commit": "b3d271b1",
+				"dirty": true
+			}
+		},
+		"lab-styles-views--dark-rtl-large": {
+			"file": "lab-styles-views--dark-rtl-large.png",
+			"sha256": "d56be1e13de0452fcf58712d15ec53f8c90def03a6e0b592fc66ae7ac200f1ad",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-views",
+			"route": "/__dev/styles?mode=views",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "rtl",
+			"fontScale": 2,
+			"updatedAt": "2026-11-26T00:42:44.983Z",
+			"source": {
+				"commit": "b3d271b1",
+				"dirty": true
+			}
+		},
+		"lab-styles-views--dark-rtl-normal": {
+			"file": "lab-styles-views--dark-rtl-normal.png",
+			"sha256": "921235788217440433c7fc99be611107f64980c8e09bce1df77b55fbf5cb2cfd",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-views",
+			"route": "/__dev/styles?mode=views",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "rtl",
+			"fontScale": 1,
+			"updatedAt": "2026-11-26T00:42:31.052Z",
+			"source": {
+				"commit": "b3d271b1",
+				"dirty": true
+			}
+		},
+		"lab-styles-views--light-ltr-large": {
+			"file": "lab-styles-views--light-ltr-large.png",
+			"sha256": "4cc873e8065c93e13546bc318d0c1844c4f4bacdf3195d7196696460c9e43af8",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-views",
+			"route": "/__dev/styles?mode=views",
+			"state": "ready",
+			"theme": "light",
+			"direction": "ltr",
+			"fontScale": 2,
+			"updatedAt": "2026-11-26T00:41:19.775Z",
+			"source": {
+				"commit": "b3d271b1",
+				"dirty": true
+			}
+		},
+		"lab-styles-views--light-ltr-normal": {
+			"file": "lab-styles-views--light-ltr-normal.png",
+			"sha256": "50898287f46f47c15c6e72993f31e442a5dce1e0e9588d2039fec5b47fb2fdcf",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-views",
+			"route": "/__dev/styles?mode=views",
+			"state": "ready",
+			"theme": "light",
+			"direction": "ltr",
+			"fontScale": 1,
+			"updatedAt": "2026-11-26T00:41:05.842Z",
+			"source": {
+				"commit": "b3d271b1",
+				"dirty": true
+			}
+		},
+		"lab-styles-views--light-rtl-large": {
+			"file": "lab-styles-views--light-rtl-large.png",
+			"sha256": "82fcc47323031a7d7bd445d2a3dcf856634cb8cee19658a5824e179ad5ffda16",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-views",
+			"route": "/__dev/styles?mode=views",
+			"state": "ready",
+			"theme": "light",
+			"direction": "rtl",
+			"fontScale": 2,
+			"updatedAt": "2026-11-26T00:41:47.016Z",
+			"source": {
+				"commit": "b3d271b1",
+				"dirty": true
+			}
+		},
+		"lab-styles-views--light-rtl-normal": {
+			"file": "lab-styles-views--light-rtl-normal.png",
+			"sha256": "9c6eb17e0845d03f232c1796d75bde751a340c43ba1b7002e904c4a74e1f45b1",
+			"width": 1080,
+			"height": 2400,
+			"masks": [
+				{
+					"name": "status bar",
+					"x": 0,
+					"y": 0,
+					"width": 1080,
+					"height": 128
+				},
+				{
+					"name": "navigation bar",
+					"x": 0,
+					"y": 2337,
+					"width": 1080,
+					"height": 63
+				}
+			],
+			"screen": "lab-styles-views",
+			"route": "/__dev/styles?mode=views",
+			"state": "ready",
+			"theme": "light",
+			"direction": "rtl",
+			"fontScale": 1,
+			"updatedAt": "2026-11-26T00:41:32.506Z",
+			"source": {
+				"commit": "b3d271b1",
+				"dirty": true
+			}
+		},
 		"screens-form-sheet--dark-ltr-large": {
 			"file": "screens-form-sheet--dark-ltr-large.png",
 			"sha256": "166d8d03ba375c7daeb1a9299bf21ffe559582d1787b742eeb853d8322f77713",

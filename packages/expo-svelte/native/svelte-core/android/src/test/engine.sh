@@ -3,7 +3,7 @@
 # command streams, then the Kotlin decoder against the buffers the C++ test verified; and the foreign-view ownership
 # rules (SPEC.md, "Foreign views"); what the view-shot capture decides before it draws (CaptureRules); the pointer-events mapping and
 # the ids react-native-gesture-handler reads from an engine view, and who may claim a touch (SPEC.md, "Gestures"); the accessibility records,
-# C++ encoder against the Kotlin decoder, and the Kotlin tables against React Native's own sources (SPEC.md, "Accessibility props"). No device, no Android SDK.
+# C++ encoder against the Kotlin decoder, and the Kotlin tables against React Native's own sources (SPEC.md, "Accessibility props"); the box style records and rules (SPEC.md, "Box styles"). No device, no Android SDK.
 # Needs g++ (C++20), kotlinc and java; from any directory. CI: the unit job (qa/ci/host-tools.sh installs the pinned kotlinc). Usage: src/test/engine.sh (or src/test/run.sh for all the host checks)
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,6 +37,20 @@ kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/A11yWire.kt" \
   "$here/../main/java/expo/modules/svelteengine/A11yLive.kt" \
   "$here/kotlin/expo/modules/svelteengine/A11yLiveCheck.kt" -include-runtime -d "$work/a11y-live-check.jar"
 java -cp "$work/a11y-live-check.jar" expo.modules.svelteengine.A11yLiveCheckKt
+
+# The box style records: box shadows, the colour of each border side and the border style, the transform origin (SPEC.md, "Box styles"). The C++ encoder, then the Kotlin decoder
+# on the buffers it verified, the decisions of StyleRules, what they assume of React Native's own sources (the layers' order, the edges and corners it reads in each direction) and
+# the calls the engine's sources make.
+g++ -std=c++20 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined "$here/cpp/StyleWireTest.cpp" -o "$work/style-wire-test"
+"$work/style-wire-test" "$work/style.tsv"
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/StyleWire.kt" \
+  "$here/../main/java/expo/modules/svelteengine/BoxGeometry.kt" \
+  "$here/../main/java/expo/modules/svelteengine/StyleRules.kt" \
+  "$here/kotlin/expo/modules/svelteengine/StyleRulesCheck.kt" -include-runtime -d "$work/style-check.jar"
+java -cp "$work/style-check.jar" expo.modules.svelteengine.StyleRulesCheckKt "$work/style.tsv" \
+  "$rn/ReactAndroid/src/main/java/com/facebook/react/uimanager" \
+  "$rn/ReactCommon/react/renderer/components/view/BaseViewProps.cpp" \
+  "$here/../main"
 
 # The code record 44 carries for autoCorrect, from a commit's raw props (create, change, unrelated update, removal).
 g++ -std=c++20 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined "$here/cpp/AutoCorrectCodeTest.cpp" -o "$work/autocorrect-test"

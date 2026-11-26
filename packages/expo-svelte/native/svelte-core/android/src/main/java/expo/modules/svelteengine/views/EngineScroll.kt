@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.os.SystemClock
 import android.view.inputmethod.InputMethodManager
 import android.widget.OverScroller
+import expo.modules.svelteengine.BoxStyle
 import expo.modules.svelteengine.ClipRules
 import expo.modules.svelteengine.PropSet
 import android.view.MotionEvent
@@ -90,7 +91,9 @@ class ScrollBridge(private val view: ViewGroup, private val node: NodeState) {
   fun clipToViewport(canvas: Canvas): Int {
     if (!ClipRules.scrollViewport(node.overflow, view.scrollX, view.scrollY, view.width, view.height, node.border, viewport)) return -1
     val saved = canvas.save()
-    canvas.clipRect(viewport[0], viewport[1], viewport[2], viewport[3])
+    // A scroll view whose box is the engine's drawable or React Native's clips to the padding box as React Native's does (`ReactScrollView.onDraw`, `clipToPaddingBox`: the rounded
+    // corners too), where its shadow, drawn with its background, is not clipped.
+    if (!BoxStyle.clipToPaddingBox(view, node, canvas)) canvas.clipRect(viewport[0], viewport[1], viewport[2], viewport[3])
     return saved
   }
 
@@ -516,6 +519,8 @@ class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineSc
 
   override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
     super.onLayout(changed, l, t, r, b)
+    // The platform's scroll view puts its content at its padding; React Native's is where Yoga put it, inside the border, and the padding is the header's (a no-op where that is the platform's).
+    Frames.layoutContent(this)
     bridge.onLaidOut()
   }
 
@@ -523,6 +528,11 @@ class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineSc
     val saved = bridge.clipToViewport(canvas)
     super.dispatchDraw(canvas)
     if (saved >= 0) canvas.restoreToCount(saved)
+  }
+
+  override fun onRtlPropertiesChanged(layoutDirection: Int) {
+    super.onRtlPropertiesChanged(layoutDirection)
+    BoxStyle.directionChanged(this, node, layoutDirection)
   }
 
   /** Back to the scroll position and event state of a new view ([ViewPool]); the content child is detached afterwards. */
@@ -630,6 +640,8 @@ class EngineHScroll(context: Context) : HorizontalScrollView(context), EngineNod
 
   override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
     super.onLayout(changed, l, t, r, b)
+    // The platform's scroll view puts its content at its padding; React Native's is where Yoga put it, inside the border, and the padding is the header's (a no-op where that is the platform's).
+    Frames.layoutContent(this)
     bridge.onLaidOut()
   }
 
@@ -637,6 +649,11 @@ class EngineHScroll(context: Context) : HorizontalScrollView(context), EngineNod
     val saved = bridge.clipToViewport(canvas)
     super.dispatchDraw(canvas)
     if (saved >= 0) canvas.restoreToCount(saved)
+  }
+
+  override fun onRtlPropertiesChanged(layoutDirection: Int) {
+    super.onRtlPropertiesChanged(layoutDirection)
+    BoxStyle.directionChanged(this, node, layoutDirection)
   }
 
   /** Back to the scroll position and event state of a new view ([ViewPool]); the content child is detached afterwards. */

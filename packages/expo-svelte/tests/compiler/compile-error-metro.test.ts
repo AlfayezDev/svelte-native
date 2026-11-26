@@ -15,6 +15,9 @@ const cases = {
   // The error is on a line the lowering rewrote before it: the `class` becomes a `nativeClass={...}` call and the tag a host tag, so Svelte's column is not the file's. (A duplicate attribute would be an error of Svelte's parser,
   // which the lowering leaves to the real compile, so nothing would be lowered: this one is the compiler's, after the lowering.)
   classBeforeError: { filename: `${root}/src/routes/orders/Card.svelte`, src: `<script lang="ts">\n  import { View } from "expo-svelte";\n</script>\n\n<View class="flex-1 rounded-xl bg-white p-4" testID="card">{@const x = 1}<View /></View>\n` },
+  // The error is inside the `class` expression the lowering copies into its call (#133): over several lines, and in the middle of one line.
+  denseClass: { filename: `${root}/src/routes/orders/DenseCard.svelte`, src: `<script lang="ts">\n  import { View } from "expo-svelte";\n</script>\n<View class={[\n  "p-4",\n  $props().compact && "gap-1"\n]}></View>\n` },
+  inlineClass: { filename: `${root}/src/routes/orders/InlineCard.svelte`, src: `<script lang="ts">\n  import { View } from "expo-svelte";\n</script>\n<View class={["p-4", $props().compact && "gap-1"]} testID="card"></View>\n` },
   // The same error in a file with CRLF line endings: the frame is text without the carriage returns, and the column is the file's.
   crlf: { filename: `${root}/src/routes/orders/Crlf.svelte`, src: `<script lang="ts">\n  import { View } from "expo-svelte";\n</script>\n\n<View class="p-4" testID="a" testID="b">\n  <View />\n</View>\n`.replaceAll("\n", "\r\n") },
   fine: { filename: `${root}/src/routes/orders/Fine.svelte`, src: `<script lang="ts">\n  import { View } from "expo-svelte";\n</script>\n<View></View>\n` },
@@ -98,6 +101,21 @@ test("the error is at the file's own column and its frame shows the file's own l
   // The caret is under that column of the frame's own line.
   const caret = (classBeforeError.snippet ?? "").split("\n").find((row) => row.trimEnd().endsWith("^")) as string;
   expect(caret.indexOf("^")).toBe("> 5 | ".length + line.indexOf("{@const"));
+});
+
+test("an error inside a class expression is at its place in the file, over several lines and in the middle of one (#133)", () => {
+  const { denseClass, inlineClass } = outcomes();
+  expect(denseClass.thrownCode).toBe("props_invalid_placement");
+  // Line 6, column 2: the `$props()` on the third line of the attribute, not the start of `class` on line 4.
+  expect([denseClass.lineNumber, denseClass.column]).toEqual([6, 2]);
+  expect(denseClass.snippet).toContain('> 6 |   $props().compact && "gap-1"');
+  const caret = (denseClass.snippet ?? "").split("\n").find((row) => row.trimEnd().endsWith("^")) as string;
+  expect(caret.indexOf("^")).toBe("> 6 | ".length + 2);
+  const line = cases.inlineClass.src.split("\n")[3] as string;
+  expect(inlineClass.thrownCode).toBe("props_invalid_placement");
+  expect([inlineClass.lineNumber, inlineClass.column]).toEqual([4, line.indexOf("$props()")]);
+  expect(inlineClass.snippet).toContain(`> 4 | ${line}`);
+  expect(inlineClass.snippet).not.toContain("nativeClass");
 });
 
 test("the error keeps Svelte's code and name, so a tool that reads them still can", () => {

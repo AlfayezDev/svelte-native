@@ -158,6 +158,27 @@ export async function runForeignViews(router: Router, signal: AbortSignal): Prom
   check("inline: leaving the page drops every frame and node", afterInline.foreign.frames === before.foreign.frames && afterInline.foreign.nodes === before.foreign.nodes && afterInline.foreign.waiting === 0 && afterInline.foreign.registryLeaks === 0, JSON.stringify(afterInline.foreign));
 
   foreignLab.version = "v1";
+  // 1b. Each in a Pressable card. A WebView and a map take their touches themselves, so the card around one is not pressed by a tap or a pan on it: the engine passes a touch on to JavaScript only for a view that takes none (an Svg, `foreign-libraries-checks.ts`), and a map takes its pans through `dispatchTouchEvent` alone.
+  router.goto("/__dev/foreign?mode=cards");
+  check("cards: the page opens", await until(() => shown("cards"), 8000, signal));
+  check("cards: the webview loads and the map is ready", (await until(() => message("cards", "ready:v1"), 15000, signal)) && (await until(() => count("cards", "map-ready") > 0, 12000, signal)));
+  const cardPresses = () => count("cards", "web-card-press") + count("cards", "map-card-press");
+  const cardTouches = () => count("cards", "js-touch");
+  const cardBase = cardTouches();
+  await tapOn("cards", "web");
+  check("cards: a tap on the webview inside a Pressable reaches the page", await until(() => message("cards", "tap"), 5000, signal));
+  const cardMap = await foreignHandles.get("cards")?.rect("map");
+  const cardPans = count("cards", "map-pan-drag");
+  if (cardMap && engine?.drag) engine.drag(cardMap.x + cardMap.width * 0.7, cardMap.y + cardMap.height / 2, cardMap.x + cardMap.width * 0.3, cardMap.y + cardMap.height / 2, 400);
+  check("cards: a pan on the map inside a Pressable reaches the map view (onPanDrag)", await until(() => count("cards", "map-pan-drag") > cardPans, 3000, signal), `events ${count("cards", "map-pan-drag") - cardPans}`);
+  await tapOn("cards", "map");
+  await pause(600, signal);
+  check("cards: neither the card around the webview nor the one around the map is pressed by a tap or a pan", cardPresses() === 0, `presses ${cardPresses()}`);
+  check("cards: and none of it reached JavaScript's touch dispatch", cardTouches() === cardBase, `touches ${cardTouches() - cardBase}`);
+  await tapOn("cards", "control");
+  check("cards: a plain control on the same page still presses", await until(() => count("cards", "control-press") === 1, 3000, signal));
+  await leave("cards");
+
   // 2. In the windowed List: rows come and go while it scrolls.
   router.goto("/__dev/foreign?mode=list");
   check("list: the page opens with rows of foreign views", await until(() => shown("row-0") && shown("row-1") && shown("row-2"), 8000, signal));

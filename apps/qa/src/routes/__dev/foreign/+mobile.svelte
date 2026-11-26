@@ -8,7 +8,7 @@
 
   /**
    * The foreign-views lab (SPEC.md, "Foreign views"), opened by the `foreign-views` stress scenario: `?mode=` picks what
-   * the views sit in. `inline` is a plain column, `list` the windowed List (one view per row), `sheet` a native sheet,
+   * the views sit in. `inline` is a plain column, `cards` a WebView and a map each in a `Pressable` card (neither may press it), `list` the windowed List (one view per row), `sheet` a native sheet,
    * `cycle` mounts and unmounts one view on the scenario's command. `libraries`, `libraries-list` and `libraries-sheet` are the
    * same three places for the fourteen native-view libraries (expo-image, expo-blur, the library's own `BlurView`, expo-linear-gradient, react-native-video,
    * datetimepicker, lottie-react-native, react-native-pdf, react-native-view-shot, rive-react-native, expo-conic-gradient,
@@ -63,6 +63,8 @@
         <View style={{ padding: 8 }}>
           {#if foreignLab.cycleVisible}<ForeignSet source="cycle" kinds={[foreignLab.cycleKind === "map-bare" ? "map" : foreignLab.cycleKind]} markers={foreignLab.cycleKind !== "map-bare"} height={96} />{/if}
         </View>
+      {:else if mode === "cards"}
+        <View style={{ padding: 8 }}><ForeignSet source="cards" kinds={["web", "map"]} cards height={100} /></View>
       {:else}
         <View style={{ padding: 8 }}><ForeignSet source="inline" version={foreignLab.version} height={100} /></View>
       {/if}

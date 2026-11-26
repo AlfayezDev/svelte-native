@@ -302,6 +302,42 @@ test("a node that animates and has a gesture is served by both layers; Reanimate
   expect(reanimated).toEqual(["loaded"]);
 });
 
+test("Reanimated that the gesture builders load is announced to the engine in the same turn, not at the first animated node: the engine's delegate has to be behind Reanimated's proxy before the next commit", async () => {
+  const told: string[] = [];
+  const m = await load({ fixture: "gesture-fixture.svelte" });
+  world().engine = { install: () => true, enableGestures: () => true, reanimatedLoaded: () => { told.push("loaded"); } } as never;
+  const app = m.startSurface(62, m.Fixture, { initial: [] }) as unknown as App;
+  await settle(m);
+  expect(told).toEqual([]); // nothing animated, nothing loaded
+  expect(m.fabricStats().gesturesLoaded).toBe(false);
+  // The app builds a gesture (this loads Reanimated: the proxy attaches to the surface now) and goes on, with no node that animates anywhere.
+  const pan = m.gestures.Gesture.Pan().onUpdate(w());
+  expect(told).toEqual(["loaded"]);
+  app.set([{ id: "a", gesture: pan }]);
+  await settle(m);
+  app.set([]);
+  await settle(m);
+  expect(told).toEqual(["loaded"]);
+});
+
+test("an engine that throws when told of the load does not fail the load: the gesture builders still come back, and the host says so once", async () => {
+  const m = await load({ fixture: "gesture-fixture.svelte" });
+  let calls = 0;
+  world().engine = { install: () => true, enableGestures: () => true, reanimatedLoaded: () => { calls++; throw new Error("no scheduler"); } } as never;
+  m.startSurface(63, m.Fixture, { initial: [] });
+  await settle(m);
+  const warn = spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    const pan = m.gestures.Gesture.Pan().onUpdate(w());
+    expect(pan).toBeDefined();
+    m.gestures.Gesture.Tap();
+    expect(calls).toBe(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+  } finally {
+    warn.mockRestore();
+  }
+});
+
 // What a drop and an update leave in RNGH's registries and in the JS receiver. Each test below fails when the line of
 // `src/fabric/gestures.ts` it names is removed (checked by mutation on 1 Nov 2026).
 

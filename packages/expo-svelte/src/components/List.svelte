@@ -3,6 +3,7 @@
   import type {} from "../elements.d.ts";
   import type { ScrollViewInstance as NativeScrollView, ScrollViewProps, ViewStyle, LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from "react-native";
   import ScrollView from "./ScrollView.svelte";
+  import { Platform } from "../fabric/deps-rn.ts";
 
   type Scroller = { dispatchCommand(name: string, args: unknown[]): void };
   type ViewToken<Item> = { item: Item; key: string | number; index: number; isViewable: boolean };
@@ -87,6 +88,8 @@
   let headerSize = $state(0);
   let laidOut = false;
   let headerSeen = false;
+  /** The footer's size along the axis, as it was last laid out while the jump waited (0 before: the clamp of [reachable] is then lower than the platform's, never higher). */
+  let footerSize = 0;
   /** The size along the axis the spacer (the content the rows are in) was last laid out at, -1 before its first layout. */
   let spacerSize = -1;
   /** `initialScrollIndex` is done with: its jump was sent, or the list had rows at its first layout with none to scroll to, or the app scrolled it itself. Reactive: the window follows the jump until then. */
@@ -363,6 +366,34 @@
   let fallbackFor = 0;
   /** How long the jump waits for the spacer's layout once the list, the header and the rows are there, before it goes anyway: the platform clamps a scroll to the content it has, so this is no worse than a jump with no wait. */
   const SPACER_WAIT_MS = 1000;
+  /** The sum of the numeric padding of a content container style at the two ends of the axis: the content the platform scrolls holds it too. A value that is not a number (a percentage) counts for none. */
+  function axisPadding(style: unknown): number {
+    const flat: Record<string, unknown> = {};
+    const walk = (one: unknown) => {
+      if (Array.isArray(one)) for (const inner of one) walk(inner);
+      else if (one && typeof one === "object") Object.assign(flat, one);
+    };
+    walk(style);
+    const number = (value: unknown) => (typeof value === "number" ? value : undefined);
+    const both = number(flat[horizontal ? "paddingHorizontal" : "paddingVertical"]) ?? number(flat.padding) ?? 0;
+    const start = number(flat[horizontal ? "paddingLeft" : "paddingTop"]) ?? (horizontal ? number(flat.paddingStart) : undefined) ?? both;
+    const end = number(flat[horizontal ? "paddingRight" : "paddingBottom"]) ?? (horizontal ? number(flat.paddingEnd) : undefined) ?? both;
+    return start + end;
+  }
+  /** The inset after the content that the platform scrolls into: `contentInset` is iOS's; Android's scroll view has none, so it is not counted there. */
+  function insetAfter(): number {
+    if (Platform.OS !== "ios") return 0;
+    const inset = (rest as { contentInset?: { right?: number; bottom?: number } }).contentInset;
+    return (horizontal ? inset?.right : inset?.bottom) ?? 0;
+  }
+  /**
+   * The largest offset the platform scrolls to along the list's axis, from what the list has measured: the content (the container's padding, the header, the rows, the footer) and the inset after it, less the
+   * viewport. A scroll past it lands there, and when that is where the scroll view already is, nothing moved and no scroll event comes to say so. Never more than the platform's (the footer is 0 until it is
+   * laid out, a padding that is not a number counts for none, an inset the platform adds by itself is not known), so the list is never taken for further than it is: a lower value is put right by the event of the scroll.
+   */
+  function reachable(): number {
+    return Math.max(0, axisPadding(contentContainerStyle) + headerSize + layout.total + footerSize + insetAfter() - viewport);
+  }
   function sendInitial(force = false) {
     if (initialSent) return;
     // No rows: nothing to wait for (the platform clamps a scroll to 0 in an empty content), and a wait that was started for rows that are gone must not end into the rows that come next, before their layout.
@@ -383,7 +414,8 @@
     fallback = undefined;
     initialSent = true;
     const target = headerSize + layout.offsetOf(Math.max(0, Math.min(count - 1, initialScrollIndex)));
-    scroll = target;
+    // The window is where the scroll view will be, not where it was asked to go: a jump that the content does not let move (it fits, or the row is in the last page) is followed by no scroll event to say so.
+    scroll = Math.min(target, reachable());
     whenReady(() => scrollTo(target, false));
     // The list was not asked about its end or its rows while it waited, and a jump that moves nothing (a first page that fits, an index that is clamped to 0) is followed by no scroll event to ask on: the answer is due now.
     checkEnd();
@@ -430,6 +462,8 @@
   }
 
   const headerProps = { onLayout: handleHeaderLayout };
+  // The footer's size is wanted for the clamp of the jump only: it is asked for while the jump waits, and the jump does not wait for it.
+  const footerProps = { onLayout: (event: LayoutChangeEvent) => { const { width, height } = event.nativeEvent.layout; footerSize = horizontal ? width : height; } };
 
   function handleRef(instance: NativeScrollView | null) {
     scroller = instance as unknown as Scroller | null;
@@ -509,5 +543,5 @@
     {/if}
   </native-view>
   {#if count === 0 && empty}<native-view>{@render empty()}</native-view>{/if}
-  {#if footer}<native-view>{@render footer()}</native-view>{/if}
+  {#if footer}<native-view nativeProps={initialScrollIndex !== undefined && !initialSent ? footerProps : undefined}>{@render footer()}</native-view>{/if}
 </ScrollView>

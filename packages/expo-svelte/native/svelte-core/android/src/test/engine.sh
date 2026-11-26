@@ -107,6 +107,11 @@ kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/GestureRules.kt" \
 java -cp "$work/rules.jar" expo.modules.svelteengine.GestureRulesCheckKt "$views/HitTest.kt" "$views/EngineRoot.kt" "$views/EngineStack.kt" "$views/EngineSheet.kt" \
   "$rngh/android/src/main/java/com/swmansion/gesturehandler/core/PanGestureHandler.kt" "$here/../main/java/expo/modules/svelteengine/SvelteEngineModule.kt"
 
+# Which foreign views pass a touch on to JavaScript (SPEC.md, "Foreign views"): the rule on its inputs, and the sources of HitTest and EngineForeign for what feeds it and what it decides.
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/ForeignTouchRules.kt" \
+  "$here/kotlin/expo/modules/svelteengine/ForeignTouchRulesCheck.kt" -include-runtime -d "$work/foreign-touch-check.jar"
+java -cp "$work/foreign-touch-check.jar" expo.modules.svelteengine.ForeignTouchRulesCheckKt "$views/HitTest.kt" "$views/EngineForeign.kt"
+
 # What clips a scroll view's content to its viewport (SPEC.md, "Scroll viewport clip"): the rectangle from the view's bounds, border and scroll offset, and the sources of
 # the engine's scroll views read for the clip they apply around their children's draw.
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/ClipRules.kt" \

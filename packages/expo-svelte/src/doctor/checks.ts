@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { declaredPatches } from "./declared.ts";
 import { expoPluginFinding, metroFinding, record, type Finding } from "./integration.ts";
@@ -282,6 +282,59 @@ function integration(context: Context, name: string): Check[] {
   return [metro(metroFinding(context.appRoot)), plugin(expoPluginFinding(context.appRoot, name))];
 }
 
+/** Whether the app builds for Android: its `app.json` does not name `platforms` without it (an Expo config in code is not read: it is taken to). */
+function targetsAndroid(appRoot: string): boolean {
+  const expo = readJson(join(appRoot, "app.json"))?.expo;
+  const platforms = typeof expo === "object" && expo !== null ? (expo as { platforms?: unknown }).platforms : undefined;
+  return !Array.isArray(platforms) || platforms.includes("android");
+}
+
+/**
+ * Android's prefab tool, which the native libraries the package carries (react-native-mmkv, react-native-reanimated: they link the prefab packages of the package's Nitro and Worklets copies, whose
+ * folders are inside the package's own) are built with, reads a package path with an "=" in it as an option: `no such option /.../expo-svelte@..._patch_hash` (CXX1429). Every prefab package the
+ * package links is in its own folder (its `vendor/` and `native/`), so its path is the one that counts. Two places give it an "=":
+ * - pnpm's folder for it, `node_modules/.pnpm/expo-svelte@<version>_<peers>_patch_hash=<hash>`, when a peer of it is patched (the SvelteKit patch `init` declares). `depPathToFilename` (pnpm's
+ *   `@pnpm/dependency-path`) leaves a name no longer than `virtualStoreDirMaxLength` and with no uppercase letter as it is, and cuts a longer one, or one with an uppercase letter (unless it starts with `file+`), to `limit - 33` characters and adds `_<hash>`: at the default, 120, 87
+ *   characters stay and the "=" with them, at 60, 27 stay and it goes. `init` writes 60.
+ * - the path of the project itself (`/ci/job=7/app`), which no pnpm setting changes, or a folder of a virtual store that is not `node_modules/.pnpm` (pnpm's `virtualStoreDir`).
+ * Only the library's folder in `node_modules/.pnpm` (the last `.pnpm` of the path) is a failure: an "=" anywhere else is `unknown`, with both ways out, because the doctor cannot tell those two apart and has
+ * not seen the build fail on either; and nothing is reported for an app that does not build for Android, or for a path without one: the checks of a set-up app stay as they were.
+ */
+export function storePath(context: Pick<Context, "appRoot" | "packageRoot">, name: string): Check[] {
+  let path: string;
+  try {
+    path = realpathSync(context.packageRoot);
+  } catch {
+    return [];
+  }
+  if (!path.includes("=")) return [];
+  const segments = path.split(/[\\/]/);
+  // The folder after the last `.pnpm` under a `node_modules`: the library's folder in pnpm's virtual store (a path that has it twice is the inner one's).
+  let store = -1;
+  for (let at = segments.length - 1; at > 0 && store < 0; at--) if (segments[at] === ".pnpm" && segments[at - 1] === "node_modules") store = at;
+  const folder = store < 0 ? undefined : segments[store + 1];
+  if (!targetsAndroid(context.appRoot)) {
+    return [{ group: "build integration", status: "skip", message: `${name} is installed at ${path}, a path with an "=" in it, which Android's prefab tool cannot take: not checked, app.json's platforms has no android` }];
+  }
+  if (folder?.includes("=")) {
+    return [{
+      group: "build integration",
+      status: "fail",
+      message: `${name} is installed in pnpm's folder ${folder}, a name with an "=" in it: Android's prefab tool reads the path as an option and the CMake build of ${name}'s native libraries stops with CXX1429 ("no such option")`,
+      fix: `set \`virtualStoreDirMaxLength: 60\` in pnpm-workspace.yaml (\`pnpm exec expo-svelte init\` writes it) and install again: pnpm cuts a folder name longer than the limit, or with an uppercase letter, to \`limit - 33\` characters and adds a hash, which at the default of 120 keeps the "=" of \`patch_hash=\` and at 60 does not; pnpm removes node_modules and installs again (\`pnpm install --config.confirmModulesPurge=false\` when there is no terminal to ask)`,
+    }];
+  }
+  // An "=" somewhere else in the path: the project's own folder (`/ci/job=7/app`), or the store folder of a virtual store that is not `node_modules/.pnpm` (`virtualStoreDir`), which this cannot tell
+  // apart. The prefab tool is given paths in it either way, but the doctor has not seen the build fail on one, so it says it could not tell instead of failing, and names both remedies.
+  const marked = segments.filter((segment) => segment.includes("="));
+  return [{
+    group: "build integration",
+    status: "unknown",
+    message: `${name} is installed at ${path}, a path with an "=" in it outside pnpm's folder for it (${marked.map((segment) => `"${segment}"`).join(", ")}): Android's prefab tool reads a package path with an "=" as an option and the CMake build of ${name}'s native libraries may stop with CXX1429 ("no such option")`,
+    fix: "if the \"=\" is in the project's own path, move the project; if it is in the name of a folder of a virtual store that is not node_modules/.pnpm (pnpm's virtualStoreDir), pnpm's virtualStoreDirMaxLength cuts the name before it (`virtualStoreDirMaxLength: 60`, as `pnpm exec expo-svelte init` writes it)",
+  }];
+}
+
 /** Every check, in the order they are printed. */
 export function runChecks(context: Context): Check[] {
   const own = readJson(join(context.packageRoot, "package.json")) ?? {};
@@ -302,6 +355,7 @@ export function runChecks(context: Context): Check[] {
     ...patches(context, name, optional),
     library(context, name, text(own.version) ?? "?", appPackage),
     ...integration(context, name),
+    ...storePath(context, name),
     ...pushChecks(context, { name, version: text(own.version) ?? "?" }, appPackage),
   ];
 }

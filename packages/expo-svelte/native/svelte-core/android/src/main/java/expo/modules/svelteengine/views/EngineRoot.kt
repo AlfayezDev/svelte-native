@@ -48,8 +48,11 @@ internal interface NativeClaim {
   /** True when a finger that has moved ([dx], [dy]) from where it went down would be taken over by this view's own interception. */
   fun claims(dx: Float, dy: Float): Boolean
 
-  /** Takes the gesture over now, as if `onInterceptTouchEvent` had answered true for [ev]: the touch lock and the drag state. */
-  fun claim(ev: MotionEvent)
+  /**
+   * Takes the gesture over now, as if `onInterceptTouchEvent` had answered true for [ev]: the touch lock and the drag state. [sample] is the history sample of [ev] the finger crossed the
+   * view's slop at (`ev.historySize` when it is the event's own position): a drag that follows the finger measures from there ([ClaimRules.travelSince]).
+   */
+  fun claim(ev: MotionEvent, sample: Int)
 }
 
 /**
@@ -320,7 +323,7 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
     if (outcome.kind != ClaimOutcome.Kind.CLAIM) return
     val claimer = claimers[outcome.claimer] ?: return
     GestureTrace.log { "${claimer.javaClass.simpleName} claims the gesture at sample ${outcome.sample} of $samples" }
-    claimer.claim(ev)
+    claimer.claim(ev, outcome.sample)
   }
 
   /** A single pointer MOVE with the position and time of history sample [sample] of pointer [pointer] of [ev]. */

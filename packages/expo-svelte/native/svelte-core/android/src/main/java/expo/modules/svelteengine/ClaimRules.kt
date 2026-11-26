@@ -27,6 +27,19 @@ class DownPointer {
   }
 }
 
+/**
+ * Where a view that claims a gesture measures its drag from. A MOVE carries the samples taken since the last one, and the claim is decided at the first of them that crosses the view's
+ * slop ([ClaimOutcome.sample]); the finger was at that sample's position then, and the drag follows the travel since. Starting it from the event's own position, the last sample, left the
+ * travel between the two out of the drag, so a batched MOVE moved a sheet less than the same positions delivered one by one (#119).
+ */
+object ClaimRules {
+  /**
+   * How far the pointer has travelled along one axis from [sample] to the end of a MOVE with [samples] history samples: [now], its position at the end, less `historical(sample)` for a
+   * sample of the history, and 0 for the event's own position (the last sample). The position a drag measures from is the event's less this.
+   */
+  inline fun travelSince(sample: Int, samples: Int, now: Float, historical: (Int) -> Float): Float = if (sample < samples) now - historical(sample) else 0f
+}
+
 /** What [ClaimArbiter.decide] says about one MOVE. */
 class ClaimOutcome private constructor(
   val kind: Kind,

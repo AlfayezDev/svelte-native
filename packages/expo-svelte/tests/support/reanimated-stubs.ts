@@ -100,7 +100,7 @@ export const reanimatedStubs: Record<string, string> = {
   "react-native-reanimated/src/css/native/proxy": `${head} export const markNodeAsRemovable = (wrapper) => { A.removable.push(wrapper); (A.marked ??= []).push(wrapper); };`,
   "react-native-reanimated/src/css/utils": `
     const isCss = ${cssKey};
-    export const filterCSSAndStyleProperties = (style) => { const rest = {}; for (const k in style) if (!isCss(k) && style[k] !== undefined) rest[k] = style[k]; return [null, null, null, null, rest]; };`,
+    export const filterCSSAndStyleProperties = (style) => { const rest = {}; for (const k in style) if (!isCss(k) && style[k] !== undefined) rest[k] = style[k]; return [null, null, null, rest]; };`,
   "react-native-reanimated/src/createAnimatedComponent/InlinePropManager": `
     const sv = (v) => v?._isReanimatedSharedValue === true;
     export const hasInlineStyles = (style) => !!style && Object.values(style).some(sv);

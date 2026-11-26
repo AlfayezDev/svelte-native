@@ -117,7 +117,7 @@ object TextLayouts {
   }
 
   /** `CustomLineHeightSpan`. */
-  private class LineHeight(height: Float) : LineHeightSpan {
+  internal class LineHeight(height: Float) : LineHeightSpan {
     val lineHeight: Int = ceil(height.toDouble()).toInt()
 
     override fun chooseHeight(text: CharSequence, start: Int, end: Int, spanstartv: Int, v: Int, fm: Paint.FontMetricsInt) {

@@ -71,7 +71,17 @@ java -cp "$work/input-rules-check.jar" expo.modules.svelteengine.InputRulesCheck
   "$rn/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ScrollEvent.kt" \
   "$here/../main/cpp/InputEvents.cpp" \
   "$here/../main/java/expo/modules/svelteengine/ViewEvents.kt" \
-  "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/platforms/android-36/android.jar"
+  "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/platforms/android-36/android.jar" \
+  "$rn/ReactAndroid/src/main/java/com/facebook/react/views/textinput/ReactEditText.kt" \
+  "$rn/ReactAndroid/src/main/java/com/facebook/react/views/text/TextAttributes.kt"
+
+# Which paint a text is laid out with: a text that can end in an ellipsis keeps its font in spans and the view's paint under it, as React Native's ReactTextView has it.
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/TextPaintRules.kt" \
+  "$here/kotlin/expo/modules/svelteengine/TextPaintRulesCheck.kt" -include-runtime -d "$work/text-paint-check.jar"
+java -cp "$work/text-paint-check.jar" expo.modules.svelteengine.TextPaintRulesCheckKt \
+  "$rn/ReactAndroid/src/main/java/com/facebook/react/views/text/ReactTextView.java" \
+  "$rn/ReactAndroid/src/main/java/com/facebook/react/views/text/ReactTextViewManager.kt" \
+  "$here/../main/java/expo/modules/svelteengine/TextLayouts.kt"
 
 # What a header and a sheet decide from measurements that are not there yet (the first layout of a screen runs detached): the bar's offset, when a header lays out
 # again, when a layout puts a sheet at its rest. The sources of EngineHeader, EngineSheet and EngineStack are read for the calls that use them.

@@ -27,7 +27,8 @@ export const LOWERED_TAGS: Record<string, string> = {
 // The Svelte AST is walked structurally, so nodes are deliberately loosely typed.
 // biome-ignore lint/suspicious/noExplicitAny: structural AST walk
 type Node = { type: string; start: number; end: number; [key: string]: any }; // eslint-disable-line @typescript-eslint/no-explicit-any
-type Edit = { start: number; end: number; text: string };
+/** `copies`: where the text of an edit holds a span of the file as it is written (`at` in the text, `source` in the file), so a position inside the span is that character of the file, not the start of the edit. */
+type Edit = { start: number; end: number; text: string; copies?: { at: number; source: number; length: number }[] };
 
 /**
  * The press handlers of a lowered tag. Svelte compiles `onPress={enabled ? go : undefined}` to an event listener that stays on the node for good and calls whatever
@@ -86,6 +87,29 @@ function classExpression(content: string, attribute: Node): string {
   return `${template}\``;
 }
 
+/** The expressions of a `class` attribute's value, in the order [classExpression] writes them. */
+function classSpans(attribute: Node): Node[] {
+  const value = attribute.value;
+  if (value === true) return [];
+  if (!Array.isArray(value)) return [value.expression];
+  return (value as Node[]).filter((part) => part.type !== "Text").map((part) => part.expression);
+}
+
+/** Where [text] holds the source of each of [spans] (in order, each after the one before, the first from [firstAt]) exactly as the file has it. A span that was changed on its way (put on one line) is not found and keeps no copy. */
+function copiedSpans(content: string, text: string, firstAt: number, spans: readonly Node[]): NonNullable<Edit["copies"]> {
+  const copies: NonNullable<Edit["copies"]> = [];
+  let from = firstAt;
+  for (const span of spans) {
+    const source = content.slice(span.start, span.end);
+    if (!source) continue;
+    const at = text.indexOf(source, from);
+    if (at < 0) continue;
+    copies.push({ at, source: span.start, length: source.length });
+    from = at + source.length;
+  }
+  return copies;
+}
+
 /** True when an attribute expression could evaluate to a function (a literal, an object, an array or an operator's result cannot). */
 function couldBeFunction(expression: Node): boolean {
   switch (expression.type) {
@@ -119,16 +143,28 @@ export type LowerOptions = {
 /**
  * Rewrites `<View>`, `<Text>`, ... imported from "expo-svelte" into their host tags.
  * Only the tag names change: everything else is carried over verbatim, so line numbers are
- * stable (columns shift on lines holding a lowered tag, and no source map is produced).
+ * stable (columns shift on lines holding a lowered tag, and no source map is produced: [lowerWithMap] has the way back for one position).
  */
 export function lowerPrimitives(content: string, options: LowerOptions = {}): string {
-  if (!content.includes(PACKAGE) && !(options.html && mayHaveHtml(content))) return content;
+  return lowerWithMap(content, options).code;
+}
+
+/** The lowered text of a file, and where a position of it is in the file the developer wrote ([lowerWithMap]). `line` is 1-based and `column` 0-based, as Svelte's errors have them. */
+export type Lowering = { code: string; original(line: number, column: number): { line: number; column: number } };
+
+/**
+ * [lowerPrimitives] with the way back: `original` takes a position in the lowered text (where Svelte reports an error, on the lowered tag's name and the `nativeClass={...}` that took the
+ * place of a `class`) to the position of the same place in `content`. A position inside what an edit wrote is the start of what the edit replaced.
+ */
+export function lowerWithMap(content: string, options: LowerOptions = {}): Lowering {
+  const unchanged = (): Lowering => ({ code: content, original: (line, column) => ({ line, column }) });
+  if (!content.includes(PACKAGE) && !(options.html && mayHaveHtml(content))) return unchanged();
   let ast: Node;
   try {
     ast = parse(content, { modern: true, filename: options.filename }) as unknown as Node;
   } catch {
     // Leave syntax errors to the real compile, which reports them with context.
-    return content;
+    return unchanged();
   }
   const locals = new Map<string, string>();
   const actions = new Set<string>();
@@ -136,7 +172,7 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
   collectImports(ast.module?.content, locals, actions);
   const warn = options.warn ?? ((message: string) => console.warn(message));
   const html = options.html ? lowerHtml(ast, content, options.filename, warn) : undefined;
-  if (!locals.size && !html?.elements.size && !html?.edits.length) return content;
+  if (!locals.size && !html?.elements.size && !html?.edits.length) return unchanged();
   const edits: Edit[] = html ? [...html.edits] : [];
   const helpers = new Set<string>(html?.helpers);
   /** Wraps an expression in a call of one of the renderer's helpers. */
@@ -178,10 +214,16 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
       const written = `nativeClass={${classHelper}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`}${styleArgument})}`;
       const dropped = classes.reduce((count, attribute) => count + content.slice(attribute.start, attribute.end).split("\n").length - 1, 0) - (written.split("\n").length - 1);
       const value = dropped > 0 ? written + "\n".repeat(dropped) : written;
+      // The expressions are copied into the call as they are written (a multi-line one keeps its lines): an error inside one is at its place in the file.
+      const copies = copiedSpans(content, written, `nativeClass={${classHelper}(`.length, [
+        ...(own ? classSpans(own) : []),
+        ...directives.map((directive) => directive.expression),
+        ...(style !== undefined && copy !== undefined ? [style.value.expression] : []),
+      ]);
       helpers.add(classHelper);
       const at = own ?? (spreads ? undefined : classes[0]);
       if (at === undefined) edits.push({ start: node.attributes[0].start, end: node.attributes[0].start, text: `${value} ` });
-      for (const attribute of classes) edits.push({ start: attribute.start, end: attribute.end, text: attribute === at ? value : "" });
+      for (const attribute of classes) edits.push({ start: attribute.start, end: attribute.end, text: attribute === at ? value : "", ...(attribute === at && copies.length ? { copies } : {}) });
     }
     for (const attribute of node.attributes as Node[]) {
       if (classes.includes(attribute) || lowered?.handled.has(attribute)) continue;
@@ -244,7 +286,7 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
       edits.push({ start: close + 2, end: close + 2 + node.name.length, text: tag });
     }
   });
-  if (!edits.length) return content;
+  if (!edits.length) return unchanged();
   const script = ast.instance ?? ast.module;
   const names = [...helpers].sort().map((helper) => `${HELPER_EXPORTS[helper]} as ${helper}`);
   const setup = html?.setup ?? [];
@@ -257,7 +299,42 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
   edits.sort((a, b) => b.start - a.start || b.end - a.end);
   let output = content;
   for (const edit of edits) output = output.slice(0, edit.start) + edit.text + output.slice(edit.end);
-  return output;
+  return { code: output, original: (line, column) => positionIn(content, output, edits, line, column) };
+}
+
+/** The 0-based offset of a 1-based line and 0-based column of [text]. */
+function offsetAt(text: string, line: number, column: number): number {
+  let offset = 0;
+  for (let at = 1; at < line; at++) {
+    const next = text.indexOf("\n", offset);
+    if (next < 0) return text.length;
+    offset = next + 1;
+  }
+  return offset + column;
+}
+
+/** The 1-based line and 0-based column of a 0-based offset of [text]. */
+function lineAndColumn(text: string, offset: number): { line: number; column: number } {
+  const before = text.slice(0, offset);
+  const line = before.split("\n").length;
+  return { line, column: offset - (before.lastIndexOf("\n") + 1) };
+}
+
+/** [lowered]'s line and column, in [content]: the edits (in the order they were applied, last in the text first) are walked from the start of the text, with what each moved the rest by. */
+function positionIn(content: string, lowered: string, edits: readonly Edit[], line: number, column: number): { line: number; column: number } {
+  const target = offsetAt(lowered, line, column);
+  let delta = 0;
+  for (let at = edits.length - 1; at >= 0; at--) {
+    const edit = edits[at] as Edit;
+    const from = edit.start + delta;
+    if (target < from) break;
+    if (target < from + edit.text.length) {
+      const copy = edit.copies?.find((one) => target >= from + one.at && target < from + one.at + one.length);
+      return lineAndColumn(content, copy ? copy.source + (target - from - copy.at) : edit.start);
+    }
+    delta += edit.text.length - (edit.end - edit.start);
+  }
+  return lineAndColumn(content, Math.max(0, Math.min(content.length, target - delta)));
 }
 
 /** Standard Svelte preprocessor wrapper, for svelte-check and other Svelte tooling. */

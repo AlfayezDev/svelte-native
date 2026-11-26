@@ -22,7 +22,7 @@ declare function $$render<T>(): {
         overscan?: number;
         /** Rows mounted before the first layout reports the viewport size (default 10). */
         initialNumToRender?: number;
-        /** Row scrolled to when the first layout arrives. */
+        /** Row scrolled to when the first layout arrives, below the header; a list with no rows yet scrolls to it when they arrive. */
         initialScrollIndex?: number;
         /** Keep a fixed pool of wrapper nodes and re-target them by index instead of mounting rows. Row component state does not survive index changes. */
         recycle?: boolean;

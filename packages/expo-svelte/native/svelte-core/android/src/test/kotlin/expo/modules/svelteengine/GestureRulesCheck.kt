@@ -2,6 +2,7 @@ package expo.modules.svelteengine
 
 import com.facebook.react.uimanager.PointerEvents
 import java.io.File
+import kotlin.math.abs
 import kotlin.system.exitProcess
 
 /**
@@ -119,6 +120,7 @@ fun main(args: Array<String>) {
   check("drift: the Pan's activation is also the sheet's", defaultPanActivates(2.6f, 7.6f, 8f) && GestureRules.sheetDrag(2.6f, 7.6f, 8f))
 
   claimChecks()
+  batchedClaimChecks()
   wiringChecks(File(args[1]).readText(), File(args[2]).readText(), File(args[3]).readText())
   labSwitchChecks(File(args[5]).readText())
 
@@ -241,6 +243,51 @@ private fun claimChecks() {
 }
 
 /**
+ * A sheet's drag is measured from the sample the claim was made at, so the same finger positions move it the same however the MOVEs batch them (#119). The finger goes down at 0 on a
+ * sheet that rests at its top detent (offset 0) with a lower one at 400, touch slop 8: the report's sequences, one MOVE for each position and the first two in one MOVE (its history
+ * sample, then its own position). The sheet is modelled as the view is: it claims at the first sample that crosses its slop (`ClaimArbiter.decide`, as the root asks), starts its drag from
+ * the finger's position at that sample (`ClaimRules.travelSince`), and from then on has the start's translation plus the finger's travel from there.
+ */
+private fun batchedClaimChecks() {
+  val slop = 8f
+  fun drag(events: List<FloatArray>, fromClaimSample: Boolean = true): Float {
+    val arbiter = ClaimArbiter().also { it.down(0, 0f, 0f) }
+    var dragging = false
+    var origin = 0f
+    var translation = 0f
+    for (ys in events) {
+      val samples = ys.size - 1
+      if (!dragging) {
+        val outcome = arbiter.decide(true, 1, 1, samples, { 0f }, { ys[it] }, { _, dx, dy -> GestureRules.sheetDrag(dx, dy, slop) }, { false })
+        if (outcome.kind == ClaimOutcome.Kind.CLAIM) {
+          dragging = true
+          origin = ys.last() - if (fromClaimSample) ClaimRules.travelSince(outcome.sample, samples, ys.last()) { ys[it] } else 0f
+        }
+      }
+      if (dragging) translation = ys.last() - origin
+    }
+    return translation
+  }
+  fun settle(translation: Float) = listOf(0f, 400f).minByOrNull { abs(it - translation) }
+
+  val separate = listOf(floatArrayOf(10f), floatArrayOf(40f), floatArrayOf(60f))
+  val batched = listOf(floatArrayOf(10f, 40f), floatArrayOf(60f))
+  equal("one MOVE for each position: the sheet follows the 50 px after the claim at 10", drag(separate), 50f)
+  equal("the first two in one MOVE: the same 50 px, not 20", drag(batched), 50f)
+  equal("what the batched drag was when it started from the event's own position (40), the report's 20", drag(batched, fromClaimSample = false), 20f)
+  val separateFar = listOf(floatArrayOf(10f), floatArrayOf(40f), floatArrayOf(220f))
+  val batchedFar = listOf(floatArrayOf(10f, 40f), floatArrayOf(220f))
+  equal("paused at 220 the separate positions have moved the sheet 210", drag(separateFar), 210f)
+  equal("and the batched ones the same, not 180", drag(batchedFar), 210f)
+  equal("so a release settles at the half detent whichever way the positions arrived", Pair(settle(drag(separateFar)), settle(drag(batchedFar))), Pair(400f, 400f))
+  equal("it was the full detent for the batched ones", settle(drag(batchedFar, fromClaimSample = false)), 0f)
+  // A claim on the event's own position starts from it, as before; every sample of a MOVE that is all history is the same arithmetic.
+  equal("a claim at the event's own position starts the drag from it", drag(listOf(floatArrayOf(5f, 30f), floatArrayOf(60f)), true), 30f)
+  equal("travel from the event's own sample is nothing", ClaimRules.travelSince(1, 1, 40f) { 10f }, 0f)
+  equal("travel from a sample of the history is the way to the end of the event", ClaimRules.travelSince(0, 1, 40f) { 10f }, 30f)
+}
+
+/**
  * The views are Android classes, so what the host cannot run is read from their source: that the root tells the arbiter what it
  * learns, and that the stack and the sheet measure on the DOWN pointer. Each line is the fix of a bug found in review.
  */
@@ -263,6 +310,12 @@ private fun wiringChecks(root: String, stack: String, sheet: String) {
   check("the root forgets a pointer that lifted", body(root, "override fun dispatchTouchEvent").contains("arbiter.pointerUp("))
   check("the root records the DOWN pointer", body(root, "override fun dispatchTouchEvent").contains("arbiter.down(ev.getPointerId(0)"))
   check("the root claims on the DOWN pointer's index", body(root, "private fun claimBeforeHandlers").contains("findPointerIndex(arbiter.pointer.id)"))
+  check("the root hands the claimer the sample it crossed its slop at, not only the event", body(root, "private fun claimBeforeHandlers").contains("claimer.claim(ev, outcome.sample)"))
+  check("the sheet's claim starts its drag at that sample", sheet.contains("override fun claim(ev: MotionEvent, sample: Int) = startDrag(ev, sample)"))
+  check("the sheet's drag is measured from the finger's position at the claim's sample", body(sheet, "private fun startDrag").contains("downY = rawYAt(ev, max(ev.findPointerIndex(downPointer.id), 0), sample)"))
+  check("that position is the event's less the finger's travel since the sample", sheet.contains("rawY(ev, index) - ClaimRules.travelSince(sample, ev.historySize, ev.getY(index)) { ev.getHistoricalY(index, it) }"))
+  check("the sheet's own interception finds the first sample that is a drag, as the root does", body(sheet, "override fun onInterceptTouchEvent").contains("for (sample in 0..ev.historySize)") &&
+    body(sheet, "override fun onInterceptTouchEvent").contains("startDrag(ev, sample)"))
   check("no claim reads pointer 0", !Regex("""getHistorical[XY]\(0,|getX\(0\)|getY\(0\)""").containsMatchIn(body(root, "private fun claimBeforeHandlers")))
   for ((name, source, intercept) in listOf(Triple("stack", stack, "override fun onInterceptTouchEvent"), Triple("sheet", sheet, "override fun onInterceptTouchEvent"))) {
     val text = body(source, intercept)

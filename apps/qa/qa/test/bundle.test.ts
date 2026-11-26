@@ -63,8 +63,13 @@ const { smokeOnlyBundlePackages, libraryVendoredPackages } = createRequire(impor
  *
  * With Svelte 5.59.1 from the registry in place of the pull request's build (chore/svelte-from-npm merged in, 23 November 2026), the same recipe gives 7,417,442 bytes in
  * 1,513 modules: +52,961 (0.7 %) over SDK 58 with the build, +165,112 (2.3 %) over SDK 57 with 5.59.1 (7,252,330).
+ *
+ * Moved on 26 November 2026, when the thirteen pull requests #123 to #142 were merged together, from 7,417,442 to 7,510,888 bytes (+93,446, 1.26 %; 1,513 to 1,521 modules). Each one
+ * alone stayed within 1 %. Most of it is library code every app carries: the keyboard-following views (KeyboardStickyView, KeyboardChatScrollView, KeyboardAwareScrollView,
+ * createKeyboardMotion and the keyboard state), the box styles' conversions (boxShadow, transformOrigin and the per-side colours, for styles and for setNativeProps), and the
+ * List, TextInput, sheet, Back and Reanimated-load fixes. It is not split by pull request. The production variant read 5,981,207 bytes in 1,309 modules, within 1 % of its own baseline.
  */
-const baseline = { commit: "Expo SDK 58 with React Native 0.88 and Svelte 5.59.1 from the registry (chore/expo-sdk-58 with chore/svelte-from-npm: 7,417,442 bytes in 1,513 modules, +2.3 % over SDK 57 with Svelte 5.59.1 measured the same day); before that, Svelte 5.59.1 in place of the custom-renderer pull request's build (+116,132 bytes, 1.6 %), the library's own fetch, Blob, crypto and localStorage with the Web APIs lab (+139,202 bytes, 2.3 %), and the four packages the library requires as peers, which every app bundles now (+938,646 bytes; feat/native-fetch: 7,085,004 bytes in 1,403 modules, +17.9 % over the 6,007,156 of feat/exports-grouped)", bytes: 7_417_442 };
+const baseline = { commit: "The thirteen pull requests #123 to #142 merged together (26 November 2026: 7,510,888 bytes in 1,521 modules, +1.26 % over the 7,417,442 of SDK 58 with Svelte 5.59.1 from the registry); before that, Expo SDK 58 with React Native 0.88 and Svelte 5.59.1 from the registry (chore/expo-sdk-58 with chore/svelte-from-npm: 7,417,442 bytes in 1,513 modules, +2.3 % over SDK 57 with Svelte 5.59.1 measured the same day); before that, Svelte 5.59.1 in place of the custom-renderer pull request's build (+116,132 bytes, 1.6 %), the library's own fetch, Blob, crypto and localStorage with the Web APIs lab (+139,202 bytes, 2.3 %), and the four packages the library requires as peers, which every app bundles now (+938,646 bytes; feat/native-fetch: 7,085,004 bytes in 1,403 modules, +17.9 % over the 6,007,156 of feat/exports-grouped)", bytes: 7_510_888 };
 
 /**
  * The production variant's bundle without the lab, built with the same recipe. It may grow by 1 % before a test says so. Measured again at 727bded, which makes the library's

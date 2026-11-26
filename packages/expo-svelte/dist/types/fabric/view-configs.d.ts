@@ -63,6 +63,12 @@ export declare function defineViewKind(name: string, kind: Kind): void;
 export declare function viewConfigFor(name: string, platform: Platform): ViewConfig;
 /** The payload for a new Fabric node: every native prop, encoded; `null` when there is none. */
 export declare function createPayload(props: Props, config: ViewConfig): Payload | null;
+/**
+ * What `setNativeProps` hands the engine: the props as they came, with the colours, the box shadow and the transform origin (at the top or in `style`, one object or a list of them)
+ * converted the way the view's own style is, so the engine reads integers and a list of layers and not the strings a style is written in (`"rgba(0,0,0,0.5)"`, `"0 0 0 1px red"`,
+ * `"top left"`). The converted values are at the top, the last one written winning as it does in a style; the style has no such key left, so a raw one cannot override a converted one.
+ */
+export declare function engineNativeProps(props: Props, platform: Platform): Props;
 /** The payload for a cloned node: the native props whose value changed, `null` for each one that went away; `null` when nothing did. */
 export declare function diffPayload(previous: Props, next: Props, config: ViewConfig): Payload | null;
 export {};

@@ -12,7 +12,7 @@ describe("the iOS matrix", () => {
 	test("it is the Android matrix without the screens an iOS app cannot be put in and without text sizes", () => {
 		expect(iosCases).toHaveLength(cases.filter((screen) => !screen.signedIn && screen.androidOnly !== true && screen.network === "normal").length);
 		expect(iosCases.some((screen) => screen.network !== "normal")).toBe(false);
-		expect(cases.filter((screen) => screen.androidOnly === true).map((screen) => screen.id)).toEqual(["lab-a11y-states", "lab-a11y-actions"]);
+		expect(cases.filter((screen) => screen.androidOnly === true).map((screen) => screen.id)).toEqual(["lab-styles-shadow", "lab-styles-border", "lab-styles-origin", "lab-styles-uniform", "lab-styles-rect", "lab-styles-views", "lab-a11y-states", "lab-a11y-actions"]);
 		expect(iosCases.some((screen) => screen.androidOnly === true)).toBe(false);
 		expect(iosCases.some((screen) => screen.signedIn)).toBe(false);
 		expect(iosVariants.map((variant) => variant.id)).toEqual(["light-ltr-normal", "light-rtl-normal", "dark-ltr-normal", "dark-rtl-normal"]);

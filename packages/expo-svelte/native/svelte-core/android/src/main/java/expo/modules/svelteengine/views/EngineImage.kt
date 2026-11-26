@@ -3,6 +3,7 @@ package expo.modules.svelteengine.views
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.BitmapFactory
 import android.graphics.Outline
 import android.graphics.Shader
@@ -15,6 +16,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.widget.ImageView
+import expo.modules.svelteengine.BoxStyle
 import expo.modules.svelteengine.ViewEvents
 import expo.modules.svelteengine.ViewProps
 import java.io.ByteArrayOutputStream
@@ -150,6 +152,8 @@ class EngineImage(context: Context) : ImageView(context), EngineNode {
   private var current: LoadedImage? = null
   private var repeat = false
   private var radius = 0f
+  /** The view clips to its own outline (the image only has a radius and no box drawables of its own). */
+  private var outlined = false
 
   init {
     scaleType = ScaleType.FIT_XY
@@ -161,6 +165,22 @@ class EngineImage(context: Context) : ImageView(context), EngineNode {
    * consumes it (a scroll ancestor can still take the gesture over) and nothing more; a click comes from a service.
    */
   override fun onTouchEvent(event: MotionEvent): Boolean = isClickable
+
+  override fun onDraw(canvas: Canvas) {
+    if (!(node.boxStyle || node.engineBox != null)) {
+      super.onDraw(canvas)
+      return
+    }
+    val saved = canvas.save()
+    BoxStyle.clipToPaddingBox(this, node, canvas)
+    super.onDraw(canvas)
+    canvas.restoreToCount(saved)
+  }
+
+  override fun onRtlPropertiesChanged(layoutDirection: Int) {
+    super.onRtlPropertiesChanged(layoutDirection)
+    BoxStyle.directionChanged(this, node, layoutDirection)
+  }
 
   fun apply(v: ViewProps) {
     val newRepeat = v.resizeMode == 4
@@ -175,12 +195,16 @@ class EngineImage(context: Context) : ImageView(context), EngineNode {
     if (scaleType != type) scaleType = type
     imageTintList = if (v.hasTint) ColorStateList.valueOf(v.tint) else null
 
-    // Rounded corners clip the image itself, like the drawee's rounding in ReactImageView.
+    // Rounded corners clip the image itself, like the drawee's rounding in ReactImageView: to the view's outline, which also clips the view's own background, and so the shadow
+    // that React Native's drawables draw around it. When the box is the engine's drawable or React Native's, `onDraw` clips the image to the padding box instead, as
+    // `ReactImageView.onDraw` does, and the background is left as it is drawn.
     val r = maxOf(maxOf(node.radii[0], node.radii[1]), maxOf(node.radii[2], node.radii[3]))
-    if (r != radius) {
+    val want = r > 0f && !(node.boxStyle || node.engineBox != null)
+    if (r != radius || want != outlined) {
       radius = r
+      outlined = want
       if (!node.outlineClip) {
-        if (r > 0f) {
+        if (want) {
           outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
               outline.setRoundRect(0, 0, view.width, view.height, radius)

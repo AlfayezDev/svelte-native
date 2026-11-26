@@ -54,11 +54,32 @@
     </View>
   </Section>
 
+  <Section title="Box shadow" note="One or more shadows, outside or inset, on both platforms. Android draws them as React Native does, so a ring, a halo and a soft card can be stacked.">
+    <View style={{ gap: 24, paddingVertical: 12 }}>
+      <View style={[card, { borderRadius: 8, boxShadow: "0 0 0 1px #66666f, 0 0 0 4px rgba(9,9,11,0.07)" }]}><Text style={text.body}>A ring and a halo</Text></View>
+      <View style={[card, { borderRadius: 8, boxShadow: "inset 0 0 0 1px #66666f" }]}><Text style={text.body}>An inset line</Text></View>
+      <View style={[card, { borderRadius: 16, borderWidth: 0, overflow: "hidden", boxShadow: "0 10px 30px -10px rgba(9,9,11,0.18)" }]}><Text style={text.body}>A card that clips its content and still casts its shadow</Text></View>
+    </View>
+  </Section>
+
+  <Section title="Borders" note="A dashed or dotted line, and a colour for each side.">
+    <View style={{ gap: 16 }}>
+      <View style={[card, { borderWidth: 2, borderStyle: "dashed" }]}><Text style={text.body}>Dashed</Text></View>
+      <View style={[card, { borderWidth: 3, borderStyle: "dotted", borderRadius: 16 }]}><Text style={text.body}>Dotted, rounded</Text></View>
+      <View style={[card, { borderWidth: 4, borderTopColor: "#ef4444", borderRightColor: "#22c55e", borderBottomColor: "#3b82f6", borderLeftColor: "#f59e0b" }]}><Text style={text.body}>A colour on each side</Text></View>
+    </View>
+  </Section>
+
   <Section title="Transform and opacity" note="Rotate, scale and move a view without changing its layout.">
     <View style={{ flexDirection: "row", gap: 24, paddingVertical: 12 }}>
       <View style={{ width: 48, height: 48, borderRadius: 8, backgroundColor: theme.colors.accent, transform: [{ rotate: "15deg" }] }} />
       <View style={{ width: 48, height: 48, borderRadius: 8, backgroundColor: theme.colors.accent, transform: [{ scale: 1.25 }] }} />
       <View style={{ width: 48, height: 48, borderRadius: 8, backgroundColor: theme.colors.accent, opacity: 0.4 }} />
+    </View>
+    <Text style={[text.caption, { marginTop: 8 }]}>`transformOrigin` moves the point they turn about: the top left corner here.</Text>
+    <View style={{ flexDirection: "row", gap: 24, paddingVertical: 12 }}>
+      <View style={{ width: 48, height: 48, borderRadius: 8, backgroundColor: theme.colors.accent, transform: [{ rotate: "15deg" }], transformOrigin: "top left" }} />
+      <View style={{ width: 48, height: 48, borderRadius: 8, backgroundColor: theme.colors.accent, transform: [{ scale: 1.25 }], transformOrigin: "top left" }} />
     </View>
   </Section>
 </Page>

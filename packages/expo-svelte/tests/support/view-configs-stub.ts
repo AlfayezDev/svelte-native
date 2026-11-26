@@ -9,6 +9,8 @@ const events = new Map([["topChange", "onChange"], ["topLayout", "onLayout"], ["
 const config: ViewConfig = { attributes: {}, events, foreign: false };
 
 export const viewConfigFor = (): ViewConfig => config;
+/** What `setNativeProps` hands the engine: the props, unconverted here like every other prop. */
+export const engineNativeProps = (props: Record<string, unknown>): Record<string, unknown> => props;
 export const createPayload = (props: Record<string, unknown>): Payload => ({ ...props });
 export function diffPayload(previous: Record<string, unknown>, next: Record<string, unknown>): Payload | null {
   const payload: Payload = {};

@@ -148,9 +148,10 @@ Font, colour and alignment go on a [`Text`](text): `fontSize`, `fontWeight`, `fo
 
 ## Shadows, borders and transforms
 
-- **Borders:** `borderWidth`, `borderColor`, `borderRadius`, and per side (`borderTopWidth`, `borderTopLeftRadius`, ...).
-- **Shadows:** iOS draws a shadow from `shadowColor`, `shadowOffset`, `shadowOpacity` and `shadowRadius`. Android draws one from `elevation`. Set both. For soft shadows on Android that match iOS, use [`ShadowedView`](native-views).
-- **Transforms:** `transform: [{ rotate: '15deg' }, { scale: 1.2 }, { translateX: 8 }]` changes how a view is drawn without changing its layout. `opacity` fades it.
+- **Borders:** `borderWidth`, `borderColor`, `borderRadius`, and per side (`borderTopWidth`, `borderTopColor`, `borderTopLeftRadius`, ...). `borderStyle` is `solid`, `dashed` or `dotted`. A border with no colour is black, as in React Native.
+- **Box shadows:** `boxShadow` takes a CSS string (`'0 0 0 1px #66666f, 0 10px 30px -10px rgba(9,9,11,0.18)'`) or an array of objects (`{ offsetX, offsetY, blurRadius, spreadDistance, color, inset }`). A view can have several, outside or `inset`, and they follow its `borderRadius`. A shadow outside the view is drawn even when the view has `overflow: 'hidden'`. Both platforms draw it as React Native does.
+- **Platform shadows:** iOS draws a shadow from `shadowColor`, `shadowOffset`, `shadowOpacity` and `shadowRadius`. Android draws one from `elevation`. Set both. For soft shadows on Android that match iOS, use `boxShadow`, or [`ShadowedView`](native-views).
+- **Transforms:** `transform: [{ rotate: '15deg' }, { scale: 1.2 }, { translateX: 8 }]` changes how a view is drawn without changing its layout. `transformOrigin` (`'top left'`, `'25% 75%'`, `'10px 20px'`, `['100%', 0, 0]`) is the point they turn about, the centre by default; an animation of the transform turns about it too. `opacity` fades it.
 
 React Native's [View style props](https://reactnative.dev/docs/view-style-props) and [Text style props](https://reactnative.dev/docs/text-style-props) list every key.
 

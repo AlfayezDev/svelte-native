@@ -10,8 +10,14 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.facebook.react.uimanager.PointerEvents
 import com.facebook.react.uimanager.ReactPointerEventsView
 import expo.modules.svelteengine.A11y
+import expo.modules.svelteengine.BoxStyle
 import expo.modules.svelteengine.A11yRecords
 import expo.modules.svelteengine.GestureRules
+import expo.modules.svelteengine.Props
+import expo.modules.svelteengine.StyleRecords
+import expo.modules.svelteengine.BoxDrawable
+import expo.modules.svelteengine.ClipRules
+import expo.modules.svelteengine.PaddingBoxClip
 
 /** Per-view state the mounting layer keeps outside of View ids and tags. */
 class NodeState {
@@ -56,6 +62,39 @@ class NodeState {
   val border = FloatArray(4)
   var borderColor = 0
 
+  /** The box style records applied (box shadow, border sides, transform origin), null when the view has none: the origin is where the view pivots (`Props.applyPivot`). */
+  var style: StyleRecords? = null
+
+  /** What the last full record held of [style], so a partial write (`setNativeProps`) puts the rest back. */
+  fun rememberStyle(from: StyleRecords) {
+    val own = style
+    if (own == null) {
+      if (!from.isEmpty) style = StyleRecords().also { it.copyFrom(from) }
+    } else own.copyFrom(from)
+  }
+
+  /**
+   * React Native's own drawables draw the box (`BoxStyle`), and not the plain [drawable]. What `BoxStyle.apply` last wrote to them (the drawables' own state, which [radii], [border] and
+   * [bg] are not once the node is reset for the pool: they are zero then and the drawables keep what they had), to write only what changed. A recycled view keeps its drawables.
+   */
+  var boxStyle = false
+  /** The box is drawn by [BoxDrawable] (`StyleRules.boxKind`): this one. It holds its own state, and a recycled view keeps it like [boxStyle]'s drawables. */
+  var engineBox: BoxDrawable? = null
+  /** What [engineBox] has besides the node's [radii] and [border]: the colours of the sides and the border style, to ask `StyleRules.boxKind` again when the radii are animated. */
+  val engineColors = IntArray(4)
+  var engineStyle = 0
+  /** What clips a view whose box is React Native's drawables to its padding box, without allocating for each draw (`BoxStyle.clipToPaddingBox`). */
+  var boxClip: PaddingBoxClip? = null
+  var boxRtl = false
+  var boxShadows: IntArray? = null
+  var boxBorderStyle = 0
+  val boxColors = IntArray(4)
+  val boxRadii = FloatArray(4)
+  val boxBorder = FloatArray(4)
+  var boxBg = 0
+  /** An outset shadow is among [boxShadows]: it draws outside the view, so the view's own outline must not clip it. */
+  var boxOutset = false
+
   val w get() = r - l
   val h get() = b - t
 
@@ -86,6 +125,7 @@ class NodeState {
     radii.fill(0f)
     border.fill(0f)
     borderColor = 0
+    style = null
   }
 }
 
@@ -109,10 +149,23 @@ object Frames {
     if (!st.hasFrame) return
     child.measure(View.MeasureSpec.makeMeasureSpec(st.w, exact), View.MeasureSpec.makeMeasureSpec(st.h, exact))
     child.layout(st.l, st.t, st.r, st.b)
-    if (st.transformed) {
-      child.pivotX = st.w / 2f
-      child.pivotY = st.h / 2f
+    if (st.transformed) Props.applyPivot(child, st)
+  }
+
+  private val content = IntArray(4)
+
+  /** A scroll view's content child at Yoga's origin for it and the view's padding (`ClipRules.scrollContent`): a no-op where that is where the platform put it. */
+  fun layoutContent(parent: ViewGroup) {
+    val c = parent.getChildAt(0) ?: return
+    val st = (c as? EngineNode)?.node ?: return
+    if (!st.hasFrame) return
+    ClipRules.scrollContent(st.l, st.t, st.r, st.b, parent.paddingLeft, parent.paddingTop, content)
+    if (c.left != content[0] || c.top != content[1] || c.right != content[2] || c.bottom != content[3]) {
+      c.measure(View.MeasureSpec.makeMeasureSpec(st.w, exact), View.MeasureSpec.makeMeasureSpec(st.h, exact))
+      c.layout(content[0], content[1], content[2], content[3])
     }
+    // The pivot follows the size the content has now (`place` does the same): one set at mount, when the content had none, is the top left.
+    if (st.transformed) Props.applyPivot(c, st)
   }
 
   fun measureChildren(parent: ViewGroup) {
@@ -210,11 +263,19 @@ open class EngineView(context: Context) : ViewGroup(context), EngineNode {
       super.dispatchDraw(canvas)
       return
     }
-    val widths = node.border
     val saved = canvas.save()
-    canvas.clipRect(widths[0], widths[1], width - widths[2], height - widths[3])
+    // React Native's own clip, round corners and border widths included (`ReactViewGroup.dispatchDraw`), for a view whose box is its drawables or the engine's.
+    if (!BoxStyle.clipToPaddingBox(this, node, canvas)) {
+      val widths = node.border
+      canvas.clipRect(widths[0], widths[1], width - widths[2], height - widths[3])
+    }
     super.dispatchDraw(canvas)
     canvas.restoreToCount(saved)
+  }
+
+  override fun onRtlPropertiesChanged(layoutDirection: Int) {
+    super.onRtlPropertiesChanged(layoutDirection)
+    BoxStyle.directionChanged(this, node, layoutDirection)
   }
 
   override fun onViewAdded(child: View) {

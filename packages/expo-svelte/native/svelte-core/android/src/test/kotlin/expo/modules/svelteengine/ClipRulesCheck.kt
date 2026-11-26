@@ -47,6 +47,23 @@ private fun rules() {
   expect("an empty view has an empty viewport", viewport(1, 0, 0, 0, 0), listOf(0f, 0f, 0f, 0f))
 }
 
+private fun content(frame: List<Int>, paddingLeft: Int = 0, paddingTop: Int = 0): List<Int> {
+  val out = IntArray(4)
+  ClipRules.scrollContent(frame[0], frame[1], frame[2], frame[3], paddingLeft, paddingTop, out)
+  return out.toList()
+}
+
+private fun contentRules() {
+  // The content child of a scroll view of the showcase: Yoga puts it at the origin of the view, the platform's scroll view at its padding.
+  expect("content at Yoga's origin with no padding", content(listOf(0, 0, 1080, 4000)), listOf(0, 0, 1080, 4000))
+  // A large or translucent header pads the scroll view by its own height (275 px here): the first row starts under the title, not behind it.
+  expect("the header's padding pushes the content down", content(listOf(0, 0, 1080, 4000), paddingTop = 275), listOf(0, 275, 1080, 4275))
+  // A bordered scroll view (a 4 dp border at 2.625 is 11 px once rounded): Yoga's offset is the border's.
+  expect("Yoga's offset inside a border", content(listOf(11, 11, 384, 400)), listOf(11, 11, 384, 400))
+  expect("both", content(listOf(11, 11, 384, 400), paddingTop = 275, paddingLeft = 4), listOf(15, 286, 388, 675))
+  expect("the size is Yoga's", content(listOf(11, 11, 384, 400), paddingTop = 275).let { it[2] - it[0] to it[3] - it[1] }, 373 to 389)
+}
+
 /** The text of the class declared at [header], up to the next top-level declaration. */
 private fun classBody(text: String, header: String, file: String): String {
   val start = text.indexOf(header)
@@ -85,11 +102,20 @@ private fun source(views: String) {
       "super.dispatchDraw(canvas)",
       "if (saved >= 0) canvas.restoreToCount(saved)",
     ))
+    // The content goes where Yoga and the header's padding say, after the platform has laid it out at its own.
+    val layout = Regex("""override fun onLayout\(changed: Boolean, l: Int, t: Int, r: Int, b: Int\) \{(.*?)\n  \}""", RegexOption.DOT_MATCHES_ALL).find(body)?.groupValues?.get(1)
+      ?: error("$name does not override onLayout")
+    expect("$name lays out, places the content, tells the bridge", layout.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("//") }, listOf(
+      "super.onLayout(changed, l, t, r, b)",
+      "Frames.layoutContent(this)",
+      "bridge.onLaidOut()",
+    ))
   }
 }
 
 fun main(args: Array<String>) {
   rules()
+  contentRules()
   source(args.getOrElse(0) { error("usage: ClipRulesCheck <views directory>") })
   println("ClipRulesCheck: $checks checks passed")
 }

@@ -44,7 +44,7 @@ const reactNativeFontVariant = required(() => require("react-native/Libraries/St
 const reactNativeTransform = required(() => require("react-native/Libraries/StyleSheet/processTransform").default);
 const reactNativeTransformOrigin = required(() => require("react-native/Libraries/StyleSheet/processTransformOrigin").default);
 const filter = required(() => require("react-native/Libraries/StyleSheet/processFilter").default);
-const boxShadow = required(() => require("react-native/Libraries/StyleSheet/processBoxShadow").default);
+const reactNativeBoxShadow = required(() => require("react-native/Libraries/StyleSheet/processBoxShadow").default);
 const backgroundImage = required(() => require("react-native/Libraries/StyleSheet/processBackgroundImage").default);
 const backgroundSize = required(() => require("react-native/Libraries/StyleSheet/processBackgroundSize").default);
 const backgroundPosition = required(() => require("react-native/Libraries/StyleSheet/processBackgroundPosition").default);
@@ -111,6 +111,19 @@ const colorFor = (platform: Platform): Converter => {
 const arrayOr = (convert: Converter): Converter => (value) => (Array.isArray(value) && !dev() ? value : convert(value));
 const transform = arrayOr(reactNativeTransform);
 const transformOrigin = arrayOr(reactNativeTransformOrigin);
+/**
+ * `boxShadow`, as React Native's `processBoxShadow` leaves it. Fabric's Android colour is an integer in which 0 also means "no colour", so a layer written without one, which
+ * React Native's Android views draw black (`BackgroundStyleApplicator.setBoxShadow`), would reach the engine as a transparent one, and `transparent` would be told from it by
+ * nothing. On Android a layer without a colour is given black here; `transparent` stays 0.
+ */
+const boxShadowFor = (platform: Platform): Converter => {
+  if (platform !== "android") return reactNativeBoxShadow;
+  return (value) => {
+    const layers = reactNativeBoxShadow(value);
+    if (!Array.isArray(layers) || layers.every((layer: unknown) => (layer as Props)?.color !== undefined)) return layers;
+    return layers.map((layer: unknown) => ((layer as Props)?.color === undefined ? { ...(layer as Props), color: processColorValue("black", "android") } : layer));
+  };
+};
 const aspectRatio: Converter = (value) => (typeof value === "number" ? value : reactNativeAspectRatio(value));
 const fontVariant: Converter = (value) => (Array.isArray(value) ? value : reactNativeFontVariant(value));
 
@@ -540,7 +553,7 @@ function styleFor(platform: Platform): Table {
   fill(style, stylePlain, true);
   fill(style, styleColors, color);
   Object.assign(style, {
-    aspectRatio, transform, transformOrigin, fontVariant, filter, boxShadow,
+    aspectRatio, transform, transformOrigin, fontVariant, filter, boxShadow: boxShadowFor(platform),
     backgroundImage, backgroundSize, backgroundPosition, backgroundRepeat, fontVariationSettings,
     experimental_backgroundImage: backgroundImage, experimental_backgroundSize: backgroundSize,
     experimental_backgroundPosition: backgroundPosition, experimental_backgroundRepeat: backgroundRepeat,
@@ -555,7 +568,7 @@ function attributesFor(platform: Platform, kind: Kind): Table {
   fill(attributes, platform === "android" ? androidViewPlain : iosViewPlain, true);
   fill(attributes, viewColors, color);
   attributes.filter = filter;
-  attributes.boxShadow = boxShadow;
+  attributes.boxShadow = boxShadowFor(platform);
   if (platform === "android") {
     attributes.outlineColor = color;
     attributes.backgroundImage = backgroundImage;
@@ -679,6 +692,37 @@ export function createPayload(props: Props, config: ViewConfig): Payload | null 
   let payload: Payload | null = null;
   for (const key in values) if (values[key] !== undefined) payload = put(payload, key, values[key]);
   return payload;
+}
+
+/** The props of `setNativeProps` the engine reads converted, as a view's style is: a colour as an integer, a box shadow as the list `processBoxShadow` makes of it, a transform origin as an array. */
+const engineConverted = ["boxShadow", "transformOrigin", "backgroundColor", "borderColor", "borderTopColor", "borderRightColor", "borderBottomColor", "borderLeftColor", "borderStartColor", "borderEndColor"];
+
+/** A style (one object or lists of them) without the converted keys: what is left is read as it is. */
+function withoutConverted(style: unknown): unknown {
+  if (Array.isArray(style)) return style.map(withoutConverted);
+  if (style === null || typeof style !== "object") return style;
+  const kept: Props = {};
+  for (const key in style as Props) if (!engineConverted.includes(key)) kept[key] = (style as Props)[key];
+  return kept;
+}
+
+/**
+ * What `setNativeProps` hands the engine: the props as they came, with the colours, the box shadow and the transform origin (at the top or in `style`, one object or a list of them)
+ * converted the way the view's own style is, so the engine reads integers and a list of layers and not the strings a style is written in (`"rgba(0,0,0,0.5)"`, `"0 0 0 1px red"`,
+ * `"top left"`). The converted values are at the top, the last one written winning as it does in a style; the style has no such key left, so a raw one cannot override a converted one.
+ */
+export function engineNativeProps(props: Props, platform: Platform): Props {
+  const picked: Props = {};
+  const sources: unknown[] = [props, ...(Array.isArray(props.style) ? props.style.flat(Number.POSITIVE_INFINITY) : [props.style])];
+  for (const source of sources) {
+    if (source === null || typeof source !== "object") continue;
+    for (const key of engineConverted) if (key in source) picked[key] = (source as Props)[key];
+  }
+  if (Object.keys(picked).length === 0) return props;
+  const rest: Props = { ...props };
+  for (const key of engineConverted) delete rest[key];
+  if ("style" in props) rest.style = withoutConverted(props.style);
+  return { ...rest, ...createPayload({ style: picked }, viewConfigFor("RCTView", platform)) };
 }
 
 /** The payload for a cloned node: the native props whose value changed, `null` for each one that went away; `null` when nothing did. */

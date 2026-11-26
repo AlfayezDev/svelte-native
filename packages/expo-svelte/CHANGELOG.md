@@ -4,6 +4,8 @@ Notable changes to `expo-svelte` (named `@alfayez/svelte-native` up to 0.4.0-rc.
 
 ## Unreleased
 
+## 0.4.0-rc.12 - 2026-11-26
+
 ### Added
 
 - **Views that follow the keyboard frame by frame, on Android.** The engine hears each frame of the keyboard's animation (the window insets animation callback, on the main thread, in the frame the window moves in) and writes what moves with it there, with no JavaScript in between, so a busy JavaScript thread does not hold them back:

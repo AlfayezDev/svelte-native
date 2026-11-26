@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { parse } from "@babel/parser";
 import { isBlockStatement, isCallExpression, isFunction, isIdentifier, isMemberExpression, traverseFast } from "@babel/types";
 import { asyncEnabled, componentOptions, lowersHtml, moduleOptions, runesDefaultEnabled } from "./compile-options.ts";
-import { lowerPrimitives } from "./lower.ts";
+import { lowerWithMap } from "./lower.ts";
 import { svelteCompiler } from "./svelte-compiler.ts";
 import { cacheKeyFiles } from "./transformer-cache.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
@@ -121,6 +121,55 @@ function assertWorkletsReadNoState(filename: string, code: string, runes: boolea
   }`);
 }
 
+type SvelteDiagnostic = Error & { code?: string; start?: { line: number; column: number } };
+/** Where a position of the text Svelte compiled is in the file the developer wrote, or nothing when it is nowhere in it. */
+type Locate = (line: number, column: number) => { line: number; column: number } | undefined;
+
+/**
+ * A code frame in Babel's shape: the lines around [line] (1-based), numbered, and a caret under [column] (0-based) of it, of the text the developer wrote.
+ */
+function frameOf(source: string, line: number, column: number): string {
+  // A file with CRLF line endings: the `\r` is not part of the line (the frame is text, and a caret under a carriage return would be a column too far).
+  const lines = source.split("\n").map((text) => text.replace(/\r$/, ""));
+  const last = Math.min(lines.length, line + 2);
+  const width = String(last).length;
+  const frame: string[] = [];
+  for (let at = Math.max(1, line - 2); at <= last; at++) {
+    const text = lines[at - 1] ?? "";
+    frame.push(`${at === line ? ">" : " "} ${String(at).padStart(width)} | ${text}`);
+    // Tabs stay tabs, so that the caret is under the column whatever the editor's tab width is.
+    if (at === line) frame.push(`  ${" ".repeat(width)} | ${text.slice(0, column).replace(/[^\t]/g, " ")}^`);
+  }
+  return frame.join("\n");
+}
+
+/**
+ * A compile error of Svelte's, in the shape Metro can print. Svelte clears the stack of its `CompileError` and gives it no `loc`, so Metro made a `TransformError` of it with an empty stack,
+ * and Expo's reporter, which prints the stack of a `SyntaxError` that has no code frame in place of its message, printed the stack: nothing but "SyntaxError" (a `{@const}` in a `<View>`,
+ * which the lowering makes a plain element, is one). A Babel error carries its `loc` and its `codeFrame`: Metro puts the message, the file, the line and the column of such an error
+ * together and prints the frame under it, and Expo leaves it alone. Svelte's error has the line and the column of the text it compiled, which is not the file: the lowering moves the columns of a
+ * line that has a lowered tag or a `class` (`lowerWithMap`), and a module's TypeScript was stripped of its types before Svelte read it (the map of that step). So the position goes back through
+ * [locate] to the text the developer wrote, and the frame is made of that text, not of Svelte's own (which shows `<native-view nativeClass={...}>` for a `<View class="...">`). The error keeps its
+ * `code` and its name. An error with no position is a plain `Error` with a stack of its own, that Metro gives the file's name.
+ */
+function metroError(error: unknown, source: string, locate: Locate): unknown {
+  if (!(error instanceof Error) || error.name !== "CompileError") return error;
+  const { start, code } = error as SvelteDiagnostic;
+  const failure = Object.assign(new Error(error.message), { name: error.name, ...(code === undefined ? {} : { code }) });
+  const at = start ? locate(start.line, start.column) : undefined;
+  if (!at) return failure;
+  return Object.assign(failure, { type: "CompileError", loc: { line: at.line, column: at.column }, codeFrame: frameOf(source, at.line, at.column) });
+}
+
+/** Runs one of Svelte's compiles and has its error, when it fails, reach Metro with its message, the file and the position in [source] ([metroError]). */
+function compiling<T>(compile: () => T, source: string, locate: Locate): T {
+  try {
+    return compile();
+  } catch (error) {
+    throw metroError(error, source, locate);
+  }
+}
+
 export function transform(input: TransformInput) {
   const { filename } = input;
   const src = sourceOf(input);
@@ -131,7 +180,8 @@ export function transform(input: TransformInput) {
   if (filename.endsWith(".svelte")) {
     // Runes mode for the app's own components unless the file opts out (`componentOptions`, `compile-options.ts`); a file below `node_modules` keeps Svelte's own default.
     requireCustomRenderer();
-    const result = svelteCompiler().compile(lowerPrimitives(src, { filename, html: lowersHtml(filename) }), componentOptions(filename));
+    const lowering = lowerWithMap(src, { filename, html: lowersHtml(filename) });
+    const result = compiling(() => svelteCompiler().compile(lowering.code, componentOptions(filename)), src, lowering.original);
     if (result.css?.code.trim()) throw new Error(`${filename}: use native style props; browser CSS is not supported`);
     code = result.js.code;
     runes = result.metadata.runes;
@@ -149,7 +199,13 @@ export function transform(input: TransformInput) {
     }
     if (svelteModule) {
       // A Svelte module is always in runes mode: `compileModule` has no `runes` option.
-      const result = svelteCompiler().compileModule(code, moduleOptions(filename));
+      const typeMap = maps[0];
+      const result = compiling(() => svelteCompiler().compileModule(code, moduleOptions(filename)), src, (line, column) => {
+        // Without a map the module had no types to strip: the compiled text is the file.
+        if (!typeMap) return { line, column };
+        const original = originalPositionFor(typeMap, { line, column });
+        return original.line === null || original.column === null ? undefined : { line: original.line, column: original.column };
+      });
       code = result.js.code;
       if (result.js.map) maps.unshift(new TraceMap(result.js.map.toString()));
     }

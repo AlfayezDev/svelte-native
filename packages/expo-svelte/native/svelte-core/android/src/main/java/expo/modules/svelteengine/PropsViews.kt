@@ -6,7 +6,8 @@ class ViewProps {
   var fontSize = 14f
   var hasColor = false
   var color = 0
-  var weight = 400
+  /** 0 when neither `fontWeight` nor `fontStyle` is set (`InputRules.exactAdvances`), else the weight (400 for a style alone). */
+  var weight = 0
   var italic = false
   var family: String? = null
   var letterSpacing = 0f
@@ -21,6 +22,8 @@ class ViewProps {
   var multiline = false
   var editable = true
   var maxLength = -1
+  /** The `includeFontPadding` prop of the field (record 43; true unless the prop says false, as React Native's default). */
+  var includeFontPadding = true
   var keyboard = 0
   var capitalize = 3
   /** `InputRules` code of record 44: -1 not part of the update, 0 removed, 1 on, 2 off. */
@@ -91,10 +94,10 @@ class ViewProps {
 
   fun reset() {
     touched = false
-    fontSize = 14f; hasColor = false; color = 0; weight = 400; italic = false; family = null
+    fontSize = 14f; hasColor = false; color = 0; weight = 0; italic = false; family = null
     letterSpacing = 0f; lineHeight = 0f; textAlign = 0
     propText = null; propCount = 0; placeholder = null; hasPlaceholderColor = false; placeholderColor = 0
-    secure = false; multiline = false; editable = true; maxLength = -1
+    secure = false; multiline = false; editable = true; maxLength = -1; includeFontPadding = true
     keyboard = 0; capitalize = 3; autoCorrect = InputRules.AUTO_CORRECT_KEEP; returnKey = 0; submitBehavior = 0
     hasSelectionColor = false; selectionColor = 0; hasCursorColor = false; cursorColor = 0
     autoFocus = false; selectTextOnFocus = false; caretHidden = false
@@ -134,7 +137,7 @@ object PropsViews {
       }
       43 -> {
         v.secure = ops[i] == 1; v.multiline = ops[i + 1] == 1; v.editable = ops[i + 2] == 1
-        v.maxLength = ops[i + 3]; i += 4
+        v.maxLength = ops[i + 3]; v.includeFontPadding = ops[i + 4] == 1; i += 5
       }
       44 -> { v.keyboard = ops[i]; v.capitalize = ops[i + 1]; v.autoCorrect = ops[i + 2]; i += 3 }
       45 -> { v.returnKey = ops[i]; v.submitBehavior = ops[i + 1]; i += 2 }

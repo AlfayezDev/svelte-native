@@ -229,4 +229,22 @@ object InputRules {
    * `ReactTextInputManager.setTextContentType` does.
    */
   fun autofillMode(autoComplete: String?, hasHint: Boolean, important: Int): Int = if (autoComplete != null && !hasHint) AUTOFILL_NO else important
+
+  /**
+   * `TextAttributes.effectiveFontSize`: the pixel size a field's text is laid out and drawn at is the scaled size rounded up to a whole pixel (22 sp at 2.625 is 58 px, not 57.75), and the
+   * letter spacing is its share of that size. A size that is not set (0) stays so.
+   */
+  fun fontSizePx(size: Float): Float = if (size > 0f) Math.ceil(size.toDouble()).toFloat() else size
+
+  /**
+   * `ReactEditText.maybeUpdateTypeface`: a family, a weight or a style (a style of `normal` too) turns on subpixel and linear text, the advances React Native measures and draws a field's
+   * text with; text in the platform's default font keeps the hinted paint. The record carries 0 for a weight that is not set (400 when only a style is), as a fragment's does.
+   */
+  fun exactAdvances(family: String?, weight: Int, italic: Boolean): Boolean = family != null || italic || weight != 0
+
+  /**
+   * The line height of the `CustomLineHeightSpan` a field's text has, in px (rounded up as the span does), or 0 for none: an empty field has no span (its text is null in React Native
+   * and the hint is laid out plain), nor has one with no line height.
+   */
+  fun lineHeightSpanPx(lineHeight: Float, textLength: Int): Int = if (textLength == 0 || lineHeight <= 0f) 0 else Math.ceil(lineHeight.toDouble()).toInt()
 }

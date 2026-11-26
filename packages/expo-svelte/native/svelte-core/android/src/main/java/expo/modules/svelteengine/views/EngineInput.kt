@@ -9,6 +9,7 @@ import android.text.InputFilter
 import android.text.InputType
 import android.text.TextWatcher
 import android.text.method.PasswordTransformationMethod
+import android.text.method.SingleLineTransformationMethod
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -370,11 +371,22 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
     try {
       inputType = type
       // The platform makes a view multi-line only for a text class with the flag (`TextView.isMultilineInputType`), and React Native's multiline is the flag on any class: a number class with the
-      // flag is made multi-line here. `setSingleLine(false)` sets the transformation method to null (`TextView.applySingleLine`), which unmasks a password that `setInputType` masked, so the
-      // masking is set again for a password type (a text class never gets here: the platform has done what the flag asks, and kept the masking).
-      if (InputRules.platformKeepsSingleLine(type)) {
-        setSingleLine(false)
-        if (InputRules.isPassword(type)) transformationMethod = PasswordTransformationMethod.getInstance()
+      // flag is made multi-line here. `setSingleLine(false)` sets the transformation method to null (`TextView.applySingleLine`), which unmasks a password that `setInputType` masked.
+      if (InputRules.platformKeepsSingleLine(type)) setSingleLine(false)
+      // The masking is the field's own, not what the platform made of the type: React Native's flags for a secure field with the email, phone or url keyboard are no password type to it, and it
+      // leaves them unmasked (and unmasks a field that was masked when only the keyboard changes). A secure field is masked after every update, and one that is not secure is not.
+      val current = when (transformationMethod) {
+        is PasswordTransformationMethod -> InputRules.Transformation.PASSWORD
+        is SingleLineTransformationMethod -> InputRules.Transformation.SINGLE_LINE
+        else -> InputRules.Transformation.NONE
+      }
+      val wanted = InputRules.transformationFor(v.secure, v.keyboard, type, current)
+      if (wanted != current) {
+        transformationMethod = when (wanted) {
+          InputRules.Transformation.PASSWORD -> PasswordTransformationMethod.getInstance()
+          InputRules.Transformation.SINGLE_LINE -> SingleLineTransformationMethod.getInstance()
+          InputRules.Transformation.NONE -> null
+        }
       }
       // Changing the input type resets the typeface (password fields become monospace): put ours back.
       applyTypeface(family, weight, italic)

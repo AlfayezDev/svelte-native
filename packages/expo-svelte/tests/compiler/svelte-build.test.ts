@@ -89,7 +89,7 @@ describe("the Svelte this library needs", () => {
   test("the Metro integration, the transformer and the native Vite target check before they need the renderer", () => {
     const source = (file: string) => readFileSync(resolve(packageRoot, "src", file), "utf8");
     expect(source("metro.ts")).toContain('assertCustomRenderer("withExpoSvelte (expo-svelte/metro)")');
-    expect(source("transformer.ts")).toMatch(/requireCustomRenderer\(\);\s+const result = svelteCompiler\(\)\.compile\(/);
+    expect(source("transformer.ts")).toMatch(/requireCustomRenderer\(\);\s+const lowering = lowerWithMap\([^;]+;\s+const result = compiling\(\(\) => svelteCompiler\(\)\.compile\(/);
     expect(source("vite.ts")).toContain("assertCustomRenderer(");
   });
 });

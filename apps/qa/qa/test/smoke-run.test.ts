@@ -87,7 +87,7 @@ esac
 		expect(done.status).toBe(0);
 		expect(done.stdout).toContain("smoke gates: pass");
 		expect(done.adb.some((entry) => entry.includes("install -r") && entry.endsWith("smoke.apk"))).toBe(true);
-		expect(done.adb.some((entry) => entry.includes("am start -W -a android.intent.action.VIEW -d 'expo-svelte-smoke:///__dev?run=smoke' dev.alfayez.exposvelte.qa.smoke"))).toBe(true);
+		expect(done.adb.some((entry) => entry.includes("am start -W -a android.intent.action.VIEW -d 'expo-svelte-qa-smoke:///__dev?run=smoke' dev.alfayez.exposvelte.qa.smoke"))).toBe(true);
 		expect(done.adb.filter((entry) => entry.includes("force-stop")).every((entry) => entry.endsWith(" dev.alfayez.exposvelte.qa.smoke"))).toBe(true);
 		// The QA app's id is a prefix of the smoke app's: nothing may name it alone, or by its scheme.
 		expect(done.adb.filter((entry) => / dev\.alfayez\.exposvelte\.qa(\s|$|\/)/.test(entry) || entry.includes("expo-svelte:///"))).toEqual([]);
@@ -154,7 +154,7 @@ describe("the iPhone run works on the smoke app", () => {
 		expect(suiteBundleId({ device: "x" }, "smoke")).toBe("dev.alfayez.exposvelte.qa.smoke");
 		expect(suiteBundleId({ device: "x" }, "qa")).toBe("dev.alfayez.exposvelte.qa");
 		expect(suiteBundleId({ package: "com.example.other" }, "smoke")).toBe("com.example.other");
-		expect(smokeLaunchUrl("t0k3n")).toBe("expo-svelte-smoke:///__dev?run=smoke&token=t0k3n");
+		expect(smokeLaunchUrl("t0k3n")).toBe("expo-svelte-qa-smoke:///__dev?run=smoke&token=t0k3n");
 	});
 });
 

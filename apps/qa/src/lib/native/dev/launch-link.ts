@@ -1,6 +1,6 @@
 /**
- * What the link the app was launched with says about the first screen: it names a screen of the development lab (`expo-svelte:///__dev`,
- * `expo-svelte://__dev/screens`, a web link whose path is under `/__dev`), it names anything else (a product screen, the development
+ * What the link the app was launched with says about the first screen: it names a screen of the development lab (`expo-svelte-qa:///__dev`,
+ * `expo-svelte-qa://__dev/screens`, a web link whose path is under `/__dev`), it names anything else (a product screen, the development
  * client's own link), or there is none (the launcher's icon, or a restart that restores the screens it had). A guess from the text: the router
  * decides whether a screen matches, so `labOnly` of where it ends up has the last word.
  */

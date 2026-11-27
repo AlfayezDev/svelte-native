@@ -95,10 +95,10 @@ describe("devicectl commands", () => {
 	test("launch ends a running instance, passes the payload URL and puts launch arguments after the bundle id", async () => {
 		const { run, calls } = recorder([ok(launched)]);
 		const target = { mac: macFrom("me@mac", run), id: "DEVICE-ID", bundleId: "dev.alfayez.exposvelte.qa" };
-		const { pid } = await launchApp(target, { payloadUrl: "expo-svelte:///__dev?run=checks", args: launchArguments.rtl });
+		const { pid } = await launchApp(target, { payloadUrl: "expo-svelte-qa:///__dev?run=checks", args: launchArguments.rtl });
 		expect(pid).toBe(4242);
 		const line = remoteLine(calls[0]);
-		expect(line).toContain("'--terminate-existing' '--device' 'DEVICE-ID' '--payload-url' 'expo-svelte:///__dev?run=checks' 'dev.alfayez.exposvelte.qa' '--' '-AppleLanguages' '(ar)' '-AppleLocale' 'ar_SA'");
+		expect(line).toContain("'--terminate-existing' '--device' 'DEVICE-ID' '--payload-url' 'expo-svelte-qa:///__dev?run=checks' 'dev.alfayez.exposvelte.qa' '--' '-AppleLanguages' '(ar)' '-AppleLocale' 'ar_SA'");
 		expect(line).toContain("'--json-output'");
 	});
 

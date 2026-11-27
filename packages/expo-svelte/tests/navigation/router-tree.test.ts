@@ -640,7 +640,7 @@ test("reset is a new root for the whole chain: the root keeps only the tabs scre
   const base = home.entries[0];
 
   host.calls.length = 0;
-  router.goto("/acme", { reset: true }); // what the workspace list does to open a workspace
+  router.goto("/acme", { reset: true }); // what a project list does to open a project
   await settled();
   expect(pathsOf(router)).toEqual(["/acme"]); // the list is gone
   expect(router.entries[0]).toBe(tabs); // the same tabs screen: nothing is created, nothing remounts

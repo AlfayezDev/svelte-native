@@ -196,14 +196,14 @@ describe("a case that pushes its screen onto the one the launch link opened", ()
 			const session = await DeviceSession.open(device.serial, device.packageName, options);
 			const pushed: ScreenCase = {
 				...normalScreen,
-				deepLink: "expo-svelte:///__dev/screens",
-				steps: [{ open: "expo-svelte:///__dev/screens?mode=toolbar" }],
+				deepLink: "expo-svelte-qa:///__dev/screens",
+				steps: [{ open: "expo-svelte-qa:///__dev/screens?mode=toolbar" }],
 			};
 			await launchCase(session, pushed, "ltr");
 			const starts = device.commands("am start");
 			expect(starts).toHaveLength(2);
-			expect(starts[0]).toContain("force-stop dev.alfayez.exposvelte.qa; sleep 0.3; am start -W -a android.intent.action.VIEW -d 'expo-svelte:///__dev/screens' dev.alfayez.exposvelte.qa");
-			expect(starts[1]).toContain("-d 'expo-svelte:///__dev/screens?mode=toolbar' dev.alfayez.exposvelte.qa");
+			expect(starts[0]).toContain("force-stop dev.alfayez.exposvelte.qa; sleep 0.3; am start -W -a android.intent.action.VIEW -d 'expo-svelte-qa:///__dev/screens' dev.alfayez.exposvelte.qa");
+			expect(starts[1]).toContain("-d 'expo-svelte-qa:///__dev/screens?mode=toolbar' dev.alfayez.exposvelte.qa");
 			expect(starts[1]).not.toContain("force-stop");
 			expect(device.commands("force-stop")).toHaveLength(1);
 			await session.close();

@@ -22,6 +22,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import expo.modules.svelteappearance.isNight
 import expo.modules.svelteengine.Fragment
+import expo.modules.svelteengine.InsetRules
 import expo.modules.svelteengine.NavEvents
 import expo.modules.svelteengine.NavProps
 import expo.modules.svelteengine.TextLayouts
@@ -239,8 +240,8 @@ class EngineTabs(context: Context) : EngineView(context) {
   private fun reportMetrics() {
     val inset = cachedInset
     if (inset < 0) return
-    val height = ((barPx + inset) / density * 100f).roundToInt() / 100f
-    val dp = (inset / density * 100f).roundToInt() / 100f
+    val height = InsetRules.metric((barPx + inset).toFloat(), density)
+    val dp = InsetRules.metric(inset.toFloat(), density)
     if (height == reportedHeight && dp == reportedInset) return
     reportedHeight = height
     reportedInset = dp

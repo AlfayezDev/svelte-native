@@ -17,6 +17,7 @@ import expo.modules.svelteappearance.isNight
 import expo.modules.svelteengine.ChromeRules
 import expo.modules.svelteengine.Fragment
 import expo.modules.svelteengine.GestureRules
+import expo.modules.svelteengine.InsetRules
 import expo.modules.svelteengine.NavEvents
 import expo.modules.svelteengine.NavProps
 import expo.modules.svelteengine.TextLayouts
@@ -484,15 +485,14 @@ class EngineHeader(context: Context) : EngineView(context) {
     val inset = cachedInset
     if (inset < 0) return
     val total = inset + barPx + if (large) largePx else 0
-    val height = round2(total / density)
-    val topInset = round2(inset / density)
+    val height = InsetRules.metric(total.toFloat(), density)
+    val topInset = InsetRules.metric(inset.toFloat(), density)
     if (height == reportedHeight && topInset == reportedInset) return
     reportedHeight = height
     reportedInset = topInset
     NavEvents.metrics(node.tag, height, topInset)
   }
 
-  private fun round2(v: Float) = (v * 100f).roundToInt() / 100f
 
   // The window dispatches insets again when they change, to every view (so an IME animation calls this each frame): the
   // header only lays out again when its own inset moved. It does not ask for a dispatch itself when it attaches, which

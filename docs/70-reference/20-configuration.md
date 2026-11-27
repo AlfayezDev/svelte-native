@@ -18,7 +18,7 @@ What `expo-svelte init` writes, file by file, and the options of the Vite, Metro
 		"check-setup": "expo-svelte doctor"
 	},
 	"dependencies": {
-		"expo-svelte": "0.4.0-rc.13",
+		"expo-svelte": "0.4.0-rc.14",
 		"expo": "58.0.26",
 		"expo-constants": "58.0.16",
 		"react": "19.3.0",

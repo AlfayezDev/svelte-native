@@ -4,6 +4,14 @@ Notable changes to `expo-svelte` (named `@alfayez/svelte-native` up to 0.4.0-rc.
 
 ## Unreleased
 
+## 0.4.0-rc.14 - 2026-11-27
+
+### Changed
+
+- The license names AlfayezDev as the copyright holder, and the iOS podspecs' author and homepage point at the repository.
+- `expo-svelte doctor`, `sync` and the build no longer recognise the package's first name (used up to 0.4.0-rc.4) as an old dependency of the app; `@alfayez/svelte-native` still is. An app that still depends on the first name renames the dependency and its imports to `expo-svelte`.
+- The repository's own QA and example apps have new application ids (`dev.alfayez.exposvelte.qa`, `dev.alfayez.exposvelte.example`) and link schemes (`expo-svelte-qa`, `expo-svelte`). Nothing changes for an app that uses the package.
+
 ## 0.4.0-rc.13 - 2026-11-27
 
 ### Fixed

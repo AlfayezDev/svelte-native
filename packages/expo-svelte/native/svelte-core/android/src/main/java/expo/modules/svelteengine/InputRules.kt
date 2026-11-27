@@ -247,4 +247,16 @@ object InputRules {
    * and the hint is laid out plain), nor has one with no line height.
    */
   fun lineHeightSpanPx(lineHeight: Float, textLength: Int): Int = if (textLength == 0 || lineHeight <= 0f) 0 else Math.ceil(lineHeight.toDouble()).toInt()
+
+  /**
+   * A field's size, line height or letter spacing in px (`TextAttributes.effectiveFontSize`, `effectiveLineHeight`, `effectiveLetterSpacing`): [scaled], what `PixelUtil.toPixelFromSP` makes of it (the
+   * system's font scale, up to the field's `maxFontSizeMultiplier`), when the field allows font scaling (the default), and [px], dp times the density, when it does not.
+   */
+  fun effectivePx(allowFontScaling: Boolean, px: Float, scaled: Float): Float = if (allowFontScaling) scaled else px
+
+  /** Whether a size, line height or letter spacing of [px] is scaled with the system's font: when the field allows it and the value is not 0 (a negative letter spacing scales too; `effectiveLetterSpacing` has no sign test). */
+  fun scales(allowFontScaling: Boolean, px: Float): Boolean = allowFontScaling && px != 0f
+
+  /** `TextAttributes.effectiveMaxFontSizeMultiplier`: the prop, or 0 (no cap) when it is not set. */
+  fun maxFontScale(maxFontSizeMultiplier: Float): Float = if (maxFontSizeMultiplier.isNaN()) 0f else maxFontSizeMultiplier
 }

@@ -18,7 +18,7 @@ target.add_file_references([group.new_file('GesturesUITests.swift'), group.new_f
 
 target.build_configurations.each do |config|
   settings = config.build_settings
-  settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'io.rasheed.svelteqa.gesturesuitests'
+  settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'dev.alfayez.exposvelte.qa.gesturesuitests'
   settings['PRODUCT_NAME'] = '$(TARGET_NAME)'
   settings['SWIFT_VERSION'] = '5.0'
   settings['SWIFT_OBJC_BRIDGING_HEADER'] = 'GesturesUITests/SvelteQAEvents.h'

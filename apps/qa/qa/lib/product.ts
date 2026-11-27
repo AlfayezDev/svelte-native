@@ -5,7 +5,7 @@ import type { AppInfo, DeviceInfo, Metrics, Source } from "./types.ts";
 import { findByLabel, type UiTree } from "./uia.ts";
 
 /**
- * The product boot check (`native-qa product`): the example's production variant (`io.rasheed.sveltenative.qaproduct`, built with `APP_VARIANT=production`, no
+ * The product boot check (`native-qa product`): the example's production variant (`dev.alfayez.exposvelte.qaproduct`, built with `APP_VARIANT=production`, no
  * development lab) is installed on the OVH emulator with its data cleared and started cold. It passes when, within `windowMs` of the start, it
  * reached its first screen, the example's home screen, and logcat shows no JavaScript fatal and no native crash of the app.
  *
@@ -65,7 +65,7 @@ export function productFatals(logcat: string, alive: boolean, packageName: strin
 	return { fatals, jsErrors: faults.jsErrors.length };
 }
 
-/** `Displayed io.rasheed.sveltenative.qaproduct/.MainActivity` ... `TotalTime: 1234` of `am start -W`. */
+/** `Displayed dev.alfayez.exposvelte.qaproduct/.MainActivity` ... `TotalTime: 1234` of `am start -W`. */
 export function parseLaunchMs(output: string): number | null {
 	const total = /TotalTime:\s*(\d+)/.exec(output)?.[1];
 	return total === undefined ? null : Number(total);

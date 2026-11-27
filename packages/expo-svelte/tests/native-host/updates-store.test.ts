@@ -207,14 +207,14 @@ const groups: Record<string, Case[]> = {
   QaReset: [
     {
       name: "only the QA package reads the setting; any other package answers null without reading it",
-      runs: [["qa io.rasheed.svelteqa qa-1", "qa io.rasheed.app qa-1", "qa io.rasheed.svelteqa -", "qa io.rasheed.svelteqa.other qa-1", "qa-throws"]],
+      runs: [["qa dev.alfayez.exposvelte.qa qa-1", "qa com.example.app qa-1", "qa dev.alfayez.exposvelte.qa -", "qa dev.alfayez.exposvelte.qa.other qa-1", "qa-throws"]],
       check: (out) => expect(out).toEqual(["token=qa-1 read=true", "token=- read=false", "token=- read=true", "token=- read=false", "token=-"]),
     },
     {
       // qa/lib/reset.ts sets this setting; the harness test compares both ends.
       name: "the setting and package the compiled code honours are the ones the harness sets and the QA app has",
       runs: [["qa-setting"]],
-      check: (out) => expect(out).toEqual(["setting=svelte_qa_reset_updates package=io.rasheed.svelteqa"]),
+      check: (out) => expect(out).toEqual(["setting=svelte_qa_reset_updates package=dev.alfayez.exposvelte.qa"]),
     },
   ],
 

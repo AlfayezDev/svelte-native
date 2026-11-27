@@ -65,12 +65,12 @@ test("the back key belongs to a router only while it is active, and links only t
   expect(nested.router.entries).toHaveLength(2);
   // A link is the app's: the root opens it, a nested router never does, active or not (a tab whose routes match the URL
   // would otherwise push the same screen again).
-  link("rasheed://a");
+  link("myapp://a");
   expect(app.stack()).toEqual(["/:push", "/a:push"]);
   expect(nested.router.entries).toHaveLength(2);
   nested.setActive(true);
   await turns(m);
-  link("rasheed://t/a");
+  link("myapp://t/a");
   expect(nested.router.entries).toHaveLength(2);
   expect(app.stack()).toEqual(["/:push", "/a:push"]);
   nested.router.goto("/t/a?again");

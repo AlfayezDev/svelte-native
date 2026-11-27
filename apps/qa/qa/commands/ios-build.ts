@@ -17,20 +17,20 @@ import { sleep } from "../lib/wait.ts";
  * does not change a setting of the Mac or the phone.
  */
 
-const defaultScript = "/tmp/rasheed-ios-lab-20261025.command";
+const defaultScript = "/tmp/expo-svelte-ios-lab-20261025.command";
 /**
  * The smoke app (`--variant smoke`) is another Xcode project (Expo names it from the display name, `Sveltesmoke`) with its own GUI
- * Terminal script, made like the lab one for that project; the lab script builds `RasheedSvelteQA` and cannot be reused.
+ * Terminal script, made like the lab one for that project; the lab script builds `ExpoSvelteQA` and cannot be reused.
  */
-const defaultSmokeScript = "/tmp/rasheed-ios-smoke.command";
-const productNames = { qa: "RasheedSvelteQA", smoke: "Sveltesmoke" } as const;
+const defaultSmokeScript = "/tmp/expo-svelte-ios-smoke.command";
+const productNames = { qa: "ExpoSvelteQA", smoke: "Sveltesmoke" } as const;
 const smokeBundleMarker = "RNFBAppModule";
 // DerivedData is the signed build's own cache on the Mac: `--delete` would wipe it and make every build a full ~6 min rebuild. An app's
 // `dist/` is build output, but the library's `packages/expo-svelte/dist/node/` is committed source the Expo plugin, Metro and the CLI
 // load (a bare "dist" pattern left the Mac without it, and prebuild failed to resolve `expo-svelte/expo`, 9 Nov 2026).
 // `.cxx` and `.gradle` are the Android build's native intermediates and caches: the Mac never reads them, and a Gradle build running in the same
 // checkout writes and deletes files in them while rsync walks it, which makes rsync exit 24 ("file has vanished") and the build fail.
-export const macSyncExcludes = ["DerivedData", "node_modules", ".git", "apps/qa/android/", "apps/qa/ios/", "build", ".cxx", ".gradle", "/apps/*/dist/", ".svelte-kit", ".expo-svelte", ".rasheed", ".env", ".expo", "*.log"];
+export const macSyncExcludes = ["DerivedData", "node_modules", ".git", "apps/qa/android/", "apps/qa/ios/", "build", ".cxx", ".gradle", "/apps/*/dist/", ".svelte-kit", ".expo-svelte", ".env", ".expo", "*.log"];
 const excludes = macSyncExcludes;
 const buildWaitMs = 30 * 60_000;
 

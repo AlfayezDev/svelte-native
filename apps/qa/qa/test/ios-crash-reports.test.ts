@@ -38,10 +38,10 @@ import { macFrom, scriptOf, type Run } from "../lib/iphone/mac.ts";
 import type { CrashReport, Launch } from "../lib/types.ts";
 import { sample } from "./sample.ts";
 
-const bundleId = "io.rasheed.svelteqa";
+const bundleId = "dev.alfayez.exposvelte.qa";
 const options = { bundleId };
-const objcName = "RasheedSvelteQA-2026-10-27-090359.ips";
-const asiName = "RasheedSvelteQA-2026-10-26-153204.ips";
+const objcName = "ExpoSvelteQA-2026-10-27-090359.ips";
+const asiName = "ExpoSvelteQA-2026-10-26-153204.ips";
 const jetsamName = "JetsamEvent-2026-10-26-232518.ips";
 const objc = sample("ios-crash-objc-exception.ips");
 const asiOnly = sample("ios-crash-asi-only.ips");
@@ -87,7 +87,7 @@ describe("parsing a crash report", () => {
 		expect(report.framesOf).toBe("lastExceptionBacktrace");
 		expect(report.topFrames).toHaveLength(12);
 		expect(report.topFrames[0]).toEqual({ image: "CoreFoundation", offset: 1135172, symbol: "__exceptionPreprocess" });
-		expect(report.topFrames[4]).toEqual({ image: "RasheedSvelteQA", offset: 1597812, symbol: "-[SvelteTabView unmountChildComponentView:index:]" });
+		expect(report.topFrames[4]).toEqual({ image: "ExpoSvelteQA", offset: 1597812, symbol: "-[SvelteTabView unmountChildComponentView:index:]" });
 		expect(report.attributedTo).toBeUndefined();
 	});
 
@@ -135,7 +135,7 @@ describe("parsing a crash report", () => {
 	});
 
 	test("other bundles' reports and files that are not reports are not the app's", () => {
-		const other = objc.replace('"bundleID":"io.rasheed.svelteqa"', '"bundleID":"com.apple.mobilesafari"');
+		const other = objc.replace('"bundleID":"dev.alfayez.exposvelte.qa"', '"bundleID":"com.apple.mobilesafari"');
 		expect(readCrashReport(objcName, other, options)).toBeNull();
 		expect(readCrashReport("Analytics-2026-10-27-030006.0005.ips.ca", objc, options)).toBeNull();
 		expect(readCrashReport("SFA-sos.json-2026-10-27-010214.ips", "not json at all", options)).toBeNull();
@@ -155,7 +155,7 @@ describe("parsing a crash report", () => {
 		expect(readCrashReport(jetsamName, jetsam, options)).toBeNull();
 		const killed = edited(jetsam, (body) => {
 			const processes = body.processes as { name: string; reason?: string }[];
-			const app = processes.find((entry) => entry.name === "RasheedSvelteQA");
+			const app = processes.find((entry) => entry.name === "ExpoSvelteQA");
 			if (app) app.reason = "per-process-limit";
 		});
 		const report = must(readCrashReport(jetsamName, killed, options));
@@ -437,7 +437,7 @@ async function putOnPhone(phone: string, files: Record<string, string>): Promise
 }
 
 const deviceId = "E74A5608-BF8E-5806-8699-1605F82ADED9";
-const otherBundle = objc.replace('"bundleID":"io.rasheed.svelteqa"', '"bundleID":"com.apple.mobilesafari"');
+const otherBundle = objc.replace('"bundleID":"dev.alfayez.exposvelte.qa"', '"bundleID":"com.apple.mobilesafari"');
 const watchOptions = (fake: { mac: ReturnType<typeof macFrom> }, extra: { limitSeconds?: number } = {}) => ({ mac: fake.mac, deviceId, bundleId, ...extra });
 
 describe("listing the crash log of the phone", () => {
@@ -512,8 +512,8 @@ describe("listing the crash log of the phone", () => {
 
 	test("which files can be reports of the app: its own by process name, and every jetsam event; the smoke app's by its own process name", () => {
 		const file = (name: string) => ({ path: name, name, bytes: 1 });
-		const files = [file("RasheedSvelteQA-2026-10-27-090359.ips"), file("Sveltesmoke-2026-11-01-171503.ips"), file("JetsamEvent-2026-10-26-232518.ips"), file("Safari-2026-10-27-000000.ips"), file("RasheedSvelteQA-notes.txt")];
-		expect(reportFiles(files).map((entry) => entry.name)).toEqual(["RasheedSvelteQA-2026-10-27-090359.ips", "JetsamEvent-2026-10-26-232518.ips"]);
+		const files = [file("ExpoSvelteQA-2026-10-27-090359.ips"), file("Sveltesmoke-2026-11-01-171503.ips"), file("JetsamEvent-2026-10-26-232518.ips"), file("Safari-2026-10-27-000000.ips"), file("ExpoSvelteQA-notes.txt")];
+		expect(reportFiles(files).map((entry) => entry.name)).toEqual(["ExpoSvelteQA-2026-10-27-090359.ips", "JetsamEvent-2026-10-26-232518.ips"]);
 		expect(reportFiles(files, "Sveltesmoke").map((entry) => entry.name)).toEqual(["Sveltesmoke-2026-11-01-171503.ips", "JetsamEvent-2026-10-26-232518.ips"]);
 	});
 });
@@ -542,7 +542,7 @@ describe("copying reports of the crash log", () => {
 	test("a file that does not arrive fails the pull with devicectl's words", async () => {
 		const fake = await fakeMac();
 		try {
-			await expect(pullCrashFiles(fake.mac, deviceId, [{ path: objcName, name: objcName, bytes: null }], { bundleId })).rejects.toThrow("copying RasheedSvelteQA-2026-10-27-090359.ips failed");
+			await expect(pullCrashFiles(fake.mac, deviceId, [{ path: objcName, name: objcName, bytes: null }], { bundleId })).rejects.toThrow("copying ExpoSvelteQA-2026-10-27-090359.ips failed");
 		} finally {
 			await fake.cleanup();
 		}
@@ -668,8 +668,8 @@ describe("watching the crash log across a command", () => {
 	test("the smoke app's reports are named by its own process", async () => {
 		const fake = await fakeMac();
 		try {
-			await putOnPhone(fake.phone, { "Sveltesmoke-2026-11-01-171503.ips": objc.replace('"app_name":"RasheedSvelteQA"', '"app_name":"Sveltesmoke"').replace('"bundleID":"io.rasheed.svelteqa"', '"bundleID":"io.rasheed.svelteqa.smoke"') });
-			const watch = await startCrashWatch({ ...watchOptions(fake), bundleId: "io.rasheed.svelteqa.smoke", processName: "Sveltesmoke" });
+			await putOnPhone(fake.phone, { "Sveltesmoke-2026-11-01-171503.ips": objc.replace('"app_name":"ExpoSvelteQA"', '"app_name":"Sveltesmoke"').replace('"bundleID":"dev.alfayez.exposvelte.qa"', '"bundleID":"dev.alfayez.exposvelte.qa.smoke"') });
+			const watch = await startCrashWatch({ ...watchOptions(fake), bundleId: "dev.alfayez.exposvelte.qa.smoke", processName: "Sveltesmoke" });
 			expect([...(watch.known ?? [])]).toEqual(["Sveltesmoke-2026-11-01-171503.ips"]);
 			const qa = await startCrashWatch(watchOptions(fake));
 			expect([...(qa.known ?? [])]).toEqual([]);
@@ -689,9 +689,9 @@ const sysdiagnose = "DiagnosticLogs/sysdiagnose/sysdiagnose_2026.10.28_14-16-37+
 
 describe("reading the crash log over USB, where CoreDevice is not needed", () => {
 	test("the copy asks for the app's reports and the jetsam events only, keeps them on the phone, and each call is ended by the Mac", () => {
-		expect(usbFilters("RasheedSvelteQA")).toEqual(["RasheedSvelteQA", "JetsamEvent"]);
-		const script = usbListScript({ udid, directory: "/tmp/native-qa-ios/usb-1-1", filters: usbFilters("RasheedSvelteQA"), limitSeconds: 40 });
-		for (const filter of ["RasheedSvelteQA", "JetsamEvent"])
+		expect(usbFilters("ExpoSvelteQA")).toEqual(["ExpoSvelteQA", "JetsamEvent"]);
+		const script = usbListScript({ udid, directory: "/tmp/native-qa-ios/usb-1-1", filters: usbFilters("ExpoSvelteQA"), limitSeconds: 40 });
+		for (const filter of ["ExpoSvelteQA", "JetsamEvent"])
 			expect(script).toContain(`'perl' '-e' 'alarm shift; exec @ARGV' '40' 'idevicecrashreport' '-k' '-u' '${udid}' '-f' '${filter}' '/tmp/native-qa-ios/usb-1-1'`);
 		// `-k` on every call: without it the tool removes the reports it copied from the phone.
 		expect(script.match(/'idevicecrashreport'/g)).toHaveLength(2);
@@ -700,8 +700,8 @@ describe("reading the crash log over USB, where CoreDevice is not needed", () =>
 	});
 
 	test("a listing is read whole: a line that is not a file of the crash log throws", () => {
-		expect(parseUsbListing(`1204\tRasheedSvelteQA-2026-10-27-090359.ips\n88\tRetired/JetsamEvent-2026-10-26-232518.ips\n`)).toEqual([
-			{ path: "RasheedSvelteQA-2026-10-27-090359.ips", name: "RasheedSvelteQA-2026-10-27-090359.ips", bytes: 1204 },
+		expect(parseUsbListing(`1204\tExpoSvelteQA-2026-10-27-090359.ips\n88\tRetired/JetsamEvent-2026-10-26-232518.ips\n`)).toEqual([
+			{ path: "ExpoSvelteQA-2026-10-27-090359.ips", name: "ExpoSvelteQA-2026-10-27-090359.ips", bytes: 1204 },
 			{ path: "Retired/JetsamEvent-2026-10-26-232518.ips", name: "JetsamEvent-2026-10-26-232518.ips", bytes: 88 },
 		]);
 		expect(parseUsbListing("")).toEqual([]);
@@ -909,7 +909,7 @@ describe("watching the crash log across a UI test", () => {
 const named = (shell: string | null) => (shell === null ? "(no zsh on this machine)" : "under zsh");
 
 describe("the Mac's shell is zsh: no script of the crash log depends on it", () => {
-	const options = { udid, directory: "/tmp/native-qa-ios/zsh-1", filters: usbFilters("RasheedSvelteQA"), limitSeconds: 20 };
+	const options = { udid, directory: "/tmp/native-qa-ios/zsh-1", filters: usbFilters("ExpoSvelteQA"), limitSeconds: 20 };
 
 	test("no script assigns a variable zsh ties to something (path to PATH, status read-only, argv, pipestatus)", () => {
 		const scripts = [
@@ -991,7 +991,7 @@ describe("a USB copy that lost a file is not a copy", () => {
 
 	test("a file the tool says it copied that is not on disk fails the read, though no line says why", async () => {
 		const outcome = await lose("losefile");
-		expect(outcome.error).toMatch(/copied but not on disk: \/?RasheedSvelteQA-/);
+		expect(outcome.error).toMatch(/copied but not on disk: \/?ExpoSvelteQA-/);
 	});
 
 	test("a file that arrived empty fails the read", async () => {

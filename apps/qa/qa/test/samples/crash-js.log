@@ -2,7 +2,7 @@
 10-26 12:40:00.100  5001  5033 E ReactNativeJS: [TypeError: undefined is not a function]
 --------- beginning of crash
 10-26 12:40:00.110  5001  5033 E AndroidRuntime: FATAL EXCEPTION: mqt_v_js
-10-26 12:40:00.110  5001  5033 E AndroidRuntime: Process: io.rasheed.svelteqa, PID: 5001
+10-26 12:40:00.110  5001  5033 E AndroidRuntime: Process: dev.alfayez.exposvelte.qa, PID: 5001
 10-26 12:40:00.110  5001  5033 E AndroidRuntime: com.facebook.react.common.JavascriptException: TypeError: undefined is not a function, js engine: hermes, stack:
 10-26 12:40:00.110  5001  5033 E AndroidRuntime: anonymous@1:130
 10-26 12:40:00.110  5001  5033 E AndroidRuntime: flush@1:310

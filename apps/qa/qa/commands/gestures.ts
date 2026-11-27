@@ -43,7 +43,7 @@ export async function gesturesOnce(
 	const tail = tailLogcat(serial, input === "adb" ? driver.onLine : () => undefined);
 	let matched: boolean;
 	try {
-		await startApp(serial, packageName, `rasheed-svelte:///__dev?run=${runValue(names, input)}`);
+		await startApp(serial, packageName, `expo-svelte:///__dev?run=${runValue(names, input)}`);
 		matched = await tail.until(/\[Svelte stress\] complete/, timeoutMs);
 		// The lines after the last scenario's result, and the injections still in flight.
 		if (matched) await sleep(2000);

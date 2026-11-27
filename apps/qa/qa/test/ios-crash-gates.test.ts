@@ -8,8 +8,8 @@ import { bootMetrics, crashReportMetrics, deviceMetrics, labMetrics } from "../l
 import type { BootFile, CrashReport, DeviceInfo, LabFile, Launch, ParityFile } from "../lib/types.ts";
 import { sample } from "./sample.ts";
 
-const options = { bundleId: "io.rasheed.svelteqa" };
-const objcName = "RasheedSvelteQA-2026-10-27-090359.ips";
+const options = { bundleId: "dev.alfayez.exposvelte.qa" };
+const objcName = "ExpoSvelteQA-2026-10-27-090359.ips";
 const objc = sample("ios-crash-objc-exception.ips");
 
 function must(report: CrashReport | null): CrashReport {

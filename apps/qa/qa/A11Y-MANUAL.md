@@ -37,8 +37,8 @@ Read from the source at `48d746e54`; the steps below test each one.
 
 ## Setup (both platforms)
 
-- Install the QA app (`io.rasheed.svelteqa`, from `pnpm native-qa build`, or an EAS `qa` build). It holds the product screens and the lab. Use a dev backend; the development sign-in code is `000000`. Do not write the account's address into any file.
-- Open a lab route by link: Android `adb shell am start -a android.intent.action.VIEW -d 'rasheed-svelte:///__dev/screens'`; iPhone: type the link into Safari's address bar. Routes used: `/__dev/screens` (header, tabs, sheet, form sheet, modal, toolbar menu), `/__dev/tree` (file-routed tabs), `/__dev/gestures?mode=row|carousel|pushed-edge`, `/__dev/foreign?mode=libraries`, `/__dev` (checks panel). The product's screens are reached by signing in: `rasheed-svelte:///workspaces`.
+- Install the QA app (`dev.alfayez.exposvelte.qa`, from `pnpm native-qa build`, or an EAS `qa` build). It holds the product screens and the lab. Use a dev backend; the development sign-in code is `000000`. Do not write the account's address into any file.
+- Open a lab route by link: Android `adb shell am start -a android.intent.action.VIEW -d 'expo-svelte:///__dev/screens'`; iPhone: type the link into Safari's address bar. Routes used: `/__dev/screens` (header, tabs, sheet, form sheet, modal, toolbar menu), `/__dev/tree` (file-routed tabs), `/__dev/gestures?mode=row|carousel|pushed-edge`, `/__dev/foreign?mode=libraries`, `/__dev` (checks panel). The product's screens are reached by signing in: `expo-svelte:///workspaces`.
 - Keep the phone awake and plugged in (screen timeout at its longest), the volume up, battery saver off.
 - Set the device language to English first; the RTL step switches it.
 
@@ -72,7 +72,7 @@ Open a workspace (home tab).
 
 - [ ] The tab bar is read as tabs: "Home, tab 1 of 2, selected" (or equivalent), the other as not selected; it is the last stop after the content.
 - [ ] Switch to Settings by double-tapping its tab: the selected state changes in speech; focus is on the new pane (record where). Switch back.
-- [ ] Open `rasheed-svelte:///__dev/screens?mode=tabs`: the tab items read "Home, new items" and "Inbox, 99+" (dot badge and number badge).
+- [ ] Open `expo-svelte:///__dev/screens?mode=tabs`: the tab items read "Home, new items" and "Inbox, 99+" (dot badge and number badge).
 - [ ] In Settings open each of the five sections (profile, preferences, devices, workspaces, danger): the title is the first stop after "Navigate up"; the back arrow works; focus moves to the new title when the transition ends.
 - [ ] Preferences: the current language and the current appearance are announced as selected, as radio buttons (the strip's buttons as tabs; they were drawn by color only). Choosing another one speaks the change or the new selection.
 - [ ] Devices: with several devices listed, each "Sign out device" can be told apart by what is spoken before it (Known gap until the signed-in branch's labels are merged: the button label is the same on every card).
@@ -136,7 +136,7 @@ Settings > Apps > the QA app > Language > Arabic (Samsung: Settings > General ma
 
 ### T11. Accessibility lab: state, value, hint, actions (4 min)
 
-Open `rasheed-svelte:///__dev/a11y` (the states) and `rasheed-svelte:///__dev/a11y?mode=actions`. The suite has already checked what the engine publishes for each control (`qa/README.md` "Accessibility"); this is what TalkBack says of it. Compare with any React Native app's controls with the same props if in doubt: the engine does what React Native's views do.
+Open `expo-svelte:///__dev/a11y` (the states) and `expo-svelte:///__dev/a11y?mode=actions`. The suite has already checked what the engine publishes for each control (`qa/README.md` "Accessibility"); this is what TalkBack says of it. Compare with any React Native app's controls with the same props if in doubt: the engine does what React Native's views do.
 
 - [ ] "Accept terms": checkbox, checked; double-tap unchecks it and TalkBack says "not checked". "Select all, mixed": checkbox, and "mixed" is spoken.
 - [ ] "Plan": a radio group of three radio buttons; the chosen one is selected. "Inbox" and "Archive": tabs, the current one selected.

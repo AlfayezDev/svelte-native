@@ -397,7 +397,7 @@ function file(scenario: Awaited<ReturnType<typeof runUpdatesScenario>>, boot = b
 		finishedAt: "2026-11-01T10:30:00.000Z",
 		source: { commit: "abc", dirty: false },
 		device: { serial: "localhost:5555", platform: "android", kind: "emulator", model: "x", osVersion: "16", sdk: 36, abi: "x86_64", refreshHz: 60 },
-		app: { package: "io.rasheed.svelteqa", versionName: "0.1.0", versionCode: 1, lastUpdateTime: null, installedSha256: "aa", apk: null },
+		app: { package: "dev.alfayez.exposvelte.qa", versionName: "0.1.0", versionCode: 1, lastUpdateTime: null, installedSha256: "aa", apk: null },
 		channel: "qa",
 		runtimeVersion: "0.1.0",
 		build: null,

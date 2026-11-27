@@ -189,7 +189,7 @@ const device: DeviceInfo = { serial: "emulator-5554", platform: "android", kind:
 function file(launches: GestureLaunch[]): GesturesFile {
 	return {
 		schema: 1, kind: "gestures", startedAt: "2026-10-28T10:00:00.000Z", finishedAt: "2026-10-28T10:10:00.000Z", source: { commit: "abc", dirty: false }, device,
-		app: { package: "io.rasheed.svelteqa", versionName: "1", versionCode: 1, lastUpdateTime: null, installedSha256: "ff", apk: null },
+		app: { package: "dev.alfayez.exposvelte.qa", versionName: "1", versionCode: 1, lastUpdateTime: null, installedSha256: "ff", apk: null },
 		run: scenarioNames, inputs: [...new Set(launches.map((entry) => entry.input))], launches,
 	};
 }
@@ -224,7 +224,7 @@ describe("results from the lab's lines", () => {
 		const done = line(`'[Svelte stress] complete', '${JSON.stringify({ periodMs: 16.67, results: [{ name: "gestures-box", verdict: "fail" }, { name: "gestures-row", verdict: "fail" }] })}'`);
 		const capture = (extra: Partial<LaunchCapture>): LaunchCapture => ({
 			input: "adb", asked: ["gestures-box", "gestures-row"], text: `${text}\n${done}`, matched: true, startedAt: new Date("2026-10-28T10:00:00Z"), durationMs: 5000, logFile: "runs/x.log",
-			packageName: "io.rasheed.svelteqa", injections: {}, harnessErrors: [], ...extra,
+			packageName: "dev.alfayez.exposvelte.qa", injections: {}, harnessErrors: [], ...extra,
 		});
 		expect(launchFromLogcat(capture({})).complete).toBe(true);
 		expect(launchFromLogcat(capture({ matched: false })).complete).toBe(false);
@@ -239,7 +239,7 @@ describe("results from the lab's lines", () => {
 		const done = line(`'[Svelte stress] complete', '${JSON.stringify({ periodMs: 16.67, results: [{ name: "gestures-box", verdict: "fail" }, { name: "gestures-row", verdict: "fail" }] })}'`);
 		const capture: LaunchCapture = {
 			input: "adb", asked: ["gestures-box", "gestures-row"], text: `${lines.join("\n")}\n${done}`, matched: true, startedAt: new Date("2026-10-28T10:00:00Z"), durationMs: 5000, logFile: "runs/x.log",
-			packageName: "io.rasheed.svelteqa", injections: {}, harnessErrors: ["an earlier one"],
+			packageName: "dev.alfayez.exposvelte.qa", injections: {}, harnessErrors: ["an earlier one"],
 		};
 		const out = launchFromLogcat(capture);
 		expect(out.scenarios.map((entry) => entry.name)).toEqual(["gestures-box", "gestures-sheet"]);
@@ -251,8 +251,8 @@ describe("results from the lab's lines", () => {
 	});
 
 	test("an app that crashed during the launch is on the launch", () => {
-		const crash = `${line("FATAL EXCEPTION: main").replace("ReactNativeJS", "AndroidRuntime")}\n${line("Process: io.rasheed.svelteqa, PID: 4242").replace("ReactNativeJS", "AndroidRuntime")}`;
-		const out = launchFromLogcat({ input: "qa", asked: [], text: `${text}\n${crash}`, matched: false, startedAt: new Date(), durationMs: 1, logFile: "x", packageName: "io.rasheed.svelteqa", injections: {}, harnessErrors: [] });
+		const crash = `${line("FATAL EXCEPTION: main").replace("ReactNativeJS", "AndroidRuntime")}\n${line("Process: dev.alfayez.exposvelte.qa, PID: 4242").replace("ReactNativeJS", "AndroidRuntime")}`;
+		const out = launchFromLogcat({ input: "qa", asked: [], text: `${text}\n${crash}`, matched: false, startedAt: new Date(), durationMs: 1, logFile: "x", packageName: "dev.alfayez.exposvelte.qa", injections: {}, harnessErrors: [] });
 		expect(out.crashes).toHaveLength(1);
 	});
 });

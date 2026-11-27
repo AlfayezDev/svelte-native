@@ -323,7 +323,7 @@ open class NativeProxy {
         runCatching { mountingManager.javaClass.getMethod("getViewExists", Int::class.javaPrimitiveType) }.getOrNull()
     }
 
-    // Rasheed patch: opacity and translate/scale-only transforms are written straight to the
+    // expo-svelte patch: opacity and translate/scale-only transforms are written straight to the
     // Android View. This skips the ViewManager prop diff and React Native's 4x4 matrix build and
     // decomposition, which cost about 80 microseconds per view per frame on mid-range phones.
     // Anything else (rotation, skew, percentages, matrices, a transform origin, other props)

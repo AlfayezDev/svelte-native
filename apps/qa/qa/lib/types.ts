@@ -65,7 +65,7 @@ export type CrashFrame = { image: string | null; offset: number; symbol: string 
  * (`exceptionType` null). Times are the phone's own, as the report carries them (an instant: the report names its UTC offset).
  */
 export type CrashReport = {
-	/** The file's name on the phone (`RasheedSvelteQA-2026-10-27-090359.ips`); a copy is kept in `qa/runs/<run>-crashes/`. */
+	/** The file's name on the phone (`ExpoSvelteQA-2026-10-27-090359.ips`); a copy is kept in `qa/runs/<run>-crashes/`. */
 	file: string;
 	/** The report's `captureTime` (its header's `timestamp` when it has none), as an ISO 8601 instant; null for a report that could not be read. */
 	capturedAt: string | null;

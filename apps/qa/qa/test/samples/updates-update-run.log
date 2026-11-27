@@ -2,5 +2,5 @@
 11-01 13:08:44.895  6435  6461 I ReactNativeJS: Running "main"
 11-01 13:08:44.909  6435  6461 I ReactNativeJS: [Svelte boot] init 8 · polyfills 25 · rn 3 · updates 27 · expo-core 0 · svelte 0 · host 0 · fabric 0 · app 26 · first commit 15 · total 104 ms
 11-01 13:08:44.923  6435  6461 I ReactNativeJS: [Svelte QA updates] {"enabled":true,"updateId":"01a19694-d84b-75f6-8727-26a4f2c91df4","embedded":false,"createdAt":1793527699531,"runtimeVersion":"0.1.0","channel":"qa","checkOnLaunch":"ALWAYS","marker":"qa-manual-clean"}
-11-01 13:08:44.979   550   568 I ActivityTaskManager: Displayed io.rasheed.svelteqa/.MainActivity for user 0: +365ms
+11-01 13:08:44.979   550   568 I ActivityTaskManager: Displayed dev.alfayez.exposvelte.qa/.MainActivity for user 0: +365ms
 11-01 13:08:45.959  6435  6461 I ReactNativeJS: [Svelte updates] No update to download (noUpdateAvailableOnServer)

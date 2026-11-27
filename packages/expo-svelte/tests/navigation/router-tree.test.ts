@@ -203,9 +203,9 @@ test("two screens of one tabs navigator keep a state each: another workspace's t
 test("links open through the root and select the pane; a link no route matches is ignored; replaceBase swaps the root's first screen", async () => {
   withInsets(24);
   const { router, settled } = await mountTree(87, { initial: "/workspaces" });
-  expect(router.openURL("rasheed://acme/inbox/compose")).toBe(true);
+  expect(router.openURL("myapp://acme/inbox/compose")).toBe(true);
   expect(router.openURL("https://example.com/acme/home")).toBe(true);
-  expect(router.openURL("rasheed://acme/nowhere/at/all")).toBe(false);
+  expect(router.openURL("myapp://acme/nowhere/at/all")).toBe(false);
   await settled();
   expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
   expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home"]);

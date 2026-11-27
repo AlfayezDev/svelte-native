@@ -1,7 +1,7 @@
-// React Native community autolinking, per variant. Every app but the smoke app (`APP_VARIANT=smoke`, `io.rasheed.svelteqa.smoke`) leaves
+// React Native community autolinking, per variant. Every app but the smoke app (`APP_VARIANT=smoke`, `dev.alfayez.exposvelte.qa.smoke`) leaves
 // out every package of the native module smoke test (qa/smoke-modules.json) that is not the product's, and not one the library requires or carries
-// (the vendored react-native-quick-crypto, react-native-quick-base64, react-native-mmkv and react-native-nitro-modules: linked by every app): the product (`io.rasheed.sveltenative.qaproduct`) and the QA app
-// (`io.rasheed.svelteqa`) have the product's native modules and no more. Expo's autolinking gets the same names from the Svelte native
+// (the vendored react-native-quick-crypto, react-native-quick-base64, react-native-mmkv and react-native-nitro-modules: linked by every app): the product (`dev.alfayez.exposvelte.qaproduct`) and the QA app
+// (`dev.alfayez.exposvelte.qa`) have the product's native modules and no more. Expo's autolinking gets the same names from the Svelte native
 // plugin's `autolinkingExclude` (app.config.ts), which also writes them into settings.gradle and the Podfile.
 // An ES module, like the rest of this package ("type": "module"); Expo's autolinking and the community CLI both load it.
 import { createRequire } from "node:module";

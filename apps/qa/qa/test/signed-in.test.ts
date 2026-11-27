@@ -49,7 +49,7 @@ describe("the signed-in cases", () => {
 			expect(screen.signedIn).toBe(true);
 			expect(screen.needsBackend).toBe(true);
 			expect(screen.network).toBe("normal");
-			expect(screen.deepLink).toBe("rasheed-svelte:///workspaces");
+			expect(screen.deepLink).toBe("expo-svelte:///workspaces");
 		}
 		expect(new Set(signedIn.map((screen) => screen.id)).size).toBe(signedIn.length);
 	});

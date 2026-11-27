@@ -14,8 +14,8 @@ describe("selectors and masks", () => {
 		expect(matches(bar, { label: "Loading…" })).toBe(true);
 		expect(matches(bar, { className: "android.widget.ProgressBar" })).toBe(true);
 		expect(matches(bar, { className: "android.widget.Button" })).toBe(false);
-		expect(matches(bar, { label: "Rasheed" })).toBe(false);
-		expect(findNode(tree, { label: "Rasheed" }, "ltr")?.className).toBe("android.widget.TextView");
+		expect(matches(bar, { label: "Expo Svelte" })).toBe(false);
+		expect(findNode(tree, { label: "Expo Svelte" }, "ltr")?.className).toBe("android.widget.TextView");
 		expect(findNode(tree, { label: "nothing" }, "ltr")).toBeNull();
 	});
 

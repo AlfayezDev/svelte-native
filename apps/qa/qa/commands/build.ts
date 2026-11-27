@@ -148,7 +148,7 @@ export async function build(argv: string[]): Promise<void> {
 	if (!abis.includes(abi)) throw new Error(`--abi must be one of ${abis.join(", ")}`);
 	const variant = variantFlag(values.variant);
 	const channel = qaChannel(values["updates-channel"]);
-	// The update scenario runs in the QA app (`io.rasheed.svelteqa`, the one the channel's builds and `native-qa updates` are about); the smoke app never checks for updates.
+	// The update scenario runs in the QA app (`dev.alfayez.exposvelte.qa`, the one the channel's builds and `native-qa updates` are about); the smoke app never checks for updates.
 	if (channel !== null && variant !== "qa") throw new Error(`--updates-channel builds the QA app, not the ${variant} app`);
 	await reexecUnderLock(gradleLock, ["build", ...argv]);
 

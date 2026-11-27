@@ -1,6 +1,6 @@
 import XCTest
 
-/// Drives the gesture lab (`/__dev/gestures`, SPEC.md "Gestures") on the iPhone the way a person would. The harness gives it the lab's link `rasheed-svelte:///__dev?run=gestures-...,drive:xctest`; this test opens it (which launches the app) and
+/// Drives the gesture lab (`/__dev/gestures`, SPEC.md "Gestures") on the iPhone the way a person would. The harness gives it the lab's link `expo-svelte:///__dev?run=gestures-...,drive:xctest`; this test opens it (which launches the app) and
 /// loops: read the lab's `ready` line from the element `gestures.status` (its accessibility label is the line's JSON), find the view the
 /// step aims at by its accessibility identifier (`gesture.<name>`, the page's `testID`), perform the input with XCUITest's own gestures
 /// (the pushed-edge swipe with `SvelteQAEvents`, a drag that lifts while moving), and wait for the next line. The verdicts are the lab's:
@@ -13,7 +13,7 @@ import XCTest
 /// then a rotation, which the lab's pinch scenario expects on iOS (it keeps what the first left and judges the end state, with a
 /// tolerance, and does not require the two to have been active together).
 final class GesturesUITests: XCTestCase {
-    private let bundleId = ProcessInfo.processInfo.environment["GESTURES_BUNDLE_ID"] ?? "io.rasheed.svelteqa"
+    private let bundleId = ProcessInfo.processInfo.environment["GESTURES_BUNDLE_ID"] ?? "dev.alfayez.exposvelte.qa"
     private let seconds = TimeInterval(ProcessInfo.processInfo.environment["GESTURES_SECONDS"] ?? "900") ?? 900
 
     override func setUp() {

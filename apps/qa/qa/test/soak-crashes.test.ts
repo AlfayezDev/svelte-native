@@ -14,7 +14,7 @@ import { findFaults } from "../parse/logcat.ts";
 import type { CrashesFile } from "../lib/types.ts";
 import { sample } from "./sample.ts";
 
-const pkg = "io.rasheed.svelteqa";
+const pkg = "dev.alfayez.exposvelte.qa";
 
 describe("resuming a crashes file", () => {
 	const sha = "d089db0466db".repeat(5).slice(0, 64);
@@ -45,7 +45,7 @@ describe("resuming a crashes file", () => {
 	test("a different --run, --idle or --package is refused, each by name", () => {
 		expect(resumeMismatch(file(), now({ run: "checks,list-300-virtual" }))).toContain('--run "checks,quick" in the file, "checks,list-300-virtual" now');
 		expect(resumeMismatch(file(), now({ idleSeconds: 20 }))).toContain("--idle 2 in the file, 20 now");
-		expect(resumeMismatch(file(), now({ packageName: "io.other" }))).toContain('--package "io.rasheed.svelteqa" in the file, "io.other" now');
+		expect(resumeMismatch(file(), now({ packageName: "io.other" }))).toContain('--package "dev.alfayez.exposvelte.qa" in the file, "io.other" now');
 	});
 
 	test("another installed build is refused", () => {
@@ -106,7 +106,7 @@ describe("classifyStart", () => {
 	});
 	test("an ANR is counted apart from a crash", () => {
 		const anr =
-			"10-26 13:00:00.100  1000  1100 E ActivityManager: ANR in io.rasheed.svelteqa (io.rasheed.svelteqa/.MainActivity)";
+			"10-26 13:00:00.100  1000  1100 E ActivityManager: ANR in dev.alfayez.exposvelte.qa (dev.alfayez.exposvelte.qa/.MainActivity)";
 		const start = classifyStart(6, anr, true, true, null, pkg);
 		expect([start.crash, start.anr]).toEqual([false, true]);
 	});
@@ -170,7 +170,7 @@ describe("classifySuite", () => {
 		expect(classifySuite(1, run(sample("lab-run.log"), true), "runs/suite-1.log", pkg).error).toBeNull();
 	});
 	test("crash lines and ANR lines of a suite are counted apart", () => {
-		const text = `${sample("lab-run.log")}\n${sample("crash-js.log")}\n10-26 13:00:00.100  1000  1100 E ActivityManager: ANR in io.rasheed.svelteqa (io.rasheed.svelteqa/.MainActivity)\n`;
+		const text = `${sample("lab-run.log")}\n${sample("crash-js.log")}\n10-26 13:00:00.100  1000  1100 E ActivityManager: ANR in dev.alfayez.exposvelte.qa (dev.alfayez.exposvelte.qa/.MainActivity)\n`;
 		const record = classifySuite(3, run(text, true), "runs/suite-3.log", pkg);
 		expect([record.crashes, record.anrs]).toEqual([1, 1]);
 	});

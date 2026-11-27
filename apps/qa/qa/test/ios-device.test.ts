@@ -94,11 +94,11 @@ describe("devicectl commands", () => {
 
 	test("launch ends a running instance, passes the payload URL and puts launch arguments after the bundle id", async () => {
 		const { run, calls } = recorder([ok(launched)]);
-		const target = { mac: macFrom("me@mac", run), id: "DEVICE-ID", bundleId: "io.rasheed.svelteqa" };
-		const { pid } = await launchApp(target, { payloadUrl: "rasheed-svelte:///__dev?run=checks", args: launchArguments.rtl });
+		const target = { mac: macFrom("me@mac", run), id: "DEVICE-ID", bundleId: "dev.alfayez.exposvelte.qa" };
+		const { pid } = await launchApp(target, { payloadUrl: "expo-svelte:///__dev?run=checks", args: launchArguments.rtl });
 		expect(pid).toBe(4242);
 		const line = remoteLine(calls[0]);
-		expect(line).toContain("'--terminate-existing' '--device' 'DEVICE-ID' '--payload-url' 'rasheed-svelte:///__dev?run=checks' 'io.rasheed.svelteqa' '--' '-AppleLanguages' '(ar)' '-AppleLocale' 'ar_SA'");
+		expect(line).toContain("'--terminate-existing' '--device' 'DEVICE-ID' '--payload-url' 'expo-svelte:///__dev?run=checks' 'dev.alfayez.exposvelte.qa' '--' '-AppleLanguages' '(ar)' '-AppleLocale' 'ar_SA'");
 		expect(line).toContain("'--json-output'");
 	});
 
@@ -115,10 +115,10 @@ describe("devicectl commands", () => {
 
 	test("a file of the data container is read in one round trip, and null when it is not there", async () => {
 		const { run, calls } = recorder([ok('{"a":1}'), { code: 1, stdout: "", stderr: "" }]);
-		const target = { mac: macFrom("me@mac", run), id: "D", bundleId: "io.rasheed.svelteqa" };
+		const target = { mac: macFrom("me@mac", run), id: "D", bundleId: "dev.alfayez.exposvelte.qa" };
 		expect(await readAppFile(target, "Documents/lab-results.json")).toBe('{"a":1}');
 		expect(calls).toHaveLength(1);
-		expect(remoteLine(calls[0])).toContain("'--domain-type' 'appDataContainer' '--domain-identifier' 'io.rasheed.svelteqa' '--source' 'Documents/lab-results.json'");
+		expect(remoteLine(calls[0])).toContain("'--domain-type' 'appDataContainer' '--domain-identifier' 'dev.alfayez.exposvelte.qa' '--source' 'Documents/lab-results.json'");
 		expect(await readAppFile(target, "Documents/missing.json")).toBeNull();
 	});
 
@@ -127,14 +127,14 @@ describe("devicectl commands", () => {
 			result: {
 				runningProcesses: [
 					{ processIdentifier: 1, executable: "file:///sbin/launchd" },
-					{ processIdentifier: 77, executable: "file:///private/var/containers/Bundle/Application/ABC/RasheedSvelteQA.app/RasheedSvelteQA" },
+					{ processIdentifier: 77, executable: "file:///private/var/containers/Bundle/Application/ABC/ExpoSvelteQA.app/ExpoSvelteQA" },
 					{ processIdentifier: 78, executable: "file:///private/var/containers/Bundle/Application/XYZ/Other.app/Other" },
 				],
 			},
 		});
 		const { run } = recorder([ok(processes)]);
 		const target = { mac: macFrom("me@mac", run), id: "D", bundleId: "b" };
-		const app = { bundleId: "b", name: "n", version: "1", bundleVersion: "1", bundleUrl: "file:///private/var/containers/Bundle/Application/ABC/RasheedSvelteQA.app/" };
+		const app = { bundleId: "b", name: "n", version: "1", bundleVersion: "1", bundleUrl: "file:///private/var/containers/Bundle/Application/ABC/ExpoSvelteQA.app/" };
 		expect(await appProcesses(target, app)).toEqual([77]);
 	});
 });

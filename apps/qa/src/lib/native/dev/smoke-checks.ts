@@ -5,14 +5,14 @@ import { skipName, type Os, type SmokePath } from "./smoke-log.ts";
 import { hmsNativeModules, hmsOutcome } from "./smoke-rules.ts";
 
 /**
- * The 36 checks of the native module smoke test (SPEC.md, "Native modules (smoke test)"): one core call for each native library the
- * production app uses, made from Expo Svelte without React. Each check requires its library when it runs, calls it once, and
+ * The 36 checks of the native module smoke test (SPEC.md, "Native modules (smoke test)"): one core call for each native library a
+ * real app uses, made from Expo Svelte without React. Each check requires its library when it runs, calls it once, and
  * reports through `smoke.ts` `ok`, `fail` or `skip` with the path it took: `js` (the library's own JavaScript API), `direct` (its
  * TurboModule or NativeModule by name, when its JavaScript needs React or reaches another module than the one under test). Nothing
  * here asks for a permission, prompts, or touches the network: permission checks read the state, Firebase's collection and token
  * fetches are off (`firebase.json`), Sentry and Statsig run disabled, Intercom and Adjust are not initialized.
  *
- * Only the smoke app (`io.rasheed.svelteqa.smoke`) links these libraries and carries this file: the product and the QA app resolve
+ * Only the smoke app (`dev.alfayez.exposvelte.qa.smoke`) links these libraries and carries this file: the product and the QA app resolve
  * it, and the libraries, to a stub in Metro (`metro.config.cjs`), so none of it is in their bundles.
  */
 
@@ -465,7 +465,7 @@ export const checks: Check[] = [
 		module: "live-direction",
 		path: "js",
 		run: () => {
-			// `auto` is what the production app loads: it patches I18nManager (with the production app's pnpm patch) and reads the native direction.
+			// `auto` is what a real app loads: it patches I18nManager (with its pnpm patch) and reads the native direction.
 			const liveDirection = require("react-native-live-direction/auto") as { getDirection(): string; subscribe?: unknown };
 			const direction = liveDirection.getDirection();
 			expect(direction === "ltr" || direction === "rtl", `getDirection gave ${String(direction)}`);

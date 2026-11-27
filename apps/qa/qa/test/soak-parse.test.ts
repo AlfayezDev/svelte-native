@@ -20,7 +20,7 @@ describe("parseMeminfo", () => {
 		});
 	});
 	test("no process is null, not zero", () => {
-		expect(parseMeminfo("No process found for: io.rasheed.svelteqa\n")).toBeNull();
+		expect(parseMeminfo("No process found for: dev.alfayez.exposvelte.qa\n")).toBeNull();
 	});
 	test("an output this parser does not know throws instead of reading as zero growth", () => {
 		expect(() =>

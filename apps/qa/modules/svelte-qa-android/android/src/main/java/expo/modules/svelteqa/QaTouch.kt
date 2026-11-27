@@ -26,7 +26,7 @@ import org.json.JSONObject
  * It is a module of its own (`SvelteQaTouch`, in the Expo module `svelte-qa-android`), not a function of `SvelteEngine`. The product
  * build leaves it out: `app.config.ts` passes it to the expo-svelte plugin's `autolinkingExclude` when `APP_VARIANT=production`,
  * which writes the exclusion into `settings.gradle`, so the class is not even compiled into that app. Should it be linked, it still
- * refuses unless the app is the QA variant (`io.rasheed.svelteqa`).
+ * refuses unless the app is the QA variant (`dev.alfayez.exposvelte.qa`).
  *
  * What a finger does in the real pipeline, and what this reproduces. A touch panel samples at 120 to 240 Hz and the app receives
  * one `MotionEvent` per frame whose history holds the samples in between; the injector sends one MOVE per frame, with history

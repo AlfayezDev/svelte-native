@@ -120,7 +120,7 @@ expoAutolinking.useExpoModules()
 type ConfigLike = Parameters<ReturnType<typeof createRunOncePlugin>>[0];
 
 /** The relevant lines of the Podfile Expo's template generates (SDK 58). */
-const podfile = `target 'RasheedSvelteQA' do
+const podfile = `target 'ExpoSvelteQA' do
   use_expo_modules!
 
   if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'

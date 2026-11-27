@@ -312,7 +312,7 @@ export const lab = ${lab};
 export const tree: StackNode = ${nodeOf(tree, "").trimStart()};
 `;
 }
-var FORMER_NAMES = ["@rasheed/svelte-native", "@alfayez/svelte-native"];
+var FORMER_NAMES = ["@alfayez/svelte-native"];
 function staleEntry(source) {
   if (!/^import ['"]\.\/hooks['"];$/m.test(source)) return true;
   const manifest = JSON.parse(readFileSync(resolve2(packageRoot, "package.json"), "utf8"));

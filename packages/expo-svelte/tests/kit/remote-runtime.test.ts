@@ -234,7 +234,7 @@ describe("redirects", () => {
   test("only an http: or https: address of another site is opened; nothing else the server names is", async () => {
     m.configureRemote({ origin: "https://a.example" });
     const { gone, unlink } = linked();
-    for (const location of ["javascript:alert(1)", "intent://scan/#Intent;scheme=zxing;end", "file:///etc/passwd", "rasheed://auth/login", "tel:+966500000000", "data:text/html,<b>x</b>"]) {
+    for (const location of ["javascript:alert(1)", "intent://scan/#Intent;scheme=zxing;end", "file:///etc/passwd", "myapp://auth/login", "tel:+966500000000", "data:text/html,<b>x</b>"]) {
       await expect(m.navigate(location)).rejects.toThrow(/not an http: or https: address/);
     }
     expect((globalThis as any).__opened).toEqual([]);

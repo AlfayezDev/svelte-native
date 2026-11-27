@@ -15,4 +15,4 @@ Third-party code, copied into this package (VENDORING.md). Nothing here is edite
 
 ## Local changes
 
-- `vendor-patches/react-native-worklets/0001-ui-frame-only-on-demand.patch` (sha256 `e128402420a5c3d9f956e69027edcc6a9ed96fb14aa54e848ad77b7ba25b3432`), applied with `patch -p1` after the unpack
+- `vendor-patches/react-native-worklets/0001-ui-frame-only-on-demand.patch` (sha256 `67e9068ec8fdeb147f3f3c104a0db7901b23722975e9a3df3c822806d5900f52`), applied with `patch -p1` after the unpack

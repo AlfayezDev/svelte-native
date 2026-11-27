@@ -608,7 +608,7 @@ describe("frozen dumps of the QA app (the checklist's findings in them, not the 
 
 	test("a spinner screen has a title and a labeled progress bar", () => {
 		const r = screen("uia-startup-loading.xml", "startup-loading");
-		expect(r.stops).toEqual(["Rasheed", "Loading…"]);
+		expect(r.stops).toEqual(["Expo Svelte", "Loading…"]);
 		expect(r.titleFirst).toBe(true);
 	});
 

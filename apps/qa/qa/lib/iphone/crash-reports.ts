@@ -18,7 +18,7 @@ import { remote, scpFrom, words, type Mac } from "./mac.ts";
 export const defaultHardwareUdid = "00008110-001E10593410401E";
 
 /** The QA app's executable: its reports are named after it, and a jetsam event names the processes it lists by it. */
-export const qaProcessName = "RasheedSvelteQA";
+export const qaProcessName = "ExpoSvelteQA";
 
 /** What attribution calls a report of a process no run of the command launched. */
 export const unattributed = "unattributed";
@@ -302,7 +302,7 @@ const killedByAlarm = 142;
 
 /** A file of the crash log, as `devicectl device info files` lists it. */
 export type CrashLogFile = {
-	/** Relative to the crash log: `RasheedSvelteQA-2026-11-01-171503.ips`, or `Retired/RasheedSvelteQA-...` once the phone retired it. */
+	/** Relative to the crash log: `ExpoSvelteQA-2026-11-01-171503.ips`, or `Retired/ExpoSvelteQA-...` once the phone retired it. */
 	path: string;
 	name: string;
 	bytes: number | null;

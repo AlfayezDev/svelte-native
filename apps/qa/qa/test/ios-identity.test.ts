@@ -77,7 +77,7 @@ describe("the reported build against the build record", () => {
 	test("an app that reports nothing leaves the run file with installed: null", () => {
 		expect(reportedIdentity([null, null], record(), "boot")).toBeNull();
 		expect(reportedIdentity([], record(), "lab")).toBeNull();
-		const app = { package: "io.rasheed.svelteqa", versionName: "0.1.0", versionCode: 1, lastUpdateTime: null, installedSha256: "stale", apk: null } satisfies AppInfo;
+		const app = { package: "dev.alfayez.exposvelte.qa", versionName: "0.1.0", versionCode: 1, lastUpdateTime: null, installedSha256: "stale", apk: null } satisfies AppInfo;
 		expect(withIdentity(app, null)).toEqual({ ...app, installed: null, installedSha256: null });
 		expect(withIdentity(app, identity())).toEqual({ ...app, installed: identity(), installedSha256: cd("b") });
 	});
@@ -113,7 +113,7 @@ describe("a boot report that is not this launch's", () => {
 });
 
 describe("which build a run measured, across the runs of a device", () => {
-	const app = (fields: Partial<AppInfo> = {}): AppInfo => ({ package: "io.rasheed.svelteqa", versionName: "0.1.0", versionCode: 1, lastUpdateTime: null, installedSha256: null, apk: null, ...fields });
+	const app = (fields: Partial<AppInfo> = {}): AppInfo => ({ package: "dev.alfayez.exposvelte.qa", versionName: "0.1.0", versionCode: 1, lastUpdateTime: null, installedSha256: null, apk: null, ...fields });
 	const run = (fields: Partial<AppInfo> = {}, commit = "afabc2ad7") => ({ app: app(fields), source: { commit, dirty: false } });
 	const reported = (js = "a", executable = "b") => run({ installed: identity(js, executable), installedSha256: cd(executable), build: record(js, executable) });
 

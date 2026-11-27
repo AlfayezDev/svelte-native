@@ -27,7 +27,7 @@ const scenarios = [
   "preload-loader-fails",
   "preload-library-fails",
 ];
-const processes = ["main-process io.rasheed.app io.rasheed.app", "main-process io.rasheed.app:sync io.rasheed.app", "main-process null io.rasheed.app"];
+const processes = ["main-process com.example.app com.example.app", "main-process com.example.app:sync com.example.app", "main-process null com.example.app"];
 
 const pinned = "set self c0 | info BootBoost: pinned to c0";
 const released = "reopen c0 ff | info BootBoost: released | released";

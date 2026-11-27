@@ -40,7 +40,7 @@ describe("the home screen is the first screen of the production variant", () => 
 	test("only the app's own window counts", () => {
 		expect(isHomeScreen(tree([{ text: "Expo Svelte", pkg: productPackage }]))).toBe(true);
 		expect(isHomeScreen(tree([{ desc: "مكوّنات Svelte 5 تعمل كتطبيق أصلي على Android وiOS، بلا React وبلا WebView.", pkg: productPackage }]))).toBe(true);
-		expect(isHomeScreen(tree([{ text: "Expo Svelte", pkg: "io.rasheed.svelteqa" }]))).toBe(false);
+		expect(isHomeScreen(tree([{ text: "Expo Svelte", pkg: "dev.alfayez.exposvelte.qa" }]))).toBe(false);
 		expect(isHomeScreen(tree([{ text: "Loading", pkg: productPackage }, { text: "System UI isn't responding", pkg: "android" }]))).toBe(false);
 	});
 });
@@ -52,24 +52,24 @@ describe("what logcat says about a start", () => {
 		expect(productFatals(text, true)).toEqual({ fatals: [], jsErrors: 1 });
 	});
 	test("a Java crash, a native signal, an ANR and a JavaScript fatal of the product are fatals, those of another app are not", () => {
-		const java = [line("AndroidRuntime", "FATAL EXCEPTION: main"), line("AndroidRuntime", "Process: io.rasheed.sveltenative.qaproduct, PID: 4242")].join("\n");
+		const java = [line("AndroidRuntime", "FATAL EXCEPTION: main"), line("AndroidRuntime", "Process: dev.alfayez.exposvelte.qaproduct, PID: 4242")].join("\n");
 		expect(productFatals(java, true).fatals).toHaveLength(1);
-		const other = [line("AndroidRuntime", "FATAL EXCEPTION: main"), line("AndroidRuntime", "Process: io.rasheed.svelteqa, PID: 4242")].join("\n");
+		const other = [line("AndroidRuntime", "FATAL EXCEPTION: main"), line("AndroidRuntime", "Process: dev.alfayez.exposvelte.qa, PID: 4242")].join("\n");
 		expect(productFatals(other, true).fatals).toEqual([]);
-		expect(productFatals(line("libc", "Fatal signal 11 (SIGSEGV), code 1, fault addr 0x0 in tid 4290 (mqt_v_js), pid 4242 (io.rasheed.sveltenative.qaproduct)", "F"), true).fatals).toHaveLength(1);
-		expect(productFatals(line("ActivityManager", "ANR in io.rasheed.sveltenative.qaproduct (io.rasheed.sveltenative.qaproduct/.MainActivity)", "E"), true).fatals).toHaveLength(1);
+		expect(productFatals(line("libc", "Fatal signal 11 (SIGSEGV), code 1, fault addr 0x0 in tid 4290 (mqt_v_js), pid 4242 (dev.alfayez.exposvelte.qaproduct)", "F"), true).fatals).toHaveLength(1);
+		expect(productFatals(line("ActivityManager", "ANR in dev.alfayez.exposvelte.qaproduct (dev.alfayez.exposvelte.qaproduct/.MainActivity)", "E"), true).fatals).toHaveLength(1);
 	});
 	test("a native crash report counts once, with or without the signal line", () => {
-		const signal = line("libc", "Fatal signal 6 (SIGABRT), code -1 in tid 4290 (mqt_v_js), pid 4242 (io.rasheed.sveltenative.qaproduct)", "F");
-		const report = line("DEBUG", "pid: 4242, tid: 4290, name: mqt_v_js  >>> io.rasheed.sveltenative.qaproduct <<<", "F");
+		const signal = line("libc", "Fatal signal 6 (SIGABRT), code -1 in tid 4290 (mqt_v_js), pid 4242 (dev.alfayez.exposvelte.qaproduct)", "F");
+		const report = line("DEBUG", "pid: 4242, tid: 4290, name: mqt_v_js  >>> dev.alfayez.exposvelte.qaproduct <<<", "F");
 		expect(productFatals([signal, report].join("\n"), true).fatals).toHaveLength(1);
 		expect(productFatals(report, true).fatals).toHaveLength(1);
 	});
 	test("a process that is gone at the end is a fatal, whatever logcat shows", () => {
-		expect(productFatals("", false).fatals).toEqual(["the process of io.rasheed.sveltenative.qaproduct was gone when the window ended"]);
+		expect(productFatals("", false).fatals).toEqual(["the process of dev.alfayez.exposvelte.qaproduct was gone when the window ended"]);
 	});
 	test("am start -W says how long the activity took", () => {
-		expect(parseLaunchMs("Starting: Intent { cmp=io.rasheed.sveltenative.qaproduct/.MainActivity }\nStatus: ok\nTotalTime: 1234\nWaitTime: 1250\n")).toBe(1234);
+		expect(parseLaunchMs("Starting: Intent { cmp=dev.alfayez.exposvelte.qaproduct/.MainActivity }\nStatus: ok\nTotalTime: 1234\nWaitTime: 1250\n")).toBe(1234);
 		expect(parseLaunchMs("Error: Activity class does not exist")).toBeNull();
 	});
 });
@@ -92,7 +92,7 @@ describe("the run, its metrics and its gates", () => {
 		expect(productMetrics(file())).toEqual({ "product.boot.fatals": 0, "product.boot.firstScreen": 1, "product.boot.firstScreenMs": 2300, "product.boot.jsErrors": 0 });
 	});
 	test("a fatal, or no screen, is a problem; a screen later than the 15 s of the check is not a screen, whatever window the run had", () => {
-		expect(productProblems(file({ fatals: ["FATAL EXCEPTION Process: io.rasheed.sveltenative.qaproduct,"] }))[0]).toContain("fatal:");
+		expect(productProblems(file({ fatals: ["FATAL EXCEPTION Process: dev.alfayez.exposvelte.qaproduct,"] }))[0]).toContain("fatal:");
 		expect(productProblems(file({ firstScreen: { reached: false, atMs: null } }))).toEqual(["the home screen was not reached within 15 s"]);
 		expect(productMetrics(file({ firstScreen: { reached: false, atMs: null } }))["product.boot.firstScreen"]).toBe(0);
 		expect(productMetrics(file({ windowMs: 60_000, firstScreen: { reached: true, atMs: 20_000 } }))["product.boot.firstScreen"]).toBe(0);
@@ -116,8 +116,8 @@ describe("the product build is a variant of its own", () => {
 	test("its id, scheme, APP_VARIANT and file names", () => {
 		expect(variantFlag("production")).toBe("production");
 		expect(() => variantFlag("product")).toThrow("qa, smoke or production");
-		expect(packageOf.production).toBe("io.rasheed.sveltenative.qaproduct");
-		expect(schemeOf.production).toBe("rasheed");
+		expect(packageOf.production).toBe("dev.alfayez.exposvelte.qaproduct");
+		expect(schemeOf.production).toBe("svelte-qa-product");
 		expect(appVariantOf.production).toBe("production");
 		expect(stemOf("production", "x86_64")).toBe("production-x86_64");
 		expect(apkPath("production", "x86_64", "/out")).toBe("/out/app-production-x86_64.apk");
@@ -142,7 +142,7 @@ describe("the product is never put on a phone", () => {
 });
 
 describe("`native-qa product` against a fake adb", () => {
-	const packageLine = "io.rasheed.sveltenative.qaproduct";
+	const packageLine = "dev.alfayez.exposvelte.qaproduct";
 	/** An `adb` that answers what the command asks and logs every call. The screen, the process and the logcat are the test's. */
 	function fakeAdb(directory: string, options: { emulator: boolean }): { bin: string; log: string; logcat: string } {
 		const bin = join(directory, "bin");
@@ -229,8 +229,8 @@ esac
 		expect(done.output).toContain("product boot: pass");
 		expect(done.output).toMatch(/home screen reached after \d+ ms, activity displayed after 1234 ms, 0 fatal\(s\)/);
 		expect(done.calls).toContain(`-s localhost:5555 install -r ${done.apk}`);
-		expect(done.calls.indexOf("-s localhost:5555 shell pm clear io.rasheed.sveltenative.qaproduct")).toBeGreaterThan(done.calls.findIndex((entry) => entry.includes("install -r")));
-		expect(done.calls.some((entry) => entry.includes("am start -W -n io.rasheed.sveltenative.qaproduct/.MainActivity"))).toBe(true);
+		expect(done.calls.indexOf("-s localhost:5555 shell pm clear dev.alfayez.exposvelte.qaproduct")).toBeGreaterThan(done.calls.findIndex((entry) => entry.includes("install -r")));
+		expect(done.calls.some((entry) => entry.includes("am start -W -n dev.alfayez.exposvelte.qaproduct/.MainActivity"))).toBe(true);
 		// Nothing names the QA app, and nothing is sent to the phone that is on the same adb.
 		expect(done.calls.filter((entry) => entry.includes("svelteqa") || entry.includes("R58Y90KNGRP"))).toEqual([]);
 		const wrote = /wrote (qa\/runs\/product-\S+)\.json/.exec(done.output);
@@ -241,7 +241,7 @@ esac
 		const crashed = await run({ logcat: crash });
 		expect(crashed.status).toBe(1);
 		expect(crashed.output).toContain("product boot: FAIL");
-		expect(crashed.output).toContain("fatal: FATAL EXCEPTION Process: io.rasheed.sveltenative.qaproduct");
+		expect(crashed.output).toContain("fatal: FATAL EXCEPTION Process: dev.alfayez.exposvelte.qaproduct");
 		const stuck = await run({ screen: spinner });
 		expect(stuck.status).toBe(1);
 		expect(stuck.output).toContain("the home screen was not reached within 1.5 s");
@@ -252,7 +252,7 @@ esac
 
 	test("the phone is refused before a single adb command", async () => {
 		const done = await run({ argv: ["--device", "R58Y90KNGRP", "--no-install"] });
-		expect(String(done.failure)).toContain("refusing to install or start the product app on R58Y90KNGRP");
+		expect(String(done.failure)).toContain("refusing to install or start the production variant on R58Y90KNGRP");
 		expect(done.calls).toEqual([]);
 	});
 

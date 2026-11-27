@@ -10,14 +10,14 @@
    {
     "appClip": false,
     "builtByDeveloper": true,
-    "bundleIdentifier": "io.rasheed.svelteqa",
+    "bundleIdentifier": "dev.alfayez.exposvelte.qa",
     "bundleVersion": "1",
     "defaultApp": false,
     "hidden": false,
     "internalApp": false,
-    "name": "Rasheed Svelte QA",
+    "name": "Expo Svelte QA",
     "removable": true,
-    "url": "file:///private/var/containers/Bundle/Application/8D336698-E426-40ED-B526-F63994397144/RasheedSvelteQA.app/",
+    "url": "file:///private/var/containers/Bundle/Application/8D336698-E426-40ED-B526-F63994397144/ExpoSvelteQA.app/",
     "version": "0.1.0"
    }
   ],
@@ -25,7 +25,7 @@
   "deviceIdentifier": "E74A5608-BF8E-5806-8699-1605F82ADED9",
   "hiddenAppsIncluded": false,
   "internalAppsIncluded": false,
-  "matchingBundleIdentifier": "io.rasheed.svelteqa",
+  "matchingBundleIdentifier": "dev.alfayez.exposvelte.qa",
   "removableAppsIncluded": true
  }
 }

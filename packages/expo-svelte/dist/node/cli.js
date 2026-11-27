@@ -542,7 +542,7 @@ var init_build = __esm({
     NAVIGATORS = ["stack", "tabs"];
     labIncluded = (env = process.env) => labIncludedFor(variantName(env));
     LAB_DIRECTORY = "__dev";
-    FORMER_NAMES = ["@rasheed/svelte-native", "@alfayez/svelte-native"];
+    FORMER_NAMES = ["@alfayez/svelte-native"];
   }
 });
 

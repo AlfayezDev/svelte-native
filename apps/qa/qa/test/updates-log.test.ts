@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { sample } from "./sample.ts";
 import { defaultSettle, launchSettled, parseUpdateObservation, runningId, type UpdateObservation } from "../lib/updates-log.ts";
 
-const pkg = "io.rasheed.svelteqa";
+const pkg = "dev.alfayez.exposvelte.qa";
 const A = "01a19688-6ec1-7357-a10e-89ef0ba5fa07";
 const B = "01a19689-1111-7222-a333-444455556666";
 const stamp = "11-01 10:00:0";

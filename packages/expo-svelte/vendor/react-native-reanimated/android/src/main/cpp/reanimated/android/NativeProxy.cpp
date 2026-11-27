@@ -28,7 +28,7 @@ namespace {
 std::atomic<SynchronousPropsSink> synchronousPropsSink{nullptr};
 } // namespace
 
-// Rasheed patch: the svelte-engine module finds this symbol with dlsym and registers its sink (null unregisters).
+// expo-svelte patch: the svelte-engine module finds this symbol with dlsym and registers its sink (null unregisters).
 extern "C" __attribute__((visibility("default"), used)) void reanimatedSetSynchronousPropsSink(
     SynchronousPropsSink sink) {
   synchronousPropsSink.store(sink, std::memory_order_release);
@@ -225,7 +225,7 @@ void NativeProxy::synchronouslyUpdateUIProps(
   const double *doubles = doubleBuffer.data();
   std::size_t intCount = intBuffer.size();
   std::size_t doubleCount = doubleBuffer.size();
-  // Rasheed patch: the engine's views are written natively; only what the sink leaves is copied into Java arrays, and a
+  // expo-svelte patch: the engine's views are written natively; only what the sink leaves is copied into Java arrays, and a
   // frame made only of engine views makes no JNI call and no Java allocation.
   if (const auto sink = synchronousPropsSink.load(std::memory_order_acquire)) {
     if (sinkRestInts_.size() < intCount) {

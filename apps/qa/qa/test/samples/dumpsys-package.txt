@@ -1,4 +1,4 @@
-    legacyNativeLibraryDir=/data/app/~~E_w38z7eX4_0csmdoatE7Q==/io.rasheed.svelteqa-WTic2Uwr_vgAvpAx3feKQw==/lib
+    legacyNativeLibraryDir=/data/app/~~E_w38z7eX4_0csmdoatE7Q==/dev.alfayez.exposvelte.qa-WTic2Uwr_vgAvpAx3feKQw==/lib
     extractNativeLibs=false
     primaryCpuAbi=x86_64
     secondaryCpuAbi=null
@@ -14,6 +14,6 @@
     lastUpdateTime=2026-10-25 20:20:10
     installerPackageName=null
       installReason=0
-      dataDir=/data/user/0/io.rasheed.svelteqa
+      dataDir=/data/user/0/dev.alfayez.exposvelte.qa
       firstInstallTime=2026-10-25 12:31:51
       uninstallReason=0

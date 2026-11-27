@@ -23,7 +23,7 @@ async function exists(path: string): Promise<boolean> {
 }
 
 /**
- * The product boot check. Installs the example's production variant (`io.rasheed.sveltenative.qaproduct`, `qa/out/app-production-<abi>.apk` from `native-qa
+ * The product boot check. Installs the example's production variant (`dev.alfayez.exposvelte.qaproduct`, `qa/out/app-production-<abi>.apk` from `native-qa
  * build --variant production`) on the OVH emulator, clears its data so it starts with no stored state, starts it cold and, for 15 s from the
  * start, looks for its first screen (the home screen) in the accessibility tree of its window while logcat collects what the app does. It
  * passes when the screen came and the app logged no JavaScript fatal and no native crash. Writes `qa/runs/product-<device>-<stamp>.json`, a
@@ -42,7 +42,7 @@ export async function product(argv: string[], windowMs: number = productWindowMs
 	});
 	const serial = requireString(values.device, "device");
 	const gates = await loadGates();
-	refusePhone(identify(serial, {}, gates), "install or start the product app");
+	refusePhone(identify(serial, {}, gates), "install or start the production variant");
 	const lock = lockFor(serial);
 	if (lock) await reexecUnderLock(lock, ["product", ...argv]);
 

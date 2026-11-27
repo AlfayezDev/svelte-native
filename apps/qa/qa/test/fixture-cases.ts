@@ -37,7 +37,7 @@ export const startupLoading = screenCase("startup-loading", "/ (configuration pe
 	state: "loading",
 	network: "hang",
 	layout: "header",
-	title: "Rasheed",
+	title: "Expo Svelte",
 	masks: [{ className: "android.widget.ProgressBar" }],
 });
 
@@ -59,7 +59,7 @@ const sectionTitles: Localized[] = [words.profile, words.preferences, words.devi
 const signedInFields = { needsBackend: true, signedIn: true, layout: "header" as const };
 
 /** A list the account sees first, with its address on it. */
-export const accountList = screenCase("app-workspaces", "/workspaces", "rasheed-svelte:///workspaces", { label: words.chooseWorkspace }, {
+export const accountList = screenCase("app-workspaces", "/workspaces", "expo-svelte:///workspaces", { label: words.chooseWorkspace }, {
 	...signedInFields,
 	steps: [{ wait: { label: words.chooseWorkspace }, timeoutMs: 45_000 }, { pause: 600 }],
 	title: words.chooseWorkspace,
@@ -68,7 +68,7 @@ export const accountList = screenCase("app-workspaces", "/workspaces", "rasheed-
 });
 
 /** A tabs screen of the signed-in app. */
-export const accountHome = screenCase("app-workspace-home", "/(workspace)/[slug]/home", "rasheed-svelte:///workspaces", { label: words.manageWorkspace }, {
+export const accountHome = screenCase("app-workspace-home", "/(workspace)/[slug]/home", "expo-svelte:///workspaces", { label: words.manageWorkspace }, {
 	...signedInFields,
 	layout: "tabs",
 	controls: [words.home, words.settings],
@@ -76,7 +76,7 @@ export const accountHome = screenCase("app-workspace-home", "/(workspace)/[slug]
 });
 
 const modalOf = (id: string, section: string, anchor: Selector, fields: Partial<ScreenCase>): ScreenCase =>
-	screenCase(id, `/(account)/account (${section}, modal)`, "rasheed-svelte:///workspaces", anchor, {
+	screenCase(id, `/(account)/account (${section}, modal)`, "expo-svelte:///workspaces", anchor, {
 		...signedInFields,
 		layout: "modal",
 		title: words.manageAccount,

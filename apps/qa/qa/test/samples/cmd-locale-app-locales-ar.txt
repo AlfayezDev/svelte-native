@@ -1,1 +1,1 @@
-Locales for io.rasheed.svelteqa for user 0 are [ar-SA]
+Locales for dev.alfayez.exposvelte.qa for user 0 are [ar-SA]

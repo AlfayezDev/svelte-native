@@ -1,9 +1,9 @@
 10-25 20:23:10.290   686   719 W ActivityManager: Slow operation: 51ms so far, now at startProcess: building log message
-10-25 20:23:10.290   686   719 I ActivityManager: Start proc 19005:io.rasheed.svelteqa/u0a216 for next-top-activity {io.rasheed.svelteqa/io.rasheed.svelteqa.MainActivity}
+10-25 20:23:10.290   686   719 I ActivityManager: Start proc 19005:dev.alfayez.exposvelte.qa/u0a216 for next-top-activity {dev.alfayez.exposvelte.qa/dev.alfayez.exposvelte.qa.MainActivity}
 10-25 20:23:10.881 19005 19021 I ReactNativeJS: Running "main"
 10-25 20:23:10.885 19005 19021 I SvelteEngine: install: commit hook registered, delegate attaches on each surface's first commit (reanimated hook not present yet)
 10-25 20:23:10.885 19005 19021 I SvelteEngine: Reanimated hook installed
 10-25 20:23:10.901 19005 19021 I SvelteEngine: delegate order: ours first (surface 1, first transaction has 10 mutations)
 10-25 20:23:10.902 19005 19021 I ReactNativeJS: [Svelte boot] init 1 · polyfills 2 · rn 158 · expo-core 47 · svelte 3 · host 0 · fabric 0 · app 88 · first commit 21 · total 321 ms
-10-25 20:23:11.010   686   707 I ActivityTaskManager: Displayed io.rasheed.svelteqa/.MainActivity for user 0: +776ms
+10-25 20:23:11.010   686   707 I ActivityTaskManager: Displayed dev.alfayez.exposvelte.qa/.MainActivity for user 0: +776ms
 10-25 20:23:11.869 19005 19005 I SvelteEngine: surface=1 ops=535 create=5 update=6 layout=5 insert=5 remove=5 delete=5 decode=0.2ms apply=1.5ms

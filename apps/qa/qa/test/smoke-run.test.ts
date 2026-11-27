@@ -38,7 +38,7 @@ shift 2
 case "$*" in
   "shell getprop") printf '[ro.build.version.sdk]: [36]\\n[ro.product.model]: [Fake Phone]\\n[ro.build.version.release]: [16]\\n[ro.product.cpu.abi]: [x86_64]\\n[ro.kernel.qemu]: [1]\\n';;
   "shell dumpsys display") ;;
-  "shell pm path "*) echo "package:/data/app/~~x/io.rasheed.svelteqa.smoke-y/base.apk";;
+  "shell pm path "*) echo "package:/data/app/~~x/dev.alfayez.exposvelte.qa.smoke-y/base.apk";;
   "shell sha256sum "*) echo "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  /data/app/base.apk";;
   *"dumpsys package"*) printf '    versionCode=1 minSdk=24 targetSdk=36\\n    versionName=0.1.0\\n    lastUpdateTime=2026-11-01 00:00:00\\n    [status=speed-profile]\\n';;
   "install -r "*) echo Success;;
@@ -87,12 +87,12 @@ esac
 		expect(done.status).toBe(0);
 		expect(done.stdout).toContain("smoke gates: pass");
 		expect(done.adb.some((entry) => entry.includes("install -r") && entry.endsWith("smoke.apk"))).toBe(true);
-		expect(done.adb.some((entry) => entry.includes("am start -W -a android.intent.action.VIEW -d 'rasheed-svelte-smoke:///__dev?run=smoke' io.rasheed.svelteqa.smoke"))).toBe(true);
-		expect(done.adb.filter((entry) => entry.includes("force-stop")).every((entry) => entry.endsWith(" io.rasheed.svelteqa.smoke"))).toBe(true);
+		expect(done.adb.some((entry) => entry.includes("am start -W -a android.intent.action.VIEW -d 'expo-svelte-smoke:///__dev?run=smoke' dev.alfayez.exposvelte.qa.smoke"))).toBe(true);
+		expect(done.adb.filter((entry) => entry.includes("force-stop")).every((entry) => entry.endsWith(" dev.alfayez.exposvelte.qa.smoke"))).toBe(true);
 		// The QA app's id is a prefix of the smoke app's: nothing may name it alone, or by its scheme.
-		expect(done.adb.filter((entry) => / io\.rasheed\.svelteqa(\s|$|\/)/.test(entry) || entry.includes("rasheed-svelte:///"))).toEqual([]);
+		expect(done.adb.filter((entry) => / dev\.alfayez\.exposvelte\.qa(\s|$|\/)/.test(entry) || entry.includes("expo-svelte:///"))).toEqual([]);
 		const file = JSON.parse(readFileSync(`${done.written[0]}.json`, "utf8")) as SmokeFile;
-		expect(file.app.package).toBe("io.rasheed.svelteqa.smoke");
+		expect(file.app.package).toBe("dev.alfayez.exposvelte.qa.smoke");
 		expect(file.complete).toBe(true);
 		expect(file.results).toHaveLength(35);
 	}, 60_000);
@@ -105,7 +105,7 @@ esac
 		const missing = run(logcatOf({ adjust: null }));
 		expect(missing.status).toBe(1);
 		expect(missing.stdout).toContain("gate smoke.missing fail");
-		const crashed = run(logcatOf({}, [`11-01 12:00:05.000  4242  4290 E AndroidRuntime: FATAL EXCEPTION: main`, "11-01 12:00:05.001  4242  4290 E AndroidRuntime: Process: io.rasheed.svelteqa.smoke, PID: 4242"]));
+		const crashed = run(logcatOf({}, [`11-01 12:00:05.000  4242  4290 E AndroidRuntime: FATAL EXCEPTION: main`, "11-01 12:00:05.001  4242  4290 E AndroidRuntime: Process: dev.alfayez.exposvelte.qa.smoke, PID: 4242"]));
 		expect(crashed.status).toBe(1);
 		expect(crashed.stdout).toContain("gate smoke.fatals fail");
 		expect(crashed.stdout).toContain("gate smoke.complete fail");
@@ -151,10 +151,10 @@ describe("the decisions the app makes, without React Native", () => {
 
 describe("the iPhone run works on the smoke app", () => {
 	test("its bundle id and launch URL are the smoke app's, not the QA app's", () => {
-		expect(suiteBundleId({ device: "x" }, "smoke")).toBe("io.rasheed.svelteqa.smoke");
-		expect(suiteBundleId({ device: "x" }, "qa")).toBe("io.rasheed.svelteqa");
+		expect(suiteBundleId({ device: "x" }, "smoke")).toBe("dev.alfayez.exposvelte.qa.smoke");
+		expect(suiteBundleId({ device: "x" }, "qa")).toBe("dev.alfayez.exposvelte.qa");
 		expect(suiteBundleId({ package: "com.example.other" }, "smoke")).toBe("com.example.other");
-		expect(smokeLaunchUrl("t0k3n")).toBe("rasheed-svelte-smoke:///__dev?run=smoke&token=t0k3n");
+		expect(smokeLaunchUrl("t0k3n")).toBe("expo-svelte-smoke:///__dev?run=smoke&token=t0k3n");
 	});
 });
 

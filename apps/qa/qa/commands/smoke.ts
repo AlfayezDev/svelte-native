@@ -42,8 +42,8 @@ export async function reportVerdict(file: SmokeFile): Promise<void> {
 }
 
 /**
- * Installs the smoke app (`io.rasheed.svelteqa.smoke`, `qa/out/app-smoke-<abi>.apk` from `native-qa build --variant smoke`), launches
- * its lab's `smoke` scenario (`rasheed-svelte-smoke:///__dev?run=smoke`) on an Android device, follows logcat until the lab says it
+ * Installs the smoke app (`dev.alfayez.exposvelte.qa.smoke`, `qa/out/app-smoke-<abi>.apk` from `native-qa build --variant smoke`), launches
+ * its lab's `smoke` scenario (`expo-svelte-smoke:///__dev?run=smoke`) on an Android device, follows logcat until the lab says it
  * is done, and writes `qa/runs/smoke-<device>-<stamp>.json` with the module lines it parsed. The libraries are linked in the smoke
  * app only; the QA app, which every other command measures, is neither installed nor started. Nothing here prompts, and the smoke
  * app is force-stopped afterwards.

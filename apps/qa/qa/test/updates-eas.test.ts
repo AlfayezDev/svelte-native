@@ -80,7 +80,7 @@ describe("the lock per channel", () => {
 describe("the merged manifest of a build", () => {
 	const attribute = (name: string, value: string) => `        <meta-data\n            android:name="expo.modules.updates.${name}"\n            android:value="${value}" />`;
 	const manifest = (check: string, headers: string | null) =>
-		`<?xml version="1.0" encoding="utf-8"?>\n<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="io.rasheed.svelteqa">\n    <application>\n${[
+		`<?xml version="1.0" encoding="utf-8"?>\n<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.alfayez.exposvelte.qa">\n    <application>\n${[
 			attribute("ENABLED", "true"),
 			attribute("EXPO_UPDATES_CHECK_ON_LAUNCH", check),
 			attribute("EXPO_UPDATE_URL", "https://u.expo.dev/p"),

@@ -42,7 +42,7 @@ const field: Selector = { className: "android.widget.EditText" };
 const label = (text: string): Selector => ({ label: text });
 
 /** Where the app opens a signed-out device and a signed-in one alike: the router sends the first to the login. */
-export const startLink = "rasheed-svelte:///workspaces";
+export const startLink = "expo-svelte:///workspaces";
 
 /** A failure of the phase that is the account's or the app's (not the device's); its text has been redacted. */
 export class SignInError extends Error {

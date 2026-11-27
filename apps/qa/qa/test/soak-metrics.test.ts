@@ -32,7 +32,7 @@ const device: DeviceInfo = {
 	refreshHz: 60,
 };
 const app: AppInfo = {
-	package: "io.rasheed.svelteqa",
+	package: "dev.alfayez.exposvelte.qa",
 	versionName: "0.1.0",
 	versionCode: 1,
 	lastUpdateTime: null,
@@ -240,7 +240,7 @@ describe("soakMetrics", () => {
 	test("crashes are the number of crash lines", () => {
 		expect(metrics["soak.crashes"]).toBe(0);
 		expect(
-			soakMetrics(soakFile({ crashes: ["Fatal signal 11", "ANR in io.rasheed.svelteqa"] }))[
+			soakMetrics(soakFile({ crashes: ["Fatal signal 11", "ANR in dev.alfayez.exposvelte.qa"] }))[
 				"soak.crashes"
 			],
 		).toBe(2);
@@ -317,7 +317,7 @@ function crashesFile(coldStarts: ColdStart[], suites: SuiteRun[]): CrashesFile {
 		definition: "",
 		run: "checks,quick",
 		idleSeconds: 2,
-		packageName: "io.rasheed.svelteqa",
+		packageName: "dev.alfayez.exposvelte.qa",
 		coldStarts,
 		suites,
 		signatures: [],

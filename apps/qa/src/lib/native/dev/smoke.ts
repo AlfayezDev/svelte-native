@@ -8,7 +8,7 @@ export { smokeModules };
 
 /**
  * The native module smoke test's runner (SPEC.md, "Native modules (smoke test)"). The checks are in `smoke-checks.ts`, which only
- * the smoke app (`io.rasheed.svelteqa.smoke`) carries: the product and the QA app resolve it to a stub in Metro, and the lab that
+ * the smoke app (`dev.alfayez.exposvelte.qa.smoke`) carries: the product and the QA app resolve it to a stub in Metro, and the lab that
  * runs this is off in the product (`nativeLabEnabled`) and refuses to in the QA app (`nativeSmokeEnabled`), so the checks are
  * never required there. The page lists the modules from `smokeModules`, which `qa/gates.json` pins and a test compares with the
  * checks.

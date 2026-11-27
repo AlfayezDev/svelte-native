@@ -12,7 +12,7 @@ import android.provider.Settings
  * launch reports the reset.
  */
 internal object QaReset {
-  const val PACKAGE = "io.rasheed.svelteqa"
+  const val PACKAGE = "dev.alfayez.exposvelte.qa"
   const val SETTING = "svelte_qa_reset_updates"
 
   /** The decision, apart from Android: the token to honour, or null. `read` is not called for any package but the QA app's. */

@@ -2,25 +2,25 @@ import type { ExpoConfig } from "expo/config";
 import { createRequire } from "node:module";
 import { productApplicationId, qaApplicationId, smokeApplicationId } from "./src/lib/native/app-ids.ts";
 
-// Three apps come out of this file. The product (`APP_VARIANT=production`, `io.rasheed.sveltenative.qaproduct`); the QA app (no variant, `io.rasheed.svelteqa`),
+// Three apps come out of this file. The product (`APP_VARIANT=production`, `dev.alfayez.exposvelte.qaproduct`); the QA app (no variant, `dev.alfayez.exposvelte.qa`),
 // which every gate of qa/gates.json measures and so carries exactly the product's native modules; and the smoke app
-// (`APP_VARIANT=smoke`, `io.rasheed.svelteqa.smoke`), the QA app plus the production app's native libraries for the native module
+// (`APP_VARIANT=smoke`, `dev.alfayez.exposvelte.qa.smoke`), the QA app plus a real app's native libraries for the native module
 // smoke test (qa/smoke-modules.json; SPEC.md, "Native modules (smoke test)"). `smokeOnlyPackages` are the libraries the product does not
 // have: the product and the QA app exclude them from both autolinkers (and from React Native's, in react-native.config.js); only the
 // smoke app links them, and only it gets the config plugins in `smokePlugins`, the fake Firebase files and the Huawei repository.
 // The packages the library carries itself (`packages/expo-svelte/vendor/`: react-native-quick-crypto and react-native-quick-base64, which the device's `crypto` is made of, react-native-mmkv and
 // react-native-nitro-modules, and hermes-intl) are not in that list: no app lists them, the library's autolinking links its copies in every app, and the smoke test still checks them (`shared` in
-// smoke-modules.json). The production app's `["react-native-quick-crypto", { sodiumEnabled: true }]` is the library plugin's own `sodiumEnabled` option, set in the smoke variant below.
+// smoke-modules.json). A real app's `["react-native-quick-crypto", { sodiumEnabled: true }]` is the library plugin's own `sodiumEnabled` option, set in the smoke variant below.
 const { smokeOnlyPackages } = createRequire(import.meta.url)("./qa/smoke-packages.cjs") as { smokeOnlyPackages: string[] };
 // The library's default variant (no `APP_VARIANT`) is `app`; this app's is `qa`, whose route table the library's plugin writes (`routes.qa.ts`, as Metro's config does).
 const variant = process.env.APP_VARIANT || "qa";
 const production = process.env.APP_VARIANT === "production";
 const smoke = process.env.APP_VARIANT === "smoke";
 const applicationId = production ? productApplicationId : smoke ? smokeApplicationId : qaApplicationId;
-// A clearly fake Firebase app for `io.rasheed.svelteqa.smoke` (no key in it is real); the smoke test only loads Firebase and makes offline calls.
+// A clearly fake Firebase app for `dev.alfayez.exposvelte.qa.smoke` (no key in it is real); the smoke test only loads Firebase and makes offline calls.
 const fakeFirebase = { android: "./qa/firebase-fake/google-services.json", ios: "./qa/firebase-fake/GoogleService-Info.plist" };
 const smokePlugins: NonNullable<ExpoConfig["plugins"]> = !smoke ? [] : [
-  // The production app's plugins and options (its app.config.ts), minus what needs its secrets: Sentry's plugin only adds the source map
+  // A real app's plugins and options (its app.config.ts), minus what needs its secrets: Sentry's plugin only adds the source map
   // upload step, so it is left out; the Huawei plugin needs a real agconnect-services.json (the HMS library is only loaded).
   "@react-native-firebase/app",
   "@react-native-firebase/messaging",
@@ -38,8 +38,8 @@ const smokePlugins: NonNullable<ExpoConfig["plugins"]> = !smoke ? [] : [
   "expo-notifications",
   "@config-plugins/react-native-adjust",
   ["react-native-live-direction", { locales: ["ar", "en"] }],
-  // Firebase's iOS pods build as static frameworks (RNFirebase's requirement; the production app does the same). The HMS library resolves
-  // `com.huawei.hms:location` from Huawei's repository, which only the production app's Huawei plugin (not used here) adds to the project.
+  // Firebase's iOS pods build as static frameworks (RNFirebase's requirement; a real app does the same). The HMS library resolves
+  // `com.huawei.hms:location` from Huawei's repository, which only a real app's Huawei plugin (not used here) adds to the project.
   ["expo-build-properties", { ios: { useFrameworks: "static" }, android: { extraMavenRepos: [{ url: "https://developer.huawei.com/repo/" }] } }],
 ];
 // The library's own native modules (the engine, the updates module and the four iOS modules) are not local modules: they come from `node_modules/expo-svelte`, which
@@ -64,10 +64,10 @@ const remoteOrigin = process.env.EXPO_SVELTE_REMOTE_ORIGIN;
 if (production && remoteOrigin && !remoteOrigin.startsWith("https://")) throw new Error(`EXPO_SVELTE_REMOTE_ORIGIN must be an https: origin in the production app, not ${remoteOrigin}`);
 const remote = remoteOrigin ? { origin: remoteOrigin, ...(process.env.EXPO_SVELTE_REMOTE_BASE ? { base: process.env.EXPO_SVELTE_REMOTE_BASE } : {}) } : undefined;
 export default {
-  name: production ? "Svelte QA product" : smoke ? "Svelte smoke" : "Rasheed Svelte QA",
+  name: production ? "Svelte QA product" : smoke ? "Svelte smoke" : "Expo Svelte QA",
   owner: "alfayez",
-  slug: "rasheed",
-  scheme: production ? "svelte-qa-product" : smoke ? "rasheed-svelte-smoke" : "rasheed-svelte",
+  slug: "expo-svelte-qa",
+  scheme: production ? "svelte-qa-product" : smoke ? "expo-svelte-smoke" : "expo-svelte",
   version: "0.1.0",
   // Updates apply only to builds with the same native code; the app version stands for it, so bump `version` with any native change.
   runtimeVersion: { policy: "appVersion" },
@@ -96,7 +96,7 @@ export default {
     ["expo-svelte", {
       variant,
       androidProfileable: !production,
-      // libsodium for `crypto`, as the production app has it (the option quick-crypto's own plugin took; the smoke test's quick-crypto check runs against it).
+      // libsodium for `crypto`, as a real app has it (the option quick-crypto's own plugin took; the smoke test's quick-crypto check runs against it).
       ...(smoke ? { sodiumEnabled: true } : {}),
       autolinkingExclude,
       ...(remote ? { remote } : {}),

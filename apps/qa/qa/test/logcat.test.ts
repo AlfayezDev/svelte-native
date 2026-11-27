@@ -17,7 +17,7 @@ import {
 } from "../parse/logcat.ts";
 import { sample } from "./sample.ts";
 
-const pkg = "io.rasheed.svelteqa";
+const pkg = "dev.alfayez.exposvelte.qa";
 
 /** A string argument of `console.info` as React Native's console prints it to logcat (`formatPrimitive`): in single quotes, a quote as `\'` and a backslash as `\\`. */
 const logcatString = (text: string) => `'${text.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
@@ -71,13 +71,13 @@ describe("parseLaunchMarkers", () => {
 	});
 	test("a log with no Displayed line has no display time", () => {
 		const text =
-			"10-25 20:23:10.290   686   719 I ActivityManager: Start proc 19005:io.rasheed.svelteqa/u0a216 for next-top-activity {x}\n";
+			"10-25 20:23:10.290   686   719 I ActivityManager: Start proc 19005:dev.alfayez.exposvelte.qa/u0a216 for next-top-activity {x}\n";
 		expect(parseLaunchMarkers(text, pkg).displayMs).toBeNull();
 	});
 	test("Displayed with seconds", () => {
 		const text = [
-			"10-25 20:00:00.000   686   719 I ActivityManager: Start proc 1:io.rasheed.svelteqa/u0a1 for next-top-activity {x}",
-			"10-25 20:00:01.500   686   707 I ActivityTaskManager: Displayed io.rasheed.svelteqa/.MainActivity for user 0: +1s480ms",
+			"10-25 20:00:00.000   686   719 I ActivityManager: Start proc 1:dev.alfayez.exposvelte.qa/u0a1 for next-top-activity {x}",
+			"10-25 20:00:01.500   686   707 I ActivityTaskManager: Displayed dev.alfayez.exposvelte.qa/.MainActivity for user 0: +1s480ms",
 		].join("\n");
 		expect(parseLaunchMarkers(text, pkg)).toEqual({
 			displayMs: 1500,
@@ -373,7 +373,7 @@ describe("findInterruption", () => {
 		expect(findInterruption(sample("lab-interrupted.log"), pkg)).toEqual({ at: "10-27 14:49:13.668", by: cellBroadcast });
 	});
 	test("the START line alone, the Displayed line alone and a Transition requested with only the top activity are each enough", () => {
-		const start = "10-27 14:48:19.415  2160  3194 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW pkg=io.rasheed.svelteqa cmp=io.rasheed.svelteqa/.MainActivity} with LAUNCH_SINGLE_TASK from uid 2000 (com.android.shell) result code=0";
+		const start = "10-27 14:48:19.415  2160  3194 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW pkg=dev.alfayez.exposvelte.qa cmp=dev.alfayez.exposvelte.qa/.MainActivity} with LAUNCH_SINGLE_TASK from uid 2000 (com.android.shell) result code=0";
 		const only = (line: string) => findInterruption(`${start}\n${line}\n`, pkg);
 		expect(only("10-27 14:50:00.100  2160  5015 I ActivityTaskManager: START u0 {flg=0x10040000 cmp=com.android.settings/.Settings} with LAUNCH_SINGLE_TOP from uid 1000 result code=0")).toEqual({
 			at: "10-27 14:50:00.100",
@@ -393,7 +393,7 @@ describe("findInterruption", () => {
 		const lines = sample("lab-interrupted.log").split("\n");
 		const upToOwnStart = lines.slice(0, 4).join("\n");
 		expect(findInterruption(upToOwnStart, pkg)).toBeNull();
-		const withoutStart = lines.filter((line) => !line.includes("pkg=io.rasheed.svelteqa")).join("\n");
+		const withoutStart = lines.filter((line) => !line.includes("pkg=dev.alfayez.exposvelte.qa")).join("\n");
 		expect(findInterruption(withoutStart, pkg)).toBeNull();
 		const close = "10-27 14:50:02.300  3028  3082 V WindowManagerShell: Transition requested (#9): x TransitionRequestInfo { type = CLOSE, triggerTask = TaskInfo{ baseIntent=Intent { cmp=com.other/.A } }, flags = 0 }";
 		expect(findInterruption(`${upToOwnStart}\n${close}\n10-27 14:50:03.000  1000  1000 I ActivityManager: Start proc 9:com.other/u0a1 for service\n`, pkg)).toBeNull();

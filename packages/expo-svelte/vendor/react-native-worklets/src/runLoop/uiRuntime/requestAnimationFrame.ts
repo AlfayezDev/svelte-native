@@ -39,7 +39,7 @@ export function setupRequestAnimationFrame() {
     }
   }
 
-  // Rasheed patch: a native frame is requested only while something waits for one. The upstream loop re-requests the
+  // expo-svelte patch: a native frame is requested only while something waits for one. The upstream loop re-requests the
   // next frame from every `nativeFlushQueue`, forever, so once the UI runtime exists the main thread runs a Choreographer
   // callback, a JNI call and a Hermes call on every frame (0.3 to 0.45 ms on a Galaxy A16 at 90 Hz) with an empty queue.
   let frameRequested = false;

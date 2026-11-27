@@ -15,7 +15,7 @@ import {
 } from "../lib/resilience.ts";
 import { sample } from "./sample.ts";
 
-const pkg = "io.rasheed.svelteqa";
+const pkg = "dev.alfayez.exposvelte.qa";
 
 describe("the resilience plan", () => {
 	test("the full plan has the steps the plan names", () => {

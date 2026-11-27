@@ -20,7 +20,7 @@ namespace reanimated {
 using namespace facebook;
 using namespace facebook::jni;
 
-// Rasheed patch: lets a native mounting layer (the svelte-engine Expo module) take the engine views out of a frame's
+// expo-svelte patch: lets a native mounting layer (the svelte-engine Expo module) take the engine views out of a frame's
 // synchronous prop batch before it is copied into Java arrays and rebuilt as ReadableMaps. The sink gets the two buffers
 // of SynchronousPropsBufferSerializer.cpp and writes the views it does not take to restInts/restDoubles (sized like the
 // input), returning the number of ints left; `restDoubleCount` receives the doubles left. It returns
@@ -64,7 +64,7 @@ class NativeProxy : public jni::HybridClass<NativeProxy>, std::enable_shared_fro
   void installJSIBindings();
   std::optional<std::unique_ptr<int[]>> preserveMountedTags(std::vector<int> &tags);
   void synchronouslyUpdateUIProps(const std::vector<int> &intBuffer, const std::vector<double> &doubleBuffer);
-  // Rasheed patch: what a SynchronousPropsSink leaves for the Java path; kept between frames so a frame allocates nothing.
+  // expo-svelte patch: what a SynchronousPropsSink leaves for the Java path; kept between frames so a frame allocates nothing.
   std::vector<int> sinkRestInts_;
   std::vector<double> sinkRestDoubles_;
   PlatformDepMethodsHolder getPlatformDependentMethods();

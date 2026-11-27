@@ -152,7 +152,7 @@ if (__DEV__) module.hot?.accept(() => remountSurfaces());
   });
 
   test("a specifier in double quotes or a require is found, and an entry from before the package's rename too", () => {
-    for (const stale of [`import "expo-svelte/init";\n`, `require("expo-svelte/fabric");\n`, `import '@rasheed/svelte-native/init';\n`, `import { x } from "@rasheed/svelte-native";\n`, `import { x } from "@alfayez/svelte-native/app";\n`]) {
+    for (const stale of [`import "expo-svelte/init";\n`, `require("expo-svelte/fabric");\n`, `import '@alfayez/svelte-native/init';\n`, `import { x } from "@alfayez/svelte-native";\n`, `import { x } from "@alfayez/svelte-native/app";\n`]) {
       const root = project();
       delete process.env.EXPO_SVELTE_ROOT;
       syncRoutes(root, { variant: "qa" });

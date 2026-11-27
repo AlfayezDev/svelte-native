@@ -20,8 +20,8 @@ Pod::Spec.new do |s|
   s.summary        = 'The native code of Expo Svelte on iOS'
   s.description    = 'One pod for the native half of packages/expo-svelte on iOS: the Expo modules (fetch and Blob on URLSession, the clipboard, the safe-area insets, navigation restore, the update store, the blur view, the capture sweep) and the Fabric components of the UIKit stack, header, sheet and tabs.'
   s.license        = 'MIT'
-  s.author         = 'Rasheed'
-  s.homepage       = 'https://github.com/rasheed'
+  s.author         = 'AlfayezDev'
+  s.homepage       = 'https://github.com/AlfayezDev/svelte-native'
   s.platforms      = { :ios => '16.4' }
   s.swift_version  = '5.9'
   s.source         = { git: '' }

@@ -1,5 +1,5 @@
 // biome-ignore-all lint/suspicious/noExplicitAny: the client is a bundle loaded at run time and its remote functions are not typed
-// The platform app's remote functions lab (/__dev/remote), host side: its server module is served by a real SvelteKit server (the fixture), and the lab's own
+// The QA app's remote functions lab (/__dev/remote), host side: its server module is served by a real SvelteKit server (the fixture), and the lab's own
 // checks, the ones its "Run the checks" button runs on a device, run against it through the native client runtime. What a device adds is Hermes, the platform's
 // networking and the screen.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -25,7 +25,7 @@ describe("the remote functions lab", () => {
     mkdirSync(dirname(copy), { recursive: true });
     cpSync(join(platform, "remote-lab.remote.ts"), copy);
     server = await startServer("dev");
-    // The lab imports the module from the platform app; the server has it where the fixture can serve it, and the ids are the server's.
+    // The lab imports the module from the QA app; the server has it where the fixture can serve it, and the ids are the server's.
     m = await loadClient(`
       export { checks } from "${join(platform, "remote-lab-checks.ts")}";
       export { applyLabOrigin } from "${join(platform, "remote-lab-host.ts")}";

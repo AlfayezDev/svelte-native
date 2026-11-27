@@ -67,7 +67,7 @@ body:
     attributes:
       label: Library version
       description: The version of `expo-svelte` in `pnpm-lock.yaml` (or the commit, for a git dependency).
-      placeholder: "0.4.0-rc.12"
+      placeholder: "0.4.0-rc.13"
     validations:
       required: true
   - type: textarea

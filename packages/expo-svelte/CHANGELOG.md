@@ -4,6 +4,13 @@ Notable changes to `expo-svelte` (named `@alfayez/svelte-native` up to 0.4.0-rc.
 
 ## Unreleased
 
+## 0.4.0-rc.13 - 2026-11-27
+
+### Fixed
+
+- On Android, a `TextInput` that allows font scaling (the default) is drawn at the size the system's font scale gives it, as in React Native, and its line height and letter spacing with it. Its text was drawn at the unscaled size inside a box that Yoga had sized with the scaled one, so a field at font scale 1.3 had small text in a tall box. A field with `allowFontScaling={false}` keeps its size, and `maxFontSizeMultiplier` caps the scale. (#144)
+- On Android, `insets` and the window's `frame` reach JavaScript at whole precision (the pixels divided by the density as a float, as `react-native-safe-area-context` serializes them), not rounded to two decimals. A top inset of 128 px at 2.625 was 48.76 dp, 0.005 px short of 48.761906, which moved every view below a safe area by that much (the header, toolbar and tab bar reported their size and inset the same way, so a header screen laid out with the whole-precision estimate and then again with the rounded measure); a bordered box, a card and an indicator whose edge landed on a half pixel ended a pixel away from React Native's. (part of #143)
+
 ## 0.4.0-rc.12 - 2026-11-26
 
 ### Added
@@ -27,8 +34,6 @@ Notable changes to `expo-svelte` (named `@alfayez/svelte-native` up to 0.4.0-rc.
 
 ### Fixed
 
-- On Android, `insets` and the window's `frame` reach JavaScript at whole precision (the pixels divided by the density as a float, as `react-native-safe-area-context` serializes them), not rounded to two decimals. A top inset of 128 px at 2.625 was 48.76 dp, 0.005 px short of 48.761906, which moved every view below a safe area by that much (the header, toolbar and tab bar reported their size and inset the same way, so a header screen laid out with the whole-precision estimate and then again with the rounded measure); a bordered box, a card and an indicator whose edge landed on a half pixel ended a pixel away from React Native's. (part of #143)
-- On Android, a `TextInput` that allows font scaling (the default) is drawn at the size the system's font scale gives it, as in React Native, and its line height and letter spacing with it. Its text was drawn at the unscaled size inside a box that Yoga had sized with the scaled one, so a field at font scale 1.3 had small text in a tall box. A field with `allowFontScaling={false}` keeps its size, and `maxFontSizeMultiplier` caps the scale. (#144)
 - On Android, a view with an elevation is drawn in the order its siblings are in, as in React Native, and no longer over the siblings that come after it. Platform Z ordering put an elevated sibling (the plate that carries a menu's shadow) over a later one (the card with the menu's rows), so the rows were hidden once the plate was opaque. A touch is hit in the same order (`zIndex`, then insertion order); an elevation no longer ranks a view over the ones after it.
 - On Android, a `Text` that ends in an ellipsis (`numberOfLines`) lays out under the paint of React Native's `ReactTextView`, a `TextView` with the platform's default typeface, as it does there. The platform measures the "…" with the layout's own paint, and the engine's was the text's font: a title or a preview ended a letter earlier than React Native's ("lin…" there, "li…" here).
 - On Android, the text of a `TextInput` is laid out as React Native's is: the font size is rounded up to a whole pixel, a field with a font family has subpixel and linear text on (a line of typed text was a pixel narrower for every few characters, and a letter-spaced code a pixel narrower per digit), the line height is a span on the text rather than the platform's line spacing (the typed text sat a pixel high), and the hint keeps the font's padding unless `includeFontPadding={false}` says otherwise (it sat a few pixels off in a field taller than its text). A `fontWeight` or `fontStyle` alone, `'400'` and `'normal'` included, turns on the exact advances as it does in React Native.

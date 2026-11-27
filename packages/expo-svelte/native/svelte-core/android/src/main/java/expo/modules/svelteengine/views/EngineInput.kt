@@ -2,6 +2,7 @@ package expo.modules.svelteengine.views
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.Build
@@ -24,6 +25,7 @@ import android.view.inputmethod.InputConnectionWrapper
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import expo.modules.svelteappearance.isNight
+import com.facebook.react.uimanager.PixelUtil
 import expo.modules.svelteengine.InputAutofill
 import expo.modules.svelteengine.InputRules
 import expo.modules.svelteengine.TextLayouts
@@ -128,6 +130,12 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
   private var family: String? = null
   /** The line height the props asked for, in px (0 for none). */
   private var lineHeightPx = 0f
+  /** The size, letter spacing and line height as the props gave them (dp times the density), and whether the field scales them with the system's font (and to what cap): kept to scale them again when the font scale changes. */
+  private var rawSize = 0f
+  private var rawSpacing = 0f
+  private var rawHeight = 0f
+  private var scalable = false
+  private var maxScale = Float.NaN
   private var weight = 400
   private var italic = false
   private var created = false
@@ -347,18 +355,42 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
   private fun applyTextStyle(v: ViewProps) {
     // `ReactTextInputManager.setIncludeFontPadding` (the prop, true by default): the hint is laid out without the line-height span, by the font's own top and bottom.
     if (includeFontPadding != v.includeFontPadding) includeFontPadding = v.includeFontPadding
-    // `TextAttributes.effectiveFontSize`: the scaled size rounded up to a whole pixel; the letter spacing is its share of that size.
-    val size = InputRules.fontSizePx(v.fontSize)
-    if (textSize != size) setTextSize(TypedValue.COMPLEX_UNIT_PX, size)
+    rawSize = v.fontSize; rawSpacing = v.letterSpacing; rawHeight = v.lineHeight
+    scalable = v.allowFontScaling; maxScale = v.maxFontScale
     setTextColor(if (v.hasColor) v.color else 0xFF000000.toInt())
-    if (size > 0f && letterSpacing != v.letterSpacing / size) letterSpacing = v.letterSpacing / size
+    applyTextMetrics()
+    applyTypeface(v.family, v.weight, v.italic)
+  }
+
+  /**
+   * The size, the letter spacing and the line height from what the props gave (dp times the density), scaled with the system's font when the field allows it: `ReactEditText.applyTextAttributes`.
+   * Run again when the font scale changes (`onConfigurationChanged`, as `ReactEditText` does with `enableFontScaleChangesUpdatingLayout`).
+   */
+  private fun applyTextMetrics() {
+    // `TextAttributes.effectiveFontSize`: the size scaled with the system's font when the field allows it, rounded up to a whole pixel; the letter spacing is its share of that size.
+    val size = InputRules.fontSizePx(effectivePx(rawSize))
+    if (textSize != size) setTextSize(TypedValue.COMPLEX_UNIT_PX, size)
+    val spacing = effectivePx(rawSpacing)
+    if (size > 0f && letterSpacing != spacing / size) letterSpacing = spacing / size
     // `ReactEditText` manages the line height itself, with `CustomLineHeightSpan` on the text (`addSpansFromStyleAttributes`), never through the platform's line spacing.
     setLineSpacing(0f, 1f)
-    if (lineHeightPx != v.lineHeight) {
-      lineHeightPx = v.lineHeight
+    val height = effectivePx(rawHeight)
+    if (lineHeightPx != height) {
+      lineHeightPx = height
       syncLineHeight()
     }
-    applyTypeface(v.family, v.weight, v.italic)
+  }
+
+  override fun onConfigurationChanged(newConfig: Configuration) {
+    super.onConfigurationChanged(newConfig)
+    if (scalable) applyTextMetrics()
+  }
+
+  /** [px] (dp times the density) as the field's attributes make it: scaled with the system's font (`PixelUtil.toPixelFromSP`) when the field allows font scaling, as it is when it does not. A negative letter spacing scales too. */
+  private fun effectivePx(px: Float): Float {
+    if (!InputRules.scales(scalable, px)) return px
+    val scaled = PixelUtil.toPixelFromSP(px / resources.displayMetrics.density, InputRules.maxFontScale(maxScale))
+    return InputRules.effectivePx(true, px, scaled)
   }
 
   /**

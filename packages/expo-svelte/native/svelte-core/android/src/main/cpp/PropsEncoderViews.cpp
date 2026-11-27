@@ -184,21 +184,22 @@ void encodeInput(Out &o, const ShadowView &view, float scale) {
 
   const auto &ta = p.textAttributes;
   float fontSize = std::isnan(ta.fontSize) ? 14.f : static_cast<float>(ta.fontSize);
-  float multiplier = 1.f;
-  if (!std::isnan(ta.fontSizeMultiplier) && ta.allowFontScaling.value_or(true)) {
-    multiplier = static_cast<float>(ta.fontSizeMultiplier);
-  }
+  // The size, the letter spacing and the line height go as dp times the density. The system's font scale is not applied here: the props carry no multiplier on Android, and
+  // `ReactEditText` scales through `PixelUtil.toPixelFromSP` (Yoga measures the box the same way, `TextAttributeProps`), so the view scales them when the field allows it
+  // (record 40's last two values) and again when the font scale changes.
   o.begin(kInputTextStyle);
-  b.putFloat(fontSize * multiplier * scale);
+  b.putFloat(fontSize * scale);
   o.optColor(ta.foregroundColor);
   // 0 when neither the weight nor the style is set, as for a fragment: React Native turns subpixel and linear text on for a field with either (`ReactEditText.maybeUpdateTypeface`),
   // a style of `normal` included, and 400 stands for it when only the style is set.
   b.putInt(ta.fontWeight.has_value() ? static_cast<int32_t>(*ta.fontWeight) : (ta.fontStyle.has_value() ? 400 : 0));
   b.putInt(ta.fontStyle.has_value() && *ta.fontStyle != FontStyle::Normal ? 1 : 0);
   b.putInt(ta.fontFamily.empty() ? -1 : o.str(ta.fontFamily));
-  b.putFloat(std::isnan(ta.letterSpacing) ? 0.f : static_cast<float>(ta.letterSpacing) * multiplier * scale);
-  b.putFloat(std::isnan(ta.lineHeight) ? 0.f : static_cast<float>(ta.lineHeight) * multiplier * scale);
+  b.putFloat(std::isnan(ta.letterSpacing) ? 0.f : static_cast<float>(ta.letterSpacing) * scale);
+  b.putFloat(std::isnan(ta.lineHeight) ? 0.f : static_cast<float>(ta.lineHeight) * scale);
   b.putInt(textAlignCode(ta.alignment));
+  b.putInt(ta.allowFontScaling.value_or(true) ? 1 : 0);
+  b.putFloat(static_cast<float>(ta.maxFontSizeMultiplier)); // NaN when unset
 
   o.begin(kInputTextProp);
   b.putInt(o.str(p.text));

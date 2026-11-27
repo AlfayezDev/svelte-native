@@ -136,7 +136,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:scheme="expo-svelte" />
+                <data android:scheme="expo-svelte-qa" />
             </intent-filter>
         </activity>
 

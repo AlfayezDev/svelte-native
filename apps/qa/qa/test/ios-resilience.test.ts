@@ -65,7 +65,7 @@ describe("the iPhone's resilience plan", () => {
 	test("it starts on the lab page that writes the build identity, opens the menu over it and pushes the header screen", () => {
 		const [launch, push] = plan;
 		expect(movesOf(launch)).toContainEqual({ do: "open", url: labUrl(token) });
-		expect(labUrl(token)).toBe("expo-svelte:///__dev?run=resilience&token=tok1");
+		expect(labUrl(token)).toBe("expo-svelte-qa:///__dev?run=resilience&token=tok1");
 		expect(movesOf(launch)).toContainEqual({ do: "open", url: menuUrl });
 		expect(movesOf(push)).toContainEqual({ do: "tap", label: "Push eight screens with headers" });
 		expect(push?.check.present).toContainEqual({ kind: "bar", value: "Screen 1" });

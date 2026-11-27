@@ -67,7 +67,7 @@ export default {
   name: production ? "Svelte QA product" : smoke ? "Svelte smoke" : "Expo Svelte QA",
   owner: "alfayez",
   slug: "expo-svelte-qa",
-  scheme: production ? "svelte-qa-product" : smoke ? "expo-svelte-smoke" : "expo-svelte",
+  scheme: production ? "svelte-qa-product" : smoke ? "expo-svelte-qa-smoke" : "expo-svelte-qa",
   version: "0.1.0",
   // Updates apply only to builds with the same native code; the app version stands for it, so bump `version` with any native change.
   runtimeVersion: { policy: "appVersion" },

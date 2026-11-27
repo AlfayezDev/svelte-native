@@ -15,8 +15,8 @@ export const variants: readonly Variant[] = ["qa", "smoke", "production"];
 export const packageOf: Record<Variant, string> = { qa: qaApplicationId, smoke: smokeApplicationId, production: productApplicationId };
 /** The executable of each iOS app, which names its crash reports (`<process>-<date>.ips`) in the phone's crash log. */
 export const processNameOf: Record<Variant, string> = { qa: "ExpoSvelteQA", smoke: "Sveltesmoke", production: "SvelteQAproduct" };
-/** The URL scheme of each variant: the three apps of one device answer a scheme of their own each (the example app's `expo-svelte://` is the QA app's as well, so a link names the package). */
-export const schemeOf: Record<Variant, string> = { qa: "expo-svelte", smoke: "expo-svelte-smoke", production: "svelte-qa-product" };
+/** The URL scheme of each variant: the apps on one device answer a scheme of their own each (the example app's is `expo-svelte://`). */
+export const schemeOf: Record<Variant, string> = { qa: "expo-svelte-qa", smoke: "expo-svelte-qa-smoke", production: "svelte-qa-product" };
 /** The `APP_VARIANT` a build of the variant runs with, always set, so one in the shell cannot turn one app into another (the library's own default is `app`, not `qa`). */
 export const appVariantOf: Record<Variant, string> = { qa: "qa", smoke: "smoke", production: "production" };
 

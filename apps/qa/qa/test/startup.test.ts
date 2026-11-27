@@ -259,12 +259,12 @@ describe("trying again by itself", () => {
 
 describe("what the launch link says about the first screen", () => {
 	test("the links the QA harness and the lab itself open are the lab's", () => {
-		for (const url of ["expo-svelte:///__dev", "expo-svelte:///__dev/screens?mode=menu", "expo-svelte://__dev/tree/home", "expo-svelte-smoke:///__dev/smoke", "expo-svelte:///__dev?probe=1", "https://example.test/__dev"]) {
+		for (const url of ["expo-svelte-qa:///__dev", "expo-svelte-qa:///__dev/screens?mode=menu", "expo-svelte-qa://__dev/tree/home", "expo-svelte-qa-smoke:///__dev/smoke", "expo-svelte-qa:///__dev?probe=1", "https://example.test/__dev"]) {
 			expect([url, launchKind(url)]).toEqual([url, "lab"]);
 		}
 	});
 	test("a link to anything else is another launch: the product's", () => {
-		for (const url of ["expo-svelte:///projects", "expo-svelte:///sign-in", "expo-svelte:///acme/home", "svelte-qa-product://acme/settings", "expo-svelte:///__devices", "exp+svelte-qa-product://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081"]) {
+		for (const url of ["expo-svelte-qa:///projects", "expo-svelte-qa:///sign-in", "expo-svelte-qa:///acme/home", "svelte-qa-product://acme/settings", "expo-svelte-qa:///__devices", "exp+svelte-qa-product://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081"]) {
 			expect([url, launchKind(url)]).toEqual([url, "other"]);
 		}
 	});

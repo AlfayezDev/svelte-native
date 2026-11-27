@@ -76,7 +76,7 @@ export function soakDefinition(
 		parts.length > 0
 			? `A partial soak, to find where a growth comes from: only the parts ${parts.join(", ")} of the cycle run (the file is not merged into the report).`
 			: "",
-		`The lab (expo-svelte:///__dev?run=soak-mix-<seconds>s) runs cycles of 6 s animated churn (32 tiles replaced every 250 ms), 2 push/pop of a 60-row screen, 2 modal open/close, a sheet, 2 native-header screens pushed and popped, a 300-row windowed list mounted, scrolled and unmounted, and 3 tab switches, for ${minutes} minute(s), the first two cycles being the warm-up.`,
+		`The lab (expo-svelte-qa:///__dev?run=soak-mix-<seconds>s) runs cycles of 6 s animated churn (32 tiles replaced every 250 ms), 2 push/pop of a 60-row screen, 2 modal open/close, a sheet, 2 native-header screens pushed and popped, a 300-row windowed list mounted, scrolled and unmounted, and 3 tab switches, for ${minutes} minute(s), the first two cycles being the warm-up.`,
 		`After the warm-up cycles and after the last cycle everything is unmounted and the app idles: 3 samples each (the Hermes heap collected first, then JS heap and engine counts from the lab, the process from dumpsys meminfo) form the baseline and final windows. Every ${intervalSeconds} s in between the same sources are sampled without a collection.`,
 		"heapGrowthPct is the worse of the JS heap (HermesInternal allocated bytes) and the native heap (Native Heap Heap Alloc), final window over baseline window, medians. leakedViews is engine views mounted at the end minus at the baseline. deadTagWrites counts animated writes for a tag deleted more than 1 s ago, never claimed within 1 s, or dropped for lack of room, between the start of the soak and its end.",
 	]
@@ -206,7 +206,7 @@ export async function soak(argv: string[]): Promise<void> {
 		await startApp(
 			serial,
 			packageName,
-			`expo-svelte:///__dev?run=soak-mix-${durationSeconds}s${parts.map((part) => `.${part}`).join("")}`,
+			`expo-svelte-qa:///__dev?run=soak-mix-${durationSeconds}s${parts.map((part) => `.${part}`).join("")}`,
 		);
 		const deadline = t0 + timeoutMs;
 		let nextSeries = t0 + intervalSeconds * 1000;

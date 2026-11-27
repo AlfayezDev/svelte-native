@@ -35,7 +35,7 @@ Read from the source at `48d746e54`; the steps below test each one.
 ## Setup (both platforms)
 
 - Install the QA app (`dev.alfayez.exposvelte.qa`, from `pnpm native-qa build`, or an EAS `qa` build). It holds the lab.
-- Open a lab route by link: Android `adb shell am start -a android.intent.action.VIEW -d 'expo-svelte:///__dev/screens'`; iPhone: type the link into Safari's address bar. Routes used: `/__dev/screens` (header, tabs, sheet, form sheet, modal, toolbar menu), `/__dev/tree` (file-routed tabs), `/__dev/gestures?mode=row|carousel|pushed-edge`, `/__dev/foreign?mode=libraries`, `/__dev` (checks panel).
+- Open a lab route by link: Android `adb shell am start -a android.intent.action.VIEW -d 'expo-svelte-qa:///__dev/screens'`; iPhone: type the link into Safari's address bar. Routes used: `/__dev/screens` (header, tabs, sheet, form sheet, modal, toolbar menu), `/__dev/tree` (file-routed tabs), `/__dev/gestures?mode=row|carousel|pushed-edge`, `/__dev/foreign?mode=libraries`, `/__dev` (checks panel).
 - Keep the phone awake and plugged in (screen timeout at its longest), the volume up, battery saver off.
 - Set the device language to English first; the RTL step switches it.
 
@@ -45,11 +45,11 @@ Use Google TalkBack (on Samsung, Settings > Accessibility > Installed apps; Sams
 
 ### T1. Tabs (3 min)
 
-Open `expo-svelte:///__dev/tree` (file-routed tabs: Home and Inbox).
+Open `expo-svelte-qa:///__dev/tree` (file-routed tabs: Home and Inbox).
 
 - [ ] The tab bar is read as tabs: "Home, tab 1 of 2, selected" (or equivalent), the other as not selected; it is the last stop after the content.
 - [ ] Switch to Inbox by double-tapping its tab: the selected state changes in speech; focus is on the new pane (record where). Switch back.
-- [ ] Open `expo-svelte:///__dev/screens?mode=tabs`: the tab items read "Home, new items" and "Inbox, 99+" (dot badge and number badge).
+- [ ] Open `expo-svelte-qa:///__dev/screens?mode=tabs`: the tab items read "Home, new items" and "Inbox, 99+" (dot badge and number badge).
 - [ ] Open a row's detail from Home: "Navigate up" is the first stop before the title; after the transition TalkBack focus lands on the new screen's title (Expect: yes); double-tap "Navigate up": you return and focus lands on a sensible element of the list (record where).
 
 ### T2. Sheets and modals in the lab (4 min)
@@ -102,7 +102,7 @@ Settings > Apps > the QA app > Language > Arabic (Samsung: Settings > General ma
 
 ### T8. Accessibility lab: state, value, hint, actions (4 min)
 
-Open `expo-svelte:///__dev/a11y` (the states) and `expo-svelte:///__dev/a11y?mode=actions`. The suite has already checked what the engine publishes for each control (`qa/README.md` "Accessibility"); this is what TalkBack says of it. Compare with any React Native app's controls with the same props if in doubt: the engine does what React Native's views do.
+Open `expo-svelte-qa:///__dev/a11y` (the states) and `expo-svelte-qa:///__dev/a11y?mode=actions`. The suite has already checked what the engine publishes for each control (`qa/README.md` "Accessibility"); this is what TalkBack says of it. Compare with any React Native app's controls with the same props if in doubt: the engine does what React Native's views do.
 
 - [ ] "Accept terms": checkbox, checked; double-tap unchecks it and TalkBack says "not checked". "Select all, mixed": checkbox, and "mixed" is spoken.
 - [ ] "Plan": a radio group of three radio buttons; the chosen one is selected. "Inbox" and "Archive": tabs, the current one selected.

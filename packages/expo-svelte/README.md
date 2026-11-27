@@ -400,11 +400,11 @@ cd apps/qa && pnpm dev                                  # the SvelteKit dev serv
 # Android (the Samsung over USB, or the emulator): the build must allow plain HTTP to the host, so it is built with the origin
 EXPO_SVELTE_REMOTE_ORIGIN=http://localhost:3000 pnpm native-qa build --abi arm64-v8a --prebuild
 adb reverse tcp:3000 tcp:3000
-adb shell am start -a android.intent.action.VIEW -d "expo-svelte:///__dev/remote?run=1" dev.alfayez.exposvelte.qa
+adb shell am start -a android.intent.action.VIEW -d "expo-svelte-qa:///__dev/remote?run=1" dev.alfayez.exposvelte.qa
 adb logcat -s ReactNativeJS | grep "remote lab results"      # {"origin":…,"results":{"query":"pass: …",…}}: eleven passes
 ```
 
-On the iPhone the dev server must be reachable from it: run it on the Mac and use the Mac's LAN address (`EXPO_SVELTE_REMOTE_ORIGIN=http://<mac address>:3000`, or `?origin=http://<mac address>:3000` on the link of a build that has no host; an IP literal is outside App Transport Security) and open `expo-svelte:///__dev/remote?run=1`. A build with no origin still has the page: type the origin of a reachable dev server and press "Use this host" (`?origin=<origin>` does it from the link; use `https:`, or on the iPhone a plain `http:` address to an IP, which App Transport Security does not cover). Then, by hand: type in the form and watch the issues change; leave the page while the clock runs, come back and press "Server stats": `liveOpen` is 1 (this page's clock) and not 2, because the first stream was closed with its screen; send the app to the background and back and check the clock resumes; kill the dev server and check the failures are shown, not swallowed.
+On the iPhone the dev server must be reachable from it: run it on the Mac and use the Mac's LAN address (`EXPO_SVELTE_REMOTE_ORIGIN=http://<mac address>:3000`, or `?origin=http://<mac address>:3000` on the link of a build that has no host; an IP literal is outside App Transport Security) and open `expo-svelte-qa:///__dev/remote?run=1`. A build with no origin still has the page: type the origin of a reachable dev server and press "Use this host" (`?origin=<origin>` does it from the link; use `https:`, or on the iPhone a plain `http:` address to an IP, which App Transport Security does not cover). Then, by hand: type in the form and watch the issues change; leave the page while the clock runs, come back and press "Server stats": `liveOpen` is 1 (this page's clock) and not 2, because the first stream was closed with its screen; send the app to the background and back and check the clock resumes; kill the dev server and check the failures are shown, not swallowed.
 
 ## Apply the patches
 

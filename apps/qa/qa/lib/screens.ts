@@ -73,7 +73,7 @@ export type ScreenCase = {
 	masksWhenShown: Selector[];
 };
 
-const dev = "expo-svelte:///__dev";
+const dev = "expo-svelte-qa:///__dev";
 const screens = `${dev}/screens`;
 const tree = `${dev}/tree`;
 const a11yLab = `${dev}/a11y`;

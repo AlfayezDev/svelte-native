@@ -43,7 +43,7 @@ describe("the XCUITest bundle on the Mac", () => {
 	});
 
 	test("the test command runs the built runner against the phone with the app, the lab's link and the time handed in", () => {
-		const url = "expo-svelte:///__dev?run=gestures-box,drive:xctest&token=abc";
+		const url = "expo-svelte-qa:///__dev?run=gestures-box,drive:xctest&token=abc";
 		const command = testCommand({ dir: "/tmp/t", udid: "UDID", bundleId: "dev.alfayez.exposvelte.qa", seconds: 900, outFile: "/tmp/t/out.log", url, trace: true });
 		expect(command).toContain("cd '/tmp/t'");
 		expect(command).toContain(`TEST_RUNNER_GESTURES_SECONDS=900 TEST_RUNNER_GESTURES_BUNDLE_ID='dev.alfayez.exposvelte.qa' TEST_RUNNER_GESTURES_URL='${url}' TEST_RUNNER_GESTURES_TRACE=1`);

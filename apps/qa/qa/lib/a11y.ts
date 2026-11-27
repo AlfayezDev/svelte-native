@@ -168,7 +168,7 @@ function sameLabel(node: UiNode, label: string): boolean {
 	return node.text.trim() === label || node.contentDesc.trim() === label;
 }
 
-/** A declared label, or that label followed by what it is for ("Delete workspace, Acme": a button that repeats in a list names its row). */
+/** A declared label, or that label followed by what it is for ("Delete project, Acme": a button that repeats in a list names its row). */
 function sameLabelOrQualified(node: UiNode, label: string): boolean {
 	return sameLabel(node, label) || node.contentDesc.trim().startsWith(`${label}, `);
 }

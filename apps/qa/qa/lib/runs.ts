@@ -2,7 +2,6 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { outDir, runsDir } from "./paths.ts";
 import type { UpdatesFile } from "./updates.ts";
-import { assertClean } from "./qa-account.ts";
 import type { ProductFile } from "./product.ts";
 import type {
 	A11yFile,
@@ -51,8 +50,6 @@ export async function writeRun(
 	await mkdir(runsDir, { recursive: true });
 	const name = `${kind}-${slug(serial)}-${stamp(startedAt)}`;
 	const text = `${JSON.stringify(data, null, "\t")}\n`;
-	// Every run file passes here: the suites redact what they read off the screen, and this is the check behind it.
-	assertClean(text, `the ${kind} run file`);
 	await writeFile(join(runsDir, `${name}.json`), text);
 	return name;
 }

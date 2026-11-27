@@ -6,15 +6,14 @@ import { launchArguments, parseCaptureIndex, tryParseCaptureIndex } from "../lib
 import { iosBelowTheFold, iosCases, iosControl, iosLayoutVariants, iosMatrix, iosNotCovered, iosTitle, iosVariants } from "../lib/iphone/screens.ts";
 import { cases, referenceName } from "../lib/screens.ts";
 import { platformOf } from "../lib/flags.ts";
-import { login } from "./fixture-cases.ts";
+import { form } from "./fixture-cases.ts";
 
 describe("the iOS matrix", () => {
 	test("it is the Android matrix without the screens an iOS app cannot be put in and without text sizes", () => {
-		expect(iosCases).toHaveLength(cases.filter((screen) => !screen.signedIn && screen.androidOnly !== true && screen.network === "normal").length);
+		expect(iosCases).toHaveLength(cases.filter((screen) => screen.androidOnly !== true && screen.network === "normal").length);
 		expect(iosCases.some((screen) => screen.network !== "normal")).toBe(false);
 		expect(cases.filter((screen) => screen.androidOnly === true).map((screen) => screen.id)).toEqual(["lab-styles-shadow", "lab-styles-border", "lab-styles-origin", "lab-styles-uniform", "lab-styles-rect", "lab-styles-views", "lab-a11y-states", "lab-a11y-actions"]);
 		expect(iosCases.some((screen) => screen.androidOnly === true)).toBe(false);
-		expect(iosCases.some((screen) => screen.signedIn)).toBe(false);
 		expect(iosVariants.map((variant) => variant.id)).toEqual(["light-ltr-normal", "light-rtl-normal", "dark-ltr-normal", "dark-rtl-normal"]);
 		expect(iosLayoutVariants.map((variant) => variant.id)).toEqual(["light-ltr-normal", "light-rtl-normal"]);
 		expect(iosMatrix(iosCases, iosVariants)).toHaveLength(iosCases.length * 4);
@@ -51,7 +50,7 @@ describe("the iOS matrix", () => {
 		const header = cases.find((entry) => entry.id === "screens-header");
 		if (!header) throw new Error("no screens-header case");
 		expect(iosTitle(header, "ltr")).toBe("Screen 1");
-		expect(iosTitle(login, "rtl")).toBe("ما بريدك الإلكتروني؟");
+		expect(iosTitle(form, "rtl")).toBe("نموذج الاتصال");
 	});
 });
 

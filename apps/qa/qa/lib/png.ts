@@ -316,22 +316,3 @@ export function diffImages(reference: Image, actual: Image, masks: Rect[]): Diff
 	};
 }
 
-/** The color a redacted region is painted in. */
-export const redactedColor: readonly [number, number, number, number] = [128, 128, 128, 255];
-
-/**
- * A copy of the image with the rectangles painted over in one flat color (`redactedColor`): what is stored of a region that must
- * not be kept, such as the QA account's address on a signed-in screen. The comparison ignores the masks anyway.
- */
-export function paintOver(image: Image, rects: Rect[], color: readonly [number, number, number, number] = redactedColor): Image {
-	const data = Buffer.from(image.data);
-	const covered = maskBitmap(image.width, image.height, rects);
-	for (let pixel = 0; pixel < image.width * image.height; pixel++) {
-		if (!covered[pixel]) continue;
-		data[pixel * 4] = color[0];
-		data[pixel * 4 + 1] = color[1];
-		data[pixel * 4 + 2] = color[2];
-		data[pixel * 4 + 3] = color[3];
-	}
-	return { width: image.width, height: image.height, data };
-}

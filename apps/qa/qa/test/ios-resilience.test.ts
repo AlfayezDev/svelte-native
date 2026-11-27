@@ -112,7 +112,7 @@ describe("the iPhone's resilience plan", () => {
 	test("a start with nothing restored is also judged by what it shows: the first screen of the lab build is on screen, so a blank or dead app is no pass", () => {
 		const foreground = plan.at(-1);
 		expect(foreground?.check.present).toEqual([firstScreen]);
-		// the label is the lab link that the signed-out first screen (the login) carries in a lab build
+		// the label is the lab link that the first screen (the sign-in screen) carries in a lab build
 		expect(readFileSync(join(import.meta.dirname, "../../src/lib/native/dev/LabLink.svelte"), "utf8")).toContain(`label=${JSON.stringify(firstScreen.value)}`);
 	});
 

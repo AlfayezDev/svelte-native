@@ -158,7 +158,7 @@ describe("the iPhone's foreign gates", () => {
 
 	test("a pull of the phone's crash log during the foreign run counts for the iPhone's crash reports", () => {
 		const report: CrashReport = { file: "ExpoSvelteQA-2026-11-04-100000.ips", capturedAt: null, processStartedAt: null, pid: 1, exceptionType: "EXC_CRASH", signal: "SIGABRT", reason: null, framesOf: null, topFrames: [] };
-		const measure = (file: ForeignFile) => deviceMetrics(null, null, [], null, null, { parity: null, a11y: null, resilience: null }, null, null, [], null, [], null, { file, pins: { libraries } });
+		const measure = (file: ForeignFile) => deviceMetrics(null, null, [], null, null, { parity: null, a11y: null, resilience: null }, null, null, [], null, null, { file, pins: { libraries } });
 		expect(measure(cleanRun({ crashReports: [report] }))["log.crashReports"]).toBe(1);
 		expect(measure(cleanRun({ crashReports: [] }))["log.crashReports"]).toBe(0);
 		expect(measure(cleanRun({ crashReports: undefined, crashReportsError: "after the run: No device found" }))["log.crashReports"]).toBeNull();

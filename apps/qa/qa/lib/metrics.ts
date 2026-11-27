@@ -251,7 +251,6 @@ export function deviceMetrics(
 	gestures: GesturesFile | null = null,
 	pinnedGestures: readonly string[] = allScenarios,
 	updates: UpdatesFile | null = null,
-	pinnedSignedIn: readonly string[] = [],
 	product: ProductFile | null = null,
 	foreign: { file: ForeignFile; pins: ForeignPins } | null = null,
 ): Metrics {
@@ -260,7 +259,7 @@ export function deviceMetrics(
 		...(boot ? bootMetrics(boot) : {}),
 		...(soak ? soakMetrics(soak) : {}),
 		...(crashes ? crashMetrics(crashes) : {}),
-		...suiteMetrics(suites, pinnedSignedIn),
+		...suiteMetrics(suites),
 		...(smoke ? smokeMetrics(smoke.file, smoke.pins) : {}),
 		...(gestures ? gesturesMetrics(gestures, pinnedGestures) : {}),
 		...(foreign ? foreignMetrics(foreign.file, foreign.pins) : {}),

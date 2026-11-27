@@ -9,24 +9,16 @@ import {
 	type Direction,
 } from "./device.ts";
 import { amStartCommand } from "./adb.ts";
-import { accountEmail, placeholder } from "./qa-account.ts";
 import { diffImages, type Image, type Rect } from "./png.ts";
 import { MASK_PAD } from "./parity.ts";
 import { localize, selectorFor, type Selector, type ScreenCase, type Step } from "./screens.ts";
 import { center, type UiNode, type UiTree } from "./uia.ts";
 import { sleep } from "./wait.ts";
 
-/**
- * Whether a node answers to the selector: its text or content description equals the label, its class equals the class. The
- * `account` selector is the node that shows the QA account's address; with no account configured it matches nothing.
- */
-export function matches(node: UiNode, selector: { label?: string; className?: string; account?: "email"; resourceId?: string }): boolean {
+/** Whether a node answers to the selector: its text or content description equals the label, its class equals the class. */
+export function matches(node: UiNode, selector: { label?: string; className?: string; resourceId?: string }): boolean {
 	if (selector.className !== undefined && node.className !== selector.className) return false;
 	if (selector.resourceId !== undefined && node.resourceId !== selector.resourceId) return false;
-	if (selector.account === "email") {
-		const email = accountEmail();
-		if (email === null || (node.text.trim().toLowerCase() !== email && node.contentDesc.trim().toLowerCase() !== email)) return false;
-	}
 	if (selector.label === undefined) return true;
 	return node.text.trim() === selector.label || node.contentDesc.trim() === selector.label;
 }
@@ -42,29 +34,8 @@ export function findNode(tree: UiTree, selector: Selector, direction: Direction)
 }
 
 /**
- * The visible nodes of the tree that show the QA account's address and that no rectangle covers: a signed-in screen is only frozen
- * into a reference when this is empty, because the reference keeps the pixels outside the masks.
- */
-export function exposedAccount(tree: UiTree, masks: Rect[]): UiNode[] {
-	const email = accountEmail();
-	if (email === null) return [];
-	return tree.nodes.filter((node) => {
-		if (node.bounds.width <= 0 || node.bounds.height <= 0) return false;
-		if (!`${node.text}\n${node.contentDesc}`.toLowerCase().includes(email)) return false;
-		return !masks.some(
-			(mask) =>
-				mask.x <= node.bounds.x &&
-				mask.y <= node.bounds.y &&
-				mask.x + mask.width >= node.bounds.x + node.bounds.width &&
-				mask.y + mask.height >= node.bounds.y + node.bounds.height,
-		);
-	});
-}
-
-/**
- * The labels of the screen's own chrome that a mask covers: its title, its declared controls and the controls further down (the tab strip of the account modal is among
- * them), found in the tree on screen. A mask is there for a node that moves (the address, the photo); one over a control hides what the comparison is for, as a mask the
- * covered screen's address left at the height of the modal's tab strip did. Rectangles that only touch do not cover.
+ * The labels of the screen's own chrome that a mask covers: its title, its declared controls and the controls further down, found in the tree on screen. A mask is
+ * there for a node that moves (a spinner, a photo); one over a control hides what the comparison is for. Rectangles that only touch do not cover.
  *
  * A control that is inside a masked node is not covered by the mask but carried by it: its parent, or any node above it, lies wholly within the mask, so it moves with the
  * node the mask is for (the Reanimated test square holds the "Animated touch target" that is its whole surface). The mask is on the node that moves, and the control cannot
@@ -97,22 +68,12 @@ export function maskedChrome(tree: UiTree, screen: ScreenCase, direction: Direct
 	return [...found];
 }
 
-/** The rectangles of every node that shows the QA account's address anywhere in its text or description, whether a mask covers it or not. */
-export function accountRects(tree: UiTree): Rect[] {
-	const email = accountEmail();
-	if (email === null) return [];
-	return tree.nodes
-		.filter((node) => node.bounds.width > 0 && node.bounds.height > 0 && `${node.text}\n${node.contentDesc}`.toLowerCase().includes(email))
-		.map((node) => node.bounds);
-}
-
 export function describeSelector(selector: Selector, direction: Direction): string {
 	const wanted = selectorFor(selector, direction);
 	return [
 		wanted.className,
 		wanted.resourceId === undefined ? undefined : `#${wanted.resourceId}`,
 		wanted.label === undefined ? undefined : JSON.stringify(wanted.label),
-		wanted.account === undefined ? undefined : `the QA account's ${wanted.account} (${placeholder})`,
 	]
 		.filter(Boolean)
 		.join(" ");
@@ -292,7 +253,7 @@ export async function openCase(
 			session.serial,
 			screen.anchor,
 			direction,
-			screen.needsBackend ? 25_000 : 15_000,
+			15_000,
 		);
 		return { tree };
 	});
@@ -324,23 +285,13 @@ async function runStep(session: DeviceSession, step: Step, direction: Direction)
 	}
 }
 
-/**
- * Whether the node is on screen and not under a sheet or modal: `visible` is the tree a service walks (it leaves the covered screen out), absent for a
- * screen with nothing over it. The plain tree lists the covered screen's views, whose rectangles would mask the modal's own content.
- */
-function onScreen(node: UiNode, visible: UiTree | undefined): boolean {
-	if (visible === undefined) return true;
-	const { x, y, width, height } = node.bounds;
-	return visible.nodes.some((other) => other.text === node.text && other.contentDesc === node.contentDesc && other.bounds.x === x && other.bounds.y === y && other.bounds.width === width && other.bounds.height === height);
-}
-
 /** The rectangles of the nodes a case masks (spinners), from the tree on screen. */
-export function maskRects(tree: UiTree, screen: ScreenCase, direction: Direction, visible?: UiTree): Rect[] {
+export function maskRects(tree: UiTree, screen: ScreenCase, direction: Direction): Rect[] {
 	const rects: Rect[] = [];
 	for (const selector of screen.masks) {
 		const wanted = selectorFor(selector, direction);
 		const found = tree.nodes.filter(
-			(node) => node.bounds.width > 0 && node.bounds.height > 0 && matches(node, wanted) && (selector.account === undefined || onScreen(node, visible)),
+			(node) => node.bounds.width > 0 && node.bounds.height > 0 && matches(node, wanted),
 		);
 		// A mask that matches nothing would freeze a reference with the moving node unmasked: refuse instead.
 		if (found.length === 0)

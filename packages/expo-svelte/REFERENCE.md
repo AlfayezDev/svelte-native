@@ -520,4 +520,4 @@ The compiler/runtime pin is intentional; changing it requires native compilation
 
 `bun test tests/renderer/renderer.test.ts` exercises compiled reactive updates, keyed identity, conditional removal, event delivery and effect disposal. `pnpm typecheck` validates the public primitives and tooling.
 
-The port was first exercised on a physical Samsung SM-A165F (Android API 36), in the origin's app, the project this repository was extracted from (its screens are not part of this repository), including a standalone release with Metro stopped: login validation, onboarding, profile and photo updates, email verification, device revocation, Arabic/English preferences, account deletion, session retention, deep links and startup retry. Browser login, onboarding and profile saving were also checked. Hermes exports contain bytecode version 98 and source maps with the original Svelte source contents.
+The port was first exercised on a physical Samsung SM-A165F (Android API 36), in the app this repository was extracted from, including a standalone release with Metro stopped. Hermes exports contain bytecode version 98 and source maps with the original Svelte source contents.

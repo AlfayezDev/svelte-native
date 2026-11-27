@@ -13,6 +13,10 @@ class ViewProps {
   var letterSpacing = 0f
   var lineHeight = 0f
   var textAlign = 0
+  /** The field's `allowFontScaling` (record 40): the size, line height and letter spacing are dp times the density and the view scales them with the system's font (`PixelUtil.toPixelFromSP`). False for a size that is final (the header's search field). */
+  var allowFontScaling = false
+  /** `maxFontSizeMultiplier` (record 40), NaN when unset. */
+  var maxFontScale = Float.NaN
   var propText: String? = null
   var propCount = 0
   var placeholder: String? = null
@@ -95,7 +99,7 @@ class ViewProps {
   fun reset() {
     touched = false
     fontSize = 14f; hasColor = false; color = 0; weight = 0; italic = false; family = null
-    letterSpacing = 0f; lineHeight = 0f; textAlign = 0
+    letterSpacing = 0f; lineHeight = 0f; textAlign = 0; allowFontScaling = false; maxFontScale = Float.NaN
     propText = null; propCount = 0; placeholder = null; hasPlaceholderColor = false; placeholderColor = 0
     secure = false; multiline = false; editable = true; maxLength = -1; includeFontPadding = true
     keyboard = 0; capitalize = 3; autoCorrect = InputRules.AUTO_CORRECT_KEEP; returnKey = 0; submitBehavior = 0
@@ -128,7 +132,8 @@ object PropsViews {
         v.weight = ops[i + 3]; v.italic = ops[i + 4] == 1
         v.family = if (ops[i + 5] >= 0) strings[ops[i + 5]] else null
         v.letterSpacing = f(ops, i + 6); v.lineHeight = f(ops, i + 7); v.textAlign = ops[i + 8]
-        i += 9
+        v.allowFontScaling = ops[i + 9] == 1; v.maxFontScale = f(ops, i + 10)
+        i += 11
       }
       41 -> { v.propText = strings[ops[i]]; v.propCount = ops[i + 1]; i += 2 }
       42 -> {

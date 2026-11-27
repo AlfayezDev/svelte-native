@@ -27,7 +27,7 @@ pnpm add expo-svelte@next svelte@5.59.1
 ```json
 {
   "dependencies": {
-    "expo-svelte": "0.4.0-rc.11",
+    "expo-svelte": "0.4.0-rc.12",
     "svelte": "5.59.1"
   }
 }
@@ -480,7 +480,7 @@ patches
         fix: copy node_modules/expo-svelte/patches/@sveltejs__kit@3.4.0.patch into your repository (patches/expo-svelte/), declare "@sveltejs/kit@3.4.0: patches/expo-svelte/@sveltejs__kit@3.4.0.patch" under patchedDependencies in pnpm-workspace.yaml, then pnpm install (README: "Apply the patches")
 
 build integration
-  pass  expo-svelte 0.4.0-rc.11 is a dependency of the app
+  pass  expo-svelte 0.4.0-rc.12 is a dependency of the app
   ????  could not tell: metro.config.cjs does not mention withExpoSvelte (a config that applies it from a file it imports is fine)
         fix: module.exports = withExpoSvelte(getDefaultConfig(__dirname)), with withExpoSvelte from require("expo-svelte/metro")
   pass  app.json lists the expo-svelte plugin

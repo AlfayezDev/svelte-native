@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, test as bunTest } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { runCase, type Context } from "../commands/parity.ts";
 import { DeviceSession, DeviceStateError, DumpError, newSessionNotes, type SessionOptions } from "../lib/device.ts";
 import { dumpWithOwnControls, isWaitFailure, NodeNotFoundError, ObservedError, waitForNode } from "../lib/drive.ts";
@@ -21,40 +21,20 @@ import {
 	logcatLines,
 	logcatStamp,
 	maxDumpBytes,
-	pictureRedactions,
 	plainDumpAttempts,
-	compressedDumpAttempts,
 	retriedFields,
 	type EvidenceDeps,
 	type EvidenceTarget,
 } from "../lib/evidence.ts";
-import { decodePng, encodePng, redactedColor, type Image } from "../lib/png.ts";
-import { useAccount } from "../lib/qa-account.ts";
+import { decodePng, encodePng, type Image } from "../lib/png.ts";
 import { emptyManifest } from "../lib/parity.ts";
 import { cases, referenceName, variants, type ScreenCase } from "../lib/screens.ts";
 import type { FailureEvidence } from "../lib/types.ts";
 import { parseHierarchy, type UiTree } from "../lib/uia.ts";
 import { FakeDevice } from "./fake-device.ts";
-import { accountDevices, login } from "./fixture-cases.ts";
-
-/**
- * Every test starts with no QA account, whatever the environment or the repository's .env.local of the machine running it says (a developer's has one); a test
- * that needs an account sets its own with `useAccount`, and `afterEach` gives the machine's back.
- */
-const test = (name: string, body: () => void | Promise<void>, timeoutMs?: number): void =>
-	bunTest(
-		name,
-		() => {
-			useAccount(null);
-			return body();
-		},
-		timeoutMs,
-	);
+import { form } from "./fixture-cases.ts";
 
 const normalScreen = cases.find((entry) => entry.network === "normal") as ScreenCase;
-/** A signed-in screen presented over another: its compressed dump leaves the covered screen out, and it masks the devices' text. */
-const devicesModal = accountDevices;
-const address = "qa-user@example.test";
 const pkg = "dev.alfayez.exposvelte.qa";
 
 const node = (attributes: string, children = "") => `<node index="0" text="" resource-id="" class="android.view.View" package="${pkg}" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" ${attributes}>${children}</node>`;
@@ -64,11 +44,6 @@ const loadingXml = hierarchy(
 	node('class="android.widget.FrameLayout" bounds="[0,0][1080,2400]"', node('text="Expo Svelte" bounds="[63,300][400,360]"') + node('content-desc="Loading" bounds="[63,360][116,414]"')),
 );
 const loading: UiTree = { ...parseHierarchy(loadingXml), raw: loadingXml };
-
-/** A node with everything explicit: its text, its resource id, where it is. */
-const box = (bounds: string, fields: { text?: string; id?: string; pkg?: string; cls?: string } = {}, children = "") =>
-	`<node index="0" text="${fields.text ?? ""}" resource-id="${fields.id ?? ""}" class="${fields.cls ?? "android.view.View"}" package="${fields.pkg ?? pkg}" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="${bounds}">${children}</node>`;
-const treeOf = (xml: string): UiTree => ({ ...parseHierarchy(xml), raw: xml });
 
 function picture(width = 24, height = 48): Image {
 	const data = Buffer.alloc(width * height * 4, 255);
@@ -83,7 +58,6 @@ async function temporary(prefix: string): Promise<string> {
 	return directory;
 }
 afterEach(async () => {
-	useAccount(undefined);
 	for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
 });
 
@@ -129,12 +103,6 @@ describe("what a dump says of the window it walked", () => {
 		expect(describeTopWindow(launcher)).toStartWith("com.google.android.apps.nexuslauncher android.widget.FrameLayout");
 	});
 
-	test("the account's address is not in the line", () => {
-		useAccount("qa-user@example.test");
-		const withAccount = parseHierarchy(hierarchy(node('class="android.widget.FrameLayout" bounds="[0,0][10,10]"', node('text="qa-user@example.test" bounds="[0,0][10,10]"'))));
-		expect(describeTopWindow(withAccount)).toContain("<qa-account>");
-		expect(describeTopWindow(withAccount)).not.toContain("example.test");
-	});
 });
 
 describe("the evidence of a failed try", () => {
@@ -245,125 +213,6 @@ describe("the evidence of a failed try", () => {
 		expect(evidence.screenshot).not.toBeNull();
 	});
 
-	test("the account's address is painted out of the screenshot and redacted from every text, and a file with it is never written", async () => {
-		useAccount("qa-user@example.test");
-		const xml = hierarchy(node('class="android.widget.FrameLayout" bounds="[0,0][24,48]"', node('text="qa-user@example.test" bounds="[4,8][12,16]"')));
-		const tree: UiTree = { ...parseHierarchy(xml), raw: xml };
-		const { device, root, deps, target } = await setup();
-		device.logcatText = "I ReactNativeJS: signed in as qa-user@example.test\n";
-		device.windowsText = "mCurrentFocus=Window{qa-user%40example.test}\n";
-		const evidence = await captureEvidence(deps, target, 1, new NodeNotFoundError("no node X on screen after 15000 ms (qa-user@example.test)", { tree, dumps: 1, elapsedMs: 15_100 }));
-		expect(JSON.stringify(evidence)).not.toContain("example.test");
-		for (const part of [evidence.uiDump, evidence.windows, evidence.logcat]) {
-			const text = await readFile(join(root, part ?? "missing"), "utf8");
-			expect(text).toContain("<qa-account>");
-			expect(text.toLowerCase()).not.toContain("example.test");
-		}
-		const painted = decodePng(await readFile(join(root, evidence.screenshot ?? "missing")));
-		const at = (x: number, y: number) => [...painted.data.subarray((y * painted.width + x) * 4, (y * painted.width + x) * 4 + 4)];
-		expect(at(5, 9)).toEqual([...redactedColor]);
-		expect(at(20, 40)).not.toEqual([...redactedColor]);
-	});
-
-	test("a signed-in screen with no dump after the failure to paint over from keeps no screenshot", async () => {
-		useAccount(address);
-		const { deps, target } = await setup();
-		deps.dump = async () => {
-			throw new Error("no dump");
-		};
-		const evidence = await captureEvidence(deps, { ...target, screen: devicesModal, direction: "ltr" }, 1, notFound());
-		expect(evidence.screenshot).toBeNull();
-		expect(evidence.missing.join("\n")).toContain("the screen is the QA account's and no dump after the failure");
-	});
-
-	test("a signed-in screen under another window (a dialog, the launcher) keeps no screenshot: the app's frame with the address is still behind it", async () => {
-		useAccount(address);
-		const launcher = treeOf(hierarchy(box("[0,0][24,48]", { pkg: "com.google.android.apps.nexuslauncher", cls: "android.widget.FrameLayout" })));
-		const { root, deps, target } = await setup();
-		deps.dump = async () => launcher;
-		const signedIn = { ...target, screen: devicesModal, direction: "ltr" as const };
-		const evidence = await captureEvidence(deps, signedIn, 1, notFound(launcher));
-		expect(evidence.screenshot).toBeNull();
-		expect(evidence.missing[0]).toBe("screenshot: the top window is com.google.android.apps.nexuslauncher, not dev.alfayez.exposvelte.qa: the app's frame with the QA account's address on it may be behind it");
-		// The texts are kept (they are redacted), and so is the window that says what was on top.
-		expect(evidence.topWindow).toStartWith("com.google.android.apps.nexuslauncher");
-		expect(evidence.uiDump).not.toBeNull();
-		expect(await readdir(join(root, "runs", "parity-localhost_5555-x"))).not.toContain("screens-sheet-auto--light-rtl-normal.attempt1.png");
-
-		// The same window over a screen that shows nothing of the account's: the picture is kept.
-		const plain = await captureEvidence(deps, { ...target, stem: "plain" }, 1, notFound(launcher));
-		expect(plain.screenshot).not.toBeNull();
-		// A dump with no root is no window of the app either.
-		const empty = treeOf(hierarchy(""));
-		deps.dump = async () => empty;
-		const rootless = await captureEvidence(deps, { ...signedIn, stem: "rootless" }, 1, notFound(empty));
-		expect(rootless.screenshot).toBeNull();
-		expect(rootless.missing[0]).toContain("not the app's");
-	});
-
-	test("the address is painted from every dump: the compressed one the wait read leaves the covered screen out, the plain one lists it; the screen's masks are painted too", async () => {
-		useAccount(address);
-		// The compressed dump of a modal over the workspace list: the modal's own nodes only.
-		const compressed = treeOf(hierarchy(box("[0,0][24,48]", { cls: "android.widget.FrameLayout" }, box("[0,40][24,46]", { text: "Close" }))));
-		// The plain dump: the covered list with the address, and the devices' text the screen masks.
-		const plain = treeOf(hierarchy(box("[0,0][24,48]", { cls: "android.widget.FrameLayout" }, box("[4,8][12,16]", { text: address }) + box("[14,20][22,28]", { id: "device-agent", text: "Pixel 9 / Android 16" }) + box("[0,40][24,46]", { text: "Close" }))));
-		const asked: boolean[] = [];
-		const { device, root, deps, target } = await setup();
-		deps.dump = async (_serial, options) => {
-			asked.push(options?.important === true);
-			return options?.important ? compressed : plain;
-		};
-		const evidence = await captureEvidence(deps, { ...target, screen: devicesModal, direction: "ltr" }, 1, notFound(compressed));
-		// Both kinds of dump were taken after the failure, whatever the wait read.
-		expect(asked.sort()).toEqual([false, true]);
-		const painted = decodePng(await readFile(join(root, evidence.screenshot ?? "missing")));
-		const at = (x: number, y: number) => [...painted.data.subarray((y * painted.width + x) * 4, (y * painted.width + x) * 4 + 4)];
-		expect(at(5, 9)).toEqual([...redactedColor]);
-		expect(at(15, 21)).toEqual([...redactedColor]);
-		expect(at(2, 44)).not.toEqual([...redactedColor]);
-		expect(JSON.stringify(evidence)).not.toContain("example.test");
-		expect(device.log.join("\n")).not.toContain("example.test");
-	});
-
-	test("what a picture needs before it is kept, without the device", () => {
-		const plain = treeOf(hierarchy(box("[0,0][24,48]", { cls: "android.widget.FrameLayout" }, box("[4,8][12,16]", { text: address }))));
-		const compressed = treeOf(hierarchy(box("[0,0][24,48]", { cls: "android.widget.FrameLayout" })));
-		const target = { serial: "s", packageName: pkg, directory: "d", stem: "x", screen: devicesModal, direction: "ltr" as const };
-		// No account configured: nothing to paint, and nothing to refuse.
-		expect(pictureRedactions(target, { observed: null, plain: null, compressed: null })).toEqual({ rects: [] });
-		useAccount(address);
-		expect(pictureRedactions(target, { observed: null, plain: null, compressed: null })).toMatchObject({ refused: expect.stringContaining("no dump after the failure") });
-		// A screen over another (`hidden`) needs the dump a service walks as well.
-		expect(pictureRedactions(target, { observed: null, plain, compressed: null })).toMatchObject({ refused: expect.stringContaining("what is on top") });
-		expect(pictureRedactions(target, { observed: compressed, plain, compressed })).toEqual({ rects: [{ x: 4, y: 8, width: 8, height: 8 }] });
-		// A screen that is not the account's is painted when it can be and kept when it cannot.
-		expect(pictureRedactions({ ...target, screen: normalScreen }, { observed: null, plain: null, compressed: null })).toEqual({ rects: [] });
-	});
-
-	test("the redaction comes before the cap: an address cut through by the cap leaves no piece of it", async () => {
-		useAccount(address);
-		// The address straddles the cap of the dump: capped first, `qa-us` would be left and no redaction would know it.
-		const raw = `${"a".repeat(maxDumpBytes - 5)}${address}zzz`;
-		const { root, deps, target } = await setup();
-		const evidence = await captureEvidence(deps, target, 1, notFound({ ...loading, raw }));
-		const dump = await readFile(join(root, evidence.uiDump ?? "missing"), "utf8");
-		expect(dump).not.toContain("qa-us");
-		expect(dump).not.toContain("example");
-		expect(Buffer.byteLength(dump)).toBeLessThan(maxDumpBytes + 100);
-	});
-
-	test("a spent budget redacts what it names too", async () => {
-		useAccount(address);
-		const { deps, target } = await setup(new FakeDevice(), new EvidenceBudget({ sets: 0, bytes: 0 }));
-		deps.dump = async () => {
-			throw new Error(`no dump for ${address}`);
-		};
-		const evidence = await captureEvidence(deps, target, 1, new Error("boom"));
-		expect(evidence.missing[0]).toBe("dump: no dump for <qa-account>");
-		expect(evidence.missing[1]).toContain("evidence budget is spent");
-		expect(JSON.stringify(evidence)).not.toContain("example.test");
-	});
-
 	test("the crash buffer is narrowed to the try: an earlier case's crash is not filed under it", async () => {
 		const { device, root, deps, target } = await setup();
 		device.clock = "11-04 11:11:30\n";
@@ -413,29 +262,23 @@ describe("the evidence of a failed try", () => {
 		expect(linesSince("12-31 23:59:58.000 a\n01-01 00:00:01.000 b\n12-31 23:00:00.000 c\n", "12-31 23:59:50.000")).toBe("12-31 23:59:58.000 a\n01-01 00:00:01.000 b\n");
 	});
 
-	test("with the account configured the plain dump gets several attempts, and the picture is taken between it and the compressed dump", async () => {
-		useAccount(address);
+	test("the picture is taken first, and a try that read no dump takes one with several attempts", async () => {
 		const events: string[] = [];
-		const plain = treeOf(hierarchy(box("[0,0][24,48]", { cls: "android.widget.FrameLayout" })));
 		const { deps, target } = await setup();
 		deps.dump = async (_serial, options) => {
-			events.push(`dump ${options?.important ? "compressed" : "plain"} x${options?.attempts}`);
-			return plain;
+			events.push(`dump x${options?.attempts}`);
+			return loading;
 		};
 		deps.png = async () => {
 			events.push("png");
 			return encodePng(picture());
 		};
-		await captureEvidence(deps, { ...target, screen: devicesModal, direction: "ltr" }, 1, notFound());
-		expect(events).toEqual([`dump plain x${plainDumpAttempts}`, "png", `dump compressed x${compressedDumpAttempts}`]);
-		expect(plainDumpAttempts).toBeGreaterThanOrEqual(2);
-		expect(compressedDumpAttempts).toBeGreaterThanOrEqual(2);
-
-		// Without the account nothing is painted: the picture comes first, and no dump is taken for a try that read one.
-		useAccount(null);
-		events.length = 0;
-		await captureEvidence(deps, { ...target, stem: "plain" }, 1, notFound());
+		await captureEvidence(deps, target, 1, notFound());
 		expect(events).toEqual(["png"]);
+		events.length = 0;
+		await captureEvidence(deps, { ...target, stem: "none" }, 1, new Error("boom"));
+		expect(events).toEqual(["png", `dump x${plainDumpAttempts}`]);
+		expect(plainDumpAttempts).toBeGreaterThanOrEqual(2);
 	});
 
 	test("every part is capped: the dump, the text, and the logcat to its newest lines", async () => {
@@ -774,7 +617,6 @@ describe("a parity case", () => {
 			statusBar,
 			navigationBar: null,
 			update: false,
-			backend: { ok: true, detail: "fake" },
 			artifacts: directory,
 			evidence: deps,
 			source: { commit: "abc1234", dirty: false },
@@ -793,7 +635,7 @@ describe("a parity case", () => {
 
 	test("with a reference that cannot be read is one run and an error: attempts 1, no second launch, no evidence set", async () => {
 		const { device, directory, session, variant, context, reference, quietly } = await parityContext();
-		const screen = login;
+		const screen = form;
 		reference(screen);
 		try {
 			const record = await quietly(() => runCase(context, screen, variant));
@@ -812,7 +654,7 @@ describe("a parity case", () => {
 	test("whose screen never shows up is tried twice and recorded as an error whose attempts are 2, with the evidence of both tries and the first error", async () => {
 		const { device, root, session, variant, context, reference, quietly } = await parityContext();
 		// A step that waits for a node that is not on the startup screen the fake adb shows, for 50 ms.
-		const screen: ScreenCase = { ...login, id: "login-never", steps: [{ wait: { label: "never there" }, timeoutMs: 50 }] };
+		const screen: ScreenCase = { ...form, id: "form-never", steps: [{ wait: { label: "never there" }, timeoutMs: 50 }] };
 		reference(screen);
 		try {
 			const record = await withScreen(loadingXml, () => quietly(() => runCase(context, screen, variant)));

@@ -264,7 +264,7 @@ describe("what the launch link says about the first screen", () => {
 		}
 	});
 	test("a link to anything else is another launch: the product's", () => {
-		for (const url of ["expo-svelte:///workspaces", "expo-svelte:///auth/login", "expo-svelte:///acme/home", "svelte-qa-product://acme/settings", "expo-svelte:///__devices", "exp+svelte-qa-product://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081"]) {
+		for (const url of ["expo-svelte:///projects", "expo-svelte:///sign-in", "expo-svelte:///acme/home", "svelte-qa-product://acme/settings", "expo-svelte:///__devices", "exp+svelte-qa-product://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081"]) {
 			expect([url, launchKind(url)]).toEqual([url, "other"]);
 		}
 	});
@@ -273,13 +273,13 @@ describe("what the launch link says about the first screen", () => {
 	});
 	test("the router's path is the lab's under /__dev only", () => {
 		expect(["/__dev", "/__dev/screens", "/__dev/tree/home/detail/7"].map(isLabPath)).toEqual([true, true, true]);
-		expect(["/", "/auth/login", "/workspaces", "/__devices", "/acme/__dev", "/__dev2"].map(isLabPath)).toEqual([false, false, false, false, false, false]);
+		expect(["/", "/sign-in", "/projects", "/__devices", "/acme/__dev", "/__dev2"].map(isLabPath)).toEqual([false, false, false, false, false, false]);
 	});
 	test("the lab starts on its own only when every screen of the stack is the lab's", () => {
 		expect(labOnly(["/__dev"])).toBe(true);
 		expect(labOnly(["/__dev/tree", "/__dev/tree/home/detail/7"])).toBe(true);
-		expect(labOnly(["/auth/login"])).toBe(false); // the router's first screen, when nothing was opened
-		expect(labOnly(["/auth/login", "/__dev"])).toBe(false); // restored from a user who went from the login to the lab
+		expect(labOnly(["/sign-in"])).toBe(false); // the router's first screen, when nothing was opened
+		expect(labOnly(["/sign-in", "/__dev"])).toBe(false); // restored from a user who went from the sign-in screen to the lab
 		expect(labOnly([])).toBe(false);
 	});
 });

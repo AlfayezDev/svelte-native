@@ -1,9 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { dumpUi, endsRun, screenshotPng, type AdbRun, type DeviceSession, type Direction } from "./device.ts";
-import { accountRects, maskRects, ObservedError, retryCase } from "./drive.ts";
-import { decodePng, encodePng, paintOver, type Rect } from "./png.ts";
-import { accountEmail, assertClean, redact } from "./qa-account.ts";
+import { ObservedError, retryCase } from "./drive.ts";
 import { qaDir } from "./paths.ts";
 import type { ScreenCase } from "./screens.ts";
 import type { FailureEvidence } from "./types.ts";
@@ -26,10 +24,9 @@ export const maxScreenshotBytes = 8_000_000;
 /** Lines of the app's logcat kept: its own process, the newest; and of the crash buffer, which holds the crashes of every process. */
 export const logcatLines = 400;
 export const crashLines = 100;
-/** Attempts of the plain and of the compressed dump taken after the failure: a busy screen answers `could not get idle state` more than once, and a signed-in picture needs them. */
+/** Attempts of the dump taken after the failure: a busy screen answers `could not get idle state` more than once. */
 export const plainDumpAttempts = 3;
-export const compressedDumpAttempts = 2;
-/** The sets one run may keep, and the bytes of all of them: a backend that is down for a whole matrix does not fill the disk with a hundred sets. */
+/** The sets one run may keep, and the bytes of all of them: a screen that fails for a whole matrix does not fill the disk with a hundred sets. */
 export const defaultBudget = { sets: 40, bytes: 64_000_000 };
 
 /** What a run has spent of its evidence budget. */
@@ -64,8 +61,8 @@ export type EvidenceDeps = {
 	run: AdbRun;
 	/** The PNG of the display (`adb exec-out screencap -p`). */
 	png?: (serial: string) => Promise<Buffer>;
-	/** A dump taken now: for a try that read none, and (with the QA account configured) to paint the picture over from; `important` is the compressed dump a service walks. */
-	dump?: (serial: string, options?: { important?: boolean; attempts?: number }) => Promise<UiTree>;
+	/** A dump taken now, for a try that read none. */
+	dump?: (serial: string, options?: { attempts?: number }) => Promise<UiTree>;
 	/** Where the files go, and what their paths are relative to (default: `qa/`, like the failure pictures of `parity`). */
 	base?: string;
 	budget?: EvidenceBudget;
@@ -78,7 +75,7 @@ export type EvidenceTarget = {
 	directory: string;
 	/** The file name the parts are named after: the case's name. */
 	stem: string;
-	/** The screen and the direction it was opened in: a signed-in screen shows the QA account's address, so its screenshot is only kept after `pictureRedactions`; the screen's masks are painted too. */
+	/** The case the evidence is of: the screen and the direction it was opened in. */
 	screen: ScreenCase;
 	direction: Direction;
 };
@@ -119,9 +116,7 @@ export function describeTopWindow(tree: UiTree): string {
 		if (texts.length === 6) break;
 	}
 	const shown = texts.map((text) => JSON.stringify(text.length > 40 ? `${text.slice(0, 40)}…` : text));
-	return redact(
-		`${root.packageName || "(no package)"} ${root.className || "(no class)"} [${x},${y}][${x + width},${y + height}], ${tree.nodes.length} node${tree.nodes.length === 1 ? "" : "s"}${shown.length > 0 ? `: ${shown.join(", ")}` : ""}`,
-	);
+	return `${root.packageName || "(no package)"} ${root.className || "(no class)"} [${x},${y}][${x + width},${y + height}], ${tree.nodes.length} node${tree.nodes.length === 1 ? "" : "s"}${shown.length > 0 ? `: ${shown.join(", ")}` : ""}`;
 }
 
 /** The one-line digest of a failed try for a case's `detail` and the console: the try, the wait, and what was on screen. */
@@ -131,45 +126,13 @@ export function digest(evidence: FailureEvidence): string {
 }
 
 /** A dump taken after the failure, or null (and why, in `missing`). */
-async function freshDump(deps: EvidenceDeps, serial: string, important: boolean, attempts: number, missing: string[]): Promise<UiTree | null> {
+async function freshDump(deps: EvidenceDeps, serial: string, attempts: number, missing: string[]): Promise<UiTree | null> {
 	try {
-		return await (deps.dump ?? ((id: string, options?: { important?: boolean; attempts?: number }) => dumpUi(id, { timeoutMs: 20_000, ...options })))(serial, { important, attempts });
+		return await (deps.dump ?? ((id: string, options?: { attempts?: number }) => dumpUi(id, { timeoutMs: 20_000, ...options })))(serial, { attempts });
 	} catch (cause) {
-		missing.push(`${important ? "compressed dump" : "dump"}: ${message(cause).slice(0, 160)}`);
+		missing.push(`dump: ${message(cause).slice(0, 160)}`);
 		return null;
 	}
-}
-
-/** The dumps a failed try has: the one its wait last read (`observed`), and, when the account is configured, ones taken after the failure to paint over from. */
-export type Trees = { observed: UiTree | null; plain: UiTree | null; compressed: UiTree | null };
-
-/**
- * What a failure picture needs before it is kept, with the QA account configured: the rectangles to paint over, or why the picture is not kept. They are the
- * ones `parity` paints over a failed comparison (`liveRedactions`): every node of every dump that shows the address (the plain dump lists the screen a sheet or
- * modal covers, the compressed one a service walks leaves it out, and the wait's own dump is either) and the screen's masks (`maskRects`: the avatar, the
- * devices), so a node that moved since the last dump is still covered. A signed-in screen is only kept when every dump's top-level window is the app's: under a
- * dialog or the launcher the dump walks that window, and the app's frame with the address on it, dimmed, is still in the picture.
- */
-export function pictureRedactions(target: EvidenceTarget, trees: Trees): { rects: Rect[] } | { refused: string } {
-	if (accountEmail() === null) return { rects: [] };
-	const { screen } = target;
-	const read = [trees.observed, trees.plain, trees.compressed].filter((tree): tree is UiTree => tree !== null);
-	if (screen.signedIn) {
-		if (trees.plain === null) return { refused: "the screen is the QA account's and no dump after the failure says where its address is" };
-		if (screen.hidden.length > 0 && trees.compressed === null) return { refused: "the screen is the QA account's and no dump of what a service walks says what is on top" };
-		const foreign = read.find((tree) => tree.root === null || tree.root.packageName !== target.packageName);
-		if (foreign) return { refused: `the top window is ${foreign.root?.packageName || "not the app's"}, not ${target.packageName}: the app's frame with the QA account's address on it may be behind it` };
-	}
-	const rects = read.flatMap((tree) => accountRects(tree));
-	const plain = trees.plain ?? trees.observed;
-	if (plain !== null) {
-		try {
-			rects.push(...maskRects(plain, screen, target.direction, trees.compressed ?? undefined));
-		} catch {
-			// a mask that matches no node has nothing to paint; the nodes with the address are covered above
-		}
-	}
-	return { rects };
 }
 
 /** The seconds of a logcat stamp (`MM-DD HH:MM:SS.mmm`, the device's clock, no year) from the start of its year; null for a line without one. */
@@ -213,7 +176,7 @@ export async function captureEvidence(deps: EvidenceDeps, target: EvidenceTarget
 	const missing: string[] = [];
 	const evidence: FailureEvidence = {
 		attempt,
-		error: redact(message(error)),
+		error: message(error),
 		waited: null,
 		topWindow: null,
 		screenshot: null,
@@ -228,8 +191,6 @@ export async function captureEvidence(deps: EvidenceDeps, target: EvidenceTarget
 	} catch (cause) {
 		missing.push(`capture: ${message(cause).slice(0, 160)}`);
 	}
-	// On every path out, the early ones included.
-	for (let index = 0; index < missing.length; index++) missing[index] = redact(missing[index] ?? "");
 	return evidence;
 }
 
@@ -242,11 +203,8 @@ async function take(deps: EvidenceDeps, target: EvidenceTarget, attempt: number,
 	const observation = error instanceof ObservedError ? error.observation : null;
 	const observed = observation?.tree ?? null;
 	if (observation) evidence.waited = { ms: observation.elapsedMs, dumps: observation.dumps };
-	// The picture is held as bytes in memory, and whether it may be kept is decided once the dumps are in. With the account configured it is painted over from dumps taken
-	// now (the wait's own may be the compressed one) and is taken between the plain dump and the compressed one, so the gap to the plain one is as short as it can be;
-	// without, it is taken first, because only a try that read no dump needs one.
-	const account = accountEmail() !== null;
-	let png: Buffer | null = null;
+	// The picture is taken first, before any dump a try that read none needs.
+	let png = null as Buffer | null;
 	const shoot = async () => {
 		try {
 			png = await (deps.png ?? screenshotPng)(serial);
@@ -254,10 +212,8 @@ async function take(deps: EvidenceDeps, target: EvidenceTarget, attempt: number,
 			missing.push(`screenshot: ${message(cause).slice(0, 160)}`);
 		}
 	};
-	if (!account) await shoot();
-	const plain = account || observed === null ? await freshDump(deps, serial, false, plainDumpAttempts, missing) : null;
-	if (account) await shoot();
-	const compressed = account && target.screen.hidden.length > 0 ? await freshDump(deps, serial, true, compressedDumpAttempts, missing) : null;
+	await shoot();
+	const plain = observed === null ? await freshDump(deps, serial, plainDumpAttempts, missing) : null;
 	const tree = observed ?? plain;
 	if (tree) evidence.topWindow = `${describeTopWindow(tree)}${observed === null ? " (read after the failure)" : ""}`;
 
@@ -278,23 +234,12 @@ async function take(deps: EvidenceDeps, target: EvidenceTarget, attempt: number,
 		budget?.spend(size);
 		return relative(base, path);
 	};
-	const keepText = async (part: string, text: string, limit: number): Promise<string | null> => {
-		// Redacted first and cut after: a cut through the address would leave a piece no redaction recognises.
-		const clean = capText(redact(text), limit);
-		// The check behind the redaction: a text with the account in it is never written.
-		assertClean(clean, `the ${part} of a failed try`);
-		return keep(part, clean);
-	};
+	const keepText = (part: string, text: string, limit: number): Promise<string | null> => keep(part, capText(text, limit));
 
 	if (png !== null) {
 		try {
-			const redactions = pictureRedactions(target, { observed, plain, compressed });
-			if ("refused" in redactions) missing.push(`screenshot: ${redactions.refused}`);
-			else {
-				const bytes = redactions.rects.length > 0 ? encodePng(paintOver(decodePng(png), redactions.rects)) : png;
-				if (bytes.length > maxScreenshotBytes) missing.push(`screenshot: ${bytes.length} bytes, over the ${maxScreenshotBytes} cap`);
-				else evidence.screenshot = await keep("png", bytes);
-			}
+			if (png.length > maxScreenshotBytes) missing.push(`screenshot: ${png.length} bytes, over the ${maxScreenshotBytes} cap`);
+			else evidence.screenshot = await keep("png", png);
 		} catch (cause) {
 			missing.push(`screenshot: ${message(cause).slice(0, 160)}`);
 		}
@@ -386,7 +331,7 @@ async function take(deps: EvidenceDeps, target: EvidenceTarget, attempt: number,
 		}
 		answered = true;
 		const text = narrowed && since !== null ? linesSince(answer.text, since) : answer.text;
-		sections.push(`--- ${title} ---\n${text.trim() === "" ? "(no lines)\n" : capText(redact(lastLines(text, lines)), maxTextBytes / 2)}`);
+		sections.push(`--- ${title} ---\n${text.trim() === "" ? "(no lines)\n" : capText(lastLines(text, lines), maxTextBytes / 2)}`);
 	}
 	if (answered) {
 		try {
@@ -481,7 +426,7 @@ export async function attemptCase<T>(options: AttemptOptions<T>): Promise<Attemp
 export function failedFields(error: AttemptsFailed): { detail: string; attempts: number; tries: number; failures: FailureEvidence[] } {
 	const last = error.failures.at(-1);
 	return {
-		detail: `${redact(error.message)}${last ? ` (${digest(last)})` : ""}`,
+		detail: `${error.message}${last ? ` (${digest(last)})` : ""}`,
 		attempts: error.tries,
 		tries: error.tries,
 		failures: error.failures,

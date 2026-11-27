@@ -5,9 +5,7 @@ import { parseNodeInfo, type NodeInfo } from "../lib/a11y-state.ts";
 import { dumpUi, endsRun, newSessionNotes, readDisplay, reportRestore, withSession } from "../lib/device.ts";
 import { dumpWithOwnControls, openCase, settledTree } from "../lib/drive.ts";
 import { AttemptsFailed, attemptCase, EvidenceBudget, failedFields, type EvidenceDeps } from "../lib/evidence.ts";
-import { inSignedInPhase, splitPhases, startSignedOut } from "../lib/phases.ts";
 import { join } from "node:path";
-import { redactDeep } from "../lib/qa-account.ts";
 import { flagString, integerFlag, parseFlags, platformOf } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { runsDir } from "../lib/paths.ts";
@@ -24,8 +22,8 @@ import {
 	type ScreenCase,
 	type Variant,
 } from "../lib/screens.ts";
-import { backendStatus, commonOptions, startSuite, type BackendStatus } from "../lib/suite.ts";
-import type { A11yFile, A11yScreenResult, SignedInRecord } from "../lib/types.ts";
+import { commonOptions, startSuite } from "../lib/suite.ts";
+import type { A11yFile, A11yScreenResult } from "../lib/types.ts";
 import { iosA11y } from "./ios-a11y.ts";
 
 /** What the checks read, stated in every run file. */
@@ -95,13 +93,8 @@ export async function a11y(argv: string[]): Promise<void> {
 			`--filter ${filter} matches no screen (${cases.map((screen) => screen.id).join(", ")})`,
 		);
 	const display = await readDisplay(serial);
-	const backend: BackendStatus = await backendStatus();
-	console.log(
-		`checking ${matrix(chosenCases, chosenVariants).length} screens in ${chosenVariants.length} layouts; backend: ${backend.detail}`,
-	);
+	console.log(`checking ${matrix(chosenCases, chosenVariants).length} screens in ${chosenVariants.length} layouts`);
 
-	const phases = splitPhases(chosenCases);
-	const orderOf = (phaseCases: ScreenCase[]) => chosenVariants.flatMap((variant) => matrix(phaseCases, [variant]));
 	const nameOf = (entry: { screen: ScreenCase; variant: Variant }) => referenceName(entry.screen, entry.variant);
 	// `--resume` continues the device's newest a11y file (its screens are done); `--limit` takes at most that many of the others.
 	const resumePath = values.resume ? (await latestRunFiles()).a11y.get(slug(serial)) : undefined;
@@ -115,17 +108,14 @@ export async function a11y(argv: string[]): Promise<void> {
 		: null;
 	if (mismatch) throw new Error(`--resume: this is not the run being resumed (${mismatch}); pass the same flags and install the same build with --apk`);
 	const startedAt = resumed ? new Date(resumed.startedAt) : suite.startedAt;
-	const plan = planCases([...orderOf(phases.signedOut), ...orderOf(phases.signedIn)].map(nameOf), new Set(resumed?.screens.map((screen) => screen.name)), limit);
+	const plan = planCases(chosenVariants.flatMap((variant) => matrix(chosenCases, [variant])).map(nameOf), new Set(resumed?.screens.map((screen) => screen.name)), limit);
 	if (resumed || limit > 0)
 		console.log(`${resumed ? `resuming a11y-${slug(serial)}-${stamp(startedAt)}: ${resumed.screens.length} screens already measured; ` : ""}${plan.run.size} to run${plan.left > 0 ? `, ${plan.left} left for the next` : ""}`);
-	/** Whether the run takes any screen of a phase: a phase it takes none of is not even started (no sign-in for a chunk of signed-out screens). */
-	const takes = (phaseCases: ScreenCase[]) => orderOf(phaseCases).some((entry) => plan.run.has(nameOf(entry)));
 
 	// Beside the run file: what a try that did not get its screen left on the device (`lib/evidence.ts`).
 	const artifacts = join(runsDir, `a11y-${slug(serial)}-${stamp(startedAt)}`);
 	const results: A11yScreenResult[] = resumed ? [...resumed.screens] : [];
 	let aborted: string | null = null;
-	let signedInPhase: SignedInRecord | null = resumed?.signedInPhase ?? null;
 	const notes = newSessionNotes();
 	try {
 		await withSession(serial, packageName, async (session) => {
@@ -133,20 +123,15 @@ export async function a11y(argv: string[]): Promise<void> {
 			await wake(serial);
 			await session.theme("light");
 			const evidence: EvidenceDeps = { run: session.run, budget: new EvidenceBudget() };
-			/** Every layout of one phase: the settings of the layout, then its screens. */
-			const runPhase = async (phaseCases: ScreenCase[]) => {
+			/** Every layout: the settings of the layout, then its screens. */
+			const runCases = async () => {
 				for (const variant of chosenVariants) {
-					const screens = matrix(phaseCases, [variant]).filter((entry) => plan.run.has(nameOf(entry)));
+					const screens = matrix(chosenCases, [variant]).filter((entry) => plan.run.has(nameOf(entry)));
 					if (screens.length === 0) continue;
 					await session.fontScale(variant.fontScale);
 					await session.direction(variant.direction);
 					for (const { screen } of screens) {
 						const began = Date.now();
-						if (screen.needsBackend && !backend.ok) {
-							results.push(emptyResult(screen, variant, `needs the dev backend: ${backend.detail}`));
-							console.log(`  skipped  ${referenceName(screen, variant)}: backend`);
-							continue;
-						}
 						try {
 							// Every check reads what a screen reader walks (`--compressed`); the plain dump only drives the launch (anchor, taps).
 							// Under a sheet or modal that dump is taken until it holds the screen's own controls, which one taken mid-draw lacks; on
@@ -183,15 +168,13 @@ export async function a11y(argv: string[]): Promise<void> {
 								...(screen.expect ? { expect: screen.expect } : {}),
 								...(screen.info ? { info: screen.info, nodeInfo: nodeInfo ?? null } : {}),
 							});
-							// The tree of a signed-in screen holds the account's own text (its address, its devices): what is kept of it is redacted.
-							const kept = screen.signedIn ? redactDeep(analysis) : analysis;
 							results.push({
 								name: referenceName(screen, variant),
 								screen: screen.id,
 								route: screen.route,
 								direction: variant.direction,
 								fontScale: variant.fontScale,
-								...kept,
+								...analysis,
 								stable,
 								error: null,
 								attempts: attempted.tries,
@@ -206,29 +189,15 @@ export async function a11y(argv: string[]): Promise<void> {
 							const failed = error instanceof AttemptsFailed ? failedFields(error) : null;
 							const message = failed?.detail ?? (error instanceof Error ? error.message : String(error));
 							results.push({
-								...emptyResult(screen, variant, redactDeep(message)),
+								...emptyResult(screen, variant, message),
 								...(failed ? { attempts: failed.attempts, failures: failed.failures } : {}),
 							});
-							console.log(`  error    ${referenceName(screen, variant)}${failed ? ` (${failed.attempts} tries)` : ""}: ${redactDeep(message).slice(0, 240)}`);
+							console.log(`  error    ${referenceName(screen, variant)}${failed ? ` (${failed.attempts} tries)` : ""}: ${message.slice(0, 240)}`);
 						}
 					}
 				}
 			};
-			if (phases.signedOut.length > 0 && takes(phases.signedOut)) {
-				await startSignedOut(session, backend, phases.signedOut);
-				await runPhase(phases.signedOut);
-			}
-			if (phases.signedIn.length > 0 && takes(phases.signedIn)) {
-				console.log("signed-in phase: signing in as the QA account");
-				const outcome = await inSignedInPhase(session, backend, matrix(phases.signedIn, chosenVariants).length, () => runPhase(phases.signedIn));
-				signedInPhase = outcome.record;
-				if (!outcome.entered) {
-					console.log(`  signed-in phase did not run: ${outcome.record.detail}`);
-					for (const entry of orderOf(phases.signedIn))
-						if (plan.run.has(nameOf(entry)))
-							results.push(emptyResult(entry.screen, entry.variant, outcome.record.detail ?? "the signed-in phase did not run"));
-				} else if (outcome.record.detail) console.log(`  signed-in phase: ${outcome.record.detail}`);
-			}
+			await runCases();
 		}, { notes });
 	} catch (error) {
 		if (!endsRun(error)) throw error;
@@ -249,7 +218,6 @@ export async function a11y(argv: string[]): Promise<void> {
 		screens: results,
 		notCovered: [...notCovered, ...notCoveredStates],
 		aborted,
-		signedInPhase,
 		leftovers: [...(resumed?.leftovers ?? []), ...notes.leftovers],
 		restoreFailures: [...(resumed?.restoreFailures ?? []), ...notes.restoreFailures],
 		deviceRestarts: [...(resumed?.deviceRestarts ?? []), ...notes.deviceRestarts],

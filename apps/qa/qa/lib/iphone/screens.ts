@@ -19,7 +19,7 @@ import type { Direction } from "../device.ts";
  */
 
 /** A screen that needs the app's network held back or refused (`network` other than `normal`) is left out: an iOS app cannot be told to see a proxy from outside. */
-export const iosCases: ScreenCase[] = cases.filter((screen) => screen.network === "normal" && !screen.signedIn && screen.androidOnly !== true);
+export const iosCases: ScreenCase[] = cases.filter((screen) => screen.network === "normal" && screen.androidOnly !== true);
 
 /** Theme x direction at the standard text size: the app cannot change the system's text size from inside. */
 export const iosVariants: Variant[] = variants.filter((variant) => variant.fontScale === 1);
@@ -28,9 +28,9 @@ export const iosLayoutVariants: Variant[] = layoutVariants.filter((variant) => v
 export const iosNotCovered: NotCovered[] = [
 	...notCovered,
 	{
-		route: "the screens whose case holds the app's network back or refuses it, and the signed-in screens (`signedIn` cases)",
+		route: "the screens whose case holds the app's network back or refuses it",
 		reason:
-			"a case that sets `network` needs the app's HTTP to hang or be refused, which on Android the harness routes through a proxy it controls and an iOS app cannot be pointed at from outside (the proxy is a system setting of the phone); the signed-in phase signs in by typing into the sign-in screen over adb (`lib/signin.ts`), which the iPhone's lab, driving itself from inside, cannot do. The example has neither kind of case today",
+			"a case that sets `network` needs the app's HTTP to hang or be refused, which on Android the harness routes through a proxy it controls and an iOS app cannot be pointed at from outside (the proxy is a system setting of the phone). The example has no such case today",
 	},
 	{
 		route: "every screen at the largest text size",

@@ -3,20 +3,15 @@ import type { InfoExpectation, NodeExpectation } from "./a11y-state.ts";
 
 /**
  * The screens the suites drive and the settings they drive them under. A screen is a route in one state; the parity suite
- * takes each in every variant, the accessibility suite in the layout-affecting ones. Everything here is reachable without
- * a signed-in session; the routes that are not are listed in `notCovered`, each with its reason.
+ * takes each in every variant, the accessibility suite in the layout-affecting ones. The routes no case reaches are listed in
+ * `notCovered`, each with its reason.
  */
 
 /** Text that differs by language: the text for the app in English and in Arabic. */
 export type Localized = string | { en: string; ar: string };
 
-/**
- * A node of the accessibility tree: by its text or content description, by its class, by its resource id (the `testID` of a view), or
- * a combination. `account: "email"` is the node that
- * shows the QA account's address (`lib/qa-account.ts`): the address cannot be written in a case, so the selector names it and the
- * harness compares the node's text with the address it read from the environment.
- */
-export type Selector = { label?: Localized; className?: string; account?: "email"; resourceId?: string };
+/** A node of the accessibility tree: by its text or content description, by its class, by its resource id (the `testID` of a view), or a combination. */
+export type Selector = { label?: Localized; className?: string; resourceId?: string };
 
 /**
  * `open` is a link opened into the running app (`am start` of a deep link without stopping it): the router treats it as a
@@ -48,13 +43,6 @@ export type ScreenCase = {
 	deepLink: string | null;
 	/** What the app's network sees while the screen is open. */
 	network: NetworkMode;
-	/** True when the screen only exists while the dev backend answers; an unreachable backend skips the case, it does not fail it. */
-	needsBackend: boolean;
-	/**
-	 * True for a screen of the signed-in phase: the suites sign in as the QA account once (`lib/signin.ts`), run these cases under that
-	 * session, and sign out. They need the backend and the account, and are skipped (parity) or errors (a11y) without them.
-	 */
-	signedIn: boolean;
 	/** Taps and waits after the launch, in order. */
 	steps: Step[];
 	/** What must be on screen when the case is ready (the anchor the resilience suite also looks for). */
@@ -115,8 +103,6 @@ export function screenCase(
 		state: "ready",
 		deepLink,
 		network: "normal",
-		needsBackend: false,
-		signedIn: false,
 		steps: [],
 		anchor,
 		title: null,
@@ -178,7 +164,7 @@ const devCommon: Localized[] = [
 ];
 const asyncButtons = ["Start async", "Resolve async", "Reject async", "Trip error boundary"];
 
-const signedOutCases: ScreenCase[] = [
+export const cases: ScreenCase[] = [
 	screenCase("dev-checks", "/__dev (checks)", dev, label("Run all checks"), {
 		layout: "header",
 		title: "Mobile development lab",
@@ -553,15 +539,6 @@ const signedOutCases: ScreenCase[] = [
 	),
 ];
 
-/**
- * The cases of the signed-in phase (`signedIn: true`, `lib/phases.ts`, `lib/signin.ts`): screens that exist only under a session, run after
- * the suites sign in as the QA account and before they sign out again. This repository's example app has no account, so there are none, and
- * `gates.json` pins none (`signedIn`). A project with an account adds its cases here, each with `signedIn: true` and `needsBackend: true`.
- */
-const signedInCases: ScreenCase[] = [];
-
-export const cases: ScreenCase[] = [...signedOutCases, ...signedInCases];
-
 export type NotCovered = { route: string; reason: string };
 
 /**
@@ -674,11 +651,10 @@ export function localize(value: Localized, direction: Direction): string {
 export function selectorFor(
 	selector: Selector,
 	direction: Direction,
-): { label?: string; className?: string; account?: "email"; resourceId?: string } {
+): { label?: string; className?: string; resourceId?: string } {
 	return {
 		...(selector.label === undefined ? {} : { label: localize(selector.label, direction) }),
 		...(selector.className === undefined ? {} : { className: selector.className }),
-		...(selector.account === undefined ? {} : { account: selector.account }),
 		...(selector.resourceId === undefined ? {} : { resourceId: selector.resourceId }),
 	};
 }
@@ -686,19 +662,6 @@ export function selectorFor(
 /** The id of one case in one variant, which names its reference image. */
 export function referenceName(screen: ScreenCase, variantOf: Variant): string {
 	return `${screen.id}--${variantOf.id}`;
-}
-
-/**
- * The reference names of the pinned screens in the variants: every pair except the states left out at the largest text size. A pinned
- * id the matrix no longer has still gets all its names, so it shows as missing instead of vanishing.
- */
-export function pinnedNames(ids: readonly string[], chosen: Variant[]): string[] {
-	return ids.flatMap((id) => {
-		const known = cases.find((screen) => screen.id === id);
-		return chosen
-			.filter((variant) => known === undefined || known.largestText || variant.fontScale !== largestFontScale)
-			.map((variant) => `${id}--${variant.id}`);
-	});
 }
 
 /** The screens and variants that make up a matrix: every pair except the states left out at the largest text size. */

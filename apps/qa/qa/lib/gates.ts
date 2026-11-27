@@ -44,7 +44,6 @@ export type Gate = {
 	allowance?: { runs: string; min: number; late: string; long: string };
 	/**
 	 * Why the gate is informational on every device (a decision, in one line): its value is shown and nothing counts, whoever measured it.
-	 * D12: the signed-in screens belong to a product, not to the library, so they do not block.
 	 */
 	informational?: string;
 };
@@ -80,13 +79,6 @@ export type GatesFile = {
 	 * the ones that need a finger.
 	 */
 	foreign?: { libraries: Record<Platform, string[]>; ios?: Record<string, string> };
-	/**
-	 * The signed-in screens (the `app-*` cases of `lib/screens.ts`) a parity run must compare and an accessibility run must dump, in
-	 * every variant, per platform: a pinned screen the run lacks is `parity.signedIn.missing` / `a11y.signedIn.missing`, so a case
-	 * removed from the matrix is a failing gate, not a smaller matrix. A platform without a list has none (the iPhone's lab does not
-	 * sign in yet).
-	 */
-	signedIn?: Partial<Record<Platform, string[]>>;
 	gates: Gate[];
 };
 
@@ -195,8 +187,6 @@ export function checkGatesFile(file: GatesFile): void {
 		if (libraries && new Set(libraries).size !== libraries.length) throw new Error(`gates.json: foreign.libraries names a library twice for ${platform}`);
 	}
 	checkForeign(file);
-	for (const [platform, ids] of Object.entries(file.signedIn ?? {}))
-		if (new Set(ids).size !== ids.length) throw new Error(`gates.json: signedIn names a screen twice for ${platform}`);
 	for (const gate of file.gates) {
 		if (gate.informational !== undefined && gate.informational.trim() === "") throw new Error(`gates.json: gate ${gate.id} is informational without saying why`);
 		if (gate.also && stars(gate.also.metric) !== stars(gate.metric))

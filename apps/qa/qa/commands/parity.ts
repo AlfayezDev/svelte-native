@@ -15,9 +15,7 @@ import {
 	type DeviceSession,
 } from "../lib/device.ts";
 import {
-	accountRects,
 	assertDeviceState,
-	exposedAccount,
 	findNode,
 	guardAnchorFailure,
 	isWaitFailure,
@@ -37,7 +35,6 @@ import {
 	maskRefusal,
 	readManifest,
 	readReference,
-	redactedFailure,
 	referenceMasks,
 	statusBarMaskProblem,
 	writeManifest,
@@ -45,8 +42,7 @@ import {
 	type Manifest,
 	type ReferenceEntry,
 } from "../lib/parity.ts";
-import { diffImages, encodePng, paintOver, type Image, type Rect } from "../lib/png.ts";
-import { inSignedInPhase, splitPhases, startSignedOut } from "../lib/phases.ts";
+import { diffImages, encodePng, type Image, type Rect } from "../lib/png.ts";
 import { latestRunFiles, readJson, slug, stamp, writeRun } from "../lib/runs.ts";
 import {
 	cases,
@@ -59,8 +55,8 @@ import {
 	type ScreenCase,
 	type Variant,
 } from "../lib/screens.ts";
-import { backendStatus, commonOptions, startSuite, type BackendStatus } from "../lib/suite.ts";
-import type { ParityCase, ParityFile, SignedInRecord, Source } from "../lib/types.ts";
+import { commonOptions, startSuite } from "../lib/suite.ts";
+import type { ParityCase, ParityFile, Source } from "../lib/types.ts";
 import { iosParity } from "./ios-parity.ts";
 import { sleep } from "../lib/wait.ts";
 import { deviceKindName } from "../parse/device-state.ts";
@@ -73,7 +69,6 @@ export type Context = {
 	statusBar: Rect;
 	navigationBar: Rect | null;
 	update: boolean;
-	backend: BackendStatus;
 	/** The directory beside the run file: the failure pictures, and the evidence of a try that did not get its screen. */
 	artifacts: string;
 	evidence: EvidenceDeps;
@@ -131,7 +126,7 @@ async function checkCase(
 	await launchCase(context.session, screen, variant.direction);
 	await sleep(900);
 	const reference = await readReference(context.deviceKind, previous);
-	const deadline = Date.now() + (screen.needsBackend ? 25_000 : 12_000);
+	const deadline = Date.now() + 12_000;
 	let attempts = 0;
 	let last: Image;
 	for (;;) {
@@ -174,45 +169,13 @@ async function checkCase(
 		attempts,
 		detail: result.verdict === "fail" ? anchor.detail : null,
 	});
-	if (result.diffImage) {
-		if (!screen.signedIn) await saveFailure(context, name, again, result.diffImage, record);
-		else {
-			// What the device drew on a signed-in screen is the account's own (its address, its devices), and a node may have moved out of the reference's masks: the
-			// regions painted over are the reference's and the ones the live tree gives. Without the live tree neither image is kept.
-			const live = await liveRedactions(context.serial, screen, variant);
-			if (live === null) record.detail = `${record.detail ?? ""}${record.detail ? "; " : ""}no images kept: the live screen's masks could not be worked out`;
-			else {
-				const kept = redactedFailure(reference, again, previous.masks, live);
-				await saveFailure(context, name, kept.actual, kept.diff, record);
-			}
-		}
-	}
+	if (result.diffImage) await saveFailure(context, name, again, result.diffImage, record);
 	return record;
 }
 
 /**
- * The regions of a signed-in screen's failure picture to paint over besides the reference's masks: the screen's masks recomputed from the tree it shows now, and every
- * node that shows the account's address (under a modal, the covered screen's too). Null when the tree cannot be read.
- */
-async function liveRedactions(serial: string, screen: ScreenCase, variant: Variant): Promise<Rect[] | null> {
-	try {
-		const tree = await dumpUi(serial);
-		const walked = screen.hidden.length > 0 ? await dumpUi(serial, { important: true }) : undefined;
-		const rects = [...accountRects(tree), ...(walked ? accountRects(walked) : [])];
-		try {
-			rects.push(...maskRects(tree, screen, variant.direction, walked));
-		} catch {
-			// a mask that matches no node has nothing to paint; the nodes with the address are covered above
-		}
-		return rects;
-	} catch {
-		return null;
-	}
-}
-
-/**
- * Why a reference's moving-node masks cannot be trusted, or null: one of them covers the screen's own chrome in the tree on screen (a mask the covered screen's
- * address left at the height of the modal's tab strip). Read after the comparison, since the screenshots are taken without a tree query before them; a tree that
+ * Why a reference's moving-node masks cannot be trusted, or null: one of them covers the screen's own chrome in the tree on screen (a mask left at the height of a tab
+ * strip). Read after the comparison, since the screenshots are taken without a tree query before them; a tree that
  * cannot be read says nothing.
  */
 async function staleMasks(serial: string, screen: ScreenCase, variant: Variant, previous: ReferenceEntry): Promise<string | null> {
@@ -258,25 +221,15 @@ async function captureCase(
 	// was frozen is the screen the case names.
 	await launchCase(context.session, screen, variant.direction);
 	let nodeMasks: Rect[] = [];
-	if (screen.masks.length > 0 || screen.masksWhenShown.length > 0 || screen.signedIn) {
-		const opened = await waitForNode(context.serial, screen.anchor, variant.direction, screen.needsBackend ? 30_000 : 15_000);
-		// Under a sheet or modal the screen underneath is still in the view hierarchy the plain dump lists, covered: what is looked at for the
-		// account's address, in the masks and in the check below, is the tree a service walks, which leaves it out.
-		const walked = screen.hidden.length > 0 ? await dumpUi(context.serial, { important: true }) : undefined;
-		nodeMasks = maskRects(opened.tree, screen, variant.direction, walked);
+	if (screen.masks.length > 0 || screen.masksWhenShown.length > 0) {
+		const opened = await waitForNode(context.serial, screen.anchor, variant.direction, 15_000);
+		nodeMasks = maskRects(opened.tree, screen, variant.direction);
 		// A mask is for a node that moves: one over the title, a control or the tab strip would freeze a reference that hides them.
 		const covered = maskedChrome(opened.tree, screen, variant.direction, nodeMasks);
 		if (covered.length > 0)
 			return caseRecord(screen, variant, {
 				verdict: "error",
 				detail: `no reference written: a mask covers the screen's own chrome (${covered.join(", ")}); the masks must be on nodes that move`,
-			});
-		// A reference keeps every pixel outside the masks: a signed-in screen that shows the account's address in the open is not frozen.
-		const exposed = exposedAccount(walked ?? opened.tree, nodeMasks);
-		if (exposed.length > 0)
-			return caseRecord(screen, variant, {
-				verdict: "error",
-				detail: `no reference written: the screen shows the QA account's address outside the case's masks (${exposed.length} node${exposed.length === 1 ? "" : "s"}); the case must mask it`,
 			});
 	} else {
 		await sleep(900);
@@ -305,11 +258,8 @@ async function captureCase(
 		shot.image,
 	);
 	if (refusal) return caseRecord(screen, variant, { verdict: "error", detail: `no reference written: ${refusal}` });
-	// The pixels under a signed-in screen's masks (the address, the devices, avatars from the network) are never stored: the
-	// comparison ignores them, and the reference must not carry the account.
 	const masks = referenceMasks(context.statusBar, nodeMasks, shot.image, context.navigationBar);
-	const stored = screen.signedIn && nodeMasks.length > 0 ? paintOver(shot.image, masks.filter((mask) => mask.name.startsWith("moving node"))) : shot.image;
-	const written = await writeReference(context.deviceKind, name, stored);
+	const written = await writeReference(context.deviceKind, name, shot.image);
 	let changed: number | null = null;
 	let detail = "new";
 	if (previous) {
@@ -373,11 +323,6 @@ export async function runCase(
 	screen: ScreenCase,
 	variant: Variant,
 ): Promise<ParityCase> {
-	if (screen.needsBackend && !context.backend.ok)
-		return caseRecord(screen, variant, {
-			verdict: "skipped",
-			detail: `needs the dev backend: ${context.backend.detail}`,
-		});
 	const previous = context.manifest.references[referenceName(screen, variant)];
 	try {
 		if (context.update) {
@@ -460,17 +405,12 @@ export async function parity(argv: string[]): Promise<void> {
 			`no references for ${deviceKind} yet: every case will be reported missing (run with --update to create them)`,
 		);
 	const source = await currentSource();
-	const backend = await backendStatus();
-	console.log(
-		`${update ? "updating" : "comparing"} ${matrix(chosenCases, chosenVariants).length} cases against screenshots/${deviceKind}; backend: ${backend.detail}`,
-	);
+	console.log(`${update ? "updating" : "comparing"} ${matrix(chosenCases, chosenVariants).length} cases against screenshots/${deviceKind}`);
 
-	const phases = splitPhases(chosenCases);
-	/** The cases of one phase in the order the run takes them: the settings of the variant, then its screens in the order that changes the proxy least. */
-	const orderOf = (phaseCases: ScreenCase[]) =>
-		chosenVariants.flatMap((variant) => ordered(matrix(phaseCases, [variant]).map((entry) => entry.screen)).map((screen) => ({ screen, variant })));
+	/** The cases in the order the run takes them: the settings of the variant, then its screens in the order that changes the proxy least. */
+	const order = chosenVariants.flatMap((variant) => ordered(matrix(chosenCases, [variant]).map((entry) => entry.screen)).map((screen) => ({ screen, variant })));
 	const nameOf = (entry: { screen: ScreenCase; variant: Variant }) => referenceName(entry.screen, entry.variant);
-	const wanted = [...orderOf(phases.signedOut), ...orderOf(phases.signedIn)].map(nameOf).filter((name) => !(missingOnly && manifest.references[name]));
+	const wanted = order.map(nameOf).filter((name) => !(missingOnly && manifest.references[name]));
 	// `--resume` continues the device's newest parity file (its cases are done); `--limit` takes at most that many of the others.
 	const resumePath = values.resume ? (await latestRunFiles()).parity.get(slug(serial)) : undefined;
 	if (values.resume && !resumePath) throw new Error(`--resume: no parity run file for ${serial} in qa/runs`);
@@ -486,13 +426,10 @@ export async function parity(argv: string[]): Promise<void> {
 	const plan = planCases(wanted, new Set(resumed?.cases.map((record) => record.name)), limit);
 	if (resumed || limit > 0)
 		console.log(`${resumed ? `resuming parity-${slug(serial)}-${stamp(startedAt)}: ${resumed.cases.length} cases already measured; ` : ""}${plan.run.size} to run${plan.left > 0 ? `, ${plan.left} left for the next` : ""}`);
-	/** Whether the run takes any case of a phase: a phase it takes none of is not even started (no sign-in for a chunk of signed-out screens). */
-	const takes = (phaseCases: ScreenCase[]) => orderOf(phaseCases).some((entry) => plan.run.has(nameOf(entry)));
 
 	const artifacts = join(runsDir, `parity-${slug(serial)}-${stamp(startedAt)}`);
 	const results: ParityCase[] = resumed ? [...resumed.cases] : [];
 	let aborted: string | null = null;
-	let signedInPhase: SignedInRecord | null = resumed?.signedInPhase ?? null;
 	const notes = newSessionNotes();
 	try {
 		await withSession(serial, packageName, async (session) => {
@@ -508,15 +445,14 @@ export async function parity(argv: string[]): Promise<void> {
 				statusBar,
 				navigationBar,
 				update,
-				backend,
 				artifacts,
 				evidence: { run: session.run, budget: new EvidenceBudget() },
 				source,
 			};
-			/** Every variant of one phase: the settings of the variant, then its screens in the order that changes the proxy least. */
-			const runPhase = async (phaseCases: ScreenCase[]) => {
+			/** Every variant: the settings of the variant, then its screens in the order that changes the proxy least. */
+			const runCases = async () => {
 				for (const variant of chosenVariants) {
-					const screens = ordered(matrix(phaseCases, [variant]).map((entry) => entry.screen)).filter((screen) => plan.run.has(referenceName(screen, variant)));
+					const screens = ordered(matrix(chosenCases, [variant]).map((entry) => entry.screen)).filter((screen) => plan.run.has(referenceName(screen, variant)));
 					if (screens.length === 0) continue;
 					await session.theme(variant.theme);
 					await session.fontScale(variant.fontScale);
@@ -537,21 +473,7 @@ export async function parity(argv: string[]): Promise<void> {
 				}
 			};
 			try {
-				if (phases.signedOut.length > 0 && takes(phases.signedOut)) {
-					await startSignedOut(session, backend, phases.signedOut);
-					await runPhase(phases.signedOut);
-				}
-				if (phases.signedIn.length > 0 && takes(phases.signedIn)) {
-					console.log("signed-in phase: signing in as the QA account");
-					const outcome = await inSignedInPhase(session, backend, matrix(phases.signedIn, chosenVariants).length, () => runPhase(phases.signedIn));
-					signedInPhase = outcome.record;
-					if (!outcome.entered) {
-						console.log(`  signed-in phase did not run: ${outcome.record.detail}`);
-						for (const { screen, variant } of orderOf(phases.signedIn))
-							if (plan.run.has(referenceName(screen, variant)))
-								results.push(caseRecord(screen, variant, { verdict: "skipped", detail: outcome.record.detail }));
-					} else if (outcome.record.detail) console.log(`  signed-in phase: ${outcome.record.detail}`);
-				}
+				await runCases();
 			} finally {
 				if (update) await writeManifest(manifest);
 			}
@@ -579,7 +501,6 @@ export async function parity(argv: string[]): Promise<void> {
 		cases: results,
 		notCovered: [...notCovered, ...notCoveredStates],
 		aborted,
-		signedInPhase,
 		leftovers: [...(resumed?.leftovers ?? []), ...notes.leftovers],
 		restoreFailures: [...(resumed?.restoreFailures ?? []), ...notes.restoreFailures],
 		deviceRestarts: [...(resumed?.deviceRestarts ?? []), ...notes.deviceRestarts],

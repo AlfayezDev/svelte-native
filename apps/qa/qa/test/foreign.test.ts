@@ -34,7 +34,7 @@ const cleanBundle = { map: "m", sources: 1330, reactFiles: ["/node_modules/react
 function file(overrides: Partial<ForeignFile> = {}): ForeignFile {
 	return {
 		schema: 1, kind: "foreign", startedAt: "2026-11-01T12:00:00Z", finishedAt: "2026-11-01T12:10:00Z", source: { commit: "abc", dirty: false },
-		device: { serial: "localhost:5555", platform: "android" } as ForeignFile["device"], app: { package: "io.example.svelteqa", installedSha256: "x" } as ForeignFile["app"],
+		device: { serial: "localhost:5555", platform: "android" } as ForeignFile["device"], app: { package: "dev.alfayez.exposvelte.qa", installedSha256: "x" } as ForeignFile["app"],
 		asked: libraries, checks: cleanChecks(), skips: [], leftovers: [check("capture", "inline")],
 		launches: [launch("libraries"), launch("leftovers")], bundle: cleanBundle, ...overrides,
 	};
@@ -110,7 +110,7 @@ describe("a foreign run whose failed checks have an apostrophe in their names", 
 	const capture = { text: log, matched: true, startedAt: new Date("2026-11-04T12:30:00Z"), durationMs: 600_000, logFile: "runs/foreign-libraries.log" };
 
 	test("the lab run is read: the summary is its scenario, failed, and the launch is complete", () => {
-		const run = labRunFrom(capture, "io.example.svelteqa", true);
+		const run = labRunFrom(capture, "dev.alfayez.exposvelte.qa", true);
 		expect(run.complete).toBe(true);
 		expect(run.scenarios.map((scenario) => [scenario.name, scenario.verdict])).toEqual([["foreign-libraries", "fail"]]);
 		const detail = run.scenarios[0]?.detail as { failed: string[] } | null | undefined;
@@ -124,7 +124,7 @@ describe("a foreign run whose failed checks have an apostrophe in their names", 
 	});
 
 	test("the run file's gates fail for rive and pass for the others, and nothing is not measured", () => {
-		const run = labRunFrom(capture, "io.example.svelteqa", true);
+		const run = labRunFrom(capture, "dev.alfayez.exposvelte.qa", true);
 		const { checks, skips, unparsed } = parseForeignChecks(log);
 		const metrics = foreignMetrics(file({ checks, skips, unparsed, launches: [launchOf("libraries", "foreign-libraries,drive:adb", run), launch("leftovers")] }), { libraries });
 		const rows = evaluate(gates.gates.filter((gate) => gate.metric.startsWith("foreign.")), { "localhost:5555": { platform: "android", role: "lab", runs: ["foreign"], metrics } }, "android");
@@ -142,18 +142,18 @@ describe("a foreign run whose summary line logcat cut", () => {
 	const capture = { text: log, matched: true, startedAt: new Date("2026-11-04T12:30:00Z"), durationMs: 600_000, logFile: "runs/foreign-libraries.log" };
 
 	test("the launch is recorded with the unreadable line, and its checks are all read", () => {
-		const run = labRunFrom(capture, "io.example.svelteqa", true);
+		const run = labRunFrom(capture, "dev.alfayez.exposvelte.qa", true);
 		expect(run.complete).toBe(true);
 		expect(run.scenarios).toEqual([]);
 		expect(run.unparsedLines).toHaveLength(1);
 		const launched = launchOf("libraries", "foreign-libraries,drive:adb", run);
 		expect(launched.unparsedLines).toEqual(run.unparsedLines);
-		expect(launchOf("libraries", "foreign-libraries,drive:adb", labRunFrom({ ...capture, text: log.split("\n").slice(1).join("\n") }, "io.example.svelteqa", true)).unparsedLines).toBeUndefined();
+		expect(launchOf("libraries", "foreign-libraries,drive:adb", labRunFrom({ ...capture, text: log.split("\n").slice(1).join("\n") }, "dev.alfayez.exposvelte.qa", true)).unparsedLines).toBeUndefined();
 		expect(parseForeignChecks(log).checks).toHaveLength(cleanChecks().length);
 	});
 
 	test("foreign.unparsedLines counts it, the gate fails, and the run says so in its lines", () => {
-		const run = labRunFrom(capture, "io.example.svelteqa", true);
+		const run = labRunFrom(capture, "dev.alfayez.exposvelte.qa", true);
 		const withLine = file({ launches: [launchOf("libraries", "foreign-libraries,drive:adb", run), launch("leftovers")] });
 		const rows = (value: ForeignFile) => evaluate(gates.gates.filter((gate) => gate.metric.startsWith("foreign.")), { "localhost:5555": { platform: "android", role: "lab", runs: ["foreign"], metrics: foreignMetrics(value, { libraries }) } }, "android");
 		const verdict = (value: ForeignFile) => rows(value).find((row) => row.id === "foreign.unparsedLines")?.verdict;
@@ -1075,10 +1075,10 @@ describe("nextTaskOf: the hop is a task of React Native's runtime scheduler, a t
 
 describe("what the lab asks the harness to press", () => {
 	const dump = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0">
-<node index="0" text="" resource-id="" class="android.widget.FrameLayout" package="io.example.svelteqa" bounds="[0,0][1080,2400]">
-<node index="1" text="Cancel" resource-id="android:id/button2" class="android.widget.Button" package="io.example.svelteqa" bounds="[500,1700][740,1830]" />
-<node index="2" text="OK" resource-id="android:id/button1" class="android.widget.Button" package="io.example.svelteqa" bounds="[760,1700][900,1830]" />
-<node index="3" text="" resource-id="android:id/button3" class="android.widget.Button" package="io.example.svelteqa" bounds="[0,0][0,0]" />
+<node index="0" text="" resource-id="" class="android.widget.FrameLayout" package="dev.alfayez.exposvelte.qa" bounds="[0,0][1080,2400]">
+<node index="1" text="Cancel" resource-id="android:id/button2" class="android.widget.Button" package="dev.alfayez.exposvelte.qa" bounds="[500,1700][740,1830]" />
+<node index="2" text="OK" resource-id="android:id/button1" class="android.widget.Button" package="dev.alfayez.exposvelte.qa" bounds="[760,1700][900,1830]" />
+<node index="3" text="" resource-id="android:id/button3" class="android.widget.Button" package="dev.alfayez.exposvelte.qa" bounds="[0,0][0,0]" />
 </node></hierarchy>`;
 
 	test("a press request is read from the lab's line, and any other line is not one", () => {

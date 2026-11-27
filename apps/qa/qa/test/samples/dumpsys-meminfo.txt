@@ -1,7 +1,7 @@
 Applications Memory Usage (in Kilobytes):
 Uptime: 848128 Realtime: 848128
 
-** MEMINFO in pid 4197 [io.example.svelteqa] **
+** MEMINFO in pid 4197 [dev.alfayez.exposvelte.qa] **
                    Pss  Private  Private     Swap      Rss     Heap     Heap     Heap
                  Total    Dirty    Clean    Dirty    Total     Size    Alloc     Free
                 ------   ------   ------   ------   ------   ------   ------   ------
@@ -57,11 +57,11 @@ Uptime: 848128 Realtime: 848128
  DATABASES
       pgsz     dbsz   Lookaside(b) cache hits cache misses cache size  Dbname
 PER CONNECTION STATS
-         4       32             51    12    21     5  /data/user/0/io.example.svelteqa/databases/exoplayer_internal.db
-         4      104            123     9    41    11  /data/user/0/io.example.svelteqa/no_backup/androidx.work.workdb
+         4       32             51    12    21     5  /data/user/0/dev.alfayez.exposvelte.qa/databases/exoplayer_internal.db
+         4      104            123     9    41    11  /data/user/0/dev.alfayez.exposvelte.qa/no_backup/androidx.work.workdb
          4        8                    0     0     0    (attached) temp
-         4      104             32     4    15     3  /data/user/0/io.example.svelteqa/no_backup/androidx.work.workdb (2)
+         4      104             32     4    15     3  /data/user/0/dev.alfayez.exposvelte.qa/no_backup/androidx.work.workdb (2)
 POOL STATS
      cache hits  cache misses    cache size  Dbname
-             12            22            34  /data/user/0/io.example.svelteqa/databases/exoplayer_internal.db
-             15            77            92  /data/user/0/io.example.svelteqa/no_backup/androidx.work.workdb
+             12            22            34  /data/user/0/dev.alfayez.exposvelte.qa/databases/exoplayer_internal.db
+             15            77            92  /data/user/0/dev.alfayez.exposvelte.qa/no_backup/androidx.work.workdb

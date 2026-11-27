@@ -46,9 +46,9 @@ function fakeMac(answers: { output: string; resilience?: string | null; last?: s
 
 function sessionOn(mac: ReturnType<typeof macFrom>): IosSession {
 	return {
-		target: { mac, id: "COREDEVICE", bundleId: "io.example.svelteqa" },
+		target: { mac, id: "COREDEVICE", bundleId: "dev.alfayez.exposvelte.qa" },
 		udid: "00008110-001E10593410401E",
-		installed: { bundleId: "io.example.svelteqa", name: "Example Svelte QA", version: "0.1.0", bundleVersion: "1", bundleUrl: "file:///private/var/containers/Bundle/Application/X/ExampleSvelteQA.app/" },
+		installed: { bundleId: "dev.alfayez.exposvelte.qa", name: "Expo Svelte QA", version: "0.1.0", bundleVersion: "1", bundleUrl: "file:///private/var/containers/Bundle/Application/X/ExpoSvelteQA.app/" },
 	} as IosSession;
 }
 
@@ -117,7 +117,7 @@ describe("the post-run reads when CoreDevice is wedged", () => {
 		expect(run.navigation?.outcome).toBe("none");
 		const afc = scripts.filter((script) => script.includes("afcclient"));
 		expect(afc).toHaveLength(2);
-		expect(afc[0]).toContain("io.example.svelteqa");
+		expect(afc[0]).toContain("dev.alfayez.exposvelte.qa");
 		expect(afc[0]).toContain("alarm shift; exec @ARGV");
 		expect(afc[0]).toContain("Documents/resilience.json");
 		expect(afc[1]).toContain("Library/Application Support/svelte-navigation/last.json");

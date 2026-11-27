@@ -183,7 +183,7 @@ describe("the network mode is read back", () => {
 			const session = await DeviceSession.open(device.serial, device.packageName, options);
 			await launchCase(session, normalScreen, "ltr");
 			expect(device.commands("am start")).toHaveLength(1);
-			expect(device.commands("am force-stop io.example.svelteqa")).toHaveLength(1);
+			expect(device.commands("am force-stop dev.alfayez.exposvelte.qa")).toHaveLength(1);
 			await session.close();
 		});
 	});
@@ -196,14 +196,14 @@ describe("a case that pushes its screen onto the one the launch link opened", ()
 			const session = await DeviceSession.open(device.serial, device.packageName, options);
 			const pushed: ScreenCase = {
 				...normalScreen,
-				deepLink: "example-svelte:///__dev/screens",
-				steps: [{ open: "example-svelte:///__dev/screens?mode=toolbar" }],
+				deepLink: "expo-svelte-qa:///__dev/screens",
+				steps: [{ open: "expo-svelte-qa:///__dev/screens?mode=toolbar" }],
 			};
 			await launchCase(session, pushed, "ltr");
 			const starts = device.commands("am start");
 			expect(starts).toHaveLength(2);
-			expect(starts[0]).toContain("force-stop io.example.svelteqa; sleep 0.3; am start -W -a android.intent.action.VIEW -d 'example-svelte:///__dev/screens' io.example.svelteqa");
-			expect(starts[1]).toContain("-d 'example-svelte:///__dev/screens?mode=toolbar' io.example.svelteqa");
+			expect(starts[0]).toContain("force-stop dev.alfayez.exposvelte.qa; sleep 0.3; am start -W -a android.intent.action.VIEW -d 'expo-svelte-qa:///__dev/screens' dev.alfayez.exposvelte.qa");
+			expect(starts[1]).toContain("-d 'expo-svelte-qa:///__dev/screens?mode=toolbar' dev.alfayez.exposvelte.qa");
 			expect(starts[1]).not.toContain("force-stop");
 			expect(device.commands("force-stop")).toHaveLength(1);
 			await session.close();

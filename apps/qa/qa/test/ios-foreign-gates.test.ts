@@ -53,7 +53,7 @@ const skipsOf = (library: string, skipped: number, androidOnly: number): Foreign
 function cleanRun(overrides: Partial<ForeignFile> = {}): ForeignFile {
 	return {
 		schema: 1, kind: "foreign", startedAt: "2026-11-04T10:00:00Z", finishedAt: "2026-11-04T10:12:00Z", source: { commit: "abc", dirty: false },
-		device: { serial: iphone, platform: "ios" } as ForeignFile["device"], app: { package: "io.example.svelteqa" } as ForeignFile["app"],
+		device: { serial: iphone, platform: "ios" } as ForeignFile["device"], app: { package: "dev.alfayez.exposvelte.qa" } as ForeignFile["app"],
 		asked: libraries,
 		checks: libraries.flatMap((library) => checksOf(library, first[library]?.checks ?? 0)),
 		skips: libraries.flatMap((library) => skipsOf(library, first[library]?.skipped ?? 0, first[library]?.androidOnly ?? 0)),
@@ -157,8 +157,8 @@ describe("the iPhone's foreign gates", () => {
 	});
 
 	test("a pull of the phone's crash log during the foreign run counts for the iPhone's crash reports", () => {
-		const report: CrashReport = { file: "ExampleSvelteQA-2026-11-04-100000.ips", capturedAt: null, processStartedAt: null, pid: 1, exceptionType: "EXC_CRASH", signal: "SIGABRT", reason: null, framesOf: null, topFrames: [] };
-		const measure = (file: ForeignFile) => deviceMetrics(null, null, [], null, null, { parity: null, a11y: null, resilience: null }, null, null, [], null, [], null, { file, pins: { libraries } });
+		const report: CrashReport = { file: "ExpoSvelteQA-2026-11-04-100000.ips", capturedAt: null, processStartedAt: null, pid: 1, exceptionType: "EXC_CRASH", signal: "SIGABRT", reason: null, framesOf: null, topFrames: [] };
+		const measure = (file: ForeignFile) => deviceMetrics(null, null, [], null, null, { parity: null, a11y: null, resilience: null }, null, null, [], null, null, { file, pins: { libraries } });
 		expect(measure(cleanRun({ crashReports: [report] }))["log.crashReports"]).toBe(1);
 		expect(measure(cleanRun({ crashReports: [] }))["log.crashReports"]).toBe(0);
 		expect(measure(cleanRun({ crashReports: undefined, crashReportsError: "after the run: No device found" }))["log.crashReports"]).toBeNull();

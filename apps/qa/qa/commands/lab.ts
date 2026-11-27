@@ -41,7 +41,7 @@ export async function labOnce(
 	await sleep(1500);
 	await clearLogcat(serial);
 	const startedAt = new Date();
-	await startApp(serial, packageName, `example-svelte:///__dev?run=${run}`);
+	await startApp(serial, packageName, `expo-svelte-qa:///__dev?run=${run}`);
 	const stream = await followLogcat(serial, completionMarker(run), timeoutMs, 2000);
 	await forceStop(serial, packageName);
 	await writeFile(logPath, stream.text);

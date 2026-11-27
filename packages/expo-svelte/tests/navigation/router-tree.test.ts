@@ -203,9 +203,9 @@ test("two screens of one tabs navigator keep a state each: another workspace's t
 test("links open through the root and select the pane; a link no route matches is ignored; replaceBase swaps the root's first screen", async () => {
   withInsets(24);
   const { router, settled } = await mountTree(87, { initial: "/workspaces" });
-  expect(router.openURL("example://acme/inbox/compose")).toBe(true);
+  expect(router.openURL("myapp://acme/inbox/compose")).toBe(true);
   expect(router.openURL("https://example.com/acme/home")).toBe(true);
-  expect(router.openURL("example://acme/nowhere/at/all")).toBe(false);
+  expect(router.openURL("myapp://acme/nowhere/at/all")).toBe(false);
   await settled();
   expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
   expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home"]);
@@ -640,7 +640,7 @@ test("reset is a new root for the whole chain: the root keeps only the tabs scre
   const base = home.entries[0];
 
   host.calls.length = 0;
-  router.goto("/acme", { reset: true }); // what the workspace list does to open a workspace
+  router.goto("/acme", { reset: true }); // what a project list does to open a project
   await settled();
   expect(pathsOf(router)).toEqual(["/acme"]); // the list is gone
   expect(router.entries[0]).toBe(tabs); // the same tabs screen: nothing is created, nothing remounts

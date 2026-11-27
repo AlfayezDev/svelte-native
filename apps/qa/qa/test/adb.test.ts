@@ -54,7 +54,7 @@ describe("adb parsers", () => {
 	});
 	test("pm path gives the base APK", () => {
 		expect(parseBaseApkPath(sample("pm-path.txt"))).toBe(
-			"/data/app/~~E_w38z7eX4_0csmdoatE7Q==/io.example.svelteqa-WTic2Uwr_vgAvpAx3feKQw==/base.apk",
+			"/data/app/~~E_w38z7eX4_0csmdoatE7Q==/dev.alfayez.exposvelte.qa-WTic2Uwr_vgAvpAx3feKQw==/base.apk",
 		);
 		expect(
 			parseBaseApkPath("package:/data/app/x/split_config.apk\npackage:/data/app/x/base.apk\n"),

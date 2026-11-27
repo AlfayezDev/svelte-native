@@ -33,10 +33,10 @@ describe("uiautomator dump parser", () => {
 	});
 
 	test("keeps right-to-left text and unescapes entities", () => {
-		const tree = parseHierarchy(sample("uia-login-ar.xml"));
-		expect(findByLabel(tree, "ما بريدك الإلكتروني؟").length).toBe(1);
+		const tree = parseHierarchy(sample("uia-form-ar.xml"));
+		expect(findByLabel(tree, "نموذج الاتصال").length).toBe(1);
 		const field = tree.nodes.find((node) => node.className === "android.widget.EditText");
-		expect(field?.contentDesc).toBe("البريد الإلكتروني");
+		expect(field?.contentDesc).toBe("الاسم");
 		const escaped = parseHierarchy(
 			`<?xml version='1.0' ?><hierarchy rotation="1"><node index="0" text="a &amp; b &lt;c&gt; &quot;d&quot; &#128512; &#x41;" resource-id="" class="x" package="p" content-desc="" checkable="false" checked="false" clickable="true" enabled="false" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[1,2][11,22]" /></hierarchy>`,
 		);
@@ -61,7 +61,7 @@ describe("uiautomator dump parser", () => {
 			descendants(scroll as NonNullable<typeof scroll>).map(
 				(node) => node.text || node.contentDesc,
 			),
-		).toContain("Example");
+		).toContain("Expo Svelte");
 	});
 
 	test("refuses a dump it cannot read completely", () => {

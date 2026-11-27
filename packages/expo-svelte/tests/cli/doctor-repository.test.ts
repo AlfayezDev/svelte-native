@@ -45,7 +45,7 @@ test("the patches left at the root are the repository's own: the example's, for 
   // Svelte's is not an app's: an app's Metro transformer removes the compiler's refusals itself (`svelte-compiler.ts`), so the package ships no patch of Svelte and the doctor asks for none. The patch is only
   // for this repository's tests, which run under Bun, where no Node hook runs.
   expect(patchFiles().map((patch) => patch.package)).not.toContain("svelte");
-  // Nothing of the library imports it or lists it: the patch fixes `I18nManager` for the production app's use of the library, which the example's smoke app stands in for.
+  // Nothing of the library imports it or lists it: the patch fixes `I18nManager` for an app's use of the library, which the example's smoke app stands in for.
   const sources = readdirSync(join(repository, "packages/expo-svelte/src"), { recursive: true, encoding: "utf8" }).filter((file) => /\.(ts|svelte)$/.test(file));
   for (const file of sources) expect(read(`packages/expo-svelte/src/${file}`), file).not.toContain("react-native-live-direction");
   expect(JSON.stringify(library)).not.toContain("react-native-live-direction");

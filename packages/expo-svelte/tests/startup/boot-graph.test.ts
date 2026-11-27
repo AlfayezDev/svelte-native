@@ -14,7 +14,7 @@ import { INITIALIZE_CORE, LITE_ORIGINS, RENDERER_STUBS } from "../../src/metro.t
  * Modules that cost the JavaScript thread before the first commit if anything evaluates them while the bundle loads, and what each
  * costs on the Galaxy A16. They load on first use instead (a `require` inside a function). The test walks what the bundle evaluates
  * at load, as Metro serializes it (no inline requires): every static `import` and `export ... from`, side-effect imports included,
- * and every `require("...")` that is not inside a function, through the package, the platform app's layout and every package they
+ * and every `require("...")` that is not inside a function, through the package, the QA app's layout and every package they
  * reach (with Metro's substitutions: the lite React Native shim for Expo and Reanimated, the renderer stubs, our `init` for
  * InitializeCore). `import()` and a `require` in a function are lazy.
  */

@@ -37,7 +37,7 @@ index bd9c2d1..da9d41e 100644
          isStatusBarTranslucent: Boolean,
          isNavigationBarTranslucent: Boolean,
      ): Int {
-+        // Example patch: the svelte-engine module is the keyboard's source, frame by frame, and Reanimated's own window insets handling stays off.
++        // expo-svelte patch: the svelte-engine module is the keyboard's source, frame by frame, and Reanimated's own window insets handling stays off.
 +        SvelteEngineHook.keyboardSubscribe?.let { subscribe -> return subscribe({ state, height -> callback.invoke(state, height) }, isStatusBarTranslucent, isNavigationBarTranslucent) }
          val listenerId = mNextListenerId++
          if (mListeners.isEmpty()) {

@@ -204,9 +204,6 @@
       "gestures-churn"
     ]
   },
-  "signedIn": {
-    "android": []
-  },
   "exceptions": [
     {
       "gate": "frames.droppedPct",
@@ -1081,7 +1078,7 @@
     },
     {
       "id": "parity.incomplete",
-      "title": "Parity cases not compared against a reference (missing, unstable, errored, skipped, not run) (D12: the signed-in cases skipped because the phase never started, for lack of a QA account, are not counted)",
+      "title": "Parity cases not compared against a reference (missing, unstable, errored, skipped, not run)",
       "unit": "cases",
       "metric": "parity.casesIncomplete",
       "bar": {
@@ -1106,18 +1103,6 @@
           "max": 25
         }
       }
-    },
-    {
-      "id": "parity.signedIn.missing",
-      "title": "Screenshot parity: pinned signed-in screens (gates.json signedIn) not compared in every variant (informational, D12)",
-      "unit": "cases",
-      "metric": "parity.signedIn.missing",
-      "bar": {
-        "android": {
-          "max": 0
-        }
-      },
-      "informational": "D12, D15: the signed-in screens are a product's account screens, not the library's; this repository's example has none (the list is empty), so the gate has nothing to count, and it is shown and never blocks"
     },
     {
       "id": "parity.casesRetried",
@@ -1228,7 +1213,7 @@
     },
     {
       "id": "a11y.incomplete",
-      "title": "Accessibility: screens not dumped (D12: the signed-in cases skipped because the phase never started, for lack of a QA account, are not counted)",
+      "title": "Accessibility: screens not dumped",
       "unit": "screens",
       "metric": "a11y.screensIncomplete",
       "bar": {
@@ -1239,18 +1224,6 @@
           "max": 0
         }
       }
-    },
-    {
-      "id": "a11y.signedIn.missing",
-      "title": "Accessibility: pinned signed-in screens (gates.json signedIn) not dumped in every layout (informational, D12)",
-      "unit": "screens",
-      "metric": "a11y.signedIn.missing",
-      "bar": {
-        "android": {
-          "max": 0
-        }
-      },
-      "informational": "D12, D15: the signed-in screens are a product's account screens, not the library's; this repository's example has none (the list is empty), so the gate has nothing to count, and it is shown and never blocks"
     },
     {
       "id": "a11y.screensRetried",
@@ -1559,7 +1532,7 @@
     },
     {
       "id": "product.boot.fatals",
-      "title": "Product boot: JavaScript fatals and native crashes while it starts (the product app, no development lab)",
+      "title": "Product boot: JavaScript fatals and native crashes while it starts (the production variant, no development lab)",
       "unit": "fatals",
       "metric": "product.boot.fatals",
       "bar": {

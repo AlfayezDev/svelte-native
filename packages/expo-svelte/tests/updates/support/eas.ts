@@ -31,12 +31,12 @@ export const manifest = {
   launchAsset,
   assets: [logo, logo2x],
   metadata: { branchName: "production" },
-  extra: { expoClient: { name: "Example", slug: "example", version: "0.1.0" }, eas: { projectId: PROJECT_ID } },
+  extra: { expoClient: { name: "Expo Svelte QA", slug: "expo-svelte-qa", version: "0.1.0" }, eas: { projectId: PROJECT_ID } },
 };
 
 export const extensions = { assetRequestHeaders: { [logo.key]: { authorization: "Bearer asset-token", "x-asset": 7 } } };
 
-export const rollBackDirective = { type: "rollBackToEmbedded", parameters: { commitTime: "2026-10-22T08:30:00.000Z" }, extra: { scopeKey: "@alfayez/example" } };
+export const rollBackDirective = { type: "rollBackToEmbedded", parameters: { commitTime: "2026-10-22T08:30:00.000Z" }, extra: { scopeKey: "@alfayez/expo-svelte-qa" } };
 export const noUpdateDirective = { type: "noUpdateAvailable" };
 
 type PartOptions = { name: string; json: unknown; contentType?: string; extraHeaders?: string[] };

@@ -6,7 +6,7 @@ index d6e922bb81b7f3e97bc23e895301dc74e5dfb9a4..0ad5a66400d88408d4414b5721eced32
        finalizer();
      }
    }
-+  // Example patch: a native frame is requested only while something waits for one (see src/runLoop/uiRuntime/requestAnimationFrame.ts).
++  // expo-svelte patch: a native frame is requested only while something waits for one (see src/runLoop/uiRuntime/requestAnimationFrame.ts).
 +  let frameRequested = false;
 +  function requestFrame() {
 +    if (!frameRequested) {
@@ -58,7 +58,7 @@ index ff59b36a97ff2082989e4ffb0a075ddebcf86f3a..e0d6e46c08bd5b303c89271ecf74e1b4
      }
    }
  
-+  // Example patch: a native frame is requested only while something waits for one. The upstream loop re-requests the
++  // expo-svelte patch: a native frame is requested only while something waits for one. The upstream loop re-requests the
 +  // next frame from every `nativeFlushQueue`, forever, so once the UI runtime exists the main thread runs a Choreographer
 +  // callback, a JNI call and a Hermes call on every frame (0.3 to 0.45 ms on a Galaxy A16 at 90 Hz) with an empty queue.
 +  let frameRequested = false;

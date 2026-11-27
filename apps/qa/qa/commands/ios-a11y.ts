@@ -11,7 +11,6 @@ import { currentSource, iosOptions, newToken, startIosSuite } from "../lib/iphon
 import { qaDir, runsDir } from "../lib/paths.ts";
 import { slug, stamp, writeRun } from "../lib/runs.ts";
 import { localize, referenceName, type ScreenCase, type Variant } from "../lib/screens.ts";
-import { backendStatus } from "../lib/suite.ts";
 import type { A11yFile, A11yScreenResult, BuildIdentity } from "../lib/types.ts";
 
 /** What the checks read, stated in every run file: VoiceOver itself was not run. */
@@ -52,8 +51,7 @@ export async function iosA11y(argv: string[]): Promise<void> {
 	const chosenVariants = values.quick === true ? iosLayoutVariants.slice(0, 1) : iosLayoutVariants;
 	const chosenCases = iosCases.filter((screen) => !filter || screen.id.includes(filter));
 	if (chosenCases.length === 0) throw new Error(`--filter ${filter} matches no screen (${iosCases.map((screen) => screen.id).join(", ")})`);
-	const backend = await backendStatus();
-	console.log(`checking ${iosMatrix(chosenCases, chosenVariants).length} screens in ${chosenVariants.length} layouts; backend: ${backend.detail}`);
+	console.log(`checking ${iosMatrix(chosenCases, chosenVariants).length} screens in ${chosenVariants.length} layouts`);
 
 	const results: A11yScreenResult[] = [];
 	const reports: (BuildIdentity | null)[] = [];
@@ -74,11 +72,6 @@ export async function iosA11y(argv: string[]): Promise<void> {
 			reports.push(captured.index.build);
 			reportedIdentity(reports, session.build, "a11y");
 			for (const { screen } of iosMatrix(chosenCases, [variant])) {
-				if (screen.needsBackend && !backend.ok) {
-					results.push(emptyResult(screen, variant, `needs the dev backend: ${backend.detail}`));
-					console.log(`  skipped  ${referenceName(screen, variant)}: backend`);
-					continue;
-				}
 				const entry = captured.index.entries.find((candidate) => candidate.screen === screen.id);
 				if (!entry?.a11y || entry.error) {
 					results.push(emptyResult(screen, variant, entry?.error ?? "the app did not report this screen"));

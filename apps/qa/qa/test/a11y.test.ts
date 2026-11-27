@@ -9,7 +9,7 @@ import {
 } from "../lib/a11y.ts";
 import { cases, localize } from "../lib/screens.ts";
 import { parseHierarchy } from "../lib/uia.ts";
-import { login, startupLoading } from "./fixture-cases.ts";
+import { form, startupLoading } from "./fixture-cases.ts";
 import { sample } from "./sample.ts";
 
 type N = {
@@ -497,9 +497,9 @@ describe("the tree a screen reader walks is the only tree the checks read", () =
 });
 
 describe("frozen dumps of the QA app (the checklist's findings in them, not the engine's state today)", () => {
-	// The lab's cases, and two fixtures (`fixture-cases.ts`): the sign-in and startup screens of the product the dumps were taken in.
+	// The lab's cases, and two fixtures (`fixture-cases.ts`): a form and a startup screen.
 	function screen(file: string, id: string, direction: "ltr" | "rtl" = "ltr") {
-		const c = [...cases, login, startupLoading].find((entry) => entry.id === id);
+		const c = [...cases, form, startupLoading].find((entry) => entry.id === id);
 		if (!c) throw new Error(`no case ${id}`);
 		return analyzeScreen({
 			tree: parseHierarchy(sample(file)),
@@ -598,17 +598,17 @@ describe("frozen dumps of the QA app (the checklist's findings in them, not the 
 		expect(r.unreachable).toBe(0);
 	});
 
-	test("the Arabic login: right-to-left order holds and the title leads", () => {
-		const r = screen("uia-login-ar.xml", "login", "rtl");
+	test("the Arabic form: right-to-left order holds and the title leads", () => {
+		const r = screen("uia-form-ar.xml", "form", "rtl");
 		expect(r.titleFirst).toBe(true);
 		expect(r.orderViolations).toBe(0);
-		expect(r.stops[0]).toBe("ما بريدك الإلكتروني؟");
+		expect(r.stops[0]).toBe("نموذج الاتصال");
 		expect(r.unreachable).toBe(0);
 	});
 
 	test("a spinner screen has a title and a labeled progress bar", () => {
 		const r = screen("uia-startup-loading.xml", "startup-loading");
-		expect(r.stops).toEqual(["Example", "Loading…"]);
+		expect(r.stops).toEqual(["Expo Svelte", "Loading…"]);
 		expect(r.titleFirst).toBe(true);
 	});
 
@@ -741,15 +741,15 @@ describe("a control below the fold of a scroll view", () => {
 	];
 
 	test("a button that names its row is the control the screen declares below the fold", () => {
-		const r = analyze(page("Delete workspace, Acme", [105, 2383, 975, 2337]), { display: dense, scrolled: ["Delete workspace"] });
+		const r = analyze(page("Delete project, Acme", [105, 2383, 975, 2337]), { display: dense, scrolled: ["Delete project"] });
 		expect([r.clipped, r.unreachable]).toEqual([1, 0]);
-		const undeclared = analyze(page("Delete workspace, Acme", [105, 2383, 975, 2337]), { display: dense });
+		const undeclared = analyze(page("Delete project, Acme", [105, 2383, 975, 2337]), { display: dense });
 		expect([undeclared.clipped, undeclared.unreachable]).toEqual([0, 1]);
 	});
 
 	test("the slice of a control a scroll view cuts is not a small touch target, the same control whole is", () => {
-		expect(analyze(page("Sign out", [63, 2360, 1017, 2400]), { display: dense, scrolled: ["Sign out"] }).smallTargets).toBe(0);
-		const whole: N = { cls: "android.widget.ScrollView", scrollable: true, bounds: [0, 300, 1080, 2400], children: [button("Sign out", [63, 1000, 1017, 1040])] };
+		expect(analyze(page("Remove", [63, 2360, 1017, 2400]), { display: dense, scrolled: ["Remove"] }).smallTargets).toBe(0);
+		const whole: N = { cls: "android.widget.ScrollView", scrollable: true, bounds: [0, 300, 1080, 2400], children: [button("Remove", [63, 1000, 1017, 1040])] };
 		expect(analyze([whole], { display: dense }).smallTargets).toBe(1);
 	});
 });

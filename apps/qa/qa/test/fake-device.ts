@@ -25,16 +25,16 @@ export class FakeDevice {
 	/** What the evidence commands answer: the app's logcat and the crash buffer, the window manager's focus and windows (`dumpsys window windows`, and the plain `dumpsys window` when that answers nothing), the resumed activity. */
 	logcatText = "";
 	crashText = "";
-	windowsText = "  mCurrentFocus=Window{1a2b u0 io.example.svelteqa/io.example.svelteqa.MainActivity}\n";
+	windowsText = "  mCurrentFocus=Window{1a2b u0 dev.alfayez.exposvelte.qa/dev.alfayez.exposvelte.qa.MainActivity}\n";
 	windowText = "";
-	activityText = "  topResumedActivity=ActivityRecord{3c4d u0 io.example.svelteqa/.MainActivity t7}\n";
+	activityText = "  topResumedActivity=ActivityRecord{3c4d u0 dev.alfayez.exposvelte.qa/.MainActivity t7}\n";
 	/** The device's clock, as `date +'%m-%d %H:%M:%S'` prints it (the stamps of its logcat). */
 	clock = "11-04 11:11:30\n";
 	/** Commands that start with one of these fail the way a command that exits with 1 does. */
 	failing: string[] = [];
 
 	readonly serial = "localhost:5555";
-	readonly packageName = "io.example.svelteqa";
+	readonly packageName = "dev.alfayez.exposvelte.qa";
 
 	set(key: string, value: string | null): void {
 		if (value === null) this.settings.delete(key);

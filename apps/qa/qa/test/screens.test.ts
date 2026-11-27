@@ -93,8 +93,7 @@ describe("the screen matrix", () => {
 describe("the way a screen is reached decides whether it has a back button", () => {
 	// The router makes the launch link the base of the stack (no back arrow): a screen declared with "Navigate up" is one the lab
 	// pushes, so the launch link is the screen under it and a step pushes it.
-	// The lab's cases: a signed-in screen is pushed by its product's own buttons (`signed-in.test.ts`).
-	const wantsBack = cases.filter((screen) => !screen.signedIn && screen.controls.some((control) => localize(control, "ltr") === "Navigate up"));
+	const wantsBack = cases.filter((screen) => screen.controls.some((control) => localize(control, "ltr") === "Navigate up"));
 
 	test("the cases that declare the back button", () => {
 		expect(wantsBack.map((screen) => screen.id)).toEqual([
@@ -114,18 +113,18 @@ describe("the way a screen is reached decides whether it has a back button", () 
 		}
 		const detail = wantsBack.find((entry) => entry.id === "tree-detail");
 		expect(detail?.steps).toEqual([]);
-		expect(detail?.deepLink).toBe("example-svelte:///__dev/tree/home/detail/7");
+		expect(detail?.deepLink).toBe("expo-svelte-qa:///__dev/tree/home/detail/7");
 	});
 
 	test("the base is the lab's own screen for the menu and the menu for the screens it pushes, by its button where it has one (the toolbar screens over screen 1)", () => {
 		const byId = (id: string) => cases.find((entry) => entry.id === id) as ScreenCase;
-		expect(byId("screens-menu").deepLink).toBe("example-svelte:///__dev");
+		expect(byId("screens-menu").deepLink).toBe("expo-svelte-qa:///__dev");
 		for (const id of ["screens-header", "screens-translucent", "screens-toolbar", "screens-toolbar-center"])
-			expect(byId(id).deepLink).toBe("example-svelte:///__dev/screens");
+			expect(byId(id).deepLink).toBe("expo-svelte-qa:///__dev/screens");
 		expect(byId("screens-header").steps.map((step) => JSON.stringify(step))).toContain(JSON.stringify({ tap: { label: "Push eight screens with headers" } }));
 		expect(byId("screens-translucent").steps.map((step) => JSON.stringify(step))).toContain(JSON.stringify({ tap: { label: "Translucent header over content" } }));
-		expect(byId("screens-toolbar").steps.map((step) => JSON.stringify(step))).toContain(JSON.stringify({ open: "example-svelte:///__dev/screens?mode=toolbar" }));
-		expect(byId("screens-toolbar-center").steps.map((step) => JSON.stringify(step))).toContain(JSON.stringify({ open: "example-svelte:///__dev/screens?mode=toolbar-center" }));
+		expect(byId("screens-toolbar").steps.map((step) => JSON.stringify(step))).toContain(JSON.stringify({ open: "expo-svelte-qa:///__dev/screens?mode=toolbar" }));
+		expect(byId("screens-toolbar-center").steps.map((step) => JSON.stringify(step))).toContain(JSON.stringify({ open: "expo-svelte-qa:///__dev/screens?mode=toolbar-center" }));
 	});
 
 	// A goto or a link to the page the user is on with another query changes that screen in place (the router's rule since rc.6). Every

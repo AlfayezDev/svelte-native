@@ -2,7 +2,7 @@
 
 A tour of [`expo-svelte`](../../packages/expo-svelte/README.md): a small app where every feature of the library is its own screen with one short example. It is written the way an app that installs the library would be written, and it imports nothing but the library's public entries (`expo-svelte`, `/animation`, `/gestures`, `/foreign`, `/svg`, ...). Read it with the library's [README](../../packages/expo-svelte/README.md) and [REFERENCE](../../packages/expo-svelte/REFERENCE.md) beside it.
 
-The app id is `io.example.sveltenative.example`, the name is "Expo Svelte" and the link scheme is `expo-svelte://`.
+The app id is `dev.alfayez.exposvelte.example`, the name is "Expo Svelte" and the link scheme is `expo-svelte://`.
 
 ## Run it
 
@@ -99,7 +99,7 @@ Things a build or a device must provide:
 Every screen that has something to show can play a short scripted interaction by itself, for recording the docs' videos on a device or a simulator without touch injection. A screen opened with `?demo` in its link runs its script once after it mounts; without the parameter nothing runs.
 
 ```sh
-adb shell am start -a android.intent.action.VIEW -d "expo-svelte:///animation/transitions?demo" io.example.sveltenative.example
+adb shell am start -a android.intent.action.VIEW -d "expo-svelte:///animation/transitions?demo" dev.alfayez.exposvelte.example
 xcrun simctl openurl booted "expo-svelte:///animation/transitions?demo"
 ```
 

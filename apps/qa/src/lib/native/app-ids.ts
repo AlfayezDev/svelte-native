@@ -4,7 +4,7 @@
  * (`qa/lib/variant.ts`) and `lab-flag.ts` (which decides what runs of the development lab); `qa/test/lab-flag.test.ts` ties them to the config
  * of each variant.
  */
-/** Not Example's `io.example.app`: an example build must never replace the real app on a device or target its store listing. */
-export const productApplicationId = "io.example.sveltenative.qaproduct";
-export const qaApplicationId = "io.example.svelteqa";
-export const smokeApplicationId = "io.example.svelteqa.smoke";
+/** Not a store app's id such as `com.example.app`: a QA build must never replace a real app on a device or target its store listing. */
+export const productApplicationId = "dev.alfayez.exposvelte.qaproduct";
+export const qaApplicationId = "dev.alfayez.exposvelte.qa";
+export const smokeApplicationId = "dev.alfayez.exposvelte.qa.smoke";

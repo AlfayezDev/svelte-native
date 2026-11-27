@@ -1,7 +1,7 @@
 // The demo manifest: for each docs page that has a feature to show, the route of the showcase screen that shows it and how to record it. A screen
 // opened with `?demo` plays its script once (`src/lib/demo.ts`):
 //
-//   adb shell am start -a android.intent.action.VIEW -d "expo-svelte://<route>?demo" io.example.sveltenative.example
+//   adb shell am start -a android.intent.action.VIEW -d "expo-svelte://<route>?demo" dev.alfayez.exposvelte.example
 //   xcrun simctl openurl booted "expo-svelte://<route>?demo"
 //
 // - `doc` is the page under `docs/`, or `null` for a screen that has a script and no page of its own (yet).
@@ -98,7 +98,7 @@ export const demos: readonly Demo[] = [
   },
   { doc: "40-native-features/20-native-views.md", route: "/native-views/web-view", durationMs: 6900, notes: "WebView: presses the button inside the page from the app (a click event: the page posts its message back), then changes the page's text with injectJavaScript." },
   { doc: "40-native-features/20-native-views.md", route: "/native-views/map", durationMs: 8000, notes: "MapView: flies the camera to Paris and back to London with animateToRegion. Android draws no tiles without a Google Maps key at build time (GOOGLE_MAPS_API_KEY): record on iOS or with a key." },
-  { doc: "40-native-features/20-native-views.md", route: "/native-views/any-expo-view", durationMs: 10600, notes: "defineExpoView: takes a picture with expo-camera's view when the camera permission is already granted (grant it before the take: `adb shell pm grant io.example.sveltenative.example android.permission.CAMERA`; the system prompt needs a touch), then calls the image view's reloadAsync." },
+  { doc: "40-native-features/20-native-views.md", route: "/native-views/any-expo-view", durationMs: 10600, notes: "defineExpoView: takes a picture with expo-camera's view when the camera permission is already granted (grant it before the take: `adb shell pm grant dev.alfayez.exposvelte.example android.permission.CAMERA`; the system prompt needs a touch), then calls the image view's reloadAsync." },
   { doc: "40-native-features/30-svg.md", route: "/native-views/svg", durationMs: 8800, notes: "Svg: the circle pulses by itself on the UI thread (animatedProps); scrolls down to the path and the SvgXml drawing and back." },
   { doc: "40-native-features/40-animation.md", route: "/animation", durationMs: 11600, notes: "Fades the box twice (withTiming), springs it right and back (withSpring), scrolls to the two loops, switches Big on and off (state into a shared value)." },
   { doc: "40-native-features/40-animation.md", route: "/animation/transitions", durationMs: 11400, notes: "Svelte's in:fly out:fade, transition:slide and scale, and animate:flip (a reversed order, an added and a removed row, reversed back), played on the UI thread." },

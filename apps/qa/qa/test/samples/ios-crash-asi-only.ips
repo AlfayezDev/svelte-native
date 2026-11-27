@@ -1,4 +1,4 @@
-{"app_name":"ExampleSvelteQA","timestamp":"2026-10-26 15:32:04.00 +0300","app_version":"0.1.0","slice_uuid":"561dfe3a-7897-395f-a86a-c8bcc3e91e31","build_version":"1","platform":2,"bundleID":"io.example.svelteqa","share_with_app_devs":1,"is_first_party":0,"bug_type":"309","os_version":"iPhone OS 26.6 (23G71)","roots_installed":0,"name":"ExampleSvelteQA","incident_id":"913974CD-7214-47F8-A34F-E121273A6F77"}
+{"app_name":"ExpoSvelteQA","timestamp":"2026-10-26 15:32:04.00 +0300","app_version":"0.1.0","slice_uuid":"561dfe3a-7897-395f-a86a-c8bcc3e91e31","build_version":"1","platform":2,"bundleID":"dev.alfayez.exposvelte.qa","share_with_app_devs":1,"is_first_party":0,"bug_type":"309","os_version":"iPhone OS 26.6 (23G71)","roots_installed":0,"name":"ExpoSvelteQA","incident_id":"913974CD-7214-47F8-A34F-E121273A6F77"}
 {
   "uptime": 160000,
   "modelCode": "iPhone14,6",
@@ -12,12 +12,12 @@
   "incident": "913974CD-7214-47F8-A34F-E121273A6F77",
   "pid": 2000,
   "procLaunch": "2026-10-26 15:31:50.2320 +0300",
-  "procName": "ExampleSvelteQA",
-  "procPath": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExampleSvelteQA.app/ExampleSvelteQA",
+  "procName": "ExpoSvelteQA",
+  "procPath": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExpoSvelteQA.app/ExpoSvelteQA",
   "bundleInfo": {
     "CFBundleShortVersionString": "0.1.0",
     "CFBundleVersion": "1",
-    "CFBundleIdentifier": "io.example.svelteqa"
+    "CFBundleIdentifier": "dev.alfayez.exposvelte.qa"
   },
   "exception": {
     "codes": "0x0000000000000000, 0x0000000000000000",
@@ -33,7 +33,7 @@
     "code": 6,
     "namespace": "SIGNAL",
     "indicator": "Abort trap: 6",
-    "byProc": "ExampleSvelteQA",
+    "byProc": "ExpoSvelteQA",
     "byPid": 2000
   },
   "asi": {
@@ -503,8 +503,8 @@
       "base": 4333010944,
       "size": 2637824,
       "uuid": "561dfe3a-7897-395f-a86a-c8bcc3e91e31",
-      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExampleSvelteQA.app/ExampleSvelteQA",
-      "name": "ExampleSvelteQA"
+      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExpoSvelteQA.app/ExpoSvelteQA",
+      "name": "ExpoSvelteQA"
     },
     {
       "source": "P",
@@ -512,7 +512,7 @@
       "base": 4341121024,
       "size": 376832,
       "uuid": "77a2eda5-119a-3400-b943-7dc9683d192a",
-      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExampleSvelteQA.app/Frameworks/ExpoFileSystem.framework/ExpoFileSystem",
+      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExpoSvelteQA.app/Frameworks/ExpoFileSystem.framework/ExpoFileSystem",
       "name": "ExpoFileSystem"
     },
     {
@@ -521,7 +521,7 @@
       "base": 4342300672,
       "size": 65536,
       "uuid": "d9b56f02-0a88-3e8b-9ad7-c0afa7cbec80",
-      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExampleSvelteQA.app/Frameworks/ExpoFont.framework/ExpoFont",
+      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExpoSvelteQA.app/Frameworks/ExpoFont.framework/ExpoFont",
       "name": "ExpoFont"
     },
     {
@@ -530,7 +530,7 @@
       "base": 4344610816,
       "size": 1327104,
       "uuid": "aee6e2d8-97c6-356e-926b-8ecc859cac94",
-      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExampleSvelteQA.app/Frameworks/ExpoModulesCore.framework/ExpoModulesCore",
+      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExpoSvelteQA.app/Frameworks/ExpoModulesCore.framework/ExpoModulesCore",
       "name": "ExpoModulesCore"
     },
     {
@@ -539,7 +539,7 @@
       "base": 4348526592,
       "size": 344064,
       "uuid": "a065ef50-d9f3-351c-bfc6-02befda8aea1",
-      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExampleSvelteQA.app/Frameworks/ExpoModulesJSI.framework/ExpoModulesJSI",
+      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExpoSvelteQA.app/Frameworks/ExpoModulesJSI.framework/ExpoModulesJSI",
       "name": "ExpoModulesJSI"
     },
     {
@@ -548,7 +548,7 @@
       "base": 4342530048,
       "size": 49152,
       "uuid": "d29d5584-ecb1-3f6b-afaa-dda8eebc8a09",
-      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExampleSvelteQA.app/Frameworks/ExpoModulesWorklets.framework/ExpoModulesWorklets",
+      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExpoSvelteQA.app/Frameworks/ExpoModulesWorklets.framework/ExpoModulesWorklets",
       "name": "ExpoModulesWorklets"
     },
     {
@@ -557,7 +557,7 @@
       "base": 4349476864,
       "size": 557056,
       "uuid": "388f24fb-3512-359a-9a2e-23931bb9e94d",
-      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExampleSvelteQA.app/Frameworks/ExpoVideo.framework/ExpoVideo",
+      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExpoSvelteQA.app/Frameworks/ExpoVideo.framework/ExpoVideo",
       "name": "ExpoVideo"
     },
     {
@@ -566,7 +566,7 @@
       "base": 4351098880,
       "size": 704512,
       "uuid": "af57c095-717c-3dd1-8680-2ff1256d8f74",
-      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExampleSvelteQA.app/Frameworks/HermesIntlCore.framework/HermesIntlCore",
+      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExpoSvelteQA.app/Frameworks/HermesIntlCore.framework/HermesIntlCore",
       "name": "HermesIntlCore"
     },
     {
@@ -575,7 +575,7 @@
       "base": 4352360448,
       "size": 4554752,
       "uuid": "ee15b752-fb46-35f2-b0bb-a46636572385",
-      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExampleSvelteQA.app/Frameworks/React.framework/React",
+      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExpoSvelteQA.app/Frameworks/React.framework/React",
       "name": "React"
     },
     {
@@ -584,7 +584,7 @@
       "base": 4364517376,
       "size": 540672,
       "uuid": "db4e1216-70c6-36f0-8a46-fdd48fcae1f2",
-      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExampleSvelteQA.app/Frameworks/ReactNativeDependencies.framework/ReactNativeDependencies",
+      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExpoSvelteQA.app/Frameworks/ReactNativeDependencies.framework/ReactNativeDependencies",
       "name": "ReactNativeDependencies"
     },
     {
@@ -593,7 +593,7 @@
       "base": 4365893632,
       "size": 2195456,
       "uuid": "be274a23-47cc-3f5a-9e98-8474553df5a8",
-      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExampleSvelteQA.app/Frameworks/hermesvm.framework/hermesvm",
+      "path": "/private/var/containers/Bundle/Application/84EE5F7F-9EE4-4140-8FC4-9DC9384E823A/ExpoSvelteQA.app/Frameworks/hermesvm.framework/hermesvm",
       "name": "hermesvm"
     },
     {

@@ -31,7 +31,7 @@ export function setupRequestAnimationFrame() {
       finalizer();
     }
   }
-  // Example patch: a native frame is requested only while something waits for one (see src/runLoop/uiRuntime/requestAnimationFrame.ts).
+  // expo-svelte patch: a native frame is requested only while something waits for one (see src/runLoop/uiRuntime/requestAnimationFrame.ts).
   let frameRequested = false;
   function requestFrame() {
     if (!frameRequested) {

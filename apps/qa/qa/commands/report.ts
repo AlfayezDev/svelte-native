@@ -44,7 +44,6 @@ import type {
 	Platform,
 	ResilienceFile,
 	SessionRecord,
-	SignedInRecord,
 	SmokeFile,
 	SoakFile,
 	Source,
@@ -177,7 +176,7 @@ type UpdatesSummary = {
 	finalBuild: "plain" | "channel";
 };
 
-/** The product boot check: the product app started cold on the lab emulator, and whether it reached its home screen without a fatal. */
+/** The product boot check: the production variant started cold on the lab emulator, and whether it reached its home screen without a fatal. */
 type ProductSummary = {
 	file: string;
 	source: Source;
@@ -231,7 +230,7 @@ type ReportDeviceEntry = {
 	foreign: ForeignSummary | null;
 	/** Android: the updates run. It installs its own build (the channel one), so it is left out of the cross-build comparison of the other runs. */
 	updates: UpdatesSummary | null;
-	/** Android: the product boot check. It starts another app (`io.example.sveltenative.qaproduct`), so it is left out of the cross-build comparison of the others. */
+	/** Android: the product boot check. It starts another app (`dev.alfayez.exposvelte.qaproduct`), so it is left out of the cross-build comparison of the others. */
 	product: ProductSummary | null;
 	/** iOS only: the crash reports of the phone each run file recorded. */
 	crashReports: CrashReportsSummary[];
@@ -413,7 +412,7 @@ export function measuredBuilds(serial: string, runs: [string, Measured | null][]
  */
 export function sessionFindings(
 	serial: string,
-	runs: [string, (SessionRecord & { signedInPhase?: SignedInRecord | null }) | null][],
+	runs: [string, SessionRecord | null][],
 ): { warnings: string[]; notes: string[] } {
 	const warnings: string[] = [];
 	const notes: string[] = [];
@@ -427,10 +426,6 @@ export function sessionFindings(
 			notes.push(
 				`${serial}: the ${label} run found what an earlier run left on the device, so that run did not restore it, and cleared it (${run.leftovers.join("; ")})`,
 			);
-		// The signed-in phase's own words: why it did not run, or did not end, are not the device's state and not a warning (its gates fail
-		// by themselves, as not measured), but a reader of the report should not have to open the run file to learn it.
-		if (run.signedInPhase?.detail)
-			notes.push(`${serial}: the signed-in phase of the ${label} run: ${run.signedInPhase.detail}${run.signedInPhase.signedIn ? "" : " (nothing signed-in was run)"}`);
 		for (const restart of run.deviceRestarts ?? [])
 			notes.push(
 				`${serial}: the device restarted at ${restart.at} (boot id ${restart.bootId}) during the ${label} run, which re-applied its settings and retried the case in flight`,
@@ -521,7 +516,7 @@ export async function report(): Promise<void> {
 		if (!reference) continue;
 		const serial = reference.device.serial;
 		const platform: Platform = reference.device.platform;
-		// The smoke run measured another app (`io.example.svelteqa.smoke`), so it is not compared with the others' builds.
+		// The smoke run measured another app (`dev.alfayez.exposvelte.qa.smoke`), so it is not compared with the others' builds.
 		const measured: [string, Measured | null][] = [
 			["lab", lab],
 			["boot", boot],
@@ -672,7 +667,7 @@ export async function report(): Promise<void> {
 				resilience: suites.resilience && resiliencePath ? { file: resiliencePath.slice(resiliencePath.lastIndexOf("runs/")), screen: suites.resilience.screen } : null,
 			},
 			measuredBuilds: measuredBuilds(serial, measured, carried),
-			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites, smoke ? { file: smoke, pins } : null, gestures, pinnedGestures, updates, gates.signedIn?.[platform] ?? [], product, foreign ? { file: foreign, pins: { libraries: pinnedLibraries } } : null),
+			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites, smoke ? { file: smoke, pins } : null, gestures, pinnedGestures, updates, product, foreign ? { file: foreign, pins: { libraries: pinnedLibraries } } : null),
 		};
 	}
 

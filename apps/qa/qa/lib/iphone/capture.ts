@@ -83,7 +83,7 @@ export async function captureScreens(
 	options: { ids: string[]; themes: ("light" | "dark")[]; direction: Direction; dir: string; token: string; timeoutMs: number; log: (line: string) => void },
 ): Promise<Captured> {
 	const { target } = session;
-	const url = `example-svelte:///__dev?run=capture:${options.ids.join(".")}&themes=${options.themes.join(".")}&token=${options.token}`;
+	const url = `expo-svelte-qa:///__dev?run=capture:${options.ids.join(".")}&themes=${options.themes.join(".")}&token=${options.token}`;
 	const { pid } = await launchApp(target, { payloadUrl: url, args: launchArguments[options.direction] });
 	const deadline = Date.now() + options.timeoutMs;
 	let seen = -1;

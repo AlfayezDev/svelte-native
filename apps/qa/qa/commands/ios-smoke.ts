@@ -41,7 +41,7 @@ export function moduleResults(file: ResultsFile): SmokeModuleResult[] {
 }
 
 /**
- * The smoke test on the iPhone, in the smoke app (`io.example.svelteqa.smoke`, built by `build --platform ios --variant smoke`): the lab is started by its URL with a token, the app writes `Documents/smoke-results.json` when its
+ * The smoke test on the iPhone, in the smoke app (`dev.alfayez.exposvelte.qa.smoke`, built by `build --platform ios --variant smoke`): the lab is started by its URL with a token, the app writes `Documents/smoke-results.json` when its
  * last module reported (an iPhone run cannot follow a log), and the harness reads the file that carries its token. Same run file
  * as Android's, `smoke-<device>-<stamp>.json`.
  */

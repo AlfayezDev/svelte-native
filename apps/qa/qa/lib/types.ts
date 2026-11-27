@@ -65,7 +65,7 @@ export type CrashFrame = { image: string | null; offset: number; symbol: string 
  * (`exceptionType` null). Times are the phone's own, as the report carries them (an instant: the report names its UTC offset).
  */
 export type CrashReport = {
-	/** The file's name on the phone (`ExampleSvelteQA-2026-10-27-090359.ips`); a copy is kept in `qa/runs/<run>-crashes/`. */
+	/** The file's name on the phone (`ExpoSvelteQA-2026-10-27-090359.ips`); a copy is kept in `qa/runs/<run>-crashes/`. */
 	file: string;
 	/** The report's `captureTime` (its header's `timestamp` when it has none), as an ISO 8601 instant; null for a report that could not be read. */
 	capturedAt: string | null;
@@ -338,20 +338,6 @@ export type NotCoveredRoute = { route: string; reason: string };
 export type ParityVerdict =
 	"pass" | "fail" | "missing-reference" | "unstable" | "error" | "skipped" | "updated";
 
-/**
- * The signed-in phase of a parity or accessibility run (`lib/signin.ts`): the cases that ran under the QA account's session. `detail`
- * says why the phase did not run or end cleanly; it never carries the account's address.
- */
-export type SignedInRecord = {
-	/** Signed-in cases the run selected. */
-	cases: number;
-	/** The harness signed in as the QA account. */
-	signedIn: boolean;
-	/** The session was ended again afterwards (null: nothing to end, the phase never started). */
-	signedOut: boolean | null;
-	detail: string | null;
-};
-
 export type ParityCase = {
 	/** The reference's name: `<screen>--<theme>-<direction>-<text size>`. */
 	name: string;
@@ -392,7 +378,7 @@ export type ParityCase = {
  * What the harness kept of one try of a case that did not get its screen on the device (an anchor that never came, a dump that could not be
  * read): taken right after the try failed and before the retry launched the case again, when the screen is still the one that failed.
  * The files lie next to the run file, in the directory named like it, and are paths relative to `qa/`; a part that could not be taken is
- * null and says why in `missing`. The account's address is redacted from everything kept.
+ * null and says why in `missing`.
  */
 export type FailureEvidence = {
 	/** Which run of the case this is the evidence of: 1; 2 for the retry (more only when the emulator restarted under the case and it was run again). */
@@ -438,8 +424,6 @@ export type ParityFile = {
 	cases: ParityCase[];
 	notCovered: NotCoveredRoute[];	/** Why the run stopped before the end of its matrix (the device went away), or null. The cases it did not reach count as missing. */
 	aborted: string | null;
-	/** The signed-in phase; absent on the iPhone and in runs from before it existed. */
-	signedInPhase?: SignedInRecord | null;
 } & CrashReportsRecord &
 	SessionRecord;
 
@@ -497,8 +481,6 @@ export type A11yFile = {
 	screens: A11yScreenResult[];
 	notCovered: NotCoveredRoute[];	/** Why the run stopped before the end of its matrix (the device went away), or null. The cases it did not reach count as missing. */
 	aborted: string | null;
-	/** The signed-in phase; absent on the iPhone and in runs from before it existed. */
-	signedInPhase?: SignedInRecord | null;
 } & CrashReportsRecord &
 	SessionRecord;
 

@@ -62,7 +62,7 @@
       "freeze_skip_reason:": "none",
       "pid": 2241,
       "cpuTime": 4.818086,
-      "name": "ExampleSvelteQA",
+      "name": "ExpoSvelteQA",
       "lifetimeMax": 4903
     }
   ]

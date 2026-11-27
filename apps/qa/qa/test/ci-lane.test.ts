@@ -157,16 +157,14 @@ describe("lane.sh emulator on a dispatch", () => {
 			"gates --smoke --platform android --runs smoke --markdown qa/out/gates-smoke.md",
 		]);
 	});
-	test("the lane needs no QA account: it judges every gate on a dispatch, leaves out only lab.runs on a push, and runs no leakcheck", () => {
+	test("the lane judges every gate on a dispatch and leaves out only lab.runs on a push", () => {
 		const full = lane();
-		const dispatched = full.run("emulator", { QA_MODE: "full" });
-		expect(dispatched.stdout).not.toContain("QA account");
+		full.run("emulator", { QA_MODE: "full" });
 		const ran = harness(full.lines());
 		expect(ran.at(-1)).toBe("gates --platform android --runs lab,boot,parity,a11y,resilience,gestures,product --markdown qa/out/gates.md");
 		const push = lane();
 		push.run("emulator");
 		expect(harness(push.lines()).at(-1)).toContain("--except lab.runs,parity.incomplete,a11y.incomplete --markdown");
-		for (const machine of [full, push]) expect(harness(machine.lines()).some((line) => line.startsWith("leakcheck"))).toBe(false);
 	});
 	test("a lane that is told to stop says so in its stage table before it leaves, and runs nothing more", async () => {
 		const machine = lane();

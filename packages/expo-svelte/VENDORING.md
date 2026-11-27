@@ -94,7 +94,7 @@ Versions 3.3.0, 4.7.1, 0.13.0 and 15.16.0, as Expo SDK 58 pins them. Three have 
 
 ## Notes for the QA harness
 
-The smoke app installs the production app's libraries as stand-ins (`apps/qa/qa/smoke-modules.json`, `package.json`). MMKV and Nitro are not on that list any more: their modules (`mmkv`, `nitro`) stay, still `shared`, with no `packages`; the smoke checks `require("react-native-mmkv")` and `require("react-native-nitro-modules")`, which Metro resolves to the copies. `libraryVendoredPackages` in `smoke-packages.cjs` names them (and the UI packages, which the smoke app never installed). quick-crypto and quick-base64 went the same way (modules `quick-crypto`, `quick-base64`, no `packages`), and the production app's `["react-native-quick-crypto", { sodiumEnabled: true }]` is the library plugin's `sodiumEnabled: true` in the smoke variant.
+The smoke app installs a real app's libraries as stand-ins (`apps/qa/qa/smoke-modules.json`, `package.json`). MMKV and Nitro are not on that list any more: their modules (`mmkv`, `nitro`) stay, still `shared`, with no `packages`; the smoke checks `require("react-native-mmkv")` and `require("react-native-nitro-modules")`, which Metro resolves to the copies. `libraryVendoredPackages` in `smoke-packages.cjs` names them (and the UI packages, which the smoke app never installed). quick-crypto and quick-base64 went the same way (modules `quick-crypto`, `quick-base64`, no `packages`), and a real app's `["react-native-quick-crypto", { sodiumEnabled: true }]` is the library plugin's `sodiumEnabled: true` in the smoke variant.
 
 ## Updating a copy
 

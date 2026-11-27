@@ -3,9 +3,9 @@ import { productApplicationId, qaApplicationId, smokeApplicationId } from "../..
 import { outDir } from "./paths.ts";
 
 /**
- * The apps the harness builds. `qa` is `io.example.svelteqa`, the app every gate measures (boot, frames, parity, accessibility,
- * crashes); `smoke` is `io.example.svelteqa.smoke`, the same app plus the production app's native libraries (SPEC.md, "Native modules
- * (smoke test)"), which only the smoke run uses; `production` is the product (`io.example.sveltenative.qaproduct`, `APP_VARIANT=production`: no development
+ * The apps the harness builds. `qa` is `dev.alfayez.exposvelte.qa`, the app every gate measures (boot, frames, parity, accessibility,
+ * crashes); `smoke` is `dev.alfayez.exposvelte.qa.smoke`, the same app plus a real app's native libraries (SPEC.md, "Native modules
+ * (smoke test)"), which only the smoke run uses; `production` is the product (`dev.alfayez.exposvelte.qaproduct`, `APP_VARIANT=production`: no development
  * lab), built here for one purpose, the product boot check (`native-qa product`, Android emulator only). What ships is built by EAS.
  */
 export type Variant = "qa" | "smoke" | "production";
@@ -14,9 +14,9 @@ export const variants: readonly Variant[] = ["qa", "smoke", "production"];
 /** The application id (Android package, iOS bundle id) of each variant; `app.config.ts` sets the same ones. */
 export const packageOf: Record<Variant, string> = { qa: qaApplicationId, smoke: smokeApplicationId, production: productApplicationId };
 /** The executable of each iOS app, which names its crash reports (`<process>-<date>.ips`) in the phone's crash log. */
-export const processNameOf: Record<Variant, string> = { qa: "ExampleSvelteQA", smoke: "Sveltesmoke", production: "Example" };
-/** The URL scheme of each variant: two apps on one device must not both answer `example-svelte://`. */
-export const schemeOf: Record<Variant, string> = { qa: "example-svelte", smoke: "example-svelte-smoke", production: "example" };
+export const processNameOf: Record<Variant, string> = { qa: "ExpoSvelteQA", smoke: "Sveltesmoke", production: "SvelteQAproduct" };
+/** The URL scheme of each variant: the apps on one device answer a scheme of their own each (the example app's is `expo-svelte://`). */
+export const schemeOf: Record<Variant, string> = { qa: "expo-svelte-qa", smoke: "expo-svelte-qa-smoke", production: "svelte-qa-product" };
 /** The `APP_VARIANT` a build of the variant runs with, always set, so one in the shell cannot turn one app into another (the library's own default is `app`, not `qa`). */
 export const appVariantOf: Record<Variant, string> = { qa: "qa", smoke: "smoke", production: "production" };
 

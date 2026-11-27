@@ -13,12 +13,12 @@ export default {
   userInterfaceStyle: "automatic",
   icon: "./assets/images/icon.png",
   ios: {
-    bundleIdentifier: "io.example.sveltenative.example",
+    bundleIdentifier: "dev.alfayez.exposvelte.example",
     supportsTablet: false,
     config: { usesNonExemptEncryption: false },
   },
   android: {
-    package: "io.example.sveltenative.example",
+    package: "dev.alfayez.exposvelte.example",
     predictiveBackGestureEnabled: true,
     adaptiveIcon: {
       backgroundColor: "#e5372b",

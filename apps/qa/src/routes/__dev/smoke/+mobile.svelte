@@ -8,7 +8,7 @@
 
   /**
    * The native module smoke test (SPEC.md, "Native modules (smoke test)"): one core call for each native library the production
-   * app uses, logged as `[Svelte smoke] <module> ok|fail|skip …`. Only the smoke app (`io.example.svelteqa.smoke`) links the libraries
+   * app uses, logged as `[Svelte smoke] <module> ok|fail|skip …`. Only the smoke app (`dev.alfayez.exposvelte.qa.smoke`) links the libraries
    * and runs this; the QA app shows a note.
    * `?run=1` starts the run when the page opens; `native-qa smoke` launches the stress scenario of the same name instead.
    */
@@ -49,7 +49,7 @@
           {results.length ? `${count("ok")} ok · ${count("fail")} failed · ${count("skip")} skipped of ${smokeModules.length}` : "Native module smoke test"}
         </Text>
         {#if !nativeSmokeEnabled}
-          <Text style={{ color: theme.muted, fontSize: 14 }}>The libraries are linked in the smoke app only (APP_VARIANT=smoke, io.example.svelteqa.smoke); this build has none of them.</Text>
+          <Text style={{ color: theme.muted, fontSize: 14 }}>The libraries are linked in the smoke app only (APP_VARIANT=smoke, dev.alfayez.exposvelte.qa.smoke); this build has none of them.</Text>
         {/if}
         <Button label={running ? "Running…" : "Run the smoke test"} onPress={start} disabled={running || !nativeSmokeEnabled} />
         {#each smokeModules as module (module)}

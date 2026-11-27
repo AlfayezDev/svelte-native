@@ -1,6 +1,6 @@
 10-25 20:29:29.888 19924 19924 D AndroidRuntime: Shutting down VM
 --------- beginning of crash
 10-25 20:29:29.889 19924 19924 E AndroidRuntime: FATAL EXCEPTION: main
-10-25 20:29:29.889 19924 19924 E AndroidRuntime: Process: io.example.svelteqa, PID: 19924
+10-25 20:29:29.889 19924 19924 E AndroidRuntime: Process: dev.alfayez.exposvelte.qa, PID: 19924
 10-25 20:29:29.889 19924 19924 E AndroidRuntime: android.app.RemoteServiceException$CrashedByAdbException: shell-induced crash
 10-25 20:29:29.889 19924 19924 E AndroidRuntime: 	at android.app.ActivityThread.throwRemoteServiceException(ActivityThread.java:2377)

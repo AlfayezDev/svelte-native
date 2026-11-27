@@ -19,7 +19,7 @@ Expo Svelte: the library and its native modules (`native/`) in `packages/expo-sv
 
 ## Devices
 
-- The Samsung phone is shared. Install with `adb install -r` only; never clear an app's data, uninstall other apps or change settings. Touch only the QA apps (`io.example.svelteqa*`).
+- The Samsung phone is shared. Install with `adb install -r` only; never clear an app's data, uninstall other apps or change settings. Touch only the QA apps (`dev.alfayez.exposvelte.qa*`).
 - The harness holds a lock per emulator and per EAS channel (README "Devices and locks"); do not bypass it.
 - Do not start device runs, builds or pushes unless asked.
 

@@ -5,7 +5,7 @@ import type { BootFile } from "../lib/types.ts";
 import { parseAmStart } from "../parse/adb.ts";
 import { sample } from "./sample.ts";
 
-const pkg = "io.example.svelteqa";
+const pkg = "dev.alfayez.exposvelte.qa";
 const am = parseAmStart(sample("am-start.txt"));
 const withoutDisplayed = () =>
 	sample("boot-launch.log")

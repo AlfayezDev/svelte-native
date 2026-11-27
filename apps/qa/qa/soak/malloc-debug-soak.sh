@@ -8,7 +8,7 @@
 # backtraces. The property is cleared and the app stopped on exit. Hold the emulator lock for the whole run.
 set -u
 SERIAL=$1; APK=$2; OUT=$3; SECONDS_TO_RUN=${4:-420}
-PKG=io.example.svelteqa
+PKG=dev.alfayez.exposvelte.qa
 A="adb -s $SERIAL"
 mkdir -p "$OUT"
 cleanup() { $A shell "su 0 setprop wrap.$PKG ''"; $A shell am force-stop $PKG; }
@@ -17,7 +17,7 @@ $A install -r "$APK" > /dev/null
 $A shell "am force-stop $PKG"; sleep 1
 $A shell "su 0 setprop wrap.$PKG 'LIBC_DEBUG_MALLOC_OPTIONS=backtrace=14 logwrapper'"
 $A shell "logcat -c"
-$A shell "am start -n $PKG/.MainActivity -a android.intent.action.VIEW -d 'example-svelte:///__dev?run=soak-mix-${SECONDS_TO_RUN}s'" > /dev/null
+$A shell "am start -n $PKG/.MainActivity -a android.intent.action.VIEW -d 'expo-svelte-qa:///__dev?run=soak-mix-${SECONDS_TO_RUN}s'" > /dev/null
 dump() {
   local tag=$1 pid
   pid=$($A shell pidof $PKG | tr -d '\r')

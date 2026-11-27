@@ -17,7 +17,7 @@ import {
 } from "../soak/symbolicate.ts";
 import { sample } from "./sample.ts";
 
-const pkg = "io.example.svelteqa";
+const pkg = "dev.alfayez.exposvelte.qa";
 
 /**
  * A Hermes-style map: one generated line, columns are bytecode offsets. Segments (offset, source, line, column, name):
@@ -156,7 +156,7 @@ describe("extractCrashes", () => {
 	});
 	test("an ANR with its reason", () => {
 		const anr = [
-			"10-26 13:00:00.100  1000  1100 E ActivityManager: ANR in io.example.svelteqa (io.example.svelteqa/.MainActivity)",
+			"10-26 13:00:00.100  1000  1100 E ActivityManager: ANR in dev.alfayez.exposvelte.qa (dev.alfayez.exposvelte.qa/.MainActivity)",
 			"10-26 13:00:00.100  1000  1100 E ActivityManager: PID: 5001",
 			"10-26 13:00:00.100  1000  1100 E ActivityManager: Reason: Input dispatching timed out (Application does not have a focused window)",
 		].join("\n");
@@ -164,7 +164,7 @@ describe("extractCrashes", () => {
 		expect(crashes).toHaveLength(1);
 		expect(crashes[0]?.kind).toBe("anr");
 		expect(crashes[0]?.title).toBe(
-			"ANR in io.example.svelteqa Reason: Input dispatching timed out (Application does not have a focused window)",
+			"ANR in dev.alfayez.exposvelte.qa Reason: Input dispatching timed out (Application does not have a focused window)",
 		);
 	});
 	test("a clean capture has none", () => {
@@ -206,10 +206,10 @@ describe("symbolicateCrash", () => {
 describe("signatures", () => {
 	test("the key ignores pids, fault addresses, install paths and build ids", () => {
 		const a = signatureKey("native", "Fatal signal 11 in tid (mqt_v_js)", [
-			"#00 pc 0000000000024720  /data/app/~~Qm1x==/io.example.svelteqa-Zy8w==/base.apk!/lib/x86_64/libsvelteengine.so (BuildId: aaaa)",
+			"#00 pc 0000000000024720  /data/app/~~Qm1x==/dev.alfayez.exposvelte.qa-Zy8w==/base.apk!/lib/x86_64/libsvelteengine.so (BuildId: aaaa)",
 		]);
 		const b = signatureKey("native", "Fatal signal 11 in tid (mqt_v_js)", [
-			"#00 pc 0000000000024720  /data/app/~~Other==/io.example.svelteqa-Other==/base.apk!/lib/x86_64/libsvelteengine.so (BuildId: bbbb)",
+			"#00 pc 0000000000024720  /data/app/~~Other==/dev.alfayez.exposvelte.qa-Other==/base.apk!/lib/x86_64/libsvelteengine.so (BuildId: bbbb)",
 		]);
 		expect(a).toBe(b);
 		expect(signatureKey("java", "x", ["at a"])).not.toBe(signatureKey("native", "x", ["at a"]));

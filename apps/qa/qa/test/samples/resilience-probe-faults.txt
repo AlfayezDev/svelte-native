@@ -1,8 +1,8 @@
 5801
 --native-qa-log--
 10-26 09:41:02.100  5801  5801 E AndroidRuntime: FATAL EXCEPTION: main
-10-26 09:41:02.100  5801  5801 E AndroidRuntime: Process: io.example.svelteqa, PID: 5801
+10-26 09:41:02.100  5801  5801 E AndroidRuntime: Process: dev.alfayez.exposvelte.qa, PID: 5801
 10-26 09:41:02.100  5801  5801 E AndroidRuntime: java.lang.IllegalStateException: boom
-10-26 09:41:03.200   689   974 E ActivityManager: ANR in io.example.svelteqa (io.example.svelteqa/.MainActivity)
+10-26 09:41:03.200   689   974 E ActivityManager: ANR in dev.alfayez.exposvelte.qa (dev.alfayez.exposvelte.qa/.MainActivity)
 10-26 09:41:03.900  5801  5821 W SvelteEngine: dropped write to dead tag 77
 10-26 09:41:04.000  5801  5821 E ReactNativeJS: [native startup] Error: x

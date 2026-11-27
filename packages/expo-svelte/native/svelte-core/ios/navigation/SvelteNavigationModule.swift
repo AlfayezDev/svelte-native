@@ -98,7 +98,7 @@ final class NavigationStore: @unchecked Sendable {
   static let limit = 100_000
   /// The QA app only: `-SvelteNavigationAssumeSystemKill YES` among the launch arguments hands the state over without the system's signal, to tell a fault
   /// of this module from the system's keeping of the state (the harness kills the app from outside; the system may or may not count that as its own kill).
-  private static let qaBundleIdentifier = "io.example.svelteqa"
+  private static let qaBundleIdentifier = "dev.alfayez.exposvelte.qa"
 
   private let lock = NSLock()
   private let directory: URL

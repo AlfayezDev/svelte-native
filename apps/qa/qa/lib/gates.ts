@@ -160,7 +160,7 @@ export function gateKinds(gate: Gate): RunKind[] | null {
 
 /**
  * The smoke gates (`smoke.*`) judge the smoke app's run and nothing else, and the QA gates leave them out: `gates` judges the first
- * list, `gates --smoke` the second. The smoke app is another app (`io.example.svelteqa.smoke`), so its run neither adds to nor
+ * list, `gates --smoke` the second. The smoke app is another app (`dev.alfayez.exposvelte.qa.smoke`), so its run neither adds to nor
  * fails the lane that measures the QA app: its gates, its run files (`gates.ts` command: only smoke run files can make the smoke
  * report stale) and its report warnings (`smokeWarnings`) are the smoke lane's, the QA runs' the other's.
  */

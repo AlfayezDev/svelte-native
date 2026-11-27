@@ -36,7 +36,7 @@ const smokeFile = (results: SmokeModuleResult[], patch: Partial<SmokeFile> = {})
 	finishedAt: "2026-11-01T12:00:20.000Z",
 	source: { commit: "abc", dirty: false },
 	device: { serial: "localhost:5555", platform: "android", kind: "emulator", model: "sdk", osVersion: "16", sdk: 36, abi: "x86_64", refreshHz: 60 },
-	app: { package: "io.example.svelteqa", versionName: "0.1.0", versionCode: 1, lastUpdateTime: null, installedSha256: "x", apk: null },
+	app: { package: "dev.alfayez.exposvelte.qa", versionName: "0.1.0", versionCode: 1, lastUpdateTime: null, installedSha256: "x", apk: null },
 	run: "smoke",
 	complete: true,
 	results,
@@ -165,7 +165,7 @@ describe("metrics and gates", () => {
 		expect(unexpectedSkips([result("x", "skip")], pins)).toEqual([]);
 	});
 	test("crashes and an interruption are fatals, whatever the run logged before", () => {
-		const file = smokeFile([result("a"), result("b"), result("c", "skip"), result("d")], { crashes: ["FATAL EXCEPTION Process: io.example.svelteqa.smoke", "interrupted by com.android.settings at 12:00:00.000"], complete: false, jsErrorCount: 3 });
+		const file = smokeFile([result("a"), result("b"), result("c", "skip"), result("d")], { crashes: ["FATAL EXCEPTION Process: dev.alfayez.exposvelte.qa.smoke", "interrupted by com.android.settings at 12:00:00.000"], complete: false, jsErrorCount: 3 });
 		const metrics = smokeMetrics(file, pins);
 		expect(metrics["smoke.fatals"]).toBe(2);
 		expect(metrics["smoke.complete"]).toBe(0);
@@ -187,7 +187,7 @@ describe("metrics and gates", () => {
 		expect(metrics["smoke.unpinned"]).toBe(1);
 	});
 	test("describeSmoke names every failure, skip (unexpected ones marked), missing module and an incomplete run", () => {
-		const lines = describeSmoke(smokeFile([result("a", "skip", "why"), result("b", "fail", "boom"), result("c", "skip", "Huawei only")], { crashes: ["FATAL EXCEPTION Process: io.example.svelteqa"], complete: false }), pins).join("\n");
+		const lines = describeSmoke(smokeFile([result("a", "skip", "why"), result("b", "fail", "boom"), result("c", "skip", "Huawei only")], { crashes: ["FATAL EXCEPTION Process: dev.alfayez.exposvelte.qa"], complete: false }), pins).join("\n");
 		expect(lines).toContain("FAIL b (js): boom");
 		expect(lines).toContain("UNEXPECTED SKIP a: why");
 		expect(lines).toContain("skip c: Huawei only");
@@ -297,10 +297,10 @@ describe("the pinned list, the module table and the checks agree", () => {
 	test("qa/smoke-modules.json lists the same modules", () => {
 		expect(table.modules.map((entry) => entry.id).toSorted()).toEqual([...checked].toSorted());
 	});
-	test("every package of the table is a dependency of the platform app, at the version the production app uses", () => {
+	test("every package of the table is a dependency of the QA app, at the version a real app uses", () => {
 		const used = { ...packageJson.dependencies, ...packageJson.devDependencies };
 		for (const entry of table.modules) for (const name of entry.packages) expect([name, name in used]).toEqual([name, true]);
-		// Versions the task fixes (the production app's package.json), as specifiers.
+		// Versions the task fixes (a real app's package.json), as specifiers.
 		expect(used["@react-native-async-storage/async-storage"]).toBe("2.2.0");
 		expect(used["@react-native-community/netinfo"]).toBe("12.0.1");
 		expect(used["@react-native-firebase/app"]).toBe("^24.0.0");
@@ -330,7 +330,7 @@ describe("the pinned list, the module table and the checks agree", () => {
 	});
 });
 
-/** Runs a command in the platform app and returns its output (the autolinkers print JSON). */
+/** Runs a command in the QA app and returns its output (the autolinkers print JSON). */
 function run(command: string, args: string[], env: Record<string, string> = {}): string {
 	const done = spawnSync(command, args, { cwd: platformDir, encoding: "utf8", env: { ...process.env, ...env }, maxBuffer: 64 * 1024 * 1024 });
 	if (done.status !== 0) throw new Error(`${command} ${args.join(" ")} failed: ${done.stderr.slice(0, 400)}`);
@@ -425,13 +425,13 @@ describe("three apps: the product and the QA app link the product's native modul
 		expect(read("smoke").dependencies).toEqual({});
 	});
 	test("each app has its own id, name and scheme; the smoke app alone has the smoke test's plugins and the fake Firebase files", () => {
-		expect(config("production").android.package).toBe("io.example.sveltenative.qaproduct");
-		expect(config("production").ios.bundleIdentifier).toBe("io.example.sveltenative.qaproduct");
+		expect(config("production").android.package).toBe("dev.alfayez.exposvelte.qaproduct");
+		expect(config("production").ios.bundleIdentifier).toBe("dev.alfayez.exposvelte.qaproduct");
 		expect(config("qa").android.package).toBe(packageOf.qa);
 		expect(config("qa").ios.bundleIdentifier).toBe(packageOf.qa);
 		expect(config("smoke").android.package).toBe(packageOf.smoke);
 		expect(config("smoke").ios.bundleIdentifier).toBe(packageOf.smoke);
-		expect([config("production").name, config("qa").name, config("smoke").name]).toEqual(["Svelte QA product", "Example Svelte QA", "Svelte smoke"]);
+		expect([config("production").name, config("qa").name, config("smoke").name]).toEqual(["Svelte QA product", "Expo Svelte QA", "Svelte smoke"]);
 		expect([config("production").scheme, config("qa").scheme, config("smoke").scheme]).toEqual(["svelte-qa-product", schemeOf.qa, schemeOf.smoke]);
 		const smokePlugins = ["@react-native-firebase/app", "@react-native-firebase/messaging", "@intercom/intercom-react-native", "expo-build-properties", "expo-notifications", "expo-location", "@config-plugins/react-native-adjust"];
 		for (const variant of ["production", "qa"] as const) {
@@ -442,7 +442,7 @@ describe("three apps: the product and the QA app link the product's native modul
 		}
 		const plugins = config("smoke").plugins.map(pluginName);
 		expect(smokePlugins.filter((name) => !plugins.includes(name))).toEqual([]);
-		// libsodium for `crypto`: the production app's `["react-native-quick-crypto", { sodiumEnabled: true }]` is an option of the library's plugin now, on in the smoke app alone. No app lists quick-crypto's own plugin: the package is not installed.
+		// libsodium for `crypto`: a real app's `["react-native-quick-crypto", { sodiumEnabled: true }]` is an option of the library's plugin now, on in the smoke app alone. No app lists quick-crypto's own plugin: the package is not installed.
 		const sodiumOf = (variant: keyof typeof variantEnv) => (config(variant).plugins.find((entry) => pluginName(entry) === "expo-svelte") as [string, { sodiumEnabled?: boolean }])[1].sodiumEnabled;
 		expect([sodiumOf("production"), sodiumOf("qa"), sodiumOf("smoke")]).toEqual([undefined, undefined, true]);
 		for (const variant of ["production", "qa", "smoke"] as const) expect([variant, config(variant).plugins.map(pluginName).includes("react-native-quick-crypto")]).toEqual([variant, false]);

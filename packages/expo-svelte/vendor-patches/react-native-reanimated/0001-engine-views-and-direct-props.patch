@@ -19,7 +19,7 @@ index c9e9b87..57c2427 100644
 +std::atomic<SynchronousPropsSink> synchronousPropsSink{nullptr};
 +} // namespace
 +
-+// Example patch: the svelte-engine module finds this symbol with dlsym and registers its sink (null unregisters).
++// expo-svelte patch: the svelte-engine module finds this symbol with dlsym and registers its sink (null unregisters).
 +extern "C" __attribute__((visibility("default"), used)) void reanimatedSetSynchronousPropsSink(
 +    SynchronousPropsSink sink) {
 +  synchronousPropsSink.store(sink, std::memory_order_release);
@@ -36,7 +36,7 @@ index c9e9b87..57c2427 100644
 +  const double *doubles = doubleBuffer.data();
 +  std::size_t intCount = intBuffer.size();
 +  std::size_t doubleCount = doubleBuffer.size();
-+  // Example patch: the engine's views are written natively; only what the sink leaves is copied into Java arrays, and a
++  // expo-svelte patch: the engine's views are written natively; only what the sink leaves is copied into Java arrays, and a
 +  // frame made only of engine views makes no JNI call and no Java allocation.
 +  if (const auto sink = synchronousPropsSink.load(std::memory_order_acquire)) {
 +    if (sinkRestInts_.size() < intCount) {
@@ -79,7 +79,7 @@ index 8448ad3..cd08d04 100644
  using namespace facebook;
  using namespace facebook::jni;
  
-+// Example patch: lets a native mounting layer (the svelte-engine Expo module) take the engine views out of a frame's
++// expo-svelte patch: lets a native mounting layer (the svelte-engine Expo module) take the engine views out of a frame's
 +// synchronous prop batch before it is copied into Java arrays and rebuilt as ReadableMaps. The sink gets the two buffers
 +// of SynchronousPropsBufferSerializer.cpp and writes the views it does not take to restInts/restDoubles (sized like the
 +// input), returning the number of ints left; `restDoubleCount` receives the doubles left. It returns
@@ -101,7 +101,7 @@ index 8448ad3..cd08d04 100644
    void installJSIBindings();
    std::optional<std::unique_ptr<int[]>> preserveMountedTags(std::vector<int> &tags);
    void synchronouslyUpdateUIProps(const std::vector<int> &intBuffer, const std::vector<double> &doubleBuffer);
-+  // Example patch: what a SynchronousPropsSink leaves for the Java path; kept between frames so a frame allocates nothing.
++  // expo-svelte patch: what a SynchronousPropsSink leaves for the Java path; kept between frames so a frame allocates nothing.
 +  std::vector<int> sinkRestInts_;
 +  std::vector<double> sinkRestDoubles_;
    PlatformDepMethodsHolder getPlatformDependentMethods();
@@ -135,7 +135,7 @@ index 1c989e0..8efa761 100644
          runCatching { mountingManager.javaClass.getMethod("getViewExists", Int::class.javaPrimitiveType) }.getOrNull()
      }
  
-+    // Example patch: opacity and translate/scale-only transforms are written straight to the
++    // expo-svelte patch: opacity and translate/scale-only transforms are written straight to the
 +    // Android View. This skips the ViewManager prop diff and React Native's 4x4 matrix build and
 +    // decomposition, which cost about 80 microseconds per view per frame on mid-range phones.
 +    // Anything else (rotation, skew, percentages, matrices, a transform origin, other props)
@@ -218,7 +218,7 @@ index 0000000..8d73b90
 +import com.facebook.react.bridge.ReadableMap
 +
 +/**
-+ * Example patch: lets a native mounting layer that does not use React Native's ViewManagers (the svelte-engine Expo
++ * expo-svelte patch: lets a native mounting layer that does not use React Native's ViewManagers (the svelte-engine Expo
 + * module) take UI-thread prop writes before React Native's string dispatch. The updater runs on the UI thread and
 + * returns true when it owns the tag and applied the props, false to let the regular path continue.
 + */

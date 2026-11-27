@@ -1,6 +1,6 @@
 10-26 12:30:00.900  4197  4197 I SvelteEngine: surface=1 ops=243 create=0 update=3 layout=6 insert=0 remove=12 delete=12 decode=0.0ms apply=0.4ms
 --------- beginning of crash
-10-26 12:30:01.000  4197  4260 F libc    : Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0 in tid 4260 (mqt_v_js), pid 4197 (asheed.svelteqa)
+10-26 12:30:01.000  4197  4260 F libc    : Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0 in tid 4260 (mqt_v_js), pid 4197 (z.exposvelte.qa)
 10-26 12:30:01.020   686  2108 W PresentationStatsEventLogger: Bad view state for: -1
 10-26 12:30:01.100  4300  4300 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
 10-26 12:30:01.100  4300  4300 F DEBUG   : Build fingerprint: 'google/sdk_gphone64_x86_64/emu64xa:16/BP22.250124.009/12936430:userdebug/dev-keys'
@@ -8,12 +8,12 @@
 10-26 12:30:01.100  4300  4300 F DEBUG   : ABI: 'x86_64'
 10-26 12:30:01.100  4300  4300 F DEBUG   : Timestamp: 2026-10-26 12:30:01.050000000+0300
 10-26 12:30:01.100  4300  4300 F DEBUG   : Process uptime: 12s
-10-26 12:30:01.100  4300  4300 F DEBUG   : Cmdline: io.example.svelteqa
-10-26 12:30:01.100  4300  4300 F DEBUG   : pid: 4197, tid: 4260, name: mqt_v_js  >>> io.example.svelteqa <<<
+10-26 12:30:01.100  4300  4300 F DEBUG   : Cmdline: dev.alfayez.exposvelte.qa
+10-26 12:30:01.100  4300  4300 F DEBUG   : pid: 4197, tid: 4260, name: mqt_v_js  >>> dev.alfayez.exposvelte.qa <<<
 10-26 12:30:01.100  4300  4300 F DEBUG   : uid: 10213
 10-26 12:30:01.100  4300  4300 F DEBUG   : signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0
 10-26 12:30:01.100  4300  4300 F DEBUG   : Cause: null pointer dereference
 10-26 12:30:01.100  4300  4300 F DEBUG   : backtrace:
-10-26 12:30:01.100  4300  4300 F DEBUG   :       #00 pc 0000000000024720  /data/app/~~Qm1xYz9p-AbCdEfGh==/io.example.svelteqa-Zy8wVu2tSrQpOnMl==/base.apk!/lib/x86_64/libsvelteengine.so (offset 0x20000) (BuildId: 1e0d6029a2b3d85118e14ece7a0c941523226321)
-10-26 12:30:01.100  4300  4300 F DEBUG   :       #01 pc 00000000000258f0  /data/app/~~Qm1xYz9p-AbCdEfGh==/io.example.svelteqa-Zy8wVu2tSrQpOnMl==/base.apk!/lib/x86_64/libsvelteengine.so (offset 0x20000) (BuildId: 1e0d6029a2b3d85118e14ece7a0c941523226321)
-10-26 12:30:01.100  4300  4300 F DEBUG   :       #02 pc 000000000007f3c1  /data/app/~~Qm1xYz9p-AbCdEfGh==/io.example.svelteqa-Zy8wVu2tSrQpOnMl==/base.apk!/lib/x86_64/libreactnative.so (offset 0x4d9000) (BuildId: 4f6a1c0e9b7d2a35c8e1f0a9b3d6c2e4)
+10-26 12:30:01.100  4300  4300 F DEBUG   :       #00 pc 0000000000024720  /data/app/~~Qm1xYz9p-AbCdEfGh==/dev.alfayez.exposvelte.qa-Zy8wVu2tSrQpOnMl==/base.apk!/lib/x86_64/libsvelteengine.so (offset 0x20000) (BuildId: 1e0d6029a2b3d85118e14ece7a0c941523226321)
+10-26 12:30:01.100  4300  4300 F DEBUG   :       #01 pc 00000000000258f0  /data/app/~~Qm1xYz9p-AbCdEfGh==/dev.alfayez.exposvelte.qa-Zy8wVu2tSrQpOnMl==/base.apk!/lib/x86_64/libsvelteengine.so (offset 0x20000) (BuildId: 1e0d6029a2b3d85118e14ece7a0c941523226321)
+10-26 12:30:01.100  4300  4300 F DEBUG   :       #02 pc 000000000007f3c1  /data/app/~~Qm1xYz9p-AbCdEfGh==/dev.alfayez.exposvelte.qa-Zy8wVu2tSrQpOnMl==/base.apk!/lib/x86_64/libreactnative.so (offset 0x4d9000) (BuildId: 4f6a1c0e9b7d2a35c8e1f0a9b3d6c2e4)

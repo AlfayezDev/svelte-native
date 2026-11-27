@@ -13,7 +13,7 @@
 
   /**
    * The remote functions lab (packages/expo-svelte/README.md, "Remote functions"): one of each kind of SvelteKit remote function, imported from
-   * `remote-lab.remote.ts` as a web page would and answered by the platform app's dev server (`pnpm dev`, port 3000), whose origin is the build's
+   * `remote-lab.remote.ts` as a web page would and answered by the QA app's dev server (`pnpm dev`, port 3000), whose origin is the build's
    * `extra.expoSvelte.remote` (`EXPO_SVELTE_REMOTE_ORIGIN` when the QA app was built) or what is typed below. `?run=1` runs the checks on
    * mount and logs `[remote lab results] {json}` (and `?origin=<origin>` points the page at a server first); a person can also press "Run the
    * checks" and use the form and the live clock below. Every result is a `Text` with `testID` `remote.check.<id>` whose text starts with

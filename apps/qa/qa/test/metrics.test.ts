@@ -7,7 +7,7 @@ import { join } from "node:path";
 import type { AppInfo, BootFile, DeviceInfo, LabFile, LabRun, Launch } from "../lib/types.ts";
 import { sample } from "./sample.ts";
 
-const pkg = "io.example.svelteqa";
+const pkg = "dev.alfayez.exposvelte.qa";
 const device: DeviceInfo = {
 	serial: "localhost:5555",
 	platform: "android",

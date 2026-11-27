@@ -128,7 +128,7 @@ describe("what an earlier run left on the device", () => {
 		userRotation: null,
 		proxy: null,
 	};
-	const pkg = "io.example.svelteqa";
+	const pkg = "dev.alfayez.exposvelte.qa";
 
 	test("a device the harness never touched has no leftovers", () => {
 		expect(harnessLeftovers(clean, pkg)).toEqual({ state: clean, leftovers: [] });

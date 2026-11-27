@@ -94,7 +94,7 @@ build() {
   if want lab || want boot || want parity || want a11y || want resilience || want gestures || want crashes; then
     stage build-qa "${QA[@]}" build --abi x86_64
   fi
-  # The product (io.example.sveltenative.qaproduct, no development lab) for the product boot check: a second Gradle build, x86_64 only, in the project directory
+  # The product (dev.alfayez.exposvelte.qaproduct, no development lab) for the product boot check: a second Gradle build, x86_64 only, in the project directory
   # the build command keeps for it (android-production/, with its outputs), on the same Gradle caches and daemon as the QA app's build.
   if want product; then
     stage build-product "${QA[@]}" build --abi x86_64 --variant production

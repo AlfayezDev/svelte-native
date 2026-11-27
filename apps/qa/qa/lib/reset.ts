@@ -39,8 +39,8 @@ export function assertMayClear(identity: Identity, action: Destructive): void {
 }
 
 /**
- * The example's production variant (`io.example.sveltenative.qaproduct`) is checked on the lab emulator only, and a shared phone carries apps
- * that are not the harness's (Example's `io.example.app` among them): the harness never installs, starts, clears or touches a product build there. Refuses a device that gates.json lists as a phone under any name it answers to. Checked from the
+ * The example's production variant (`dev.alfayez.exposvelte.qaproduct`) is checked on the lab emulator only, and a shared phone carries apps
+ * that are not the harness's (a store app such as `com.example.app` among them): the harness never installs, starts, clears or touches a product build there. Refuses a device that gates.json lists as a phone under any name it answers to. Checked from the
  * serial alone (`identify(serial, {}, gates)`) before the first adb command, and again from what the device says about itself.
  */
 export function refusePhone(identity: Identity, what: string): void {
@@ -52,7 +52,7 @@ export function refusePhone(identity: Identity, what: string): void {
 
 /** The product boot check puts the product on a device that says it is an emulator and that gates.json lists as the lab, and on no other. */
 export function assertProductDevice(identity: Identity): void {
-	const what = "install or start the product app";
+	const what = "install or start the production variant";
 	refusePhone(identity, what);
 	if (!identity.emulator)
 		throw new Error(`refusing to ${what} on ${identity.serial}: it does not say it is an emulator (ro.kernel.qemu and ro.boot.qemu are not 1)`);

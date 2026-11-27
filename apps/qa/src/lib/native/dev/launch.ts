@@ -5,7 +5,7 @@ import { labOnly, launchKind } from "./launch-link.ts";
 export const labShown = (router: NativeRouter): boolean => labOnly(router.entries.map((entry) => entry.url.pathname));
 
 /**
- * Opens the lab link the app was launched with (`example-svelte://__dev/…`) into the root `router` and says whether the router shows lab
+ * Opens the lab link the app was launched with (`expo-svelte://__dev/…`) into the root `router` and says whether the router shows lab
  * screens only. The router has opened the link before anything is rendered, so the home screen (the first screen of a start with no link)
  * is never rendered under a lab start. A start that restored the lab's screens (a restart with no link, or the Activity's own link again)
  * is the same. A launch by any other link is left alone for the `<Router>` to open: nothing is opened here and the answer is false. The

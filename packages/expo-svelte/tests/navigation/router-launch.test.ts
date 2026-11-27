@@ -16,7 +16,7 @@ test("the launch link is the stack's base: no back arrow on /__dev; later links 
     return [decodeURIComponent(String(pairs.t)), pairs.bk === "1"];
   }));
 
-  launch.__initialURL = "example-svelte:///__dev";
+  launch.__initialURL = "expo-svelte:///__dev";
   const lab = await mountTree(134, { initial: "/sign-in", files });
   await lab.settled();
   expect(pathsOf(lab.router)).toEqual(["/__dev"]); // a direct load has no history: the sign-in is not below it
@@ -24,7 +24,7 @@ test("the launch link is the stack's base: no back arrow on /__dev; later links 
   expect(backOf(134)["/__dev"]).toBe(false); // so the lab's header has no arrow, and its declared controls have no Back
   expect(lab.hardwareBack()).toBe(false);
   // A link that arrives while the app runs opens like any goto: the screen stacks and has its arrow.
-  for (const handler of handlersOf("__linkHandlers")) (handler as (event: { url: string }) => void)({ url: "example-svelte:///__dev/screens" });
+  for (const handler of handlersOf("__linkHandlers")) (handler as (event: { url: string }) => void)({ url: "expo-svelte:///__dev/screens" });
   await lab.settled();
   expect(pathsOf(lab.router)).toEqual(["/__dev", "/__dev/screens"]);
   expect(arrows(lab.router)).toEqual([false, true]);
@@ -39,7 +39,7 @@ test("the launch link is the stack's base: no back arrow on /__dev; later links 
   expect(project.hardwareBack()).toBe(false);
 
   // A link no screen matches is ignored: the app stays on its first screen.
-  launch.__initialURL = "example-svelte:///a/b/c/d/e";
+  launch.__initialURL = "expo-svelte:///a/b/c/d/e";
   const nothing = await mountTree(136, { initial: "/sign-in", files });
   await nothing.settled();
   expect(pathsOf(nothing.router)).toEqual(["/sign-in"]);
@@ -96,9 +96,9 @@ test("a cold start by a link to a sheet under a pane's stack, opened ahead of th
       nodes: paneNodes(host.roots[surface]),
     };
   };
-  launch.__initialURL = "example://acme/inbox/compose";
+  launch.__initialURL = "myapp://acme/inbox/compose";
   const ahead = await mountTree(198, { initial: "/workspaces", mounted: false });
-  expect(await ahead.m.openLaunchURL(ahead.router)).toBe("example://acme/inbox/compose");
+  expect(await ahead.m.openLaunchURL(ahead.router)).toBe("myapp://acme/inbox/compose");
   ahead.app.show(true);
   await ahead.settled();
   const first = observed(198, ahead.router);
@@ -109,7 +109,7 @@ test("a cold start by a link to a sheet under a pane's stack, opened ahead of th
   delete launch.__initialURL;
   const warm = await mountTree(200, { initial: "/acme/inbox" });
   expect(pathsOf(paneRouter("/acme/inbox"))).toEqual(["/acme/inbox"]);
-  expect(warm.router.openURL("example://acme/inbox/compose")).toBe(true);
+  expect(warm.router.openURL("myapp://acme/inbox/compose")).toBe(true);
   await warm.settled();
   const third = observed(200, warm.router);
   expect(first.root).toEqual(["/acme"]);

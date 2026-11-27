@@ -1559,7 +1559,7 @@
     },
     {
       "id": "product.boot.fatals",
-      "title": "Product boot: JavaScript fatals and native crashes while it starts (the product app, no development lab)",
+      "title": "Product boot: JavaScript fatals and native crashes while it starts (the production variant, no development lab)",
       "unit": "fatals",
       "metric": "product.boot.fatals",
       "bar": {

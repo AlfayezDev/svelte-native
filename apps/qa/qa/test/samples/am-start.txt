@@ -1,7 +1,7 @@
-Starting: Intent { cmp=io.example.svelteqa/.MainActivity }
+Starting: Intent { cmp=dev.alfayez.exposvelte.qa/.MainActivity }
 Status: ok
 LaunchState: COLD
-Activity: io.example.svelteqa/.MainActivity
+Activity: dev.alfayez.exposvelte.qa/.MainActivity
 TotalTime: 776
 WaitTime: 780
 Complete

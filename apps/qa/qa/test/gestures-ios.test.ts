@@ -43,10 +43,10 @@ describe("the XCUITest bundle on the Mac", () => {
 	});
 
 	test("the test command runs the built runner against the phone with the app, the lab's link and the time handed in", () => {
-		const url = "example-svelte:///__dev?run=gestures-box,drive:xctest&token=abc";
-		const command = testCommand({ dir: "/tmp/t", udid: "UDID", bundleId: "io.example.svelteqa", seconds: 900, outFile: "/tmp/t/out.log", url, trace: true });
+		const url = "expo-svelte:///__dev?run=gestures-box,drive:xctest&token=abc";
+		const command = testCommand({ dir: "/tmp/t", udid: "UDID", bundleId: "dev.alfayez.exposvelte.qa", seconds: 900, outFile: "/tmp/t/out.log", url, trace: true });
 		expect(command).toContain("cd '/tmp/t'");
-		expect(command).toContain(`TEST_RUNNER_GESTURES_SECONDS=900 TEST_RUNNER_GESTURES_BUNDLE_ID='io.example.svelteqa' TEST_RUNNER_GESTURES_URL='${url}' TEST_RUNNER_GESTURES_TRACE=1`);
+		expect(command).toContain(`TEST_RUNNER_GESTURES_SECONDS=900 TEST_RUNNER_GESTURES_BUNDLE_ID='dev.alfayez.exposvelte.qa' TEST_RUNNER_GESTURES_URL='${url}' TEST_RUNNER_GESTURES_TRACE=1`);
 		expect(command).toContain("xcodebuild test-without-building -xctestrun");
 		expect(command).toContain("-destination 'id=UDID' -only-testing:GesturesUITests/GesturesUITests/testDrive > '/tmp/t/out.log' 2>&1");
 		expect(testCommand({ dir: "/tmp/t", udid: "UDID", bundleId: "b", seconds: 1, outFile: "/o", url }).includes("GESTURES_TRACE=0")).toBe(true);
@@ -167,7 +167,7 @@ describe("a launch from what the app wrote", () => {
 	});
 
 	test("a runner the phone refused for its expired profile says so", () => {
-		const text = "Recovery Suggestion: Failed to install embedded profile for io.example.svelteqa.gesturesuitests.xctrunner : 0xe8008011 (This provisioning profile has expired.)\n** TEST EXECUTE FAILED **";
+		const text = "Recovery Suggestion: Failed to install embedded profile for dev.alfayez.exposvelte.qa.gesturesuitests.xctrunner : 0xe8008011 (This provisioning profile has expired.)\n** TEST EXECUTE FAILED **";
 		const launch = launchFromIos(capture({ output: parseUiTestOutput(text), testText: text }));
 		expect(launch.harnessErrors).toContain("the phone refused the XCUITest runner: its provisioning profile has expired (the next run builds it again)");
 		expect(launchFromIos(capture()).harnessErrors.join(" ")).not.toMatch(/provisioning profile/);

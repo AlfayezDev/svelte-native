@@ -112,7 +112,7 @@ jobs:
         run: bash qa/ci/lane.sh reset
 
       # Without the emulator lock: the build overlaps whatever else is using the emulator. x86_64 only, the QA app and then the product
-      # (io.example.sveltenative.qaproduct, no development lab: the app the product boot check starts), on the runner's Gradle caches (GRADLE_USER_HOME).
+      # (dev.alfayez.exposvelte.qaproduct, no development lab: the app the product boot check starts), on the runner's Gradle caches (GRADLE_USER_HOME).
       - name: Build the release APKs (x86_64)
         run: bash qa/ci/lane.sh build
 

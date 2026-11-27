@@ -4,8 +4,8 @@ Pod::Spec.new do |s|
   s.summary        = 'QA inspection of the Expo Svelte lab on iOS'
   s.description    = 'The lab app asks it for a screenshot of its own window, a dump of the accessibility tree VoiceOver walks and the launch-to-first-frame times; qa/ on the harness side reads what it writes. Refuses to run outside the QA bundle.'
   s.license        = 'MIT'
-  s.author         = 'Example'
-  s.homepage       = 'https://github.com/example'
+  s.author         = 'AlfayezDev'
+  s.homepage       = 'https://github.com/AlfayezDev/svelte-native'
   s.platforms      = { :ios => '16.4' }
   s.swift_version  = '5.9'
   s.source         = { git: '' }

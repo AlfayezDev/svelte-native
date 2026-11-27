@@ -32,7 +32,7 @@ const device: DeviceInfo = {
 	refreshHz: 60,
 };
 const app = {
-	package: "io.example.svelteqa",
+	package: "dev.alfayez.exposvelte.qa",
 	versionName: "0.1.0",
 	versionCode: 1,
 	lastUpdateTime: null,

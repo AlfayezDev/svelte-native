@@ -55,7 +55,7 @@ export async function iosProbe(argv: string[]): Promise<void> {
 async function runProbes(session: IosSession, options: { names: string[]; direction: "ltr" | "rtl"; dir: string }): Promise<unknown> {
 	const { names, direction, dir } = options;
 	const token = newToken();
-	const { pid } = await launchApp(session.target, { payloadUrl: `example-svelte:///__dev?run=probe:${names.join(".")}&token=${token}`, args: launchArguments[direction] });
+	const { pid } = await launchApp(session.target, { payloadUrl: `expo-svelte:///__dev?run=probe:${names.join(".")}&token=${token}`, args: launchArguments[direction] });
 	const deadline = Date.now() + 600_000;
 	let done = false;
 	let reported: unknown = null;

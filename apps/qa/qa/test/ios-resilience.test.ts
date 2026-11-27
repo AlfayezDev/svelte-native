@@ -65,7 +65,7 @@ describe("the iPhone's resilience plan", () => {
 	test("it starts on the lab page that writes the build identity, opens the menu over it and pushes the header screen", () => {
 		const [launch, push] = plan;
 		expect(movesOf(launch)).toContainEqual({ do: "open", url: labUrl(token) });
-		expect(labUrl(token)).toBe("example-svelte:///__dev?run=resilience&token=tok1");
+		expect(labUrl(token)).toBe("expo-svelte:///__dev?run=resilience&token=tok1");
 		expect(movesOf(launch)).toContainEqual({ do: "open", url: menuUrl });
 		expect(movesOf(push)).toContainEqual({ do: "tap", label: "Push eight screens with headers" });
 		expect(push?.check.present).toContainEqual({ kind: "bar", value: "Screen 1" });
@@ -204,7 +204,7 @@ describe("the XCUITest and the plan agree", () => {
 
 	test("the lines the harness reads are the lines the test prints, and its environment is the one the command line sets", () => {
 		for (const line of ["RESILIENCE-STARTED", "RESILIENCE-STEP", "RESILIENCE-TIMEOUT", "RESILIENCE-DONE"]) expect(swift).toContain(line);
-		const command = resilienceCommand({ dir: "/tmp/d", udid: "U", bundleId: "io.example.svelteqa", seconds: 900, outFile: "/tmp/o.log", plan: "{}" });
+		const command = resilienceCommand({ dir: "/tmp/d", udid: "U", bundleId: "dev.alfayez.exposvelte.qa", seconds: 900, outFile: "/tmp/o.log", plan: "{}" });
 		for (const name of ["RESILIENCE_SECONDS", "RESILIENCE_BUNDLE_ID", "RESILIENCE_PLAN"]) {
 			expect(swift).toContain(`environment["${name}"]`);
 			expect(command).toContain(`TEST_RUNNER_${name}=`);
@@ -223,7 +223,7 @@ describe("the XCUITest and the plan agree", () => {
 
 	test("the plan travels through the shell intact, apostrophes and double quotes included", async () => {
 		const awkward = JSON.stringify({ recovery: [], steps: [{ index: 1, moves: [{ do: "tap", label: "it's \"quoted\" $HOME `x`" }], check: {}, recover: true }] });
-		const command = resilienceCommand({ dir: "/tmp/ui tests", udid: "U", bundleId: "io.example.svelteqa", seconds: 5, outFile: "/tmp/o.log", plan: awkward });
+		const command = resilienceCommand({ dir: "/tmp/ui tests", udid: "U", bundleId: "dev.alfayez.exposvelte.qa", seconds: 5, outFile: "/tmp/o.log", plan: awkward });
 		const exported = / && (export .*) && xcodebuild /s.exec(command)?.[1];
 		expect(exported).toBeDefined();
 		const echoed = await new Promise<string>((resolve, reject) => {
@@ -310,7 +310,7 @@ describe("the run file and the gates", () => {
 		finishedAt: "2026-11-02T09:20:00.000Z",
 		source: { commit: "abc1234", dirty: false },
 		device,
-		app: { package: "io.example.svelteqa", versionName: "0.1.0", versionCode: 1, lastUpdateTime: null, installedSha256: null, apk: null },
+		app: { package: "dev.alfayez.exposvelte.qa", versionName: "0.1.0", versionCode: 1, lastUpdateTime: null, installedSha256: null, apk: null },
 		screen: "screens-header",
 		steps,
 		planned: steps.length,
@@ -334,7 +334,7 @@ describe("the run file and the gates", () => {
 	});
 
 	test("the crash reports the phone's crash log gained during the run count with the others'", () => {
-		const report = { file: "ExampleSvelteQA.ips", capturedAt: null, processStartedAt: null, pid: null, exceptionType: "EXC_CRASH", attributedTo: "unattributed" };
+		const report = { file: "ExpoSvelteQA.ips", capturedAt: null, processStartedAt: null, pid: null, exceptionType: "EXC_CRASH", attributedTo: "unattributed" };
 		expect(crashReportMetrics([file(results(), phone, { crashReports: [report] as never })])).toEqual({ "log.crashReports": 1 });
 		expect(crashReportMetrics([file(results(), phone, { crashReports: [] })])).toEqual({ "log.crashReports": 0 });
 		expect(crashReportMetrics([file(results(), phone, { crashReportsError: "the pull failed" })])).toEqual({ "log.crashReports": null });

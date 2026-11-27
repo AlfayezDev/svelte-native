@@ -21,9 +21,9 @@ describe("devicectl output as Xcode prints it", () => {
 		expect(info.model).toBe("iPhone SE (3rd generation)");
 		expect(info.osVersion).toBe("26.6");
 		expect(parseDeviceDetails(sample("ios-devicectl-devices.json"), "00008110-001E10593410401E").platform).toBe("ios");
-		const app = parseInstalledApp(sample("ios-devicectl-apps.json"), "io.example.svelteqa");
+		const app = parseInstalledApp(sample("ios-devicectl-apps.json"), "dev.alfayez.exposvelte.qa");
 		expect(app.version).toBe("0.1.0");
-		expect(app.bundleUrl).toMatch(/ExampleSvelteQA\.app\/$/);
+		expect(app.bundleUrl).toMatch(/ExpoSvelteQA\.app\/$/);
 	});
 });
 
@@ -41,13 +41,13 @@ describe("devicectl output", () => {
 	});
 
 	test("the installed app, the launch and the processes", () => {
-		const apps = JSON.stringify({ result: { apps: [{ bundleIdentifier: "io.example.svelteqa", name: "Example Svelte QA", version: "0.1.0", bundleVersion: "1", url: "file:///private/var/containers/Bundle/Application/ABC/ExampleSvelteQA.app/" }] } });
-		const app = parseInstalledApp(apps, "io.example.svelteqa");
+		const apps = JSON.stringify({ result: { apps: [{ bundleIdentifier: "dev.alfayez.exposvelte.qa", name: "Expo Svelte QA", version: "0.1.0", bundleVersion: "1", url: "file:///private/var/containers/Bundle/Application/ABC/ExpoSvelteQA.app/" }] } });
+		const app = parseInstalledApp(apps, "dev.alfayez.exposvelte.qa");
 		expect(app.version).toBe("0.1.0");
 		expect(() => parseInstalledApp(apps, "io.other")).toThrow("not installed");
 		expect(parseLaunch(JSON.stringify({ result: { process: { processIdentifier: 99 } } }))).toEqual({ pid: 99 });
 		expect(() => parseLaunch(JSON.stringify({ result: {} }))).toThrow("no process id");
-		const processes = JSON.stringify({ result: { runningProcesses: [{ processIdentifier: 5, executable: `${app.bundleUrl}ExampleSvelteQA` }, { processIdentifier: 6, executable: "file:///usr/libexec/x" }] } });
+		const processes = JSON.stringify({ result: { runningProcesses: [{ processIdentifier: 5, executable: `${app.bundleUrl}ExpoSvelteQA` }, { processIdentifier: 6, executable: "file:///usr/libexec/x" }] } });
 		expect(parseProcesses(processes, app.bundleUrl)).toEqual([5]);
 	});
 });

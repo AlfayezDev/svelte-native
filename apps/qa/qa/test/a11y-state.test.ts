@@ -173,7 +173,7 @@ describe("the lab's cases", () => {
 		expect(labCases.map((screen) => screen.id)).toEqual(["lab-a11y-states", "lab-a11y-actions"]);
 		for (const screen of labCases) {
 			expect(screen.androidOnly).toBe(true);
-			expect(screen.deepLink).toMatch(/^example-svelte:\/\/\/__dev\/a11y\?mode=(states|actions)&probe=(nodes|actions)$/);
+			expect(screen.deepLink).toMatch(/^expo-svelte:\/\/\/__dev\/a11y\?mode=(states|actions)&probe=(nodes|actions)$/);
 			expect(screen.info?.length).toBeGreaterThan(0);
 			expect(screen.expect?.length).toBeGreaterThan(0);
 		}

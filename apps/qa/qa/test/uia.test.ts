@@ -61,7 +61,7 @@ describe("uiautomator dump parser", () => {
 			descendants(scroll as NonNullable<typeof scroll>).map(
 				(node) => node.text || node.contentDesc,
 			),
-		).toContain("Example");
+		).toContain("Expo Svelte");
 	});
 
 	test("refuses a dump it cannot read completely", () => {

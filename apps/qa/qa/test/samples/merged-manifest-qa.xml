@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="io.example.svelteqa"
+    package="dev.alfayez.exposvelte.qa"
     android:versionCode="1"
     android:versionName="0.1.0" >
 
@@ -72,14 +72,14 @@
         android:required="true" />
 
     <permission
-        android:name="io.example.svelteqa.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        android:name="dev.alfayez.exposvelte.qa.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
         android:protectionLevel="signature" />
 
-    <uses-permission android:name="io.example.svelteqa.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+    <uses-permission android:name="dev.alfayez.exposvelte.qa.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
     <uses-permission android:name="com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE" />
 
     <application
-        android:name="io.example.svelteqa.MainApplication"
+        android:name="dev.alfayez.exposvelte.qa.MainApplication"
         android:allowBackup="true"
         android:appComponentFactory="androidx.core.app.CoreComponentFactory"
         android:dataExtractionRules="@xml/secure_store_data_extraction_rules"
@@ -118,7 +118,7 @@
             android:value="{&quot;expo-channel-name&quot;:&quot;qa&quot;}" />
 
         <activity
-            android:name="io.example.svelteqa.MainActivity"
+            android:name="dev.alfayez.exposvelte.qa.MainActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize|assetsPaths|locale|layoutDirection"
             android:exported="true"
             android:launchMode="singleTask"
@@ -136,7 +136,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:scheme="example-svelte" />
+                <data android:scheme="expo-svelte" />
             </intent-filter>
         </activity>
 
@@ -144,7 +144,7 @@
 
         <provider
             android:name="androidx.startup.InitializationProvider"
-            android:authorities="io.example.svelteqa.androidx-startup"
+            android:authorities="dev.alfayez.exposvelte.qa.androidx-startup"
             android:exported="false" >
             <meta-data
                 android:name="androidx.work.WorkManagerInitializer"
@@ -158,7 +158,7 @@
         </provider>
         <provider
             android:name="com.reactnativecommunity.webview.RNCWebViewFileProvider"
-            android:authorities="io.example.svelteqa.fileprovider"
+            android:authorities="dev.alfayez.exposvelte.qa.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true" >
             <meta-data
@@ -175,7 +175,7 @@
 
         <provider
             android:name="expo.modules.filesystem.FileSystemFileProvider"
-            android:authorities="io.example.svelteqa.FileSystemFileProvider"
+            android:authorities="dev.alfayez.exposvelte.qa.FileSystemFileProvider"
             android:exported="false"
             android:grantUriPermissions="true" >
             <meta-data
@@ -214,7 +214,7 @@
             android:theme="@style/Theme.AppCompat.DayNight" /> <!-- https://developer.android.com/guide/topics/manifest/provider-element.html -->
         <provider
             android:name="expo.modules.imagepicker.fileprovider.ImagePickerFileProvider"
-            android:authorities="io.example.svelteqa.ImagePickerFileProvider"
+            android:authorities="dev.alfayez.exposvelte.qa.ImagePickerFileProvider"
             android:exported="false"
             android:grantUriPermissions="true" >
             <meta-data
@@ -325,7 +325,7 @@
 
         <provider
             android:name="com.canhub.cropper.CropFileProvider"
-            android:authorities="io.example.svelteqa.cropper.fileprovider"
+            android:authorities="dev.alfayez.exposvelte.qa.cropper.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true" >
             <meta-data

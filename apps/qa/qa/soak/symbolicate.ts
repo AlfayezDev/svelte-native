@@ -278,7 +278,7 @@ export async function symbolicate(argv: string[]): Promise<void> {
 		process.stdout.write(symbolicateJs(text, symbolizer.map));
 		return;
 	}
-	const crashes = extractCrashes(text, flagString(values.package) ?? "io.example.svelteqa");
+	const crashes = extractCrashes(text, flagString(values.package) ?? "dev.alfayez.exposvelte.qa");
 	if (crashes.length === 0) console.log("no crash of the package in the capture");
 	for (const crash of crashes) {
 		const result = await symbolicateCrash(crash, symbolizer);

@@ -315,7 +315,7 @@ const legacy = nativeModule<{ ping(): void }>("MyLegacyModule");                
 const fileSystem = requireNativeModule("ExpoFileSystem");                          // Expo modules as usual
 ```
 
-Libraries whose own JavaScript needs React cannot be imported; call their native module by name, as the wrappers do. The example app proves that the native libraries a production app uses load under this host: a smoke app (`APP_VARIANT=smoke`, `io.example.svelteqa.smoke`) loads 35 native libraries (the libraries of a real production app on Expo SDK 57; 34 on the Samsung phone, where the Huawei location module is skipped) and `pnpm native-qa smoke` fails when one stops loading. The example's production and QA variants link none of those libraries. SPEC "Native modules (smoke test)" lists each module and what it needed.
+Libraries whose own JavaScript needs React cannot be imported; call their native module by name, as the wrappers do. The example app proves that the native libraries a production app uses load under this host: a smoke app (`APP_VARIANT=smoke`, `dev.alfayez.exposvelte.qa.smoke`) loads 35 native libraries (the libraries of a real production app on Expo SDK 57; 34 on the Samsung phone, where the Huawei location module is skipped) and `pnpm native-qa smoke` fails when one stops loading. The example's production and QA variants link none of those libraries. SPEC "Native modules (smoke test)" lists each module and what it needed.
 
 ## Updates
 
@@ -400,11 +400,11 @@ cd apps/qa && pnpm dev                                  # the SvelteKit dev serv
 # Android (the Samsung over USB, or the emulator): the build must allow plain HTTP to the host, so it is built with the origin
 EXPO_SVELTE_REMOTE_ORIGIN=http://localhost:3000 pnpm native-qa build --abi arm64-v8a --prebuild
 adb reverse tcp:3000 tcp:3000
-adb shell am start -a android.intent.action.VIEW -d "example-svelte:///__dev/remote?run=1" io.example.svelteqa
+adb shell am start -a android.intent.action.VIEW -d "expo-svelte:///__dev/remote?run=1" dev.alfayez.exposvelte.qa
 adb logcat -s ReactNativeJS | grep "remote lab results"      # {"origin":…,"results":{"query":"pass: …",…}}: eleven passes
 ```
 
-On the iPhone the dev server must be reachable from it: run it on the Mac and use the Mac's LAN address (`EXPO_SVELTE_REMOTE_ORIGIN=http://<mac address>:3000`, or `?origin=http://<mac address>:3000` on the link of a build that has no host; an IP literal is outside App Transport Security) and open `example-svelte:///__dev/remote?run=1`. A build with no origin still has the page: type the origin of a reachable dev server and press "Use this host" (`?origin=<origin>` does it from the link; use `https:`, or on the iPhone a plain `http:` address to an IP, which App Transport Security does not cover). Then, by hand: type in the form and watch the issues change; leave the page while the clock runs, come back and press "Server stats": `liveOpen` is 1 (this page's clock) and not 2, because the first stream was closed with its screen; send the app to the background and back and check the clock resumes; kill the dev server and check the failures are shown, not swallowed.
+On the iPhone the dev server must be reachable from it: run it on the Mac and use the Mac's LAN address (`EXPO_SVELTE_REMOTE_ORIGIN=http://<mac address>:3000`, or `?origin=http://<mac address>:3000` on the link of a build that has no host; an IP literal is outside App Transport Security) and open `expo-svelte:///__dev/remote?run=1`. A build with no origin still has the page: type the origin of a reachable dev server and press "Use this host" (`?origin=<origin>` does it from the link; use `https:`, or on the iPhone a plain `http:` address to an IP, which App Transport Security does not cover). Then, by hand: type in the form and watch the issues change; leave the page while the clock runs, come back and press "Server stats": `liveOpen` is 1 (this page's clock) and not 2, because the first stream was closed with its screen; send the app to the background and back and check the clock resumes; kill the dev server and check the failures are shown, not swallowed.
 
 ## Apply the patches
 

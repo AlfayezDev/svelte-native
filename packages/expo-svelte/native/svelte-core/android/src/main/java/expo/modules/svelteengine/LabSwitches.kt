@@ -19,8 +19,8 @@ class LabSwitches(
   val inputSpare: Boolean = true,
 ) {
   companion object {
-    /** The QA variant's package (`app.config.ts`: `io.example.svelteqa` unless `APP_VARIANT=production`). */
-    const val QA_PACKAGE = "io.example.svelteqa"
+    /** The QA variant's package (`app.config.ts`: `dev.alfayez.exposvelte.qa` unless `APP_VARIANT=production`). */
+    const val QA_PACKAGE = "dev.alfayez.exposvelte.qa"
 
     /** Whether the app reads the lab switches: the QA app, or a build that is debuggable anyway. */
     fun allowed(packageName: String, debuggable: Boolean): Boolean = debuggable || packageName == QA_PACKAGE

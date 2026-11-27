@@ -82,7 +82,7 @@ describe("no other library is part of location: expo-location is no dependency o
     }
   });
 
-  test("the lockfile's importers for them list it neither (the QA app's smoke variant installs it as a stand-in for the production app's library list, and that one does)", () => {
+  test("the lockfile's importers for them list it neither (the QA app's smoke variant installs it as a stand-in for a real app's library list, and that one does)", () => {
     const lock = readFileSync(join(repository, "pnpm-lock.yaml"), "utf8");
     /** An importer's block: from its name at two spaces of indentation to the next line at two spaces or none. */
     const block = (name: string) => {

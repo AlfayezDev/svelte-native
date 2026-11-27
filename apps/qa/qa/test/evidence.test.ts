@@ -55,13 +55,13 @@ const normalScreen = cases.find((entry) => entry.network === "normal") as Screen
 /** A signed-in screen presented over another: its compressed dump leaves the covered screen out, and it masks the devices' text. */
 const devicesModal = accountDevices;
 const address = "qa-user@example.test";
-const pkg = "io.example.svelteqa";
+const pkg = "dev.alfayez.exposvelte.qa";
 
 const node = (attributes: string, children = "") => `<node index="0" text="" resource-id="" class="android.view.View" package="${pkg}" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" ${attributes}>${children}</node>`;
 const hierarchy = (root: string) => `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0">${root}</hierarchy>`;
 /** The startup screen: the app's own window with a title and a spinner, not the menu the case waits for. */
 const loadingXml = hierarchy(
-	node('class="android.widget.FrameLayout" bounds="[0,0][1080,2400]"', node('text="Example" bounds="[63,300][400,360]"') + node('content-desc="Loading" bounds="[63,360][116,414]"')),
+	node('class="android.widget.FrameLayout" bounds="[0,0][1080,2400]"', node('text="Expo Svelte" bounds="[63,300][400,360]"') + node('content-desc="Loading" bounds="[63,360][116,414]"')),
 );
 const loading: UiTree = { ...parseHierarchy(loadingXml), raw: loadingXml };
 
@@ -120,7 +120,7 @@ const notFound = (tree: UiTree | null = loading) => new NodeNotFoundError('no no
 
 describe("what a dump says of the window it walked", () => {
 	test("its package and class, bounds, node count and first texts", () => {
-		expect(describeTopWindow(loading)).toBe(`${pkg} android.widget.FrameLayout [0,0][1080,2400], 3 nodes: "Example", "Loading"`);
+		expect(describeTopWindow(loading)).toBe(`${pkg} android.widget.FrameLayout [0,0][1080,2400], 3 nodes: "Expo Svelte", "Loading"`);
 	});
 
 	test("a dump with no nodes, and a window that is not the app's, say so", () => {
@@ -140,8 +140,8 @@ describe("what a dump says of the window it walked", () => {
 describe("the evidence of a failed try", () => {
 	test("keeps the screenshot, the dump the wait last read, the windows, the activity and the app's logcat, and names where", async () => {
 		const { device, root, directory, deps, target } = await setup();
-		device.windowsText = "  mCurrentFocus=Window{1a2b3c u0 io.example.svelteqa/io.example.svelteqa.MainActivity}\n  mFocusedApp=ActivityRecord{4d5e u0 io.example.svelteqa/.MainActivity t12}\n";
-		device.activityText = "  topResumedActivity=ActivityRecord{4d5e u0 io.example.svelteqa/.MainActivity t12}\n";
+		device.windowsText = "  mCurrentFocus=Window{1a2b3c u0 dev.alfayez.exposvelte.qa/dev.alfayez.exposvelte.qa.MainActivity}\n  mFocusedApp=ActivityRecord{4d5e u0 dev.alfayez.exposvelte.qa/.MainActivity t12}\n";
+		device.activityText = "  topResumedActivity=ActivityRecord{4d5e u0 dev.alfayez.exposvelte.qa/.MainActivity t12}\n";
 		device.logcatText = "11-04 11:11:00.000  4321  4390 I ReactNativeJS: [native startup] TypeError: Network request failed\n";
 		device.crashText = "11-04 11:10:58.000  4000  4000 E AndroidRuntime: FATAL EXCEPTION: main (the process the case before this launch killed)\n";
 
@@ -181,15 +181,15 @@ describe("the evidence of a failed try", () => {
 	test("an app with no process gets the buffer's lines that name the package, the crash buffer all the same, and the record says so", async () => {
 		const { device, root, deps, target } = await setup();
 		device.pid = null;
-		device.logcatText = "11-04 11:11:00.000  1000  1000 I ActivityManager: Process io.example.svelteqa (pid 4321) has died\n";
+		device.logcatText = "11-04 11:11:00.000  1000  1000 I ActivityManager: Process dev.alfayez.exposvelte.qa (pid 4321) has died\n";
 		const evidence = await captureEvidence(deps, target, 1, notFound());
 		const [app, crash] = device.commands("logcat");
-		expect(app).toContain("grep -E 'io.example.svelteqa' | tail -n 400");
+		expect(app).toContain("grep -E 'dev.alfayez.exposvelte.qa' | tail -n 400");
 		expect(app).not.toContain("--pid");
 		expect(app).not.toContain("FATAL");
 		expect(crash).toContain("logcat -b crash -d");
 		const log = await readFile(join(root, evidence.logcat ?? "missing"), "utf8");
-		expect(log).toContain("--- lines that name io.example.svelteqa (the app had no process) ---");
+		expect(log).toContain("--- lines that name dev.alfayez.exposvelte.qa (the app had no process) ---");
 		expect(log).toContain("has died");
 		expect(log).toContain("--- crash buffer (logcat -b crash -d -t 100) ---\n(no lines)");
 		expect(evidence.missing).toEqual([`logcat: ${pkg} had no process; the lines that name it`]);
@@ -198,7 +198,7 @@ describe("the evidence of a failed try", () => {
 	test("an empty answer for the windows falls back to the plain `dumpsys window`, and nothing at all is a missing part, not an empty file", async () => {
 		const { device, root, deps, target } = await setup();
 		device.windowsText = "";
-		device.windowText = "  mCurrentFocus=Window{9f8e u0 io.example.svelteqa/io.example.svelteqa.MainActivity}\n";
+		device.windowText = "  mCurrentFocus=Window{9f8e u0 dev.alfayez.exposvelte.qa/dev.alfayez.exposvelte.qa.MainActivity}\n";
 		const evidence = await captureEvidence(deps, target, 1, notFound());
 		expect(device.commands("dumpsys window windows")).toHaveLength(1);
 		expect(device.commands("dumpsys window |")).toHaveLength(1);
@@ -211,7 +211,7 @@ describe("the evidence of a failed try", () => {
 		expect(none.missing).toEqual(["windows.txt: dumpsys window windows: empty; dumpsys window: empty"]);
 
 		// The first command failing is no different: the second answers.
-		device.windowText = "  mFocusedApp=ActivityRecord{1 u0 io.example.svelteqa/.MainActivity t3}\n";
+		device.windowText = "  mFocusedApp=ActivityRecord{1 u0 dev.alfayez.exposvelte.qa/.MainActivity t3}\n";
 		device.failing = ["dumpsys window windows"];
 		const second = await captureEvidence(deps, { ...target, stem: "second" }, 1, notFound());
 		expect(second.windows).not.toBeNull();
@@ -284,7 +284,7 @@ describe("the evidence of a failed try", () => {
 		const signedIn = { ...target, screen: devicesModal, direction: "ltr" as const };
 		const evidence = await captureEvidence(deps, signedIn, 1, notFound(launcher));
 		expect(evidence.screenshot).toBeNull();
-		expect(evidence.missing[0]).toBe("screenshot: the top window is com.google.android.apps.nexuslauncher, not io.example.svelteqa: the app's frame with the QA account's address on it may be behind it");
+		expect(evidence.missing[0]).toBe("screenshot: the top window is com.google.android.apps.nexuslauncher, not dev.alfayez.exposvelte.qa: the app's frame with the QA account's address on it may be behind it");
 		// The texts are kept (they are redacted), and so is the window that says what was on top.
 		expect(evidence.topWindow).toStartWith("com.google.android.apps.nexuslauncher");
 		expect(evidence.uiDump).not.toBeNull();
@@ -385,7 +385,7 @@ describe("the evidence of a failed try", () => {
 	test("an app with no process is narrowed the same way, and the app's own process is not", async () => {
 		const { device, root, deps, target } = await setup();
 		device.pid = null;
-		device.logcatText = ["11-04 11:09:00.000  1  1 I ActivityManager: Start proc io.example.svelteqa (an earlier case)", "11-04 11:11:05.000  1  1 I ActivityManager: Process io.example.svelteqa has died (this try)"].join("\n");
+		device.logcatText = ["11-04 11:09:00.000  1  1 I ActivityManager: Start proc dev.alfayez.exposvelte.qa (an earlier case)", "11-04 11:11:05.000  1  1 I ActivityManager: Process dev.alfayez.exposvelte.qa has died (this try)"].join("\n");
 		const evidence = await captureEvidence(deps, target, 1, notFound(), Date.now() - 40_000);
 		const log = await readFile(join(root, evidence.logcat ?? "missing"), "utf8");
 		expect(log).toContain("has died (this try)");
@@ -821,7 +821,7 @@ describe("a parity case", () => {
 			expect(record.tries).toBe(2);
 			expect(record.failures?.map((entry) => entry.attempt)).toEqual([1, 2]);
 			expect(record.failures?.[0]?.error).toBe('no node "never there" on screen after 50 ms');
-			expect(record.failures?.[0]?.topWindow).toContain('"Example", "Loading"');
+			expect(record.failures?.[0]?.topWindow).toContain('"Expo Svelte", "Loading"');
 			expect(record.failures?.[0]?.waited?.dumps).toBeGreaterThanOrEqual(1);
 			expect(record.detail).toStartWith('no node "never there" on screen after 50 ms (try 2');
 			expect(record.differingPixels).toBeNull();

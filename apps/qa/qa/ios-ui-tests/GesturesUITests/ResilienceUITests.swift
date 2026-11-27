@@ -9,7 +9,7 @@ import XCTest
 /// Environment (as `TEST_RUNNER_*` variables of the xcodebuild call): `RESILIENCE_BUNDLE_ID` (the lab app), `RESILIENCE_PLAN` (`{ recovery, steps }`),
 /// `RESILIENCE_SECONDS` (give up after).
 final class ResilienceUITests: XCTestCase {
-    private let bundleId = ProcessInfo.processInfo.environment["RESILIENCE_BUNDLE_ID"] ?? "io.example.svelteqa"
+    private let bundleId = ProcessInfo.processInfo.environment["RESILIENCE_BUNDLE_ID"] ?? "dev.alfayez.exposvelte.qa"
     private let seconds = TimeInterval(ProcessInfo.processInfo.environment["RESILIENCE_SECONDS"] ?? "1800") ?? 1800
     /// The launch arguments of the launches that follow (a text size, a language); set by the plan's `args` move.
     private var launchArguments: [String] = []

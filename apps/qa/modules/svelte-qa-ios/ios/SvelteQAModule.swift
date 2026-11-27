@@ -122,9 +122,9 @@ public final class SvelteQAModule: Module {
 }
 
 enum SvelteQA {
-  static let bundleIdentifier = "io.example.svelteqa"
-  /// The smoke app (`io.example.svelteqa.smoke`) links this module too, and reports which build it is, like the QA app; nothing else of the module runs there.
-  static let smokeBundleIdentifier = "io.example.svelteqa.smoke"
+  static let bundleIdentifier = "dev.alfayez.exposvelte.qa"
+  /// The smoke app (`dev.alfayez.exposvelte.qa.smoke`) links this module too, and reports which build it is, like the QA app; nothing else of the module runs there.
+  static let smokeBundleIdentifier = "dev.alfayez.exposvelte.qa.smoke"
   static var enabled: Bool { Bundle.main.bundleIdentifier == bundleIdentifier }
   static var boot: BootRecorder?
 

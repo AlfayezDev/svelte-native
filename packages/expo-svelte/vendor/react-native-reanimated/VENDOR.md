@@ -17,7 +17,7 @@ Third-party code, copied into this package (VENDORING.md). Nothing here is edite
 
 ## Local changes
 
-- `vendor-patches/react-native-reanimated/0001-engine-views-and-direct-props.patch` (sha256 `16f360c4127fc445af44b480897f82aff6ca67ef0f342b7c0ca28ed37688ffef`), applied with `patch -p1` after the unpack
+- `vendor-patches/react-native-reanimated/0001-engine-views-and-direct-props.patch` (sha256 `80527f36e5a83551949ea58f6df725340b528c53bb7e0cd78058e15a48f1e6f4`), applied with `patch -p1` after the unpack
 - `vendor-patches/react-native-reanimated/0002-worklets-is-the-copy-beside-it.patch` (sha256 `b0de1f0153ba41f29cb331e1c0f4904221890a45f34dcece607385a2852a9fe5`), applied with `patch -p1` after the unpack
 - `vendor-patches/react-native-reanimated/0003-android-synchronous-props-on-by-default.patch` (sha256 `815dad641b08734716430761d48c7c1ab83e7c4192c8f14e590b2a57b3e4fcb4`), applied with `patch -p1` after the unpack
-- `vendor-patches/react-native-reanimated/0004-keyboard-events-from-the-engine.patch` (sha256 `a8297d910d24136fdda4dc34ba0f4938c94ae5b72da0c2907986d19630e8692a`), applied with `patch -p1` after the unpack
+- `vendor-patches/react-native-reanimated/0004-keyboard-events-from-the-engine.patch` (sha256 `b2612a7d124b72505ee4774bc31aab4a997bd144e4ebb6365e56fd89a7ce606e`), applied with `patch -p1` after the unpack

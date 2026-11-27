@@ -328,12 +328,12 @@ private fun wiringChecks(root: String, stack: String, sheet: String) {
 /** The launch switches of the QA lab change what the engine does: a release build must not read them (`LabSwitches`). */
 private fun labSwitchChecks(module: String) {
   val qa = LabSwitches.QA_PACKAGE
-  equal("the QA package is the QA variant's", qa, "io.example.svelteqa")
+  equal("the QA package is the QA variant's", qa, "dev.alfayez.exposvelte.qa")
   check("the QA app reads the switches", LabSwitches.allowed(qa, debuggable = false))
-  check("a debuggable build reads the switches", LabSwitches.allowed("io.example.app", debuggable = true))
-  check("the product does not", !LabSwitches.allowed("io.example.app", debuggable = false))
+  check("a debuggable build reads the switches", LabSwitches.allowed("com.example.app", debuggable = true))
+  check("the product does not", !LabSwitches.allowed("com.example.app", debuggable = false))
   // The package must be the QA one, not one that begins with it or contains it.
-  for (other in listOf("io.example.svelteqa.evil", "evil.io.example.svelteqa", "io.example.svelteqa2", "IO.EXAMPLE.SVELTEQA", "")) {
+  for (other in listOf("dev.alfayez.exposvelte.qa.evil", "evil.dev.alfayez.exposvelte.qa", "dev.alfayez.exposvelte.qa2", "DEV.ALFAYEZ.EXPOSVELTE.QA", "")) {
     check("$other is not the QA app", !LabSwitches.allowed(other, debuggable = false))
   }
 
@@ -351,19 +351,19 @@ private fun labSwitchChecks(module: String) {
   equal("svelteGestures false in the QA app", read(qa, gestures = false).first.gesturesAtStart, false)
   equal("?gestures=1 in the QA app", read(qa, query = "1").first.gesturesAtStart, true)
   equal("?gestures=0 in the QA app", read(qa, query = "0").first.gesturesAtStart, false)
-  equal("a debuggable build reads them too", read("io.example.app", debuggable = true, engine = false, gestures = true).first.let { Pair(it.engineEnabled, it.gesturesAtStart) }, Pair(false, true))
+  equal("a debuggable build reads them too", read("com.example.app", debuggable = true, engine = false, gestures = true).first.let { Pair(it.engineEnabled, it.gesturesAtStart) }, Pair(false, true))
   // The A/B switches of the lab: on unless the launch link says `0`, and only the QA app and a debuggable build ask.
   equal("boost and spare are on in the QA app", read(qa).first.let { Pair(it.animatedBoost, it.inputSpare) }, Pair(true, true))
   equal("?boost=0 in the QA app", read(qa, boost = "0").first.let { Pair(it.animatedBoost, it.inputSpare) }, Pair(false, true))
   equal("?spare=0 in the QA app", read(qa, spare = "0").first.let { Pair(it.animatedBoost, it.inputSpare) }, Pair(true, false))
   equal("?boost=1 in the QA app", read(qa, boost = "1").first.animatedBoost, true)
-  equal("a debuggable build reads boost and spare", read("io.example.app", debuggable = true, boost = "0", spare = "0").first.let { Pair(it.animatedBoost, it.inputSpare) }, Pair(false, false))
-  val product = read("io.example.app", boost = "0", spare = "0")
+  equal("a debuggable build reads boost and spare", read("com.example.app", debuggable = true, boost = "0", spare = "0").first.let { Pair(it.animatedBoost, it.inputSpare) }, Pair(false, false))
+  val product = read("com.example.app", boost = "0", spare = "0")
   equal("the product ignores ?boost=0 and ?spare=0", product.first.let { Pair(it.animatedBoost, it.inputSpare) }, Pair(true, true))
   equal("the product reads no parameter for them", product.second, 0)
   // The product: whatever the intent says, the engine is on, the gesture root waits for the first gesture, and no extra is even read.
   for ((engine, gestures, query) in listOf(Triple(false, true, "1"), Triple(false, false, "0"), Triple(true, true, null))) {
-    val (switches, reads) = read("io.example.app", engine = engine, gestures = gestures, query = query)
+    val (switches, reads) = read("com.example.app", engine = engine, gestures = gestures, query = query)
     equal("the product ignores svelteEngine=$engine svelteGestures=$gestures gestures=$query", Pair(switches.engineEnabled, switches.gesturesAtStart), Pair(true, false))
     equal("the product reads no extra", reads, 0)
   }

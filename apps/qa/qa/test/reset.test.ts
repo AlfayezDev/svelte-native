@@ -6,7 +6,7 @@ import { assertMayClear, clearAppData, identify, qaResetSetting, resetMode, rese
 
 const qaRoot = join(import.meta.dirname, "..");
 const gates = JSON.parse(readFileSync(join(qaRoot, "gates.json"), "utf8")) as GatesFile;
-const pkg = "io.example.svelteqa";
+const pkg = "dev.alfayez.exposvelte.qa";
 
 /** A device that records every command it is given. */
 function recorder(answer = "Success") {

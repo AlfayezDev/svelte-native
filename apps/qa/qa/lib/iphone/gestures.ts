@@ -409,7 +409,7 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 		// The test opens the lab's link itself: XCUITest observes only an app it launched, and a step's input has to find the test already there.
 		await setTraceFlag(target, options.trace === true);
 		// `--link` opens a page by itself instead of the lab's run (a diagnostic: a page at the root of the stack, with no scenario around it).
-		const url = options.link ?? `example-svelte:///__dev?run=${runValue(names, "xctest")}&token=${token}`;
+		const url = options.link ?? `expo-svelte:///__dev?run=${runValue(names, "xctest")}&token=${token}`;
 		const started = await remoteOk(mac, inBackground(testCommand({ dir: uiTestsRemote, udid: session.udid, bundleId: target.bundleId, seconds, outFile, url, trace: options.trace === true, calibrate: options.calibrate, edgeX: options.edgeX ?? defaultEdgeX, edgeRelease: options.edgeRelease, edgeBy: options.edgeBy })));
 		const testPid = Number(started.trim().split("\n").pop());
 		// While the test runs the phone is asked nothing: devicectl calls made then hang for a minute and a half now and then (CoreDevice shares the phone with the

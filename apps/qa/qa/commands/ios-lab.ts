@@ -25,7 +25,7 @@ export async function iosLabOnce(session: IosSession, run: string, timeoutMs: nu
 	const { target } = session;
 	const token = newToken();
 	const startedAt = new Date();
-	const { pid } = await launchApp(target, { payloadUrl: `example-svelte:///__dev?run=${run}&token=${token}` });
+	const { pid } = await launchApp(target, { payloadUrl: `expo-svelte:///__dev?run=${run}&token=${token}` });
 	const deadline = Date.now() + timeoutMs;
 	let results: IosLabResults | null = null;
 	let raw = "";
